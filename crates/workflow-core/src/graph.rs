@@ -47,6 +47,7 @@ pub enum NodeType {
     Catch,
     FanOut,
     FanIn,
+    Code,
 }
 
 impl WorkflowGraph {

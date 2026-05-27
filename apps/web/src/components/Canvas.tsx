@@ -152,6 +152,7 @@ const NODE_LABELS: Record<NodeType, string> = {
   catch: 'Catch',
   fan_out: 'Fan-Out',
   fan_in: 'Fan-In',
+  code: 'Code',
 }
 
 const NODE_ICONS: Record<NodeType, string> = {
@@ -171,6 +172,7 @@ const NODE_ICONS: Record<NodeType, string> = {
   catch: '↻',
   fan_out: '⇉',
   fan_in: '⇇',
+  code: '{ }',
 }
 
 function FlowNodeComponent({ data, selected, id }: NodeProps) {
@@ -212,6 +214,7 @@ function FlowNodeComponent({ data, selected, id }: NodeProps) {
     if (nt === 'catch') return c.source ? `catch ${String(c.source)}` : 'Catches any error'
     if (nt === 'fan_out') return 'Splits into parallel branches'
     if (nt === 'fan_in') return 'Collects branch results'
+    if (nt === 'code') return c.script ? String(c.script).split('\n')[0].slice(0, 40) : 'No script'
     return ''
   })()
 
@@ -266,6 +269,7 @@ const nodeTypes = {
   catch: FlowNodeComponent,
   fan_out: FlowNodeComponent,
   fan_in: FlowNodeComponent,
+  code: FlowNodeComponent,
 }
 
 // ── Canvas component ──────────────────────────────────────────────────────────
@@ -432,6 +436,7 @@ export function Canvas({
               catch: '#ea580c',
               fan_out: '#0891b2',
               fan_in: '#0891b2',
+              code: '#7c3aed',
             }
             return nt ? (colors[nt] ?? '#30363d') : '#30363d'
           }}

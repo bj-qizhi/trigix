@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
 use workflow_core::{Node, NodeType};
+use rhai;
 
 use crate::approval::ApprovalGate;
 use crate::runtime::{ExecutionContext, NodeExecutionResult, NodeExecutor};
@@ -198,6 +199,7 @@ async fn dispatch(
         NodeType::Catch => execute_catch(node, context),
         NodeType::FanOut => execute_fan_out(context),
         NodeType::FanIn => execute_fan_in(node, context),
+        NodeType::Code => execute_code(node, context),
         // Approval is handled before dispatch; reaching here means no gate was configured.
         NodeType::Approval => NodeExecutionResult::failed("Approval gate not configured"),
     }
@@ -728,6 +730,54 @@ async fn execute_sub_workflow(
 
 fn is_truthy(s: &str) -> bool {
     !matches!(s, "" | "false" | "null" | "0" | "[]" | "{}")
+}
+
+fn execute_code(node: &Node, context: &ExecutionContext) -> NodeExecutionResult {
+    let script = match node
+        .config
+        .as_ref()
+        .and_then(|c| c.get("script").and_then(|v| v.as_str()))
+    {
+        Some(s) => s,
+        None => return NodeExecutionResult::failed("Code node requires 'script' config"),
+    };
+
+    // Resolve {{...}} template expressions inside the script before execution.
+    let resolved_script = resolve_template(script, context);
+
+    let mut engine = rhai::Engine::new();
+    engine.set_max_operations(100_000);
+    engine.set_max_string_size(1_000_000);
+    // Disable file/module loading for sandboxing.
+    engine.set_module_resolver(rhai::module_resolvers::DummyModuleResolver::new());
+
+    let mut scope = rhai::Scope::new();
+
+    // Expose `input` as a parsed Rhai map.
+    let input_val: serde_json::Value =
+        serde_json::from_str(&context.input_json).unwrap_or(serde_json::Value::Null);
+    if let Ok(dyn_input) = rhai::serde::to_dynamic(input_val) {
+        scope.push("input", dyn_input);
+    }
+
+    // Expose `nodes` map: nodes["node_id"]["field"].
+    let mut nodes_map = rhai::Map::new();
+    for (node_id, output_json) in &context.node_outputs {
+        let val: serde_json::Value =
+            serde_json::from_str(output_json).unwrap_or(serde_json::Value::Null);
+        if let Ok(d) = rhai::serde::to_dynamic(val) {
+            nodes_map.insert(node_id.clone().into(), d);
+        }
+    }
+    scope.push("nodes", rhai::Dynamic::from(nodes_map));
+
+    match engine.eval_with_scope::<rhai::Dynamic>(&mut scope, &resolved_script) {
+        Ok(result) => match rhai::serde::from_dynamic::<serde_json::Value>(&result) {
+            Ok(json_val) => NodeExecutionResult::succeeded(json_val.to_string()),
+            Err(e) => NodeExecutionResult::failed(format!("Code result not serializable: {e}")),
+        },
+        Err(e) => NodeExecutionResult::failed(format!("Code error: {e}")),
+    }
 }
 
 fn execute_fan_out(context: &ExecutionContext) -> NodeExecutionResult {
@@ -1541,6 +1591,76 @@ mod tests {
         let result = executor.execute(&node, &ctx).await;
         assert_eq!(result.status, execution_core::NodeStatus::Failed);
         assert_eq!(result.error.as_deref(), Some("Assertion failed"));
+    }
+
+    #[tokio::test]
+    async fn code_node_executes_rhai_script() {
+        let mut executor = DispatchingNodeExecutor::new(None);
+        let node = Node {
+            id: "code".to_string(),
+            node_type: NodeType::Code,
+            config: Some(serde_json::json!({
+                "script": r#"
+                    let n = input["count"];
+                    #{ doubled: n * 2, ok: true }
+                "#
+            })),
+        };
+        let mut ctx = make_context(r#"{"count": 5}"#);
+        ctx.node_outputs.insert("prev".to_string(), r#"{"value": 1}"#.to_string());
+        let result = executor.execute(&node, &ctx).await;
+        assert_eq!(result.status, execution_core::NodeStatus::Succeeded);
+        let out: serde_json::Value =
+            serde_json::from_str(result.output_json.as_deref().unwrap()).unwrap();
+        assert_eq!(out["doubled"], 10);
+        assert_eq!(out["ok"], true);
+    }
+
+    #[tokio::test]
+    async fn code_node_accesses_nodes_map() {
+        let mut executor = DispatchingNodeExecutor::new(None);
+        let node = Node {
+            id: "code".to_string(),
+            node_type: NodeType::Code,
+            config: Some(serde_json::json!({
+                "script": r#"nodes["http"]["status"]"#
+            })),
+        };
+        let mut ctx = make_context(r#"{}"#);
+        ctx.node_outputs
+            .insert("http".to_string(), r#"{"status": 200}"#.to_string());
+        let result = executor.execute(&node, &ctx).await;
+        assert_eq!(result.status, execution_core::NodeStatus::Succeeded);
+        let out: serde_json::Value =
+            serde_json::from_str(result.output_json.as_deref().unwrap()).unwrap();
+        assert_eq!(out, 200);
+    }
+
+    #[tokio::test]
+    async fn code_node_fails_on_script_error() {
+        let mut executor = DispatchingNodeExecutor::new(None);
+        let node = Node {
+            id: "code".to_string(),
+            node_type: NodeType::Code,
+            config: Some(serde_json::json!({ "script": "this is not valid rhai !!!" })),
+        };
+        let ctx = make_context(r#"{}"#);
+        let result = executor.execute(&node, &ctx).await;
+        assert_eq!(result.status, execution_core::NodeStatus::Failed);
+        assert!(result.error.as_deref().unwrap_or("").starts_with("Code error:"));
+    }
+
+    #[tokio::test]
+    async fn code_node_fails_without_script() {
+        let mut executor = DispatchingNodeExecutor::new(None);
+        let node = Node {
+            id: "code".to_string(),
+            node_type: NodeType::Code,
+            config: None,
+        };
+        let ctx = make_context(r#"{}"#);
+        let result = executor.execute(&node, &ctx).await;
+        assert_eq!(result.status, execution_core::NodeStatus::Failed);
     }
 
     #[tokio::test]

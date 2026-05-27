@@ -18,6 +18,7 @@ const NODE_LABELS: Record<NodeType, string> = {
   catch: 'Catch',
   fan_out: 'Fan-Out',
   fan_in: 'Fan-In',
+  code: 'Code',
 }
 
 const NODE_COLORS: Record<NodeType, string> = {
@@ -37,6 +38,7 @@ const NODE_COLORS: Record<NodeType, string> = {
   catch: 'var(--node-catch)',
   fan_out: 'var(--node-fan)',
   fan_in: 'var(--node-fan)',
+  code: 'var(--node-code)',
 }
 
 interface Props {
@@ -127,6 +129,7 @@ export function NodeConfigPanel({ node, onUpdateConfig, recentExecutions, onSele
         {nt === 'catch' && <CatchConfig config={config} set={set} str={str} />}
         {nt === 'fan_out' && <FanOutConfig />}
         {nt === 'fan_in' && <FanInConfig />}
+        {nt === 'code' && <CodeConfig config={config} set={set} str={str} />}
       </div>
     </div>
   )
@@ -743,6 +746,32 @@ function AssertConfig({ set, str }: ConfigProps) {
           {'{ "ok": true }'}
         </code>{' '}
         or fails the execution with the failure message.
+      </p>
+    </>
+  )
+}
+
+function CodeConfig({ set, str }: ConfigProps) {
+  const example = `// Available: input, nodes["node_id"]
+let count = input["count"];
+#{ doubled: count * 2, ok: true }`
+  return (
+    <>
+      <div className="field">
+        <label>Script * <span style={{ color: 'var(--muted)' }}>(Rhai — JavaScript-like)</span></label>
+        <textarea
+          rows={10}
+          placeholder={example}
+          value={str('script')}
+          onChange={(e) => set('script', e.target.value)}
+          style={{ fontFamily: 'monospace', fontSize: 12 }}
+        />
+      </div>
+      <p style={{ fontSize: 12, color: 'var(--muted)', marginTop: 4 }}>
+        Variables: <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>input</code> (workflow input map),{' '}
+        <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>nodes["id"]</code> (prior node output).
+        Return a map <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>#{'{ key: value }'}</code> or any value.
+        <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>{'{{...}}'}</code> expressions are resolved before execution.
       </p>
     </>
   )
