@@ -16,6 +16,8 @@ const NODE_LABELS: Record<NodeType, string> = {
   sub_workflow: 'Sub-Workflow',
   assert: 'Assert',
   catch: 'Catch',
+  fan_out: 'Fan-Out',
+  fan_in: 'Fan-In',
 }
 
 const NODE_COLORS: Record<NodeType, string> = {
@@ -33,6 +35,8 @@ const NODE_COLORS: Record<NodeType, string> = {
   sub_workflow: 'var(--node-sub-workflow)',
   assert: 'var(--node-assert)',
   catch: 'var(--node-catch)',
+  fan_out: 'var(--node-fan)',
+  fan_in: 'var(--node-fan)',
 }
 
 interface Props {
@@ -121,6 +125,8 @@ export function NodeConfigPanel({ node, onUpdateConfig, recentExecutions, onSele
         {nt === 'sub_workflow' && <SubWorkflowConfig config={config} set={set} str={str} />}
         {nt === 'assert' && <AssertConfig config={config} set={set} str={str} />}
         {nt === 'catch' && <CatchConfig config={config} set={set} str={str} />}
+        {nt === 'fan_out' && <FanOutConfig />}
+        {nt === 'fan_in' && <FanInConfig />}
       </div>
     </div>
   )
@@ -739,6 +745,32 @@ function AssertConfig({ set, str }: ConfigProps) {
         or fails the execution with the failure message.
       </p>
     </>
+  )
+}
+
+function FanOutConfig() {
+  return (
+    <p style={{ fontSize: 12, color: 'var(--muted)', marginTop: 4 }}>
+      Splits execution into parallel branches. Draw edges from this node to each branch's first node.
+      Outputs{' '}
+      <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>
+        {'{ "ok": true, "input": {...} }'}
+      </code>
+      .
+    </p>
+  )
+}
+
+function FanInConfig() {
+  return (
+    <p style={{ fontSize: 12, color: 'var(--muted)', marginTop: 4 }}>
+      Collects results from all incoming branches. Draw edges from each branch's last node to this node.
+      Outputs{' '}
+      <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>
+        {'{ "count": N, "results": [...] }'}
+      </code>
+      . Access individual results as <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>{'{{fan_in_id.results[0]}}'}</code>.
+    </p>
   )
 }
 

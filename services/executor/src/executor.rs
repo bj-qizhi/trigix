@@ -196,6 +196,8 @@ async fn dispatch(
         NodeType::SubWorkflow => execute_sub_workflow(node, context, ai_runtime_base_url).await,
         NodeType::Assert => execute_assert(node, context),
         NodeType::Catch => execute_catch(node, context),
+        NodeType::FanOut => execute_fan_out(context),
+        NodeType::FanIn => execute_fan_in(node, context),
         // Approval is handled before dispatch; reaching here means no gate was configured.
         NodeType::Approval => NodeExecutionResult::failed("Approval gate not configured"),
     }
@@ -726,6 +728,43 @@ async fn execute_sub_workflow(
 
 fn is_truthy(s: &str) -> bool {
     !matches!(s, "" | "false" | "null" | "0" | "[]" | "{}")
+}
+
+fn execute_fan_out(context: &ExecutionContext) -> NodeExecutionResult {
+    // Pass the current input through to all outgoing branches.
+    let input: serde_json::Value =
+        serde_json::from_str(&context.input_json).unwrap_or(serde_json::Value::Null);
+    NodeExecutionResult::succeeded(serde_json::json!({ "ok": true, "input": input }).to_string())
+}
+
+fn execute_fan_in(node: &Node, context: &ExecutionContext) -> NodeExecutionResult {
+    // _sources is injected by run_workflow before dispatch.
+    let sources: Vec<String> = node
+        .config
+        .as_ref()
+        .and_then(|c| c.get("_sources"))
+        .and_then(|v| v.as_array())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|v| v.as_str().map(String::from))
+                .collect()
+        })
+        .unwrap_or_default();
+
+    let results: Vec<serde_json::Value> = sources
+        .iter()
+        .filter_map(|src| {
+            context
+                .node_outputs
+                .get(src)
+                .and_then(|out| serde_json::from_str(out).ok())
+        })
+        .collect();
+
+    let count = results.len();
+    NodeExecutionResult::succeeded(
+        serde_json::json!({ "results": results, "count": count }).to_string(),
+    )
 }
 
 fn execute_catch(node: &Node, context: &ExecutionContext) -> NodeExecutionResult {
@@ -1502,5 +1541,35 @@ mod tests {
         let result = executor.execute(&node, &ctx).await;
         assert_eq!(result.status, execution_core::NodeStatus::Failed);
         assert_eq!(result.error.as_deref(), Some("Assertion failed"));
+    }
+
+    #[tokio::test]
+    async fn fan_out_passes_input_through() {
+        let mut executor = DispatchingNodeExecutor::new(None);
+        let node = Node { id: "fan_out".to_string(), node_type: NodeType::FanOut, config: None };
+        let ctx = make_context(r#"{"user":"alice"}"#);
+        let result = executor.execute(&node, &ctx).await;
+        assert_eq!(result.status, execution_core::NodeStatus::Succeeded);
+        let out: serde_json::Value = serde_json::from_str(result.output_json.as_deref().unwrap()).unwrap();
+        assert_eq!(out["ok"], true);
+        assert_eq!(out["input"]["user"], "alice");
+    }
+
+    #[tokio::test]
+    async fn fan_in_collects_sources() {
+        let mut executor = DispatchingNodeExecutor::new(None);
+        let node = Node {
+            id: "fan_in".to_string(),
+            node_type: NodeType::FanIn,
+            config: Some(serde_json::json!({ "_sources": ["branch_a", "branch_b"] })),
+        };
+        let mut ctx = make_context(r#"{}"#);
+        ctx.node_outputs.insert("branch_a".to_string(), r#"{"value": 1}"#.to_string());
+        ctx.node_outputs.insert("branch_b".to_string(), r#"{"value": 2}"#.to_string());
+        let result = executor.execute(&node, &ctx).await;
+        assert_eq!(result.status, execution_core::NodeStatus::Succeeded);
+        let out: serde_json::Value = serde_json::from_str(result.output_json.as_deref().unwrap()).unwrap();
+        assert_eq!(out["count"], 2);
+        assert_eq!(out["results"].as_array().unwrap().len(), 2);
     }
 }
