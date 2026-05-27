@@ -1,4 +1,4 @@
-export type NodeType = 'trigger' | 'http' | 'agent' | 'condition' | 'approval' | 'map' | 'filter' | 'aggregate' | 'sort' | 'transform' | 'delay' | 'sub_workflow' | 'assert'
+export type NodeType = 'trigger' | 'http' | 'agent' | 'condition' | 'approval' | 'map' | 'filter' | 'aggregate' | 'sort' | 'transform' | 'delay' | 'sub_workflow' | 'assert' | 'catch'
 
 export interface ApiNode {
   id: string
@@ -9,7 +9,7 @@ export interface ApiNode {
 export interface ApiEdge {
   source: string
   target: string
-  condition_label?: 'true' | 'false'
+  condition_label?: 'true' | 'false' | 'error'
 }
 
 export interface WorkflowGraph {

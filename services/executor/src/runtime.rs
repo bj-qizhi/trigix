@@ -101,6 +101,7 @@ pub async fn run_workflow(
     };
     let mut node_results = Vec::with_capacity(order.len());
     let mut skipped: HashSet<String> = HashSet::new();
+    let mut failed_nodes: HashSet<String> = HashSet::new();
     // condition node id -> bool result
     let mut condition_results: HashMap<String, bool> = HashMap::new();
 
@@ -113,13 +114,20 @@ pub async fn run_workflow(
         let edges_in = incoming.get(node_id.as_str()).map(Vec::as_slice).unwrap_or(&[]);
         let should_skip = !edges_in.is_empty() && edges_in.iter().all(|(src, label)| {
             if skipped.contains(*src) {
-                return true;
+                return true; // source skipped → edge inactive
+            }
+            if failed_nodes.contains(*src) {
+                // error edge from a failed node is ACTIVE; all others are inactive
+                return label.map(|l| l != "error").unwrap_or(true);
             }
             if let Some(lbl) = label {
+                if *lbl == "error" {
+                    return true; // error edge from a successful node is inactive
+                }
                 let expected = *lbl == "true";
                 return condition_results.get(*src).copied() != Some(expected);
             }
-            false
+            false // unconditional edge from successful node → active
         });
 
         if should_skip {
@@ -157,11 +165,26 @@ pub async fn run_workflow(
         });
 
         if result.status == NodeStatus::Failed {
-            return Ok(ExecutionReport {
-                execution_id,
-                status: ExecutionStatus::Failed,
-                node_results,
+            // Store error output so {{node_id.error}} is available to catch handlers.
+            let error_msg = result.error.as_deref().unwrap_or("unknown error");
+            context.node_outputs.insert(
+                node_id.clone(),
+                serde_json::json!({ "error": error_msg, "failed": true }).to_string(),
+            );
+            failed_nodes.insert(node_id.clone());
+
+            // If no error edge exists, fail the workflow immediately.
+            let has_error_route = graph.edges.iter().any(|e| {
+                e.source == node_id && e.condition_label.as_deref() == Some("error")
             });
+            if !has_error_route {
+                return Ok(ExecutionReport {
+                    execution_id,
+                    status: ExecutionStatus::Failed,
+                    node_results,
+                });
+            }
+            // Error route exists — continue so the Catch node can handle it.
         }
     }
 
@@ -353,6 +376,65 @@ mod tests {
         assert_eq!(report.status, ExecutionStatus::Succeeded);
         // map node was called
         assert!(executor.executed_nodes.contains(&"map".to_string()));
+    }
+
+    // Graph: trigger -> http (fails) --error--> catch -> agent
+    fn error_routing_graph() -> WorkflowGraph {
+        WorkflowGraph {
+            workflow_version_id: "v1".to_string(),
+            nodes: vec![
+                Node { id: "trigger".to_string(), node_type: NodeType::Trigger, config: None },
+                Node { id: "http".to_string(), node_type: NodeType::Http, config: None },
+                Node { id: "catch".to_string(), node_type: NodeType::Catch, config: None },
+                Node { id: "agent".to_string(), node_type: NodeType::Agent, config: None },
+            ],
+            edges: vec![
+                Edge { source: "trigger".to_string(), target: "http".to_string(), condition_label: None },
+                Edge { source: "http".to_string(), target: "catch".to_string(), condition_label: Some("error".to_string()) },
+                Edge { source: "catch".to_string(), target: "agent".to_string(), condition_label: None },
+            ],
+        }
+    }
+
+    #[tokio::test]
+    async fn error_edge_routes_to_catch_node() {
+        let graph = error_routing_graph();
+        let mut executor = FailingExecutor {
+            fail_node_id: "http".to_string(),
+            executed_nodes: Vec::new(),
+        };
+
+        let report = run_workflow("exec-err", &graph, "{}", &mut executor).await.unwrap();
+
+        assert_eq!(report.status, ExecutionStatus::Succeeded);
+        let statuses: HashMap<&str, NodeStatus> = report
+            .node_results.iter().map(|r| (r.node_id.as_str(), r.status.clone())).collect();
+        assert_eq!(statuses["trigger"], NodeStatus::Succeeded);
+        assert_eq!(statuses["http"],    NodeStatus::Failed);
+        assert_eq!(statuses["catch"],   NodeStatus::Succeeded);
+        assert_eq!(statuses["agent"],   NodeStatus::Succeeded);
+    }
+
+    #[tokio::test]
+    async fn no_error_edge_fails_workflow() {
+        // Same graph but without the error edge — workflow should fail
+        let graph = WorkflowGraph {
+            workflow_version_id: "v1".to_string(),
+            nodes: vec![
+                Node { id: "trigger".to_string(), node_type: NodeType::Trigger, config: None },
+                Node { id: "http".to_string(), node_type: NodeType::Http, config: None },
+            ],
+            edges: vec![
+                Edge { source: "trigger".to_string(), target: "http".to_string(), condition_label: None },
+            ],
+        };
+        let mut executor = FailingExecutor {
+            fail_node_id: "http".to_string(),
+            executed_nodes: Vec::new(),
+        };
+
+        let report = run_workflow("exec-noe", &graph, "{}", &mut executor).await.unwrap();
+        assert_eq!(report.status, ExecutionStatus::Failed);
     }
 
     struct ConditionExecutor { result: bool }

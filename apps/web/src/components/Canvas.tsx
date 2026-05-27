@@ -120,7 +120,7 @@ export function fromFlowGraph(
     edges: edges.map((e) => ({
       source: e.source,
       target: e.target,
-      ...(e.data?.conditionLabel ? { condition_label: e.data.conditionLabel as 'true' | 'false' } : {}),
+      ...(e.data?.conditionLabel ? { condition_label: e.data.conditionLabel as 'true' | 'false' | 'error' } : {}),
     })),
   }
 }
@@ -149,6 +149,7 @@ const NODE_LABELS: Record<NodeType, string> = {
   delay: 'Delay',
   sub_workflow: 'Sub-Workflow',
   assert: 'Assert',
+  catch: 'Catch',
 }
 
 const NODE_ICONS: Record<NodeType, string> = {
@@ -165,6 +166,7 @@ const NODE_ICONS: Record<NodeType, string> = {
   delay: '⏱',
   sub_workflow: '⤵',
   assert: '⊘',
+  catch: '↻',
 }
 
 function FlowNodeComponent({ data, selected, id }: NodeProps) {
@@ -203,6 +205,7 @@ function FlowNodeComponent({ data, selected, id }: NodeProps) {
     }
     if (nt === 'sub_workflow') return (c.workflow_id as string) || 'No workflow set'
     if (nt === 'assert') return c.condition ? `assert ${String(c.condition)}` : 'No condition set'
+    if (nt === 'catch') return c.source ? `catch ${String(c.source)}` : 'Catches any error'
     return ''
   })()
 
@@ -254,6 +257,7 @@ const nodeTypes = {
   delay: FlowNodeComponent,
   sub_workflow: FlowNodeComponent,
   assert: FlowNodeComponent,
+  catch: FlowNodeComponent,
 }
 
 // ── Canvas component ──────────────────────────────────────────────────────────
@@ -305,9 +309,13 @@ export function Canvas({
   const onConnect = useCallback(
     (connection: Connection) => {
       const sourceNode = nodes.find((n) => n.id === connection.source)
+      const targetNode = nodes.find((n) => n.id === connection.target)
       const isCondition = sourceNode?.data.nodeType === 'condition'
+      const isCatchTarget = targetNode?.data.nodeType === 'catch'
       let conditionLabel: string | undefined
-      if (isCondition) {
+      if (isCatchTarget) {
+        conditionLabel = 'error'
+      } else if (isCondition) {
         const existingLabels = edges
           .filter((e) => e.source === connection.source)
           .map((e) => (e as FlowEdge).data?.conditionLabel)
@@ -413,6 +421,7 @@ export function Canvas({
               delay: '#b45309',
               sub_workflow: '#be185d',
               assert: '#dc2626',
+              catch: '#ea580c',
             }
             return nt ? (colors[nt] ?? '#30363d') : '#30363d'
           }}

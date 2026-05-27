@@ -15,6 +15,7 @@ const NODE_LABELS: Record<NodeType, string> = {
   delay: 'Delay',
   sub_workflow: 'Sub-Workflow',
   assert: 'Assert',
+  catch: 'Catch',
 }
 
 const NODE_COLORS: Record<NodeType, string> = {
@@ -31,6 +32,7 @@ const NODE_COLORS: Record<NodeType, string> = {
   delay: 'var(--node-delay)',
   sub_workflow: 'var(--node-sub-workflow)',
   assert: 'var(--node-assert)',
+  catch: 'var(--node-catch)',
 }
 
 interface Props {
@@ -118,6 +120,7 @@ export function NodeConfigPanel({ node, onUpdateConfig, recentExecutions, onSele
         {nt === 'delay' && <DelayConfig config={config} set={set} str={str} num={num} />}
         {nt === 'sub_workflow' && <SubWorkflowConfig config={config} set={set} str={str} />}
         {nt === 'assert' && <AssertConfig config={config} set={set} str={str} />}
+        {nt === 'catch' && <CatchConfig config={config} set={set} str={str} />}
       </div>
     </div>
   )
@@ -734,6 +737,33 @@ function AssertConfig({ set, str }: ConfigProps) {
           {'{ "ok": true }'}
         </code>{' '}
         or fails the execution with the failure message.
+      </p>
+    </>
+  )
+}
+
+function CatchConfig({ set, str }: ConfigProps) {
+  return (
+    <>
+      <div className="field">
+        <label>Source node ID <span style={{ color: 'var(--muted)' }}>(optional)</span></label>
+        <input
+          placeholder="http_1"
+          value={str('source')}
+          onChange={(e) => set('source', e.target.value)}
+        />
+        <span style={{ fontSize: 11, color: 'var(--muted)' }}>
+          If set, reads the error from that specific node. Leave empty to auto-detect.
+        </span>
+      </div>
+      <p style={{ fontSize: 12, color: 'var(--muted)', marginTop: 4 }}>
+        Connect an <strong style={{ color: 'var(--node-catch)' }}>error</strong> edge from any
+        node to this Catch node. On failure, execution continues here instead of stopping.
+        The caught error is available as{' '}
+        <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>
+          {'{{catch_id.error}}'}
+        </code>{' '}
+        in downstream nodes.
       </p>
     </>
   )
