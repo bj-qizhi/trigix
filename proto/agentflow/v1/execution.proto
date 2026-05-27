@@ -1,0 +1,32 @@
+syntax = "proto3";
+
+package agentflow.v1;
+
+option go_package = "github.com/agentflow/aiworkflow/proto/agentflow/v1;agentflowv1";
+
+service ExecutionService {
+  rpc StartExecution(StartExecutionRequest) returns (StartExecutionResponse);
+  rpc CancelExecution(CancelExecutionRequest) returns (CancelExecutionResponse);
+}
+
+message StartExecutionRequest {
+  string tenant_id = 1;
+  string workflow_id = 2;
+  string workflow_version_id = 3;
+  string input_json = 4;
+  string graph_json = 5;
+}
+
+message StartExecutionResponse {
+  string execution_id = 1;
+  string status = 2;
+}
+
+message CancelExecutionRequest {
+  string tenant_id = 1;
+  string execution_id = 2;
+}
+
+message CancelExecutionResponse {
+  string status = 1;
+}

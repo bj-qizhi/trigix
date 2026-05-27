@@ -1,0 +1,7 @@
+name: example-capability
+type: workflow-template
+version: 0.1.0
+author: internal
+permissions: []
+inputs: {}
+outputs: {}
