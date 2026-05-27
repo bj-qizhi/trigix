@@ -45,6 +45,8 @@ pub enum NodeType {
     SubWorkflow,
     Assert,
     Catch,
+    FanOut,
+    FanIn,
 }
 
 impl WorkflowGraph {

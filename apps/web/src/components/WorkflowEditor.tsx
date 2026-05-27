@@ -28,6 +28,8 @@ const NODE_TYPE_LIST: { type: NodeType; label: string; color: string; icon: stri
   { type: 'sub_workflow', label: 'Sub-Workflow', color: 'var(--node-sub-workflow)', icon: '⤵' },
   { type: 'assert',      label: 'Assert',       color: 'var(--node-assert)',       icon: '⊘' },
   { type: 'catch',       label: 'Catch',        color: 'var(--node-catch)',        icon: '↻' },
+  { type: 'fan_out',    label: 'Fan-Out',      color: 'var(--node-fan)',          icon: '⇉' },
+  { type: 'fan_in',     label: 'Fan-In',       color: 'var(--node-fan)',          icon: '⇇' },
 ]
 
 export function WorkflowEditor({ workflowId, onBack }: Props) {

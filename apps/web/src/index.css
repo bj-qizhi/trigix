@@ -31,6 +31,7 @@
   --node-sub-workflow: #be185d;
   --node-assert: #dc2626;
   --node-catch: #ea580c;
+  --node-fan: #0891b2;
   --approval-text: #22d3ee;
 }
 
@@ -182,6 +183,8 @@ label { font-size: 12px; color: var(--muted); display: block; margin-bottom: 4px
 .flow-node-sub_workflow .flow-node-header { background: var(--node-sub-workflow); }
 .flow-node-assert .flow-node-header { background: var(--node-assert); }
 .flow-node-catch .flow-node-header { background: var(--node-catch); }
+.flow-node-fan_out .flow-node-header { background: var(--node-fan); }
+.flow-node-fan_in .flow-node-header { background: var(--node-fan); }
 
 /* Execution state border on nodes */
 .flow-node.exec-succeeded         { border-color: var(--success-text); }

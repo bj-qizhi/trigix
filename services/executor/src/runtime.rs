@@ -4,6 +4,7 @@ use crate::scheduler::schedule;
 use execution_core::{ExecutionStatus, NodeStatus};
 use serde::{Deserialize, Serialize};
 use workflow_core::{GraphError, Node, NodeType, WorkflowGraph};
+use serde_json;
 
 pub trait NodeExecutor {
     fn execute<'a>(
@@ -141,7 +142,27 @@ pub async fn run_workflow(
             continue;
         }
 
-        let result = executor.execute(node, &context).await;
+        // For FanIn nodes, inject the IDs of active incoming source nodes into config
+        // so execute_fan_in can collect their outputs.
+        let owned_fan_in: Option<Node> = if node.node_type == NodeType::FanIn {
+            let sources: Vec<String> = edges_in
+                .iter()
+                .filter(|(src, _)| !skipped.contains(*src) && !failed_nodes.contains(*src))
+                .map(|(src, _)| (*src).to_string())
+                .collect();
+            let mut config = node.config.clone().unwrap_or_else(|| serde_json::json!({}));
+            config["_sources"] = serde_json::json!(sources);
+            Some(Node {
+                id: node.id.clone(),
+                node_type: NodeType::FanIn,
+                config: Some(config),
+            })
+        } else {
+            None
+        };
+        let effective_node = owned_fan_in.as_ref().unwrap_or(node);
+
+        let result = executor.execute(effective_node, &context).await;
 
         if result.status == NodeStatus::Succeeded {
             if let Some(output) = &result.output_json {
@@ -378,6 +399,58 @@ mod tests {
         assert!(executor.executed_nodes.contains(&"map".to_string()));
     }
 
+    // Graph: trigger → fan_out → [branch_a, branch_b] → fan_in
+    fn fan_out_in_graph() -> WorkflowGraph {
+        WorkflowGraph {
+            workflow_version_id: "v1".to_string(),
+            nodes: vec![
+                Node { id: "trigger".to_string(),  node_type: NodeType::Trigger, config: None },
+                Node { id: "fan_out".to_string(),  node_type: NodeType::FanOut,  config: None },
+                Node { id: "branch_a".to_string(), node_type: NodeType::Http,    config: None },
+                Node { id: "branch_b".to_string(), node_type: NodeType::Agent,   config: None },
+                Node { id: "fan_in".to_string(),   node_type: NodeType::FanIn,   config: None },
+            ],
+            edges: vec![
+                Edge { source: "trigger".to_string(),  target: "fan_out".to_string(),  condition_label: None },
+                Edge { source: "fan_out".to_string(),  target: "branch_a".to_string(), condition_label: None },
+                Edge { source: "fan_out".to_string(),  target: "branch_b".to_string(), condition_label: None },
+                Edge { source: "branch_a".to_string(), target: "fan_in".to_string(),   condition_label: None },
+                Edge { source: "branch_b".to_string(), target: "fan_in".to_string(),   condition_label: None },
+            ],
+        }
+    }
+
+    #[tokio::test]
+    async fn fan_out_in_all_nodes_succeed() {
+        let graph = fan_out_in_graph();
+        let mut executor = EchoExecutor::default();
+        let report = run_workflow("exec-fan", &graph, "{}", &mut executor).await.unwrap();
+
+        assert_eq!(report.status, ExecutionStatus::Succeeded);
+        let statuses: HashMap<&str, NodeStatus> = report
+            .node_results.iter().map(|r| (r.node_id.as_str(), r.status.clone())).collect();
+        assert_eq!(statuses["trigger"],  NodeStatus::Succeeded);
+        assert_eq!(statuses["fan_out"],  NodeStatus::Succeeded);
+        assert_eq!(statuses["branch_a"], NodeStatus::Succeeded);
+        assert_eq!(statuses["branch_b"], NodeStatus::Succeeded);
+        assert_eq!(statuses["fan_in"],   NodeStatus::Succeeded);
+        // All 5 nodes executed (EchoExecutor confirms via executed_nodes)
+        assert_eq!(executor.executed_nodes.len(), 5);
+    }
+
+    #[tokio::test]
+    async fn fan_in_sources_injected_from_active_branches() {
+        // Verify _sources injection: use a FanInAwareExecutor that records the injected sources.
+        let graph = fan_out_in_graph();
+        let mut executor = FanInAwareExecutor::default();
+        let report = run_workflow("exec-fan2", &graph, "{}", &mut executor).await.unwrap();
+        assert_eq!(report.status, ExecutionStatus::Succeeded);
+        // Both branch_a and branch_b should have been injected as sources
+        let sources = &executor.fan_in_sources;
+        assert!(sources.contains(&"branch_a".to_string()), "expected branch_a in sources: {sources:?}");
+        assert!(sources.contains(&"branch_b".to_string()), "expected branch_b in sources: {sources:?}");
+    }
+
     // Graph: trigger -> http (fails) --error--> catch -> agent
     fn error_routing_graph() -> WorkflowGraph {
         WorkflowGraph {
@@ -435,6 +508,34 @@ mod tests {
 
         let report = run_workflow("exec-noe", &graph, "{}", &mut executor).await.unwrap();
         assert_eq!(report.status, ExecutionStatus::Failed);
+    }
+
+    #[derive(Default)]
+    struct FanInAwareExecutor {
+        fan_in_sources: Vec<String>,
+    }
+
+    impl NodeExecutor for FanInAwareExecutor {
+        fn execute<'a>(
+            &'a mut self,
+            node: &'a Node,
+            _ctx: &'a ExecutionContext,
+        ) -> std::pin::Pin<Box<dyn std::future::Future<Output = NodeExecutionResult> + Send + 'a>> {
+            if node.node_type == NodeType::FanIn {
+                if let Some(sources) = node.config.as_ref()
+                    .and_then(|c| c.get("_sources"))
+                    .and_then(|v| v.as_array())
+                {
+                    self.fan_in_sources = sources.iter()
+                        .filter_map(|v| v.as_str().map(String::from))
+                        .collect();
+                }
+            }
+            let node_id = node.id.clone();
+            Box::pin(async move {
+                NodeExecutionResult::succeeded(format!("{{\"node_id\":\"{node_id}\"}}"))
+            })
+        }
     }
 
     struct ConditionExecutor { result: bool }

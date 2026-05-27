@@ -150,6 +150,8 @@ const NODE_LABELS: Record<NodeType, string> = {
   sub_workflow: 'Sub-Workflow',
   assert: 'Assert',
   catch: 'Catch',
+  fan_out: 'Fan-Out',
+  fan_in: 'Fan-In',
 }
 
 const NODE_ICONS: Record<NodeType, string> = {
@@ -167,6 +169,8 @@ const NODE_ICONS: Record<NodeType, string> = {
   sub_workflow: '⤵',
   assert: '⊘',
   catch: '↻',
+  fan_out: '⇉',
+  fan_in: '⇇',
 }
 
 function FlowNodeComponent({ data, selected, id }: NodeProps) {
@@ -206,6 +210,8 @@ function FlowNodeComponent({ data, selected, id }: NodeProps) {
     if (nt === 'sub_workflow') return (c.workflow_id as string) || 'No workflow set'
     if (nt === 'assert') return c.condition ? `assert ${String(c.condition)}` : 'No condition set'
     if (nt === 'catch') return c.source ? `catch ${String(c.source)}` : 'Catches any error'
+    if (nt === 'fan_out') return 'Splits into parallel branches'
+    if (nt === 'fan_in') return 'Collects branch results'
     return ''
   })()
 
@@ -258,6 +264,8 @@ const nodeTypes = {
   sub_workflow: FlowNodeComponent,
   assert: FlowNodeComponent,
   catch: FlowNodeComponent,
+  fan_out: FlowNodeComponent,
+  fan_in: FlowNodeComponent,
 }
 
 // ── Canvas component ──────────────────────────────────────────────────────────
@@ -422,6 +430,8 @@ export function Canvas({
               sub_workflow: '#be185d',
               assert: '#dc2626',
               catch: '#ea580c',
+              fan_out: '#0891b2',
+              fan_in: '#0891b2',
             }
             return nt ? (colors[nt] ?? '#30363d') : '#30363d'
           }}
