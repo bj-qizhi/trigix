@@ -1,0 +1,12 @@
+[workspace]
+members = [
+  "crates/workflow-core",
+  "crates/execution-core",
+  "services/executor",
+  "services/platform-rs",
+]
+resolver = "2"
+
+[workspace.package]
+edition = "2021"
+version = "0.1.0"

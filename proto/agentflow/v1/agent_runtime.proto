@@ -1,0 +1,36 @@
+syntax = "proto3";
+
+package agentflow.v1;
+
+option go_package = "github.com/agentflow/aiworkflow/proto/agentflow/v1;agentflowv1";
+
+service AgentRuntimeService {
+  rpc RunAgent(RunAgentRequest) returns (RunAgentResponse);
+  rpc RetrieveKnowledge(RetrieveKnowledgeRequest) returns (RetrieveKnowledgeResponse);
+}
+
+message RunAgentRequest {
+  string tenant_id = 1;
+  string execution_id = 2;
+  string node_id = 3;
+  string agent_config_json = 4;
+  string input_json = 5;
+}
+
+message RunAgentResponse {
+  string output_json = 1;
+  string trace_json = 2;
+  int64 prompt_tokens = 3;
+  int64 completion_tokens = 4;
+}
+
+message RetrieveKnowledgeRequest {
+  string tenant_id = 1;
+  string knowledge_base_id = 2;
+  string query = 3;
+  int32 limit = 4;
+}
+
+message RetrieveKnowledgeResponse {
+  string chunks_json = 1;
+}
