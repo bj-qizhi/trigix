@@ -19,6 +19,8 @@ const NODE_LABELS: Record<NodeType, string> = {
   fan_out: 'Fan-Out',
   fan_in: 'Fan-In',
   code: 'Code',
+  slack: 'Slack',
+  email: 'Email',
 }
 
 const NODE_COLORS: Record<NodeType, string> = {
@@ -39,6 +41,8 @@ const NODE_COLORS: Record<NodeType, string> = {
   fan_out: 'var(--node-fan)',
   fan_in: 'var(--node-fan)',
   code: 'var(--node-code)',
+  slack: 'var(--node-slack)',
+  email: 'var(--node-email)',
 }
 
 interface Props {
@@ -130,6 +134,8 @@ export function NodeConfigPanel({ node, onUpdateConfig, recentExecutions, onSele
         {nt === 'fan_out' && <FanOutConfig />}
         {nt === 'fan_in' && <FanInConfig />}
         {nt === 'code' && <CodeConfig config={config} set={set} str={str} />}
+        {nt === 'slack' && <SlackConfig config={config} set={set} str={str} />}
+        {nt === 'email' && <EmailConfig config={config} set={set} str={str} />}
       </div>
     </div>
   )
@@ -746,6 +752,112 @@ function AssertConfig({ set, str }: ConfigProps) {
           {'{ "ok": true }'}
         </code>{' '}
         or fails the execution with the failure message.
+      </p>
+    </>
+  )
+}
+
+function SlackConfig({ set, str }: ConfigProps) {
+  return (
+    <>
+      <div className="field">
+        <label>Webhook URL *</label>
+        <input
+          placeholder="https://hooks.slack.com/services/..."
+          value={str('webhook_url')}
+          onChange={(e) => set('webhook_url', e.target.value)}
+        />
+        <span style={{ fontSize: 11, color: 'var(--muted)' }}>
+          Use <code>{'{{credential.slack_webhook}}'}</code> to reference a stored credential.
+        </span>
+      </div>
+      <div className="field">
+        <label>Message *</label>
+        <textarea
+          rows={3}
+          placeholder="Workflow {{input.name}} completed successfully."
+          value={str('text')}
+          onChange={(e) => set('text', e.target.value)}
+        />
+      </div>
+      <div className="field">
+        <label>Channel <span style={{ color: 'var(--muted)' }}>(optional, overrides webhook default)</span></label>
+        <input
+          placeholder="#alerts"
+          value={str('channel')}
+          onChange={(e) => set('channel', e.target.value)}
+        />
+      </div>
+      <div className="field">
+        <label>Bot name <span style={{ color: 'var(--muted)' }}>(optional)</span></label>
+        <input
+          placeholder="AgentFlow"
+          value={str('username')}
+          onChange={(e) => set('username', e.target.value)}
+        />
+      </div>
+      <TemplateHint />
+      <p style={{ fontSize: 12, color: 'var(--muted)', marginTop: 4 }}>
+        Returns <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>
+          {'{ "ok": true, "text": "..." }'}
+        </code>
+      </p>
+    </>
+  )
+}
+
+function EmailConfig({ set, str }: ConfigProps) {
+  return (
+    <>
+      <div className="field">
+        <label>To *</label>
+        <input
+          placeholder="user@example.com"
+          value={str('to')}
+          onChange={(e) => set('to', e.target.value)}
+        />
+      </div>
+      <div className="field">
+        <label>Subject *</label>
+        <input
+          placeholder="Workflow completed: {{input.name}}"
+          value={str('subject')}
+          onChange={(e) => set('subject', e.target.value)}
+        />
+      </div>
+      <div className="field">
+        <label>Body *</label>
+        <textarea
+          rows={4}
+          placeholder="Your workflow has completed successfully."
+          value={str('body')}
+          onChange={(e) => set('body', e.target.value)}
+        />
+      </div>
+      <div className="field">
+        <label>From <span style={{ color: 'var(--muted)' }}>(optional)</span></label>
+        <input
+          placeholder="noreply@agentflow.dev"
+          value={str('from')}
+          onChange={(e) => set('from', e.target.value)}
+        />
+      </div>
+      <div className="field">
+        <label>SendGrid API Key *</label>
+        <input
+          placeholder="{{credential.sendgrid_key}}"
+          value={str('api_key')}
+          onChange={(e) => set('api_key', e.target.value)}
+        />
+        <span style={{ fontSize: 11, color: 'var(--muted)' }}>
+          Use <code>{'{{credential.sendgrid_key}}'}</code> to reference a stored credential.
+        </span>
+      </div>
+      <TemplateHint />
+      <p style={{ fontSize: 12, color: 'var(--muted)', marginTop: 4 }}>
+        Sends via SendGrid API. Returns <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>
+          {'{ "ok": true, "to": "...", "subject": "..." }'}
+        </code>
       </p>
     </>
   )

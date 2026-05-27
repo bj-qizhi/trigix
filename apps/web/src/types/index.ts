@@ -1,4 +1,4 @@
-export type NodeType = 'trigger' | 'http' | 'agent' | 'condition' | 'approval' | 'map' | 'filter' | 'aggregate' | 'sort' | 'transform' | 'delay' | 'sub_workflow' | 'assert' | 'catch' | 'fan_out' | 'fan_in' | 'code'
+export type NodeType = 'trigger' | 'http' | 'agent' | 'condition' | 'approval' | 'map' | 'filter' | 'aggregate' | 'sort' | 'transform' | 'delay' | 'sub_workflow' | 'assert' | 'catch' | 'fan_out' | 'fan_in' | 'code' | 'slack' | 'email'
 
 export interface ApiNode {
   id: string
