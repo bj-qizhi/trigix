@@ -195,6 +195,7 @@ async fn dispatch(
         NodeType::Delay => execute_delay(node).await,
         NodeType::SubWorkflow => execute_sub_workflow(node, context, ai_runtime_base_url).await,
         NodeType::Assert => execute_assert(node, context),
+        NodeType::Catch => execute_catch(node, context),
         // Approval is handled before dispatch; reaching here means no gate was configured.
         NodeType::Approval => NodeExecutionResult::failed("Approval gate not configured"),
     }
@@ -725,6 +726,39 @@ async fn execute_sub_workflow(
 
 fn is_truthy(s: &str) -> bool {
     !matches!(s, "" | "false" | "null" | "0" | "[]" | "{}")
+}
+
+fn execute_catch(node: &Node, context: &ExecutionContext) -> NodeExecutionResult {
+    // Collect error messages from any upstream node that has {"failed": true} in its output.
+    let source_hint = node
+        .config
+        .as_ref()
+        .and_then(|c| c.get("source").and_then(|v| v.as_str()))
+        .unwrap_or("");
+
+    let error_msg = if !source_hint.is_empty() {
+        // Explicit source configured: read {{source.error}}.
+        let key = format!("{{{{{}.error}}}}", source_hint);
+        resolve_template(&key, context)
+    } else {
+        // Auto-detect: find the first upstream node output that has "failed: true".
+        context
+            .node_outputs
+            .values()
+            .find_map(|out| {
+                let v: serde_json::Value = serde_json::from_str(out).ok()?;
+                if v.get("failed").and_then(|f| f.as_bool()).unwrap_or(false) {
+                    v.get("error").and_then(|e| e.as_str()).map(String::from)
+                } else {
+                    None
+                }
+            })
+            .unwrap_or_else(|| "unknown error".to_string())
+    };
+
+    NodeExecutionResult::succeeded(
+        serde_json::json!({ "caught": true, "error": error_msg }).to_string(),
+    )
 }
 
 fn execute_assert(node: &Node, context: &ExecutionContext) -> NodeExecutionResult {

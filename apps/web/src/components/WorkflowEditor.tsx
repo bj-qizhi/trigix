@@ -27,6 +27,7 @@ const NODE_TYPE_LIST: { type: NodeType; label: string; color: string; icon: stri
   { type: 'delay',        label: 'Delay',       color: 'var(--node-delay)',        icon: '⏱' },
   { type: 'sub_workflow', label: 'Sub-Workflow', color: 'var(--node-sub-workflow)', icon: '⤵' },
   { type: 'assert',      label: 'Assert',       color: 'var(--node-assert)',       icon: '⊘' },
+  { type: 'catch',       label: 'Catch',        color: 'var(--node-catch)',        icon: '↻' },
 ]
 
 export function WorkflowEditor({ workflowId, onBack }: Props) {

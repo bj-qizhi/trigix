@@ -982,6 +982,7 @@ fn node_type_to_str(node_type: &workflow_core::NodeType) -> &'static str {
         workflow_core::NodeType::Delay => "delay",
         workflow_core::NodeType::SubWorkflow => "sub_workflow",
         workflow_core::NodeType::Assert => "assert",
+        workflow_core::NodeType::Catch => "catch",
     }
 }
 

@@ -2882,9 +2882,9 @@ mod tests {
 
     #[tokio::test]
     async fn create_token_returns_jwt_for_valid_key() {
-        std::env::set_var("DEV_API_KEY", "test-key-29");
+        // Uses default DEV_API_KEY = "dev"
         let app = router();
-        let body = serde_json::json!({ "api_key": "test-key-29" });
+        let body = serde_json::json!({ "api_key": "dev" });
         let response = app
             .oneshot(
                 Request::builder()
@@ -2906,9 +2906,9 @@ mod tests {
 
     #[tokio::test]
     async fn create_token_rejects_wrong_key() {
-        std::env::set_var("DEV_API_KEY", "correct-key");
+        // Uses default DEV_API_KEY = "dev"; submits wrong key
         let app = router();
-        let body = serde_json::json!({ "api_key": "wrong-key" });
+        let body = serde_json::json!({ "api_key": "definitely-not-dev" });
         let response = app
             .oneshot(
                 Request::builder()

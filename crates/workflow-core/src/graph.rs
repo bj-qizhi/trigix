@@ -44,6 +44,7 @@ pub enum NodeType {
     Delay,
     SubWorkflow,
     Assert,
+    Catch,
 }
 
 impl WorkflowGraph {
