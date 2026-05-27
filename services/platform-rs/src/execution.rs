@@ -985,6 +985,7 @@ fn node_type_to_str(node_type: &workflow_core::NodeType) -> &'static str {
         workflow_core::NodeType::Catch => "catch",
         workflow_core::NodeType::FanOut => "fan_out",
         workflow_core::NodeType::FanIn => "fan_in",
+        workflow_core::NodeType::Code => "code",
     }
 }
 

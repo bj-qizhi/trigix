@@ -30,6 +30,7 @@ const NODE_TYPE_LIST: { type: NodeType; label: string; color: string; icon: stri
   { type: 'catch',       label: 'Catch',        color: 'var(--node-catch)',        icon: '↻' },
   { type: 'fan_out',    label: 'Fan-Out',      color: 'var(--node-fan)',          icon: '⇉' },
   { type: 'fan_in',     label: 'Fan-In',       color: 'var(--node-fan)',          icon: '⇇' },
+  { type: 'code',       label: 'Code',         color: 'var(--node-code)',         icon: '{ }' },
 ]
 
 export function WorkflowEditor({ workflowId, onBack }: Props) {
