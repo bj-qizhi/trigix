@@ -200,6 +200,8 @@ async fn dispatch(
         NodeType::FanOut => execute_fan_out(context),
         NodeType::FanIn => execute_fan_in(node, context),
         NodeType::Code => execute_code(node, context),
+        NodeType::Slack => execute_slack(node, context, http_client).await,
+        NodeType::Email => execute_email(node, context, http_client).await,
         // Approval is handled before dispatch; reaching here means no gate was configured.
         NodeType::Approval => NodeExecutionResult::failed("Approval gate not configured"),
     }
@@ -730,6 +732,105 @@ async fn execute_sub_workflow(
 
 fn is_truthy(s: &str) -> bool {
     !matches!(s, "" | "false" | "null" | "0" | "[]" | "{}")
+}
+
+async fn execute_slack(
+    node: &Node,
+    context: &ExecutionContext,
+    http_client: &reqwest::Client,
+) -> NodeExecutionResult {
+    let config = match node.config.as_ref() {
+        Some(c) => c,
+        None => return NodeExecutionResult::failed("Slack node requires config"),
+    };
+    let webhook_url = match config.get("webhook_url").and_then(|v| v.as_str()) {
+        Some(u) => resolve_template(u, context),
+        None => return NodeExecutionResult::failed("Slack node missing 'webhook_url'"),
+    };
+    let text = match config.get("text").and_then(|v| v.as_str()) {
+        Some(t) => resolve_template(t, context),
+        None => return NodeExecutionResult::failed("Slack node missing 'text'"),
+    };
+    let mut payload = serde_json::json!({ "text": text });
+    if let Some(u) = config.get("username").and_then(|v| v.as_str()) {
+        let r = resolve_template(u, context);
+        if !r.is_empty() { payload["username"] = serde_json::json!(r); }
+    }
+    if let Some(c) = config.get("channel").and_then(|v| v.as_str()) {
+        let r = resolve_template(c, context);
+        if !r.is_empty() { payload["channel"] = serde_json::json!(r); }
+    }
+    match http_client.post(&webhook_url).json(&payload).send().await {
+        Ok(resp) if resp.status().is_success() => NodeExecutionResult::succeeded(
+            serde_json::json!({ "ok": true, "text": text }).to_string(),
+        ),
+        Ok(resp) => {
+            let status = resp.status().as_u16();
+            let body = resp.text().await.unwrap_or_default();
+            NodeExecutionResult::failed(format!("Slack webhook {status}: {body}"))
+        }
+        Err(e) => NodeExecutionResult::failed(format!("Slack error: {e}")),
+    }
+}
+
+async fn execute_email(
+    node: &Node,
+    context: &ExecutionContext,
+    http_client: &reqwest::Client,
+) -> NodeExecutionResult {
+    let config = match node.config.as_ref() {
+        Some(c) => c,
+        None => return NodeExecutionResult::failed("Email node requires config"),
+    };
+    let to = match config.get("to").and_then(|v| v.as_str()) {
+        Some(t) => resolve_template(t, context),
+        None => return NodeExecutionResult::failed("Email node missing 'to'"),
+    };
+    let subject = match config.get("subject").and_then(|v| v.as_str()) {
+        Some(s) => resolve_template(s, context),
+        None => return NodeExecutionResult::failed("Email node missing 'subject'"),
+    };
+    let body_text = match config.get("body").and_then(|v| v.as_str()) {
+        Some(b) => resolve_template(b, context),
+        None => return NodeExecutionResult::failed("Email node missing 'body'"),
+    };
+    // Send via SendGrid API (api_key from config or credential interpolation).
+    let api_key = match config.get("api_key").and_then(|v| v.as_str()) {
+        Some(k) => resolve_template(k, context),
+        None => return NodeExecutionResult::failed("Email node missing 'api_key'"),
+    };
+    let from = config
+        .get("from")
+        .and_then(|v| v.as_str())
+        .map(|f| resolve_template(f, context))
+        .unwrap_or_else(|| "noreply@agentflow.dev".to_string());
+
+    let payload = serde_json::json!({
+        "personalizations": [{ "to": [{ "email": to }] }],
+        "from": { "email": from },
+        "subject": subject,
+        "content": [{ "type": "text/plain", "value": body_text }]
+    });
+
+    match http_client
+        .post("https://api.sendgrid.com/v3/mail/send")
+        .header("Authorization", format!("Bearer {api_key}"))
+        .json(&payload)
+        .send()
+        .await
+    {
+        Ok(resp) if resp.status().is_success() || resp.status().as_u16() == 202 => {
+            NodeExecutionResult::succeeded(
+                serde_json::json!({ "ok": true, "to": to, "subject": subject }).to_string(),
+            )
+        }
+        Ok(resp) => {
+            let status = resp.status().as_u16();
+            let body = resp.text().await.unwrap_or_default();
+            NodeExecutionResult::failed(format!("Email API {status}: {body}"))
+        }
+        Err(e) => NodeExecutionResult::failed(format!("Email error: {e}")),
+    }
 }
 
 fn execute_code(node: &Node, context: &ExecutionContext) -> NodeExecutionResult {
@@ -1660,6 +1761,58 @@ mod tests {
         };
         let ctx = make_context(r#"{}"#);
         let result = executor.execute(&node, &ctx).await;
+        assert_eq!(result.status, execution_core::NodeStatus::Failed);
+    }
+
+    #[tokio::test]
+    async fn slack_node_fails_without_webhook_url() {
+        let mut executor = DispatchingNodeExecutor::new(None);
+        let node = Node {
+            id: "slack".to_string(),
+            node_type: NodeType::Slack,
+            config: Some(serde_json::json!({ "text": "hello" })),
+        };
+        let result = executor.execute(&node, &make_context("{}")).await;
+        assert_eq!(result.status, execution_core::NodeStatus::Failed);
+        assert!(result.error.as_deref().unwrap_or("").contains("webhook_url"));
+    }
+
+    #[tokio::test]
+    async fn slack_node_fails_without_text() {
+        let mut executor = DispatchingNodeExecutor::new(None);
+        let node = Node {
+            id: "slack".to_string(),
+            node_type: NodeType::Slack,
+            config: Some(serde_json::json!({ "webhook_url": "https://hooks.slack.com/fake" })),
+        };
+        let result = executor.execute(&node, &make_context("{}")).await;
+        assert_eq!(result.status, execution_core::NodeStatus::Failed);
+        assert!(result.error.as_deref().unwrap_or("").contains("text"));
+    }
+
+    #[tokio::test]
+    async fn email_node_fails_without_required_fields() {
+        let mut executor = DispatchingNodeExecutor::new(None);
+        let node = Node {
+            id: "email".to_string(),
+            node_type: NodeType::Email,
+            config: Some(serde_json::json!({ "to": "user@example.com" })),
+        };
+        let result = executor.execute(&node, &make_context("{}")).await;
+        assert_eq!(result.status, execution_core::NodeStatus::Failed);
+        // Missing subject
+        assert!(result.error.as_deref().unwrap_or("").contains("subject"));
+    }
+
+    #[tokio::test]
+    async fn email_node_fails_without_config() {
+        let mut executor = DispatchingNodeExecutor::new(None);
+        let node = Node {
+            id: "email".to_string(),
+            node_type: NodeType::Email,
+            config: None,
+        };
+        let result = executor.execute(&node, &make_context("{}")).await;
         assert_eq!(result.status, execution_core::NodeStatus::Failed);
     }
 

@@ -48,6 +48,8 @@ pub enum NodeType {
     FanOut,
     FanIn,
     Code,
+    Slack,
+    Email,
 }
 
 impl WorkflowGraph {

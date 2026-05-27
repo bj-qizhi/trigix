@@ -153,6 +153,8 @@ const NODE_LABELS: Record<NodeType, string> = {
   fan_out: 'Fan-Out',
   fan_in: 'Fan-In',
   code: 'Code',
+  slack: 'Slack',
+  email: 'Email',
 }
 
 const NODE_ICONS: Record<NodeType, string> = {
@@ -173,6 +175,8 @@ const NODE_ICONS: Record<NodeType, string> = {
   fan_out: '⇉',
   fan_in: '⇇',
   code: '{ }',
+  slack: '#',
+  email: '@',
 }
 
 function FlowNodeComponent({ data, selected, id }: NodeProps) {
@@ -215,6 +219,8 @@ function FlowNodeComponent({ data, selected, id }: NodeProps) {
     if (nt === 'fan_out') return 'Splits into parallel branches'
     if (nt === 'fan_in') return 'Collects branch results'
     if (nt === 'code') return c.script ? String(c.script).split('\n')[0].slice(0, 40) : 'No script'
+    if (nt === 'slack') return c.text ? String(c.text).slice(0, 40) : 'No message'
+    if (nt === 'email') return c.to ? `to: ${String(c.to)}` : 'No recipient'
     return ''
   })()
 
@@ -270,6 +276,8 @@ const nodeTypes = {
   fan_out: FlowNodeComponent,
   fan_in: FlowNodeComponent,
   code: FlowNodeComponent,
+  slack: FlowNodeComponent,
+  email: FlowNodeComponent,
 }
 
 // ── Canvas component ──────────────────────────────────────────────────────────
@@ -437,6 +445,8 @@ export function Canvas({
               fan_out: '#0891b2',
               fan_in: '#0891b2',
               code: '#7c3aed',
+              slack: '#4a154b',
+              email: '#0369a1',
             }
             return nt ? (colors[nt] ?? '#30363d') : '#30363d'
           }}
