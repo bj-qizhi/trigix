@@ -3375,7 +3375,7 @@ async fn import_workflow(
             workflow = updated;
         }
     }
-    state
+    let version = state
         .workflow_service
         .create_version(
             &workflow.id,
@@ -3394,11 +3394,7 @@ async fn import_workflow(
         &workflow.id,
         None,
     );
-    // Re-fetch so latest_version_id is populated (create_version updates it in-place)
-    let workflow = state.workflow_service
-        .get_workflow(&workflow.id, &body.tenant_id)
-        .await
-        .unwrap_or(workflow);
+    workflow.latest_version_id = Some(version.id);
     Ok((StatusCode::CREATED, Json(workflow)))
 }
 
@@ -3706,7 +3702,7 @@ async fn duplicate_workflow(
         .get_workflow(&body.tenant_id, &workflow_id)
         .await?;
     let new_name = format!("{} (copy)", original.name);
-    let new_workflow = state
+    let mut new_workflow = state
         .workflow_service
         .create_workflow(CreateWorkflowRequest {
             tenant_id: body.tenant_id.clone(),
@@ -3723,7 +3719,7 @@ async fn duplicate_workflow(
             .workflow_service
             .get_version(&body.tenant_id, version_id)
             .await?;
-        state
+        let dup_version = state
             .workflow_service
             .create_version(
                 &new_workflow.id,
@@ -3735,6 +3731,7 @@ async fn duplicate_workflow(
                 },
             )
             .await?;
+        new_workflow.latest_version_id = Some(dup_version.id);
     }
     state.audit_store.record(
         &body.tenant_id,
@@ -3743,10 +3740,6 @@ async fn duplicate_workflow(
         &new_workflow.id,
         Some(serde_json::json!({ "duplicated_from": workflow_id })),
     );
-    let new_workflow = state.workflow_service
-        .get_workflow(&new_workflow.id, &body.tenant_id)
-        .await
-        .unwrap_or(new_workflow);
     Ok((StatusCode::CREATED, Json(new_workflow)))
 }
 
