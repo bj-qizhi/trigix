@@ -26,6 +26,7 @@ import { SchedulesPage } from './components/SchedulesPage'
 import { MonitoringPage } from './components/MonitoringPage'
 import { ApprovalsPage } from './components/ApprovalsPage'
 import { WorkflowDepsPage } from './components/WorkflowDepsPage'
+import logoIcon from './assets/logo.svg'
 
 type Page =
   | { name: 'list' }
@@ -254,16 +255,23 @@ function Footer() {
       color: 'var(--muted)',
       fontSize: '12px',
       textAlign: 'center',
-      padding: '10px 16px',
+      padding: '8px 16px',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: '10px',
     }}>
-      © {new Date().getFullYear()} 北京祺智科技有限公司 · All rights reserved ·{' '}
-      <a href="https://www.qzso.com/" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--muted)', textDecoration: 'none' }}>
-        www.qzso.com
-      </a>
-      {' · '}
-      <a href="mailto:managecode@gmail.com" style={{ color: 'var(--muted)', textDecoration: 'none' }}>
-        managecode@gmail.com
-      </a>
+      <img src={logoIcon} alt="Velara" style={{ height: '22px', verticalAlign: 'middle' }} />
+      <span>
+        © {new Date().getFullYear()} 北京祺智科技有限公司 · All rights reserved ·{' '}
+        <a href="https://www.qzso.com/" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--muted)', textDecoration: 'none' }}>
+          www.qzso.com
+        </a>
+        {' · '}
+        <a href="mailto:managecode@gmail.com" style={{ color: 'var(--muted)', textDecoration: 'none' }}>
+          managecode@gmail.com
+        </a>
+      </span>
     </footer>
   )
 }
