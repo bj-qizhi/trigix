@@ -73,7 +73,7 @@ export const translations = {
 
     // WorkflowList
     'wl.create': 'Create Workflow',
-    'wl.import': '↑ Import',
+    'wl.import': 'Import',
     'wl.import.clipboard': '📋 Paste JSON',
     'wl.templates': 'Templates',
     'wl.generate': '✦ Generate',
@@ -110,7 +110,7 @@ export const translations = {
     'wl.btn.users': '👤 Users',
     'wl.btn.account': 'Account',
     'wl.btn.info': 'ℹ',
-    'wl.btn.search': '🔍 Search',
+    'wl.btn.search': 'Search',
     'wl.run.quick': '▶ Run',
     'wl.run.open': 'Open',
     'wl.stat.workflows': 'Workflows',
@@ -378,7 +378,7 @@ export const translations = {
 
     // WorkflowList
     'wl.create': '创建工作流',
-    'wl.import': '↑ 导入',
+    'wl.import': '导入',
     'wl.import.clipboard': '📋 粘贴 JSON',
     'wl.templates': '模板',
     'wl.generate': '✦ AI 生成',
@@ -415,7 +415,7 @@ export const translations = {
     'wl.btn.users': '👤 用户',
     'wl.btn.account': '账号',
     'wl.btn.info': 'ℹ',
-    'wl.btn.search': '🔍 搜索',
+    'wl.btn.search': '搜索',
     'wl.run.quick': '▶ 运行',
     'wl.run.open': '打开',
     'wl.stat.workflows': '工作流',

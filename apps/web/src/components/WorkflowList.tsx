@@ -186,6 +186,7 @@ export function WorkflowList({ onOpen, onOpenExecution, onCredentials, onAuditLo
   const [serverUnread, setServerUnread] = useState(0)
   const [expiringCreds, setExpiringCreds] = useState<api.CredentialSummary[]>([])
   const [showNavMenu, setShowNavMenu] = useState(false)
+  const [navMenuRect, setNavMenuRect] = useState<{ top: number; right: number }>({ top: 0, right: 0 })
   const [showUserMenu, setShowUserMenu] = useState(false)
   const [showNotifications, setShowNotifications] = useState(false)
   const [showActivity, setShowActivity] = useState(false)
@@ -747,7 +748,11 @@ export function WorkflowList({ onOpen, onOpenExecution, onCredentials, onAuditLo
           <div ref={navMenuRef} style={{ position: 'relative' }}>
             <button
               className="btn btn-sm"
-              onClick={() => setShowNavMenu((v) => !v)}
+              onClick={(e) => {
+                const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
+                setNavMenuRect({ top: rect.bottom + 6, right: window.innerWidth - rect.right })
+                setShowNavMenu((v) => !v)
+              }}
               title="Navigation"
               style={{ fontWeight: 600, letterSpacing: '0.02em' }}
             >
@@ -773,15 +778,15 @@ export function WorkflowList({ onOpen, onOpenExecution, onCredentials, onAuditLo
             </button>
             {showNavMenu && (
               <div style={{
-                position: 'absolute',
-                top: 'calc(100% + 6px)',
-                right: 0,
+                position: 'fixed',
+                top: navMenuRect.top,
+                right: navMenuRect.right,
                 background: 'var(--surface)',
                 border: '1px solid var(--border)',
                 borderRadius: 8,
                 boxShadow: '0 8px 24px rgba(0,0,0,0.15)',
                 minWidth: 200,
-                zIndex: 1000,
+                zIndex: 9999,
                 maxHeight: 'calc(100vh - 80px)',
                 overflowY: 'auto',
               }}>
