@@ -2,15 +2,15 @@
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:
-  name: {{ include "aiworkflow.fullname" . }}
+  name: {{ include "trigix.fullname" . }}
   namespace: {{ .Release.Namespace }}
   labels:
-    {{- include "aiworkflow.labels" . | nindent 4 }}
+    {{- include "trigix.labels" . | nindent 4 }}
 spec:
   scaleTargetRef:
     apiVersion: apps/v1
     kind: Deployment
-    name: {{ include "aiworkflow.fullname" . }}
+    name: {{ include "trigix.fullname" . }}
   minReplicas: {{ .Values.autoscaling.minReplicas }}
   maxReplicas: {{ .Values.autoscaling.maxReplicas }}
   metrics:

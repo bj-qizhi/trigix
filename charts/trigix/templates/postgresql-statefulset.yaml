@@ -3,22 +3,22 @@
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
-  name: {{ include "aiworkflow.fullname" . }}-postgresql
+  name: {{ include "trigix.fullname" . }}-postgresql
   namespace: {{ .Release.Namespace }}
   labels:
-    {{- include "aiworkflow.labels" . | nindent 4 }}
+    {{- include "trigix.labels" . | nindent 4 }}
     app.kubernetes.io/component: postgresql
 spec:
-  serviceName: {{ include "aiworkflow.fullname" . }}-postgresql
+  serviceName: {{ include "trigix.fullname" . }}-postgresql
   replicas: 1
   selector:
     matchLabels:
-      {{- include "aiworkflow.selectorLabels" . | nindent 6 }}
+      {{- include "trigix.selectorLabels" . | nindent 6 }}
       app.kubernetes.io/component: postgresql
   template:
     metadata:
       labels:
-        {{- include "aiworkflow.selectorLabels" . | nindent 8 }}
+        {{- include "trigix.selectorLabels" . | nindent 8 }}
         app.kubernetes.io/component: postgresql
     spec:
       containers:
@@ -37,7 +37,7 @@ spec:
             - name: POSTGRES_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: {{ include "aiworkflow.fullname" . }}-postgresql
+                  name: {{ include "trigix.fullname" . }}-postgresql
                   key: POSTGRES_PASSWORD
             - name: PGDATA
               value: /var/lib/postgresql/data/pgdata
@@ -77,7 +77,7 @@ spec:
     - metadata:
         name: data
         labels:
-          {{- include "aiworkflow.labels" . | nindent 10 }}
+          {{- include "trigix.labels" . | nindent 10 }}
           app.kubernetes.io/component: postgresql
       spec:
         accessModes:
@@ -89,10 +89,10 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ include "aiworkflow.fullname" . }}-postgresql
+  name: {{ include "trigix.fullname" . }}-postgresql
   namespace: {{ .Release.Namespace }}
   labels:
-    {{- include "aiworkflow.labels" . | nindent 4 }}
+    {{- include "trigix.labels" . | nindent 4 }}
     app.kubernetes.io/component: postgresql
 spec:
   type: ClusterIP
@@ -102,6 +102,6 @@ spec:
       protocol: TCP
       name: postgres
   selector:
-    {{- include "aiworkflow.selectorLabels" . | nindent 4 }}
+    {{- include "trigix.selectorLabels" . | nindent 4 }}
     app.kubernetes.io/component: postgresql
 {{- end }}

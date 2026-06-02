@@ -10,7 +10,7 @@ import anthropic
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
-app = FastAPI(title="AgentFlow AI Runtime")
+app = FastAPI(title="Trigix AI Runtime")
 
 _anthropic_client: anthropic.Anthropic | None = None
 

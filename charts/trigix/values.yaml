@@ -1,7 +1,7 @@
 replicaCount: 2
 
 image:
-  repository: aiworkflow/platform
+  repository: trigix/platform
   tag: "latest"
   pullPolicy: IfNotPresent
 
@@ -13,11 +13,11 @@ service:
 ingress:
   enabled: true
   className: "nginx"
-  host: "aiworkflow.example.com"
+  host: "trigix.example.com"
   annotations: {}
   tls:
     enabled: false
-    secretName: "aiworkflow-tls"
+    secretName: "trigix-tls"
 
 resources:
   requests:
@@ -69,7 +69,7 @@ executor:
   enabled: false
   replicaCount: 3
   image:
-    repository: aiworkflow/executor
+    repository: trigix/executor
     tag: "latest"
     pullPolicy: IfNotPresent
   resources:

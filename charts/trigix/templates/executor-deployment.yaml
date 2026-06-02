@@ -3,10 +3,10 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "aiworkflow.fullname" . }}-executor
+  name: {{ include "trigix.fullname" . }}-executor
   namespace: {{ .Release.Namespace }}
   labels:
-    {{- include "aiworkflow.labels" . | nindent 4 }}
+    {{- include "trigix.labels" . | nindent 4 }}
     app.kubernetes.io/component: executor
 spec:
   {{- if not .Values.executor.autoscaling.enabled }}
@@ -14,7 +14,7 @@ spec:
   {{- end }}
   selector:
     matchLabels:
-      {{- include "aiworkflow.executorSelectorLabels" . | nindent 6 }}
+      {{- include "trigix.executorSelectorLabels" . | nindent 6 }}
   strategy:
     type: RollingUpdate
     rollingUpdate:
@@ -23,7 +23,7 @@ spec:
   template:
     metadata:
       labels:
-        {{- include "aiworkflow.executorSelectorLabels" . | nindent 8 }}
+        {{- include "trigix.executorSelectorLabels" . | nindent 8 }}
         app.kubernetes.io/component: executor
       {{- with .Values.podAnnotations }}
       annotations:
@@ -31,7 +31,7 @@ spec:
       {{- end }}
     spec:
       terminationGracePeriodSeconds: 120
-      serviceAccountName: {{ include "aiworkflow.serviceAccountName" . }}
+      serviceAccountName: {{ include "trigix.serviceAccountName" . }}
       containers:
         - name: executor
           image: "{{ .Values.executor.image.repository }}:{{ .Values.executor.image.tag }}"
@@ -42,14 +42,14 @@ spec:
               protocol: TCP
           envFrom:
             - configMapRef:
-                name: {{ include "aiworkflow.fullname" . }}
+                name: {{ include "trigix.fullname" . }}
             - secretRef:
-                name: {{ include "aiworkflow.fullname" . }}
+                name: {{ include "trigix.fullname" . }}
           env:
             - name: EXECUTOR_PORT
               value: "38081"
             - name: EXECUTOR_BASE_URL
-              value: {{ printf "http://%s-executor:38081" (include "aiworkflow.fullname" .) | quote }}
+              value: {{ printf "http://%s-executor:38081" (include "trigix.fullname" .) | quote }}
           livenessProbe:
             httpGet:
               path: /healthz
@@ -88,10 +88,10 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ include "aiworkflow.fullname" . }}-executor
+  name: {{ include "trigix.fullname" . }}-executor
   namespace: {{ .Release.Namespace }}
   labels:
-    {{- include "aiworkflow.labels" . | nindent 4 }}
+    {{- include "trigix.labels" . | nindent 4 }}
     app.kubernetes.io/component: executor
 spec:
   type: ClusterIP
@@ -101,22 +101,22 @@ spec:
       protocol: TCP
       name: http
   selector:
-    {{- include "aiworkflow.executorSelectorLabels" . | nindent 4 }}
+    {{- include "trigix.executorSelectorLabels" . | nindent 4 }}
 ---
 {{- if .Values.executor.autoscaling.enabled }}
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:
-  name: {{ include "aiworkflow.fullname" . }}-executor
+  name: {{ include "trigix.fullname" . }}-executor
   namespace: {{ .Release.Namespace }}
   labels:
-    {{- include "aiworkflow.labels" . | nindent 4 }}
+    {{- include "trigix.labels" . | nindent 4 }}
     app.kubernetes.io/component: executor
 spec:
   scaleTargetRef:
     apiVersion: apps/v1
     kind: Deployment
-    name: {{ include "aiworkflow.fullname" . }}-executor
+    name: {{ include "trigix.fullname" . }}-executor
   minReplicas: {{ .Values.executor.autoscaling.minReplicas }}
   maxReplicas: {{ .Values.executor.autoscaling.maxReplicas }}
   metrics:
@@ -131,14 +131,14 @@ spec:
 apiVersion: policy/v1
 kind: PodDisruptionBudget
 metadata:
-  name: {{ include "aiworkflow.fullname" . }}-executor
+  name: {{ include "trigix.fullname" . }}-executor
   namespace: {{ .Release.Namespace }}
   labels:
-    {{- include "aiworkflow.labels" . | nindent 4 }}
+    {{- include "trigix.labels" . | nindent 4 }}
     app.kubernetes.io/component: executor
 spec:
   minAvailable: 1
   selector:
     matchLabels:
-      {{- include "aiworkflow.executorSelectorLabels" . | nindent 6 }}
+      {{- include "trigix.executorSelectorLabels" . | nindent 6 }}
 {{- end }}
