@@ -3,6 +3,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { useAuth } from '../AuthContext'
+import logoWordmark from '../assets/logo-wordmark.svg'
 import * as api from '../api/client'
 import type { WorkflowExport, WorkflowRecord, ScheduleSummary, ExecutionSummary, WorkflowGraph } from '../types'
 import { TemplatesModal, type Template } from './TemplatesModal'
@@ -659,7 +660,7 @@ export function WorkflowList({ onOpen, onOpenExecution, onCredentials, onAuditLo
   return (
     <div className="app">
       <header className="topbar">
-        <span className="topbar-logo">aiworkflow</span>
+        <img src={logoWordmark} alt="Velara" style={{ height: '28px' }} />
 
         {/* ── Primary actions (center) ── */}
         <div className="topbar-actions" style={{ flex: 1 }}>
