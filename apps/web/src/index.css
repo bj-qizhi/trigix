@@ -284,7 +284,7 @@ label { font-size: 12px; color: var(--muted); display: block; margin-bottom: 4px
 .palette-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
 
 /* ── Canvas area ── */
-.canvas-wrap { flex: 1; position: relative; background: var(--bg); }
+.canvas-wrap { flex: 1; position: relative; background: var(--bg); height: 100%; min-height: 0; }
 
 /* ── Config panel ── */
 .config-panel {

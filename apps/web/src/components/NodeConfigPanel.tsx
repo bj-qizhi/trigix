@@ -324,6 +324,16 @@ function PasteConfigButton({ onPaste }: { onPaste: (cfg: Record<string, unknown>
 
 export function NodeConfigPanel({ node, onUpdateConfig, recentExecutions, onSelectExecution, executionResult, webhookUrl, webhookSecret, onDuplicate, upstreamNodes }: Props) {
   const { locale, t } = useLocale()
+
+  // ── Hooks must all be called before any early return (Rules of Hooks) ──
+  const nt = (node?.data.nodeType ?? 'trigger') as NodeType
+  const config = node?.data.config ?? {}
+  const { load: loadPresets, addPreset, deletePreset } = useNodePresets(nt)
+  const [presets, setPresets] = useState<Array<{ name: string; config: Record<string, unknown> }>>([])
+  const [showPresetInput, setShowPresetInput] = useState(false)
+  const [presetName, setPresetName] = useState('')
+  useEffect(() => { setPresets(loadPresets()) }, [nt]) // eslint-disable-line react-hooks/exhaustive-deps
+
   if (!node) {
     return (
       <div className="config-panel">
@@ -361,20 +371,12 @@ export function NodeConfigPanel({ node, onUpdateConfig, recentExecutions, onSele
     )
   }
 
-  const nt = node.data.nodeType
-  const config = node.data.config
-
   const set = (key: string, value: unknown) => {
     onUpdateConfig(node.id, { ...config, [key]: value })
   }
 
   const str = (key: string, fallback = '') => (config[key] as string) ?? fallback
   const num = (key: string, fallback: number) => (config[key] as number) ?? fallback
-
-  const { load: loadPresets, addPreset, deletePreset } = useNodePresets(nt)
-  const [presets, setPresets] = useState(() => loadPresets())
-  const [showPresetInput, setShowPresetInput] = useState(false)
-  const [presetName, setPresetName] = useState('')
 
   return (
     <div className="config-panel">
