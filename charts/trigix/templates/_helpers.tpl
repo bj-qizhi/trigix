@@ -11,7 +11,7 @@ We truncate at 63 chars because some Kubernetes name fields are limited to this
 (by the DNS naming spec). If the release name contains the chart name it will
 be used as a full name.
 */}}
-{{- define "aiworkflow.fullname" -}}
+{{- define "trigix.fullname" -}}
 {{- if .Values.fullnameOverride }}
 {{- .Values.fullnameOverride | trunc 63 | trimSuffix "-" }}
 {{- else }}
@@ -34,9 +34,9 @@ Create chart label value: "<chart-name>-<chart-version>", safe for label values.
 {{/*
 Common labels applied to every resource.
 */}}
-{{- define "aiworkflow.labels" -}}
+{{- define "trigix.labels" -}}
 helm.sh/chart: {{ include "aiworkflow.chart" . }}
-{{ include "aiworkflow.selectorLabels" . }}
+{{ include "trigix.selectorLabels" . }}
 {{- if .Chart.AppVersion }}
 app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}
 {{- end }}
@@ -46,7 +46,7 @@ app.kubernetes.io/managed-by: {{ .Release.Service }}
 {{/*
 Selector labels used by Deployments/StatefulSets and their Services.
 */}}
-{{- define "aiworkflow.selectorLabels" -}}
+{{- define "trigix.selectorLabels" -}}
 app.kubernetes.io/name: {{ include "aiworkflow.name" . }}
 app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end }}
@@ -54,7 +54,7 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 {{/*
 Executor-specific selector labels.
 */}}
-{{- define "aiworkflow.executorSelectorLabels" -}}
+{{- define "trigix.executorSelectorLabels" -}}
 app.kubernetes.io/name: {{ include "aiworkflow.name" . }}-executor
 app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end }}
@@ -62,9 +62,9 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 {{/*
 Create the name of the service account to use.
 */}}
-{{- define "aiworkflow.serviceAccountName" -}}
+{{- define "trigix.serviceAccountName" -}}
 {{- if .Values.serviceAccount.create }}
-{{- default (include "aiworkflow.fullname" .) .Values.serviceAccount.name }}
+{{- default (include "trigix.fullname" .) .Values.serviceAccount.name }}
 {{- else }}
 {{- default "default" .Values.serviceAccount.name }}
 {{- end }}

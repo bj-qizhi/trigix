@@ -78,7 +78,7 @@ services/ai-runtime      Python AI 运行时（FastAPI、LangChain）
 crates/workflow-core     工作流图模型 + DAG 校验（共享 crate）
 crates/execution-core    执行状态类型（共享 crate）
 infra/postgres           54 个数据库迁移文件
-charts/aiworkflow        Kubernetes Helm Chart
+charts/trigix        Kubernetes Helm Chart
 docs/                    架构文档、ADR、开发指南
 ```
 

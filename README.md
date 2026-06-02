@@ -78,7 +78,7 @@ services/ai-runtime      Python AI runtime (FastAPI, LangChain)
 crates/workflow-core     Shared WorkflowGraph model + DAG validation
 crates/execution-core    Shared ExecutionStatus types
 infra/postgres           54 database migrations
-charts/aiworkflow        Kubernetes Helm chart
+charts/trigix        Kubernetes Helm chart
 docs/                    Architecture, ADRs, dev guides
 ```
 

@@ -2,10 +2,10 @@
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: {{ include "aiworkflow.fullname" . }}
+  name: {{ include "trigix.fullname" . }}
   namespace: {{ .Release.Namespace }}
   labels:
-    {{- include "aiworkflow.labels" . | nindent 4 }}
+    {{- include "trigix.labels" . | nindent 4 }}
   {{- with .Values.ingress.annotations }}
   annotations:
     {{- toYaml . | nindent 4 }}
@@ -28,7 +28,7 @@ spec:
             pathType: Prefix
             backend:
               service:
-                name: {{ include "aiworkflow.fullname" . }}
+                name: {{ include "trigix.fullname" . }}
                 port:
                   number: {{ .Values.service.port }}
 {{- end }}

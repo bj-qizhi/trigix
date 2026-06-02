@@ -1320,7 +1320,7 @@ async fn admin_set_quota_handler(
 async fn mcp_manifest() -> impl IntoResponse {
     let manifest = serde_json::json!({
         "schema_version": "v1",
-        "name": "aiworkflow",
+        "name": "trigix",
         "description": "AI Agent Workflow Platform — run and manage workflows via MCP",
         "tools": [
             {
