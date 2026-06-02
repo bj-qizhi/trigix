@@ -102,7 +102,12 @@ struct RateLimiter {
 impl RateLimiter {
     /// Returns `true` if the request is allowed, `false` if the limit is exceeded.
     fn check(&self, key: &str) -> bool {
-        self.check_with_limit(key, 300)
+        // Configurable via RATE_LIMIT_PER_MINUTE env var (default 3000 for dev)
+        let limit = std::env::var("RATE_LIMIT_PER_MINUTE")
+            .ok()
+            .and_then(|s| s.parse::<u32>().ok())
+            .unwrap_or(3000);
+        self.check_with_limit(key, limit)
     }
 
     /// Like `check` but with a caller-specified per-minute limit.
