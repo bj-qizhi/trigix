@@ -1,20 +1,32 @@
 [package]
-name = "agentflow-platform"
+name = "velara-platform"
 version.workspace = true
 edition.workspace = true
 
 [dependencies]
 axum = "0.7"
-agentflow-executor = { path = "../executor" }
+velara-executor = { path = "../executor" }
 execution-core = { path = "../../crates/execution-core" }
 reqwest = { version = "0.12", features = ["json"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+chrono = "0.4"
+cron = "0.12"
+hex = "0.4"
+hmac = "0.12"
+sha2 = "0.10"
 jsonwebtoken = "9"
 sqlx = { version = "0.8", features = ["runtime-tokio", "postgres", "json", "migrate"] }
-tokio = { version = "1", features = ["macros", "rt-multi-thread", "net", "time"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "net", "time", "signal"] }
+tokio-stream = "0.1"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 uuid = { version = "1", features = ["v4"] }
 workflow-core = { path = "../../crates/workflow-core" }
+redis = { version = "0.26", features = ["tokio-comp", "connection-manager"] }
+bcrypt = "0.15"
+rhai = { version = "1", features = ["serde"] }
+lettre = { version = "0.11", features = ["tokio1-native-tls", "smtp-transport", "builder"], default-features = false }
 
 [dev-dependencies]
 tower = "0.5"

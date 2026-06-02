@@ -2,9 +2,9 @@ services:
   postgres:
     image: pgvector/pgvector:pg16
     environment:
-      POSTGRES_USER: agentflow
-      POSTGRES_PASSWORD: agentflow
-      POSTGRES_DB: agentflow
+      POSTGRES_USER: velara
+      POSTGRES_PASSWORD: velara
+      POSTGRES_DB: velara
     ports:
       - "35432:5432"
     volumes:

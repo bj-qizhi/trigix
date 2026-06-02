@@ -53,7 +53,7 @@ Run the executor service (with AI Runtime wired for Agent nodes):
 ```bash
 AI_RUNTIME_BASE_URL=http://127.0.0.1:38070 \
 EXECUTOR_HTTP_ADDR=127.0.0.1:38090 \
-cargo run -p agentflow-executor
+cargo run -p velara-executor
 ```
 
 Run the AI Runtime:
@@ -140,7 +140,7 @@ make dev-verify
 Run the Platform skeleton:
 
 ```bash
-PLATFORM_HTTP_ADDR=127.0.0.1:38080 cargo run -p agentflow-platform
+PLATFORM_HTTP_ADDR=127.0.0.1:38080 cargo run -p velara-platform
 ```
 
 Create a Workflow:
