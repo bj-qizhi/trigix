@@ -220,7 +220,7 @@ pub fn fire_event(store: Arc<PlatformSubscriptionStore>, tenant_id: String, even
             });
             let _ = client.post(&sub.url)
                 .header("Content-Type", "application/json")
-                .header("X-Velara-Event", event)
+                .header("X-Trigix-Event", event)
                 .body(body.to_string())
                 .send()
                 .await;

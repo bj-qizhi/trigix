@@ -1,18 +1,18 @@
-# Velara CLI
+# Trigix CLI
 
 Developer CLI for scaffolding Capabilities.
 
 Planned commands:
 
 ```bash
-velara init app
-velara create node
-velara create connector
-velara create agent
-velara create tool
-velara create workflow
-velara create mcp-server
-velara dev
-velara test
-velara publish
+trigix init app
+trigix create node
+trigix create connector
+trigix create agent
+trigix create tool
+trigix create workflow
+trigix create mcp-server
+trigix dev
+trigix test
+trigix publish
 ```

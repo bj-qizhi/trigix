@@ -1,13 +1,13 @@
-# Velara
+# Trigix
 
 **AI 原生工作流自动化平台**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Rust](https://img.shields.io/badge/Rust-2021-orange.svg)](https://www.rust-lang.org/)
 [![React](https://img.shields.io/badge/React-18-61dafb.svg)](https://react.dev/)
-[![GitHub Stars](https://img.shields.io/github/stars/bj-qizhi/velara?style=social)](https://github.com/bj-qizhi/velara)
-[![GitHub Issues](https://img.shields.io/github/issues/bj-qizhi/velara)](https://github.com/bj-qizhi/velara/issues)
-[![GitHub Forks](https://img.shields.io/github/forks/bj-qizhi/velara?style=social)](https://github.com/bj-qizhi/velara/fork)
+[![GitHub Stars](https://img.shields.io/github/stars/bj-qizhi/trigix?style=social)](https://github.com/bj-qizhi/trigix)
+[![GitHub Issues](https://img.shields.io/github/issues/bj-qizhi/trigix)](https://github.com/bj-qizhi/trigix/issues)
+[![GitHub Forks](https://img.shields.io/github/forks/bj-qizhi/trigix?style=social)](https://github.com/bj-qizhi/trigix/fork)
 
 [English](README.md) · [中文]
 
@@ -17,7 +17,7 @@
 
 ## 项目简介
 
-Velara 是一个企业级 AI 原生工作流自动化平台。
+Trigix 是一个企业级 AI 原生工作流自动化平台。
 通过可视化拖拽画布，连接 AI 大模型、API、数据库和 SaaS 工具，构建、运行和监控复杂的业务工作流。
 
 **核心优势：**
@@ -51,13 +51,13 @@ Velara 是一个企业级 AI 原生工作流自动化平台。
 docker compose up -d
 
 # 2. 启动平台后端
-DATABASE_URL=postgres://velara:velara@localhost:35432/velara \
+DATABASE_URL=postgres://trigix:trigix@localhost:35432/trigix \
 PLATFORM_HTTP_ADDR=127.0.0.1:38080 \
-cargo run -p velara-platform
+cargo run -p trigix-platform
 
 # 3. 启动执行引擎
 EXECUTOR_HTTP_ADDR=127.0.0.1:38090 \
-cargo run -p velara-executor
+cargo run -p trigix-executor
 
 # 4. 启动 Web 控制台
 cd apps/web && npm install && npm run dev

@@ -6,9 +6,9 @@ use std::sync::atomic::Ordering as AtomicOrdering;
 use std::sync::{Arc, RwLock};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use velara_executor::approval::ApprovalGate;
+use trigix_executor::approval::ApprovalGate;
 use crate::token_usage::TokenUsageStore;
-use velara_executor::runtime::{
+use trigix_executor::runtime::{
     run_workflow_with_progress, ExecutionReport, NodeProgressCallback, NodeReport,
 };
 use execution_core::{ExecutionStatus, NodeStatus};
@@ -826,7 +826,7 @@ where
         let gate = std::sync::Arc::clone(&self.approval_gate);
         let ai_url = std::env::var("AI_RUNTIME_BASE_URL").ok();
         let node_executor =
-            velara_executor::executor::DispatchingNodeExecutor::new(ai_url)
+            trigix_executor::executor::DispatchingNodeExecutor::new(ai_url)
                 .with_approval_gate(gate);
 
         let nodes_by_id: HashMap<String, String> = record.graph.nodes.iter()
@@ -1909,7 +1909,7 @@ fn node_type_to_str(node_type: &workflow_core::NodeType) -> &'static str {
 }
 
 /// POST `body` to `url` with up to `max_attempts` retries and exponential backoff.
-/// Adds `X-Velara-Event` and `X-Velara-Attempt` headers.
+/// Adds `X-Trigix-Event` and `X-Trigix-Attempt` headers.
 /// Non-blocking: must be called inside `tokio::spawn`.
 async fn fire_with_retry(url: String, body: String, event: &'static str, max_attempts: u32) {
     let client = reqwest::Client::builder()
@@ -1921,8 +1921,8 @@ async fn fire_with_retry(url: String, body: String, event: &'static str, max_att
         let result = client
             .post(&url)
             .header("Content-Type", "application/json")
-            .header("X-Velara-Event", event)
-            .header("X-Velara-Attempt", attempt.to_string())
+            .header("X-Trigix-Event", event)
+            .header("X-Trigix-Attempt", attempt.to_string())
             .body(body.clone())
             .send()
             .await;
@@ -2338,7 +2338,7 @@ mod tests {
     #[tokio::test]
     async fn count_running_excludes_completed_executions() {
         let store = MemoryExecutionStore::default();
-        let gate = std::sync::Arc::new(velara_executor::approval::ApprovalGate::default());
+        let gate = std::sync::Arc::new(trigix_executor::approval::ApprovalGate::default());
         let executor = InlineExecutorClient::new(store.clone(), gate);
         let service = ExecutionService::new(store, executor);
 

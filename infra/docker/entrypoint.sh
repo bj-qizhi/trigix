@@ -5,7 +5,7 @@ set -e
 export PLATFORM_HTTP_ADDR="${PLATFORM_HTTP_ADDR:-0.0.0.0:38080}"
 
 # Start backend
-velara-platform &
+trigix-platform &
 BACKEND_PID=$!
 
 # Give backend a moment to start before nginx begins proxying

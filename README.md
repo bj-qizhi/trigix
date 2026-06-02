@@ -1,13 +1,13 @@
-# Velara
+# Trigix
 
 **AI-Native Workflow Automation Platform**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Rust](https://img.shields.io/badge/Rust-2021-orange.svg)](https://www.rust-lang.org/)
 [![React](https://img.shields.io/badge/React-18-61dafb.svg)](https://react.dev/)
-[![GitHub Stars](https://img.shields.io/github/stars/bj-qizhi/velara?style=social)](https://github.com/bj-qizhi/velara)
-[![GitHub Issues](https://img.shields.io/github/issues/bj-qizhi/velara)](https://github.com/bj-qizhi/velara/issues)
-[![GitHub Forks](https://img.shields.io/github/forks/bj-qizhi/velara?style=social)](https://github.com/bj-qizhi/velara/fork)
+[![GitHub Stars](https://img.shields.io/github/stars/bj-qizhi/trigix?style=social)](https://github.com/bj-qizhi/trigix)
+[![GitHub Issues](https://img.shields.io/github/issues/bj-qizhi/trigix)](https://github.com/bj-qizhi/trigix/issues)
+[![GitHub Forks](https://img.shields.io/github/forks/bj-qizhi/trigix?style=social)](https://github.com/bj-qizhi/trigix/fork)
 
 [English] · [中文](README.zh.md)
 
@@ -15,9 +15,9 @@
 
 ---
 
-## What is Velara?
+## What is Trigix?
 
-Velara is an enterprise-grade, AI-native workflow automation platform.
+Trigix is an enterprise-grade, AI-native workflow automation platform.
 Build, run, and monitor complex workflows visually — connecting AI models, APIs, databases, and SaaS tools with a drag-and-drop canvas editor.
 
 **Key differentiators:**
@@ -51,13 +51,13 @@ Build, run, and monitor complex workflows visually — connecting AI models, API
 docker compose up -d
 
 # 2. Run the platform backend
-DATABASE_URL=postgres://velara:velara@localhost:35432/velara \
+DATABASE_URL=postgres://trigix:trigix@localhost:35432/trigix \
 PLATFORM_HTTP_ADDR=127.0.0.1:38080 \
-cargo run -p velara-platform
+cargo run -p trigix-platform
 
 # 3. Run the execution engine
 EXECUTOR_HTTP_ADDR=127.0.0.1:38090 \
-cargo run -p velara-executor
+cargo run -p trigix-executor
 
 # 4. Run the web console
 cd apps/web && npm install && npm run dev

@@ -3,15 +3,15 @@
 
 use serde_json::{json, Value};
 
-/// OpenAPI 3.0.3 specification for the Velara Platform API.
+/// OpenAPI 3.0.3 specification for the Trigix Platform API.
 pub fn spec() -> Value {
     json!({
       "openapi": "3.0.3",
       "info": {
-        "title": "Velara Platform API",
-        "description": "REST API for the Velara low-code AI workflow platform. All endpoints (except /healthz, /metrics, /v1/auth/token, /v1/forms/*) require a Bearer JWT obtained from POST /v1/auth/token.",
+        "title": "Trigix Platform API",
+        "description": "REST API for the Trigix low-code AI workflow platform. All endpoints (except /healthz, /metrics, /v1/auth/token, /v1/forms/*) require a Bearer JWT obtained from POST /v1/auth/token.",
         "version": env!("CARGO_PKG_VERSION"),
-        "contact": { "name": "Velara", "url": "https://github.com/velara" }
+        "contact": { "name": "Trigix", "url": "https://github.com/trigix" }
       },
       "servers": [{ "url": "/" }],
       "security": [{ "bearerAuth": [] }],
@@ -846,9 +846,9 @@ pub fn swagger_ui_html() -> String {
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Velara API Docs</title>
+  <title>Trigix API Docs</title>
   <link rel="stylesheet" href="https://unpkg.com/swagger-ui-dist@5/swagger-ui.css" />
-  <style>body{margin:0}.swagger-ui .topbar{background:#1a1a2e}.swagger-ui .topbar a{visibility:hidden}.swagger-ui .topbar::before{content:"Velara Platform API";color:#fff;font-size:18px;font-weight:600;padding:0 20px;line-height:50px}</style>
+  <style>body{margin:0}.swagger-ui .topbar{background:#1a1a2e}.swagger-ui .topbar a{visibility:hidden}.swagger-ui .topbar::before{content:"Trigix Platform API";color:#fff;font-size:18px;font-weight:600;padding:0 20px;line-height:50px}</style>
 </head>
 <body>
   <div id="swagger-ui"></div>

@@ -2925,6 +2925,66 @@ dependencies = [
 ]
 
 [[package]]
+name = "trigix-executor"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "base64",
+ "chrono",
+ "execution-core",
+ "futures",
+ "handlebars",
+ "hex",
+ "hmac",
+ "lru",
+ "quick-xml",
+ "rand 0.8.6",
+ "redis",
+ "reqwest",
+ "rhai",
+ "serde",
+ "serde_json",
+ "serde_yaml",
+ "sha2",
+ "sqlx",
+ "tokio",
+ "tower",
+ "tracing",
+ "urlencoding",
+ "workflow-core",
+]
+
+[[package]]
+name = "trigix-platform"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "bcrypt",
+ "chrono",
+ "cron",
+ "execution-core",
+ "hex",
+ "hmac",
+ "jsonwebtoken",
+ "lettre",
+ "redis",
+ "reqwest",
+ "rhai",
+ "serde",
+ "serde_json",
+ "sha2",
+ "sqlx",
+ "tokio",
+ "tokio-stream",
+ "tower",
+ "tracing",
+ "tracing-subscriber",
+ "trigix-executor",
+ "uuid",
+ "workflow-core",
+]
+
+[[package]]
 name = "try-lock"
 version = "0.2.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3033,66 +3093,6 @@ name = "vcpkg"
 version = "0.2.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "accd4ea62f7bb7a82fe23066fb0957d48ef677f6eeb8215f372f52e48bb32426"
-
-[[package]]
-name = "velara-executor"
-version = "0.1.0"
-dependencies = [
- "axum",
- "base64",
- "chrono",
- "execution-core",
- "futures",
- "handlebars",
- "hex",
- "hmac",
- "lru",
- "quick-xml",
- "rand 0.8.6",
- "redis",
- "reqwest",
- "rhai",
- "serde",
- "serde_json",
- "serde_yaml",
- "sha2",
- "sqlx",
- "tokio",
- "tower",
- "tracing",
- "urlencoding",
- "workflow-core",
-]
-
-[[package]]
-name = "velara-platform"
-version = "0.1.0"
-dependencies = [
- "axum",
- "bcrypt",
- "chrono",
- "cron",
- "execution-core",
- "hex",
- "hmac",
- "jsonwebtoken",
- "lettre",
- "redis",
- "reqwest",
- "rhai",
- "serde",
- "serde_json",
- "sha2",
- "sqlx",
- "tokio",
- "tokio-stream",
- "tower",
- "tracing",
- "tracing-subscriber",
- "uuid",
- "velara-executor",
- "workflow-core",
-]
 
 [[package]]
 name = "version_check"

@@ -3,7 +3,7 @@
 
 import { useEffect, useState } from 'react'
 
-const KEY = 'velara-theme'
+const KEY = 'trigix-theme'
 
 function getStored(): 'dark' | 'light' {
   try {

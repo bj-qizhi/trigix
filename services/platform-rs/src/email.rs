@@ -31,7 +31,7 @@ impl EmailClient {
         });
         Self {
             config,
-            from: std::env::var("SMTP_FROM").unwrap_or_else(|_| "noreply@velara.local".to_string()),
+            from: std::env::var("SMTP_FROM").unwrap_or_else(|_| "noreply@trigix.local".to_string()),
             base_url: std::env::var("APP_BASE_URL").unwrap_or_else(|_| "http://localhost:5173".to_string()),
         }
     }
@@ -44,9 +44,9 @@ impl EmailClient {
     pub async fn send_invitation(&self, to: &str, invite_token: &str, role: &str, expires_at: i64) {
         let link = format!("{}?invite={}", self.base_url, invite_token);
         let expires = format_unix(expires_at);
-        let subject = "You've been invited to Velara";
+        let subject = "You've been invited to Trigix";
         let body = format!(
-            "You have been invited to join Velara as {}.\n\nClick the link below to accept (expires {}):\n{}\n",
+            "You have been invited to join Trigix as {}.\n\nClick the link below to accept (expires {}):\n{}\n",
             role, expires, link
         );
         self.send(to, subject, &body).await;
@@ -56,7 +56,7 @@ impl EmailClient {
     pub async fn send_password_reset(&self, to: &str, reset_token: &str, expires_at: i64) {
         let link = format!("{}?reset={}", self.base_url, reset_token);
         let expires = format_unix(expires_at);
-        let subject = "Reset your Velara password";
+        let subject = "Reset your Trigix password";
         let body = format!(
             "A password reset was requested for your account.\n\nClick the link below to reset your password (expires {}):\n{}\n\nIf you did not request this, you can ignore this email.\n",
             expires, link
@@ -68,7 +68,7 @@ impl EmailClient {
     pub async fn send_email_verification(&self, to: &str, verify_token: &str, expires_at: i64) {
         let link = format!("{}?verify={}", self.base_url, verify_token);
         let expires = format_unix(expires_at);
-        let subject = "Verify your Velara email";
+        let subject = "Verify your Trigix email";
         let body = format!(
             "Please verify your email address by clicking the link below (expires {}):\n{}\n\nIf you did not create an account, you can ignore this email.\n",
             expires, link
@@ -78,7 +78,7 @@ impl EmailClient {
 
     /// Send an execution success notification.
     pub async fn send_execution_success(&self, to: &str, workflow_name: &str, execution_id: &str) {
-        let subject = format!("Velara: workflow \"{}\" completed successfully", workflow_name);
+        let subject = format!("Trigix: workflow \"{}\" completed successfully", workflow_name);
         let body = format!(
             "Workflow \"{}\" completed successfully.\n\nExecution ID: {}\n",
             workflow_name, execution_id
@@ -89,9 +89,9 @@ impl EmailClient {
     /// Send a quota threshold warning (80% or 100% exhausted).
     pub async fn send_quota_warning(&self, to: &str, tenant_id: &str, used: i64, max: i64, tier: &str, pct: f64) {
         let level = if pct >= 100.0 { "exhausted" } else { "80% warning" };
-        let subject = format!("Velara billing alert: execution quota {level} for tenant {tenant_id}");
+        let subject = format!("Trigix billing alert: execution quota {level} for tenant {tenant_id}");
         let body = format!(
-            "Your Velara execution quota is {level}.\n\n\
+            "Your Trigix execution quota is {level}.\n\n\
              Tenant: {tenant_id}\n\
              Tier: {tier}\n\
              Used: {used} / {max} ({pct:.1}%)\n\n\
@@ -107,7 +107,7 @@ impl EmailClient {
 
     /// Send an execution failure alert.
     pub async fn send_execution_failure(&self, to: &str, workflow_name: &str, execution_id: &str, error: &str) {
-        let subject = format!("Velara: workflow \"{}\" failed", workflow_name);
+        let subject = format!("Trigix: workflow \"{}\" failed", workflow_name);
         let body = format!(
             "Workflow \"{}\" failed.\n\nExecution ID: {}\nError: {}\n",
             workflow_name, execution_id, error
@@ -132,7 +132,7 @@ impl EmailClient {
                     AsyncSmtpTransport,
                 };
                 let from_addr = self.from.parse().unwrap_or_else(|_| {
-                    "noreply@velara.local".parse().expect("fallback address parses")
+                    "noreply@trigix.local".parse().expect("fallback address parses")
                 });
                 let to_addr = match to.parse() {
                     Ok(a) => a,

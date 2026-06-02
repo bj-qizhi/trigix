@@ -6,7 +6,7 @@ export type Locale = 'en' | 'zh'
 export const translations = {
   en: {
     // App / common
-    'app.name': 'Velara',
+    'app.name': 'Trigix',
     'nav.back': '← Back',
     'nav.signout': 'Sign out',
     'nav.theme.dark': '☀',
@@ -37,7 +37,7 @@ export const translations = {
     'verify.sent': 'Sent!',
 
     // Login page
-    'login.title': 'Sign in to Velara',
+    'login.title': 'Sign in to Trigix',
     'login.tab.apikey': 'API Key',
     'login.tab.email': 'Email',
     'login.apikey.label': 'API Key',
@@ -311,7 +311,7 @@ export const translations = {
   },
   zh: {
     // App / common
-    'app.name': 'Velara',
+    'app.name': 'Trigix',
     'nav.back': '← 返回',
     'nav.signout': '退出登录',
     'nav.theme.dark': '☀',
@@ -342,7 +342,7 @@ export const translations = {
     'verify.sent': '已发送！',
 
     // Login page
-    'login.title': '登录 Velara',
+    'login.title': '登录 Trigix',
     'login.tab.apikey': 'API 密钥',
     'login.tab.email': '邮箱',
     'login.apikey.label': 'API 密钥',

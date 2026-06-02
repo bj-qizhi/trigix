@@ -183,7 +183,7 @@ export function SchedulesPage({ onBack, onOpenWorkflow, onOpenExecution }: Props
   return (
     <div className="app">
       <header className="topbar">
-        <img src={logoWordmark} alt="Velara" style={{ height: '28px' }} />
+        <img src={logoWordmark} alt="Trigix" style={{ height: '28px' }} />
         <span className="topbar-sep">|</span>
         <span className="topbar-title">{zh ? '计划任务' : 'Schedules'}</span>
 

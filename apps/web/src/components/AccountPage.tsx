@@ -228,7 +228,7 @@ export function AccountPage({ onBack }: Props) {
   return (
     <div className="app" data-theme={theme}>
       <header className="topbar">
-        <img src={logoWordmark} alt="Velara" style={{ height: '28px' }} />
+        <img src={logoWordmark} alt="Trigix" style={{ height: '28px' }} />
         <div className="topbar-actions">
           <button className="btn btn-sm" onClick={onBack}>{t('nav.back')}</button>
           <button className="btn btn-sm" onClick={toggleTheme} title="Toggle theme">

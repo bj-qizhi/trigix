@@ -3,14 +3,14 @@ services:
     image: pgvector/pgvector:pg16
     restart: unless-stopped
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:-velara}
+      POSTGRES_USER: ${POSTGRES_USER:-trigix}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
-      POSTGRES_DB: ${POSTGRES_DB:-velara}
+      POSTGRES_DB: ${POSTGRES_DB:-trigix}
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./infra/postgres/migrations:/docker-entrypoint-initdb.d:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U velara"]
+      test: ["CMD-SHELL", "pg_isready -U trigix"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -26,7 +26,7 @@ services:
     ports:
       - "${PORT:-8080}:80"
     environment:
-      DATABASE_URL: postgres://${POSTGRES_USER:-velara}:${POSTGRES_PASSWORD:-changeme}@postgres:5432/${POSTGRES_DB:-velara}
+      DATABASE_URL: postgres://${POSTGRES_USER:-trigix}:${POSTGRES_PASSWORD:-changeme}@postgres:5432/${POSTGRES_DB:-trigix}
       DEV_API_KEY: ${API_KEY:-changeme}
       AUTH_REQUIRED: "true"
       RUST_LOG: ${RUST_LOG:-info}

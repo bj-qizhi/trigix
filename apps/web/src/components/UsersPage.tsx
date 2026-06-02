@@ -118,7 +118,7 @@ export function UsersPage({ onBack }: Props) {
   return (
     <div className="page" data-theme={theme}>
       <header className="topbar">
-        <img src={logoWordmark} alt="Velara" style={{ height: '28px' }} />
+        <img src={logoWordmark} alt="Trigix" style={{ height: '28px' }} />
         <div className="topbar-actions">
           <button className="btn btn-sm" onClick={onBack}>{zh ? '← 返回' : '← Back'}</button>
           <button className="btn btn-sm" onClick={toggleTheme} title={zh ? '切换主题' : 'Toggle theme'}>

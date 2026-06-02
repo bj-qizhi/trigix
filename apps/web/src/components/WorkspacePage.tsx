@@ -126,7 +126,7 @@ export function WorkspacePage({ onBack }: Props) {
       <header className="topbar">
         <button className="btn btn-sm btn-icon" onClick={onBack} title={zh ? '返回' : 'Back'}>←</button>
         <span className="topbar-sep">|</span>
-        <img src={logoWordmark} alt="Velara" style={{ height: '28px' }} />
+        <img src={logoWordmark} alt="Trigix" style={{ height: '28px' }} />
         <span className="topbar-sep">|</span>
         <span className="topbar-title">{t('workspaces.title')}</span>
         <div className="topbar-actions">

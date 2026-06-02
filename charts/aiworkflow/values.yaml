@@ -54,8 +54,8 @@ postgresql:
   enabled: true
   image: "pgvector/pgvector:pg16"
   storage: "10Gi"
-  username: "velara"
-  database: "velara"
+  username: "trigix"
+  database: "trigix"
   # password is set via postgresql-secret; provide here to use a fixed password
   # otherwise a random one is generated at install time
   password: ""
