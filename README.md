@@ -1,6 +1,10 @@
-# AI Workflow
+# Velara
 
-Enterprise AI Agent workflow low-code platform.
+AI-Native workflow automation platform — 136 node types, Rust execution engine, built for enterprise.
+
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+
+> © 2026 [北京祺智科技有限公司](https://www.qzso.com/) · managecode@gmail.com
 
 This repository is organized as a multi-service system:
 
