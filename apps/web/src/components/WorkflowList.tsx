@@ -695,7 +695,10 @@ export function WorkflowList({ onOpen, onOpenExecution, onCredentials, onAuditLo
             onClick={() => importRef.current?.click()}
             title="Import workflow from JSON file"
           >
-            {importing ? (locale === 'zh' ? '导入中…' : 'Importing…') : '↑ ' + t('wl.import')}
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none" style={{ marginRight: 4, verticalAlign: 'middle' }}>
+              <path d="M6 1v7M3 5l3 3 3-3M1 10h10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+            {importing ? (locale === 'zh' ? '导入中…' : 'Importing…') : t('wl.import')}
           </button>
           <button
             className="btn btn-sm"
@@ -710,7 +713,11 @@ export function WorkflowList({ onOpen, onOpenExecution, onCredentials, onAuditLo
             onClick={() => { setShowGlobalSearch(true); setGlobalQuery('') }}
             title="Global search (Ctrl+Shift+F)"
           >
-            🔍 {t('wl.btn.search')}
+            <svg width="13" height="13" viewBox="0 0 13 13" fill="none" style={{ marginRight: 4, verticalAlign: 'middle' }}>
+              <circle cx="5.5" cy="5.5" r="4" stroke="currentColor" strokeWidth="1.5"/>
+              <path d="M9 9l2.5 2.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+            </svg>
+            {t('wl.btn.search')}
           </button>
           <button className="btn btn-primary" onClick={() => setCreating(true)}>
             + {t('wl.create')}
@@ -775,7 +782,8 @@ export function WorkflowList({ onOpen, onOpenExecution, onCredentials, onAuditLo
                 boxShadow: '0 8px 24px rgba(0,0,0,0.15)',
                 minWidth: 200,
                 zIndex: 1000,
-                overflow: 'hidden',
+                maxHeight: 'calc(100vh - 80px)',
+                overflowY: 'auto',
               }}>
                 {([
                   { label: t('wl.btn.runs'), action: () => { onRuns(); setShowNavMenu(false) } },
