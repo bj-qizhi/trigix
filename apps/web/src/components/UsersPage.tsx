@@ -6,6 +6,7 @@ import { useAuth } from '../AuthContext'
 import { useLocale } from '../useLocale'
 import * as api from '../api/client'
 import { useTheme } from '../useTheme'
+import logoWordmark from '../assets/logo-wordmark.svg'
 
 interface Props {
   onBack: () => void
@@ -117,7 +118,7 @@ export function UsersPage({ onBack }: Props) {
   return (
     <div className="page" data-theme={theme}>
       <header className="topbar">
-        <span className="topbar-logo">aiworkflow</span>
+        <img src={logoWordmark} alt="Velara" style={{ height: '28px' }} />
         <div className="topbar-actions">
           <button className="btn btn-sm" onClick={onBack}>{zh ? '← 返回' : '← Back'}</button>
           <button className="btn btn-sm" onClick={toggleTheme} title={zh ? '切换主题' : 'Toggle theme'}>

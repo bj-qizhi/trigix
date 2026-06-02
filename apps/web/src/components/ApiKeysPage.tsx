@@ -6,6 +6,7 @@ import { useAuth } from '../AuthContext'
 import { useLocale } from '../useLocale'
 import * as api from '../api/client'
 import { useTheme } from '../useTheme'
+import logoWordmark from '../assets/logo-wordmark.svg'
 
 interface ApiKeyRecord {
   id: string
@@ -84,7 +85,7 @@ export function ApiKeysPage({ onBack }: Props) {
       <header className="topbar">
         <button className="btn btn-sm btn-icon" onClick={onBack} title={zh ? '返回' : 'Back'}>←</button>
         <span className="topbar-sep">|</span>
-        <span className="topbar-logo">aiworkflow</span>
+        <img src={logoWordmark} alt="Velara" style={{ height: '28px' }} />
         <span className="topbar-sep">|</span>
         <span className="topbar-title">{t('apikeys.title')}</span>
         <div className="topbar-actions">

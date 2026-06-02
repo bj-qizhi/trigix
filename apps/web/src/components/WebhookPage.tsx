@@ -7,6 +7,7 @@ import { useLocale } from '../useLocale'
 import * as api from '../api/client'
 import type { WebhookRecord } from '../types'
 import { useTheme } from '../useTheme'
+import logoWordmark from '../assets/logo-wordmark.svg'
 
 interface Props {
   onBack: () => void
@@ -176,7 +177,7 @@ export function WebhookPage({ onBack, onOpenWorkflow }: Props) {
       <header className="topbar">
         <button className="btn btn-sm btn-icon" onClick={onBack} title="Back">←</button>
         <span className="topbar-sep">|</span>
-        <span className="topbar-logo">aiworkflow</span>
+        <img src={logoWordmark} alt="Velara" style={{ height: '28px' }} />
         <span className="topbar-sep">|</span>
         <span className="topbar-title">{t('webhook.title')}</span>
         <div className="topbar-actions">
