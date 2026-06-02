@@ -603,7 +603,7 @@ dependencies = [
 
 [[package]]
 name = "execution-core"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "serde",
 ]
@@ -2926,7 +2926,7 @@ dependencies = [
 
 [[package]]
 name = "trigix-executor"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "axum",
  "base64",
@@ -2956,7 +2956,7 @@ dependencies = [
 
 [[package]]
 name = "trigix-platform"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "axum",
  "bcrypt",
@@ -3572,7 +3572,7 @@ dependencies = [
 
 [[package]]
 name = "workflow-core"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "serde",
  "serde_json",
