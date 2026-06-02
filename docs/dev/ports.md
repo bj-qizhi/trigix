@@ -18,7 +18,7 @@ This project avoids common host ports because the development host may already r
 ## Useful URLs
 
 ```text
-PostgreSQL:     postgres://agentflow:agentflow@localhost:35432/agentflow
+PostgreSQL:     postgres://velara:velara@localhost:35432/velara
 Redis:          localhost:36380
 MinIO API:      http://localhost:39000
 MinIO Console:  http://localhost:39001

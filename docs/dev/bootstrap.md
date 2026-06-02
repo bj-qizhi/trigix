@@ -30,16 +30,16 @@ The verification script requires at least 1GB free on the filesystem containing 
 Run Rust Platform against PostgreSQL:
 
 ```bash
-DATABASE_URL=postgres://agentflow:agentflow@localhost:35432/agentflow \
+DATABASE_URL=postgres://velara:velara@localhost:35432/velara \
   EXECUTOR_BASE_URL=http://127.0.0.1:38090 \
   PLATFORM_HTTP_ADDR=127.0.0.1:38080 \
-  cargo run -p agentflow-platform
+  cargo run -p velara-platform
 ```
 
 Run Rust Executor:
 
 ```bash
-EXECUTOR_HTTP_ADDR=127.0.0.1:38090 cargo run -p agentflow-executor
+EXECUTOR_HTTP_ADDR=127.0.0.1:38090 cargo run -p velara-executor
 ```
 
 Load the seeded Workflow Version:

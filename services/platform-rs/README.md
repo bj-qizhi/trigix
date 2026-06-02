@@ -38,16 +38,16 @@ HTTP is wired with Axum for the first Execution slice.
 Run:
 
 ```bash
-PLATFORM_HTTP_ADDR=127.0.0.1:38080 cargo run -p agentflow-platform
+PLATFORM_HTTP_ADDR=127.0.0.1:38080 cargo run -p velara-platform
 ```
 
 By default the service uses `MemoryExecutionStore`. To use PostgreSQL, provide `DATABASE_URL`:
 
 ```bash
-DATABASE_URL=postgres://agentflow:agentflow@localhost:35432/agentflow \
+DATABASE_URL=postgres://velara:velara@localhost:35432/velara \
   EXECUTOR_BASE_URL=http://127.0.0.1:38090 \
   PLATFORM_HTTP_ADDR=127.0.0.1:38080 \
-  cargo run -p agentflow-platform
+  cargo run -p velara-platform
 ```
 
 The local Docker PostgreSQL setup includes a dev seed with fixed Tenant, Workflow, and Workflow Version IDs. See `docs/dev/bootstrap.md`.

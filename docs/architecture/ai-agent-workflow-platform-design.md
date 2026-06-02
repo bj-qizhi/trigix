@@ -515,23 +515,23 @@ Required library features:
 The platform should include a developer CLI:
 
 ```bash
-agentflow init app
-agentflow create node
-agentflow create connector
-agentflow create agent
-agentflow create tool
-agentflow create workflow
-agentflow create mcp-server
-agentflow dev
-agentflow test
-agentflow publish
+velara init app
+velara create node
+velara create connector
+velara create agent
+velara create tool
+velara create workflow
+velara create mcp-server
+velara dev
+velara test
+velara publish
 ```
 
 Generated structure:
 
 ```text
-my-agentflow-app/
-  agentflow.yaml
+my-velara-app/
+  velara.yaml
   nodes/
   agents/
   workflows/

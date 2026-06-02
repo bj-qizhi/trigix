@@ -11,7 +11,7 @@ MINIO_CONSOLE_PORT="${MINIO_CONSOLE_PORT:-39001}"
 PLATFORM_PORT="${PLATFORM_PORT:-38080}"
 EXECUTOR_PORT="${EXECUTOR_PORT:-38090}"
 
-DATABASE_URL="${DATABASE_URL:-postgres://agentflow:agentflow@localhost:${POSTGRES_PORT}/agentflow}"
+DATABASE_URL="${DATABASE_URL:-postgres://velara:velara@localhost:${POSTGRES_PORT}/velara}"
 PLATFORM_HTTP_ADDR="${PLATFORM_HTTP_ADDR:-127.0.0.1:${PLATFORM_PORT}}"
 EXECUTOR_HTTP_ADDR="${EXECUTOR_HTTP_ADDR:-127.0.0.1:${EXECUTOR_PORT}}"
 
@@ -92,7 +92,7 @@ wait_postgres() {
   local attempts="${1:-60}"
 
   for _ in $(seq 1 "$attempts"); do
-    if docker compose exec -T postgres pg_isready -U agentflow -d agentflow >/dev/null 2>&1; then
+    if docker compose exec -T postgres pg_isready -U velara -d velara >/dev/null 2>&1; then
       return 0
     fi
     sleep 1
@@ -122,7 +122,7 @@ docker compose config >/dev/null
 
 echo "starting rust executor on ${EXECUTOR_HTTP_ADDR}"
 EXECUTOR_HTTP_ADDR="$EXECUTOR_HTTP_ADDR" \
-  cargo run -p agentflow-executor >/tmp/agentflow-executor-dev-verify.log 2>&1 &
+  cargo run -p velara-executor >/tmp/velara-executor-dev-verify.log 2>&1 &
 EXECUTOR_PID="$!"
 
 wait_http "http://${EXECUTOR_HTTP_ADDR}/healthz"
@@ -162,7 +162,7 @@ echo "starting rust platform on ${PLATFORM_HTTP_ADDR}"
 DATABASE_URL="$DATABASE_URL" \
   PLATFORM_HTTP_ADDR="$PLATFORM_HTTP_ADDR" \
   EXECUTOR_BASE_URL="http://${EXECUTOR_HTTP_ADDR}" \
-  cargo run -p agentflow-platform >/tmp/agentflow-platform-dev-verify.log 2>&1 &
+  cargo run -p velara-platform >/tmp/velara-platform-dev-verify.log 2>&1 &
 PLATFORM_PID="$!"
 
 wait_http "http://${PLATFORM_HTTP_ADDR}/healthz"

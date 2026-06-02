@@ -1,16 +1,31 @@
 [package]
-name = "agentflow-executor"
+name = "velara-executor"
 version.workspace = true
 edition.workspace = true
 
 [dependencies]
 axum = "0.7"
+rand = "0.8"
 execution-core = { path = "../../crates/execution-core" }
+base64 = "0.22"
+urlencoding = "2"
 reqwest = { version = "0.12", features = ["json"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 rhai = { version = "1", features = ["serde"] }
+sqlx = { version = "0.8", features = ["runtime-tokio", "postgres"] }
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "net", "time"] }
+tracing = "0.1"
+futures = "0.3"
+quick-xml = { version = "0.36", features = ["serialize"] }
+serde_yaml = "0.9"
+sha2 = "0.10"
+hmac = "0.12"
+hex = "0.4"
+chrono = { version = "0.4", features = ["serde"] }
+redis = { version = "0.26", features = ["tokio-comp"] }
+handlebars = "6"
+lru = "0.12"
 workflow-core = { path = "../../crates/workflow-core" }
 
 [dev-dependencies]
