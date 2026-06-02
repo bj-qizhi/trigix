@@ -6,6 +6,7 @@ import { useAuth } from '../AuthContext'
 import * as api from '../api/client'
 import { useTheme } from '../useTheme'
 import { useLocale } from '../useLocale'
+import logoWordmark from '../assets/logo-wordmark.svg'
 
 interface Props {
   onBack: () => void
@@ -227,7 +228,7 @@ export function AccountPage({ onBack }: Props) {
   return (
     <div className="app" data-theme={theme}>
       <header className="topbar">
-        <span className="topbar-logo">aiworkflow</span>
+        <img src={logoWordmark} alt="Velara" style={{ height: '28px' }} />
         <div className="topbar-actions">
           <button className="btn btn-sm" onClick={onBack}>{t('nav.back')}</button>
           <button className="btn btn-sm" onClick={toggleTheme} title="Toggle theme">
@@ -485,7 +486,7 @@ export function AccountPage({ onBack }: Props) {
                         <div style={{ marginTop: '0.25rem' }}>
                           {isEnterprise ? (
                             <a
-                              href="mailto:sales@aiworkflow.io"
+                              href="mailto:managecode@gmail.com"
                               className="btn btn-sm"
                               style={{ display: 'block', textAlign: 'center', textDecoration: 'none' }}
                             >

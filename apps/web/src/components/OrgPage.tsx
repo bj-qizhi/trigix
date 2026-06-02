@@ -6,6 +6,7 @@ import { useAuth } from '../AuthContext'
 import { useLocale } from '../useLocale'
 import { useTheme } from '../useTheme'
 import * as api from '../api/client'
+import logoWordmark from '../assets/logo-wordmark.svg'
 
 interface Props {
   onBack: () => void
@@ -138,7 +139,7 @@ export function OrgPage({ onBack }: Props) {
   return (
     <div className="app" data-theme={theme}>
       <header className="topbar">
-        <span className="topbar-logo">aiworkflow</span>
+        <img src={logoWordmark} alt="Velara" style={{ height: '28px' }} />
         <span className="topbar-sep">|</span>
         <span className="topbar-title">{t('org.title')}</span>
         <div className="topbar-actions">

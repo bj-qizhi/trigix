@@ -4,7 +4,7 @@
 import { useEffect, useState } from 'react'
 import { t as translate, type Locale, type TranslationKey } from './i18n'
 
-const KEY = 'aiworkflow-locale'
+const KEY = 'velara-locale'
 
 function getStored(): Locale {
   try {

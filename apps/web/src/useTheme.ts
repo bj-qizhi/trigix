@@ -3,7 +3,7 @@
 
 import { useEffect, useState } from 'react'
 
-const KEY = 'aiworkflow-theme'
+const KEY = 'velara-theme'
 
 function getStored(): 'dark' | 'light' {
   try {

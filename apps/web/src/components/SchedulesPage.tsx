@@ -7,6 +7,7 @@ import { useLocale } from '../useLocale'
 import { useTheme } from '../useTheme'
 import * as api from '../api/client'
 import type { ExecutionSummary, ScheduleSummary } from '../types'
+import logoWordmark from '../assets/logo-wordmark.svg'
 
 interface Props {
   onBack: () => void
@@ -182,7 +183,7 @@ export function SchedulesPage({ onBack, onOpenWorkflow, onOpenExecution }: Props
   return (
     <div className="app">
       <header className="topbar">
-        <span className="topbar-logo">aiworkflow</span>
+        <img src={logoWordmark} alt="Velara" style={{ height: '28px' }} />
         <span className="topbar-sep">|</span>
         <span className="topbar-title">{zh ? '计划任务' : 'Schedules'}</span>
 
