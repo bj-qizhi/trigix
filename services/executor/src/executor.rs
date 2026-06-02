@@ -1065,7 +1065,7 @@ async fn execute_email(
         .get("from")
         .and_then(|v| v.as_str())
         .map(|f| resolve_template(f, context))
-        .unwrap_or_else(|| "noreply@velara.dev".to_string());
+        .unwrap_or_else(|| "noreply@trigix.dev".to_string());
 
     let payload = serde_json::json!({
         "personalizations": [{ "to": [{ "email": to }] }],
@@ -2247,7 +2247,7 @@ async fn execute_github(
     .header("Authorization", format!("Bearer {token}"))
     .header("Accept", "application/vnd.github+json")
     .header("X-GitHub-Api-Version", "2022-11-28")
-    .header("User-Agent", "velara/1.0");
+    .header("User-Agent", "trigix/1.0");
 
     if let Some(body_tmpl) = cfg.get("body").and_then(|v| v.as_str()) {
         let resolved = resolve_config_strings(&serde_json::json!({ "body": body_tmpl }), context);
@@ -2377,7 +2377,7 @@ async fn execute_jira(
     .header("Authorization", auth_header)
     .header("Accept", "application/json")
     .header("Content-Type", "application/json")
-    .header("User-Agent", "velara/1.0");
+    .header("User-Agent", "trigix/1.0");
 
     if let Some(body_tmpl) = cfg.get("body").and_then(|v| v.as_str()) {
         let resolved = resolve_config_strings(&serde_json::json!({ "body": body_tmpl }), context);
@@ -2438,7 +2438,7 @@ async fn execute_notion(
     .header("Authorization", format!("Bearer {token}"))
     .header("Notion-Version", "2022-06-28")
     .header("Content-Type", "application/json")
-    .header("User-Agent", "velara/1.0");
+    .header("User-Agent", "trigix/1.0");
 
     if let Some(body_tmpl) = cfg.get("body").and_then(|v| v.as_str()) {
         let resolved = resolve_config_strings(&serde_json::json!({ "body": body_tmpl }), context);
@@ -2498,7 +2498,7 @@ async fn execute_linear(
         .post("https://api.linear.app/graphql")
         .header("Authorization", format!("Bearer {token}"))
         .header("Content-Type", "application/json")
-        .header("User-Agent", "velara/1.0")
+        .header("User-Agent", "trigix/1.0")
         .json(&payload)
         .send()
         .await
@@ -2588,7 +2588,7 @@ async fn execute_airtable(
     }
     .header("Authorization", format!("Bearer {token}"))
     .header("Content-Type", "application/json")
-    .header("User-Agent", "velara/1.0");
+    .header("User-Agent", "trigix/1.0");
 
     if method != "GET" && method != "DELETE" {
         if let Some(body_tmpl) = cfg.get("body").and_then(|v| v.as_str()) {
@@ -3119,7 +3119,7 @@ async fn execute_pagerduty(
     let severity = cfg.get("severity").and_then(|v| v.as_str()).unwrap_or("error");
     let source = cfg.get("source").and_then(|v| v.as_str())
         .map(|s| resolve_template(s, context))
-        .unwrap_or_else(|| "velara".to_string());
+        .unwrap_or_else(|| "trigix".to_string());
     let dedup_key = cfg.get("dedup_key").and_then(|v| v.as_str())
         .map(|k| resolve_template(k, context));
 

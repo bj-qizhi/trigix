@@ -79,7 +79,7 @@ export function SlackConfig({ set, str }: ConfigProps) {
       <div className="field">
         <label>Bot name <span style={{ color: 'var(--muted)' }}>(optional)</span></label>
         <input
-          placeholder="Velara"
+          placeholder="Trigix"
           value={str('username')}
           onChange={(e) => set('username', e.target.value)}
         />
@@ -127,7 +127,7 @@ export function EmailConfig({ set, str }: ConfigProps) {
       <div className="field">
         <label>From <span style={{ color: 'var(--muted)' }}>(optional)</span></label>
         <input
-          placeholder="noreply@velara.dev"
+          placeholder="noreply@trigix.dev"
           value={str('from')}
           onChange={(e) => set('from', e.target.value)}
         />
@@ -1507,9 +1507,9 @@ export function PagerdutyConfig({ config, set, str }: ConfigProps) {
       <div className="field">
         <label>Source</label>
         <input
-          value={str('source', 'velara')}
+          value={str('source', 'trigix')}
           onChange={(e) => set('source', e.target.value)}
-          placeholder="velara"
+          placeholder="trigix"
         />
       </div>
       <div className="field">

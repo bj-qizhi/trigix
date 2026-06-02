@@ -2,9 +2,9 @@ services:
   postgres:
     image: pgvector/pgvector:pg16
     environment:
-      POSTGRES_USER: velara
-      POSTGRES_PASSWORD: velara
-      POSTGRES_DB: velara
+      POSTGRES_USER: trigix
+      POSTGRES_PASSWORD: trigix
+      POSTGRES_DB: trigix
     ports:
       - "35432:5432"
     volumes:

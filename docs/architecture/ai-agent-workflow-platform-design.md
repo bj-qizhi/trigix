@@ -515,23 +515,23 @@ Required library features:
 The platform should include a developer CLI:
 
 ```bash
-velara init app
-velara create node
-velara create connector
-velara create agent
-velara create tool
-velara create workflow
-velara create mcp-server
-velara dev
-velara test
-velara publish
+trigix init app
+trigix create node
+trigix create connector
+trigix create agent
+trigix create tool
+trigix create workflow
+trigix create mcp-server
+trigix dev
+trigix test
+trigix publish
 ```
 
 Generated structure:
 
 ```text
-my-velara-app/
-  velara.yaml
+my-trigix-app/
+  trigix.yaml
   nodes/
   agents/
   workflows/

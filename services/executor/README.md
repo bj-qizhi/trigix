@@ -28,7 +28,7 @@ This keeps the execution semantics testable before adding persistence, queues, a
 Run:
 
 ```bash
-EXECUTOR_HTTP_ADDR=127.0.0.1:38090 cargo run -p velara-executor
+EXECUTOR_HTTP_ADDR=127.0.0.1:38090 cargo run -p trigix-executor
 ```
 
 Suggested stack:

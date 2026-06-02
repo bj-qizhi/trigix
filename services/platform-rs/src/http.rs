@@ -45,7 +45,7 @@ use axum::{Json, Router};
 use tokio_stream::wrappers::ReceiverStream;
 use serde::{Deserialize, Serialize};
 
-use velara_executor::approval::{ApprovalError as GateError, ApprovalGate};
+use trigix_executor::approval::{ApprovalError as GateError, ApprovalGate};
 use execution_core::ExecutionStatus;
 use tracing::info;
 
@@ -2843,7 +2843,7 @@ async fn trigger_webhook(
                 .unwrap_or_default()
                 .as_secs();
             let ts: u64 = headers
-                .get("x-velara-timestamp")
+                .get("x-trigix-timestamp")
                 .and_then(|v| v.to_str().ok())
                 .and_then(|s| s.parse().ok())
                 .unwrap_or(0);
@@ -2851,7 +2851,7 @@ async fn trigger_webhook(
                 return Err(ApiError {
                     status: StatusCode::BAD_REQUEST,
                     message: format!(
-                        "Missing or stale X-Velara-Timestamp (window: ±{WINDOW_SECS}s). \
+                        "Missing or stale X-Trigix-Timestamp (window: ±{WINDOW_SECS}s). \
                          Send the current Unix timestamp in the header."
                     ),
                 });
@@ -3439,7 +3439,7 @@ async fn generate_workflow(
         .ok_or_else(|| ApiError::bad_request("No Claude API key: provide api_key in request or set ANTHROPIC_API_KEY env var"))?;
     let model = body.model.as_deref().unwrap_or("claude-sonnet-4-6").to_string();
 
-    let system_prompt = r#"You are an expert workflow designer for Velara, an AI-powered automation platform.
+    let system_prompt = r#"You are an expert workflow designer for Trigix, an AI-powered automation platform.
 
 Generate a workflow graph JSON based on the user's description. Respond with ONLY valid JSON in this exact structure:
 {
@@ -3636,7 +3636,7 @@ async fn copilot_handler(
     };
 
     let system = format!(
-        "You are an expert assistant for Velara, an AI-powered workflow automation platform.\
+        "You are an expert assistant for Trigix, an AI-powered workflow automation platform.\
 \n\nYou help users understand, debug, and improve their workflows. You have deep knowledge of:\
 \n- All 136 node types (trigger, http, claude, openai, gemini, slack, github, database, code, condition, loop, etc.)\
 \n- Template variables: {{{{input.field}}}}, {{{{node_id.field}}}}, {{{{credential.name}}}}, {{{{env.KEY}}}}\

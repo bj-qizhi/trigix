@@ -27,7 +27,7 @@ async fn main() {
         log_format = %log_format,
         db_max_connections = db_max_conn,
         version = env!("CARGO_PKG_VERSION"),
-        "velara platform starting"
+        "trigix platform starting"
     );
 
     let router = match std::env::var("DATABASE_URL") {
@@ -42,77 +42,77 @@ async fn main() {
                 .await
                 .expect("run database migrations");
 
-            let store = velara_platform::execution::PlatformExecutionStore::postgres(
-                velara_platform::execution::PostgresExecutionStore::new(pool.clone()),
+            let store = trigix_platform::execution::PlatformExecutionStore::postgres(
+                trigix_platform::execution::PostgresExecutionStore::new(pool.clone()),
             );
-            let gate = std::sync::Arc::new(velara_executor::approval::ApprovalGate::default());
+            let gate = std::sync::Arc::new(trigix_executor::approval::ApprovalGate::default());
             let token_usage_store = std::sync::Arc::new(
-                velara_platform::token_usage::PlatformTokenUsageStore::postgres(
-                    velara_platform::token_usage::PostgresTokenUsageStore::new(pool.clone()),
+                trigix_platform::token_usage::PlatformTokenUsageStore::postgres(
+                    trigix_platform::token_usage::PostgresTokenUsageStore::new(pool.clone()),
                 ),
             );
-            let cache = velara_platform::cache::CacheClient::from_env().await;
+            let cache = trigix_platform::cache::CacheClient::from_env().await;
             let executor = if std::env::var("USE_QUEUE").as_deref() == Ok("true") {
-                velara_platform::execution::PlatformExecutorClient::queue(cache.clone())
+                trigix_platform::execution::PlatformExecutorClient::queue(cache.clone())
             } else {
                 match std::env::var("EXECUTOR_BASE_URL") {
-                    Ok(base_url) => velara_platform::execution::PlatformExecutorClient::http(
+                    Ok(base_url) => trigix_platform::execution::PlatformExecutorClient::http(
                         base_url,
                         store.clone(),
                     ),
-                    Err(_) => velara_platform::execution::PlatformExecutorClient::inline_with_gate_and_usage(
+                    Err(_) => trigix_platform::execution::PlatformExecutorClient::inline_with_gate_and_usage(
                         store.clone(),
                         std::sync::Arc::clone(&gate),
                         std::sync::Arc::clone(&token_usage_store),
                     ),
                 }
             };
-            let execution_service = velara_platform::execution::ExecutionService::new(
+            let execution_service = trigix_platform::execution::ExecutionService::new(
                 store,
                 executor,
             );
-            let workflow_service = velara_platform::workflow::WorkflowService::new(
-                velara_platform::workflow::PlatformWorkflowVersionStore::postgres(
-                    velara_platform::workflow::PostgresWorkflowVersionStore::new(pool.clone()),
+            let workflow_service = trigix_platform::workflow::WorkflowService::new(
+                trigix_platform::workflow::PlatformWorkflowVersionStore::postgres(
+                    trigix_platform::workflow::PostgresWorkflowVersionStore::new(pool.clone()),
                 ),
             );
             let credential_store =
-                velara_platform::credentials::PlatformCredentialStore::postgres(
-                    velara_platform::credentials::PostgresCredentialStore::new(pool.clone()),
+                trigix_platform::credentials::PlatformCredentialStore::postgres(
+                    trigix_platform::credentials::PostgresCredentialStore::new(pool.clone()),
                 );
-            let env_store = velara_platform::env_vars::PlatformEnvVarStore::postgres(
-                velara_platform::env_vars::PostgresEnvVarStore::new(pool.clone()),
+            let env_store = trigix_platform::env_vars::PlatformEnvVarStore::postgres(
+                trigix_platform::env_vars::PostgresEnvVarStore::new(pool.clone()),
             );
-            let audit_store = velara_platform::audit::PlatformAuditStore::postgres(
-                velara_platform::audit::PostgresAuditStore::new(pool.clone()),
+            let audit_store = trigix_platform::audit::PlatformAuditStore::postgres(
+                trigix_platform::audit::PostgresAuditStore::new(pool.clone()),
             );
-            let webhook_store = velara_platform::webhook::PlatformWebhookStore::postgres(
-                velara_platform::webhook::PostgresWebhookStore::new(pool.clone()),
+            let webhook_store = trigix_platform::webhook::PlatformWebhookStore::postgres(
+                trigix_platform::webhook::PostgresWebhookStore::new(pool.clone()),
             );
-            let schedule_store = velara_platform::scheduler::PlatformScheduleStore::postgres(pool.clone());
+            let schedule_store = trigix_platform::scheduler::PlatformScheduleStore::postgres(pool.clone());
             schedule_store.bootstrap_from_postgres().await;
-            let workspace_store = velara_platform::workspace::PlatformWorkspaceStore::postgres(
-                velara_platform::workspace::PostgresWorkspaceStore::new(pool.clone()),
+            let workspace_store = trigix_platform::workspace::PlatformWorkspaceStore::postgres(
+                trigix_platform::workspace::PostgresWorkspaceStore::new(pool.clone()),
             );
-            let variable_store = velara_platform::variables::PlatformVariableStore::postgres(
-                velara_platform::variables::PostgresVariableStore::new(pool.clone()),
+            let variable_store = trigix_platform::variables::PlatformVariableStore::postgres(
+                trigix_platform::variables::PostgresVariableStore::new(pool.clone()),
             );
-            let api_key_store = velara_platform::api_keys::PlatformApiKeyStore::postgres(
-                velara_platform::api_keys::PostgresApiKeyStore::new(pool.clone()),
+            let api_key_store = trigix_platform::api_keys::PlatformApiKeyStore::postgres(
+                trigix_platform::api_keys::PostgresApiKeyStore::new(pool.clone()),
             );
-            let form_store = velara_platform::form::PlatformFormStore::postgres(pool.clone());
-            let test_case_store = velara_platform::test_cases::PlatformTestCaseStore::postgres(pool.clone());
-            let comment_store = velara_platform::comments::PlatformCommentStore::postgres(pool.clone());
-            let subscription_store = velara_platform::event_subscriptions::PlatformSubscriptionStore::postgres(pool.clone());
-            let user_store = velara_platform::users::PlatformUserStore::postgres(pool.clone());
-            let org_store = velara_platform::orgs::PlatformOrgStore::postgres(pool.clone());
-            let invite_store = velara_platform::invitations::PlatformInviteStore::postgres(pool.clone());
-            let reset_store = velara_platform::password_reset::PlatformPasswordResetStore::postgres(pool.clone());
-            let verification_store = velara_platform::email_verification::PlatformEmailVerificationStore::postgres(pool.clone());
-            let notification_prefs_store = velara_platform::notification_prefs::PlatformNotificationPrefsStore::postgres(pool.clone());
-            let billing_store = velara_platform::billing::PlatformBillingStore::postgres(pool);
-            let email_client = velara_platform::email::EmailClient::from_env();
-            velara_platform::http::router_with_all_stores(
+            let form_store = trigix_platform::form::PlatformFormStore::postgres(pool.clone());
+            let test_case_store = trigix_platform::test_cases::PlatformTestCaseStore::postgres(pool.clone());
+            let comment_store = trigix_platform::comments::PlatformCommentStore::postgres(pool.clone());
+            let subscription_store = trigix_platform::event_subscriptions::PlatformSubscriptionStore::postgres(pool.clone());
+            let user_store = trigix_platform::users::PlatformUserStore::postgres(pool.clone());
+            let org_store = trigix_platform::orgs::PlatformOrgStore::postgres(pool.clone());
+            let invite_store = trigix_platform::invitations::PlatformInviteStore::postgres(pool.clone());
+            let reset_store = trigix_platform::password_reset::PlatformPasswordResetStore::postgres(pool.clone());
+            let verification_store = trigix_platform::email_verification::PlatformEmailVerificationStore::postgres(pool.clone());
+            let notification_prefs_store = trigix_platform::notification_prefs::PlatformNotificationPrefsStore::postgres(pool.clone());
+            let billing_store = trigix_platform::billing::PlatformBillingStore::postgres(pool);
+            let email_client = trigix_platform::email::EmailClient::from_env();
+            trigix_platform::http::router_with_all_stores(
                 execution_service,
                 workflow_service,
                 gate,
@@ -142,19 +142,19 @@ async fn main() {
             )
         }
         Err(_) => {
-            let store = velara_platform::execution::PlatformExecutionStore::memory();
+            let store = trigix_platform::execution::PlatformExecutionStore::memory();
             let executor = match std::env::var("EXECUTOR_BASE_URL") {
-                Ok(base_url) => velara_platform::execution::PlatformExecutorClient::http(
+                Ok(base_url) => trigix_platform::execution::PlatformExecutorClient::http(
                     base_url,
                     store.clone(),
                 ),
-                Err(_) => velara_platform::execution::PlatformExecutorClient::inline(
+                Err(_) => trigix_platform::execution::PlatformExecutorClient::inline(
                     store.clone(),
                 ),
             };
-            velara_platform::http::router_with_store_and_executor(
+            trigix_platform::http::router_with_store_and_executor(
                 store,
-                velara_platform::workflow::PlatformWorkflowVersionStore::memory_with_dev_seed(),
+                trigix_platform::workflow::PlatformWorkflowVersionStore::memory_with_dev_seed(),
                 executor,
             )
         }
@@ -191,12 +191,12 @@ async fn shutdown_signal() {
         _ = terminate => {},
     }
 
-    velara_platform::http::DRAINING.store(true, Ordering::SeqCst);
+    trigix_platform::http::DRAINING.store(true, Ordering::SeqCst);
     tracing::info!("Shutdown signal received; draining in-flight executions…");
 
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
     loop {
-        let running = velara_platform::http::METRIC_EXEC_RUNNING.load(Ordering::Relaxed);
+        let running = trigix_platform::http::METRIC_EXEC_RUNNING.load(Ordering::Relaxed);
         if running == 0 {
             break;
         }

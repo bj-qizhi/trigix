@@ -179,7 +179,7 @@ export function MonitoringPage({ onBack, onOpenExecution, onOpenWorkflow }: Prop
   return (
     <div className="app">
       <header className="topbar">
-        <img src={logoWordmark} alt="Velara" style={{ height: '28px' }} />
+        <img src={logoWordmark} alt="Trigix" style={{ height: '28px' }} />
         <span className="topbar-sep">|</span>
         <span className="topbar-title">{zh ? '监控中心' : 'Monitoring'}</span>
 

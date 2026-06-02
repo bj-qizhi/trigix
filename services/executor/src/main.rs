@@ -11,14 +11,14 @@ async fn main() {
         .await
         .expect("bind executor HTTP listener");
 
-    println!("velara executor listening on {addr}");
+    println!("trigix executor listening on {addr}");
     if let Some(ref url) = ai_runtime_base_url {
         println!("  AI Runtime: {url}");
     }
 
     axum::serve(
         listener,
-        velara_executor::http::router_with_config(ai_runtime_base_url),
+        trigix_executor::http::router_with_config(ai_runtime_base_url),
     )
     .await
     .expect("serve executor HTTP API");

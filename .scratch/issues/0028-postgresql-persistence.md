@@ -36,8 +36,8 @@ Created new `af_*` tables with TEXT PKs rather than altering the UUID-keyed tabl
 
 ```bash
 docker-compose up -d postgres
-export DATABASE_URL=postgres://velara:velara@localhost:35432/velara
-cargo run -p velara-platform
+export DATABASE_URL=postgres://trigix:trigix@localhost:35432/trigix
+cargo run -p trigix-platform
 ```
 
 On first run, migrations execute automatically and the dev seed populates `af_workflows` / `af_workflow_versions`.

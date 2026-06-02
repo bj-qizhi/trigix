@@ -261,7 +261,7 @@ function Footer() {
       justifyContent: 'center',
       gap: '10px',
     }}>
-      <img src={logoIcon} alt="Velara" style={{ height: '22px', verticalAlign: 'middle' }} />
+      <img src={logoIcon} alt="Trigix" style={{ height: '22px', verticalAlign: 'middle' }} />
       <span>
         © {new Date().getFullYear()} 北京祺智科技有限公司 · All rights reserved ·{' '}
         <a href="https://www.qzso.com/" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--muted)', textDecoration: 'none' }}>

@@ -3397,7 +3397,7 @@
                 .method("POST")
                 .uri(format!("/v1/webhooks/{token}"))
                 .header("content-type", "application/json")
-                .header("x-velara-timestamp", "0")
+                .header("x-trigix-timestamp", "0")
                 .header("x-webhook-signature", "invalid")
                 .body(Body::from("{}")).unwrap()
         ).await.unwrap();

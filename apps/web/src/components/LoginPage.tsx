@@ -248,7 +248,7 @@ export function LoginPage() {
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', background: '#0f172a' }}>
       <div style={{ background: '#1e293b', padding: '2rem', borderRadius: '8px', minWidth: '340px', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <img src={logoWordmark} alt="Velara" style={{ height: '38px' }} />
+          <img src={logoWordmark} alt="Trigix" style={{ height: '38px' }} />
           <button type="button" onClick={toggleLocale} style={{ background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.2)', color: '#94a3b8', padding: '0.2rem 0.5rem', borderRadius: '4px', fontSize: '0.75rem', cursor: 'pointer' }}>
             {locale === 'zh' ? 'EN' : '中'}
           </button>

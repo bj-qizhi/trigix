@@ -1,5 +1,5 @@
 [package]
-name = "velara-executor"
+name = "trigix-executor"
 version.workspace = true
 edition.workspace = true
 

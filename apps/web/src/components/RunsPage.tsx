@@ -369,7 +369,7 @@ export function RunsPage({ onBack, onOpenExecution, onOpenWorkflow, initialWorkf
   return (
     <div className="app">
       <header className="topbar">
-        <img src={logoWordmark} alt="Velara" style={{ height: '28px' }} />
+        <img src={logoWordmark} alt="Trigix" style={{ height: '28px' }} />
         <span className="topbar-sep">|</span>
         <span className="topbar-title">{zh ? '运行记录' : 'Run History'}</span>
 
