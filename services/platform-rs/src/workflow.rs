@@ -781,6 +781,15 @@ impl WorkflowVersionStore for MemoryWorkflowVersionStore {
             message: request.message,
         };
         versions.insert(key(&record.tenant_id, &id), record.clone());
+        let tenant_id_for_update = record.tenant_id.clone();
+        drop(versions);
+        drop(workflows);
+        // Update latest_version_id on the workflow so getWorkflow returns it
+        if let Ok(mut wfs) = self.workflows.write() {
+            if let Some(wf) = wfs.get_mut(&key(&tenant_id_for_update, workflow_id)) {
+                wf.latest_version_id = Some(id);
+            }
+        }
         Ok(record)
     }
 
