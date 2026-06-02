@@ -1,5 +1,5 @@
 // Copyright © 2026 北京祺智科技有限公司. All rights reserved.
-// Contact: managecode@gmail.com
+// https://www.qzso.com/ · managecode@gmail.com
 
 #![recursion_limit = "512"]
 pub mod api_keys;

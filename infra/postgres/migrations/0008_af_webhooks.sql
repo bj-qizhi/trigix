@@ -1,5 +1,5 @@
 -- Copyright © 2026 北京祺智科技有限公司. All rights reserved.
--- Contact: managecode@gmail.com
+-- https://www.qzso.com/ · managecode@gmail.com
 
 CREATE TABLE IF NOT EXISTS af_webhooks (
     token TEXT PRIMARY KEY,

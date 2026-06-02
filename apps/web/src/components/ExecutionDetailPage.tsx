@@ -1,5 +1,5 @@
 // Copyright © 2026 北京祺智科技有限公司. All rights reserved.
-// Contact: managecode@gmail.com
+// https://www.qzso.com/ · managecode@gmail.com
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useAuth } from '../AuthContext'

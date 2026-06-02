@@ -1,5 +1,5 @@
 // Copyright © 2026 北京祺智科技有限公司. All rights reserved.
-// Contact: managecode@gmail.com
+// https://www.qzso.com/ · managecode@gmail.com
 
 import { useState, useCallback, useEffect } from 'react'
 import { AuthProvider, useAuth } from './AuthContext'
@@ -257,6 +257,10 @@ function Footer() {
       padding: '10px 16px',
     }}>
       © {new Date().getFullYear()} 北京祺智科技有限公司 · All rights reserved ·{' '}
+      <a href="https://www.qzso.com/" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--muted)', textDecoration: 'none' }}>
+        www.qzso.com
+      </a>
+      {' · '}
       <a href="mailto:managecode@gmail.com" style={{ color: 'var(--muted)', textDecoration: 'none' }}>
         managecode@gmail.com
       </a>
