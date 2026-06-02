@@ -1,0 +1,98 @@
+replicaCount: 2
+
+image:
+  repository: aiworkflow/platform
+  tag: "latest"
+  pullPolicy: IfNotPresent
+
+service:
+  type: ClusterIP
+  port: 80
+  targetPort: 38080
+
+ingress:
+  enabled: true
+  className: "nginx"
+  host: "aiworkflow.example.com"
+  annotations: {}
+  tls:
+    enabled: false
+    secretName: "aiworkflow-tls"
+
+resources:
+  requests:
+    cpu: "250m"
+    memory: "256Mi"
+  limits:
+    cpu: "2000m"
+    memory: "1Gi"
+
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 20
+  targetCPUUtilizationPercentage: 70
+
+env:
+  AUTH_REQUIRED: "true"
+  MAX_CONCURRENT_EXECUTIONS: "100"
+  MAX_EXECUTIONS_PER_TENANT: "20"
+  EXECUTION_TIMEOUT_SECS: "3600"
+
+secrets:
+  databaseUrl: ""
+  jwtSecret: ""
+  devApiKey: ""
+  smtpHost: ""
+  smtpPort: "587"
+  smtpUser: ""
+  smtpPassword: ""
+  smtpFrom: ""
+  appBaseUrl: ""
+
+postgresql:
+  enabled: true
+  image: "pgvector/pgvector:pg16"
+  storage: "10Gi"
+  username: "velara"
+  database: "velara"
+  # password is set via postgresql-secret; provide here to use a fixed password
+  # otherwise a random one is generated at install time
+  password: ""
+
+redis:
+  enabled: true
+  image: "redis:7-alpine"
+  storage: "2Gi"
+
+executor:
+  enabled: false
+  replicaCount: 3
+  image:
+    repository: aiworkflow/executor
+    tag: "latest"
+    pullPolicy: IfNotPresent
+  resources:
+    requests:
+      cpu: "500m"
+      memory: "512Mi"
+    limits:
+      cpu: "4000m"
+      memory: "2Gi"
+  autoscaling:
+    enabled: true
+    minReplicas: 3
+    maxReplicas: 50
+    targetCPUUtilizationPercentage: 60
+
+podAnnotations: {}
+
+serviceAccount:
+  create: false
+  name: ""
+
+nodeSelector: {}
+
+tolerations: []
+
+affinity: {}

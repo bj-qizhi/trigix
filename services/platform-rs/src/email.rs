@@ -1,3 +1,6 @@
+// Copyright © 2026 北京祺智科技有限公司. All rights reserved.
+// Contact: managecode@gmail.com
+
 /// Lightweight email client. In dev (no SMTP config) it logs to stdout.
 /// In prod, set SMTP_HOST + SMTP_PORT + SMTP_USER + SMTP_PASSWORD + SMTP_FROM.
 

@@ -1,3 +1,6 @@
+// Copyright © 2026 北京祺智科技有限公司. All rights reserved.
+// Contact: managecode@gmail.com
+
 use std::sync::Arc;
 
 use axum::extract::State;
@@ -11,11 +14,13 @@ use workflow_core::{GraphError, WorkflowGraph};
 use crate::executor::DispatchingNodeExecutor;
 use crate::runtime::{run_workflow, ExecutionReport, RuntimeError};
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct RunExecutionRequest {
     pub execution_id: String,
     pub graph: WorkflowGraph,
     pub input_json: String,
+    #[serde(default)]
+    pub dry_run: bool,
 }
 
 #[derive(Clone)]
@@ -55,6 +60,7 @@ async fn run_execution(
         &request.graph,
         request.input_json,
         &mut node_executor,
+        request.dry_run,
     )
     .await?;
 

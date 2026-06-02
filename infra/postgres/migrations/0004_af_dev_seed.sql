@@ -1,3 +1,6 @@
+-- Copyright © 2026 北京祺智科技有限公司. All rights reserved.
+-- Contact: managecode@gmail.com
+
 -- Dev seed for af_* tables — mirrors the in-memory dev seed so the
 -- frontend's hardcoded TENANT_ID / WORKSPACE_ID / PROJECT_ID constants work.
 

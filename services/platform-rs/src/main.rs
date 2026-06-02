@@ -1,3 +1,6 @@
+// Copyright © 2026 北京祺智科技有限公司. All rights reserved.
+// Contact: managecode@gmail.com
+
 #[tokio::main]
 async fn main() {
     let filter = tracing_subscriber::EnvFilter::try_from_default_env()

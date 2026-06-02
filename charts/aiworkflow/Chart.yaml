@@ -1,0 +1,11 @@
+apiVersion: v2
+name: aiworkflow
+description: AI Agent Workflow Platform — Rust backend + React frontend
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+keywords:
+  - ai
+  - workflow
+  - automation
+home: https://github.com/aiworkflow/aiworkflow

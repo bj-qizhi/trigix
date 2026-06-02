@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 60 60" fill="none">
+  <defs>
+    <linearGradient id="arm-l" x1="10" y1="13" x2="30" y2="49" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#6366f1"/>
+      <stop offset="1" stop-color="#8b5cf6"/>
+    </linearGradient>
+    <linearGradient id="arm-r" x1="50" y1="13" x2="30" y2="49" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#6366f1"/>
+      <stop offset="1" stop-color="#8b5cf6"/>
+    </linearGradient>
+    <filter id="glow" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur stdDeviation="2.5" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+
+  <!-- Background -->
+  <rect width="60" height="60" rx="13" fill="#0f172a"/>
+
+  <!-- V arms -->
+  <line x1="10" y1="13" x2="30" y2="49" stroke="url(#arm-l)" stroke-width="4" stroke-linecap="round"/>
+  <line x1="50" y1="13" x2="30" y2="49" stroke="url(#arm-r)" stroke-width="4" stroke-linecap="round"/>
+
+  <!-- Top-left node -->
+  <circle cx="10" cy="13" r="5.5" fill="#6366f1"/>
+
+  <!-- Top-right node -->
+  <circle cx="50" cy="13" r="5.5" fill="#6366f1"/>
+
+  <!-- Bottom center node (merger — brighter, glowing) -->
+  <circle cx="30" cy="49" r="7" fill="#8b5cf6" filter="url(#glow)"/>
+  <circle cx="30" cy="49" r="3.5" fill="#c4b5fd" opacity="0.85"/>
+</svg>
