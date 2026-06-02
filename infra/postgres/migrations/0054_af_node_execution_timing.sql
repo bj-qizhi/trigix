@@ -1,5 +1,5 @@
 -- Copyright © 2026 北京祺智科技有限公司. All rights reserved.
--- Contact: managecode@gmail.com
+-- https://www.qzso.com/ · managecode@gmail.com
 
 -- Slice 446: node execution waterfall — persist per-node start offset and duration
 ALTER TABLE af_node_executions
