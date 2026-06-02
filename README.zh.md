@@ -5,6 +5,9 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Rust](https://img.shields.io/badge/Rust-2021-orange.svg)](https://www.rust-lang.org/)
 [![React](https://img.shields.io/badge/React-18-61dafb.svg)](https://react.dev/)
+[![GitHub Stars](https://img.shields.io/github/stars/bj-qizhi/velara?style=social)](https://github.com/bj-qizhi/velara)
+[![GitHub Issues](https://img.shields.io/github/issues/bj-qizhi/velara)](https://github.com/bj-qizhi/velara/issues)
+[![GitHub Forks](https://img.shields.io/github/forks/bj-qizhi/velara?style=social)](https://github.com/bj-qizhi/velara/fork)
 
 [English](README.md) · [中文]
 
