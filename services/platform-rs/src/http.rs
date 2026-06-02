@@ -3394,6 +3394,11 @@ async fn import_workflow(
         &workflow.id,
         None,
     );
+    // Re-fetch so latest_version_id is populated (create_version updates it in-place)
+    let workflow = state.workflow_service
+        .get_workflow(&workflow.id, &body.tenant_id)
+        .await
+        .unwrap_or(workflow);
     Ok((StatusCode::CREATED, Json(workflow)))
 }
 
@@ -3738,6 +3743,10 @@ async fn duplicate_workflow(
         &new_workflow.id,
         Some(serde_json::json!({ "duplicated_from": workflow_id })),
     );
+    let new_workflow = state.workflow_service
+        .get_workflow(&new_workflow.id, &body.tenant_id)
+        .await
+        .unwrap_or(new_workflow);
     Ok((StatusCode::CREATED, Json(new_workflow)))
 }
 
