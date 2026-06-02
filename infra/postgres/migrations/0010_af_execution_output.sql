@@ -1,0 +1,4 @@
+-- Copyright © 2026 北京祺智科技有限公司. All rights reserved.
+-- Contact: managecode@gmail.com
+
+ALTER TABLE af_executions ADD COLUMN IF NOT EXISTS output_json TEXT;

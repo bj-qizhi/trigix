@@ -35,7 +35,152 @@
   --node-code: #7c3aed;
   --node-slack: #4a154b;
   --node-email: #0369a1;
+  --node-openai: #10a37f;
+  --node-gemini: #4285f4;
+  --node-database: #336791;
+  --node-extract: #0f766e;
+  --node-merge: #7c2d12;
+  --node-loop: #6d28d9;
+  --node-graphql: #e10098;
+  --node-validate: #15803d;
+  --node-note: #b45309;
+  --node-claude: #c96442;
+  --node-split: #0369a1;
+  --node-join: #0891b2;
+  --node-switch: #7c3aed;
+  --node-random: #0f766e;
+  --node-dedupe: #1d4ed8;
+  --node-regex: #92400e;
+  --node-csv: #166534;
+  --node-rename: #065f46;
+  --node-format: #1e3a5f;
+  --node-github: #24292e;
+  --node-webhook: #6d28d9;
+  --node-jira: #0052cc;
+  --node-notion: #2e2e2e;
+  --node-linear: #5e6ad2;
+  --node-airtable: #18bfff;
+  --node-for-each: #7c3aed;
+  --node-discord: #5865f2;
+  --node-teams: #6264a7;
+  --node-sheets: #0f9d58;
+  --node-xml: #7b341e;
+  --node-yaml: #2c5282;
+  --node-twilio: #f22f46;
+  --node-stripe: #635bff;
+  --node-crypto: #134e4a;
+  --node-hubspot: #ff5c35;
+  --node-date: #0369a1;
+  --node-zendesk: #03363d;
+  --node-redis: #dc2626;
+  --node-elasticsearch: #f59e0b;
+  --node-pagerduty: #06b6d4;
+  --node-handlebars: #7c3aed;
+  --node-math: #0e7490;
+  --node-array-utils: #065f46;
+  --node-shopify: #96bf48;
+  --node-datadog: #632ca6;
+  --node-salesforce: #00a1e0;
+  --node-freshdesk: #25c16f;
+  --node-mailgun: #f06b26;
+  --node-asana: #f06a6a;
+  --node-servicenow: #81b5a1;
+  --node-confluence: #0052cc;
+  --node-bitbucket: #205081;
+  --node-azure-devops: #0078d4;
+  --node-twitch: #9146ff;
+  --node-figma: #f24e1e;
+  --node-dropbox: #0061ff;
+  --node-cloudflare: #f38020;
+  --node-box: #0061fe;
+  --node-okta: #007dc1;
+  --node-zoom: #2d8cff;
+  --node-spotify: #1db954;
+  --node-typeform: #262627;
+  --node-webflow: #4353ff;
+  --node-intercom: #1f8ded;
+  --node-pipedrive: #d4452c;
+  --node-trello: #0052cc;
+  --node-monday: #ff3d57;
+  --node-clickup: #7b68ee;
+  --node-amplitude: #1da462;
+  --node-mixpanel: #7856ff;
+  --node-segment: #52bd95;
+  --node-sendgrid: #1a82e2;
+  --node-braintree: #009cde;
+  --node-paypal: #003087;
+  --node-razorpay: #3395ff;
+  --node-firebase: #ff6d00;
+  --node-supabase: #3ecf8e;
+  --node-mailchimp: #ffe01b;
+  --node-activecampaign: #356ae6;
+  --node-klaviyo: #1a1a1a;
+  --node-resend: #000000;
+  --node-contentful: #2478cc;
+  --node-algolia: #003dff;
+  --node-postmark: #ffdd00;
+  --node-vonage: #9b59b6;
+  --node-telegram: #2ca5e0;
+  --node-replicate: #000000;
+  --node-mistral: #ff7000;
+  --node-whatsapp: #25d366;
+  --node-googledocs: #4285f4;
+  --node-perplexity: #20b2aa;
+  --node-cohere: #d4b896;
+  --node-googledrive: #1fa463;
+  --node-woocommerce: #7f54b3;
+  --node-pinecone: #1a1a2e;
+  --node-togetherai: #3d5af1;
+  --node-awss3: #ff9900;
+  --node-huggingface: #ff9d00;
+  --node-groq: #f55036;
+  --node-openrouter: #6467f2;
+  --node-qdrant: #dc244c;
+  --node-cloudinary: #3448c5;
+  --node-gcal: #1a73e8;
+  --node-docusign: #ff5400;
+  --node-xero: #1ab4d7;
+  --node-calendly: #006bff;
+  --node-apify: #00c4b4;
+  --node-ganalytics: #e37400;
+  --node-neon: #00e599;
+  --node-copper: #e8762b;
+  /* 国内大模型 */
+  --node-deepseek: #4d6bfe;
+  --node-qwen: #6200ea;
+  --node-zhipu: #00897b;
+  --node-moonshot: #1a237e;
+  --node-doubao: #0078ff;
+  --node-minimax: #ff6f00;
+  --node-ernie: #2979ff;
+  --node-hunyuan: #00bcd4;
   --approval-text: #22d3ee;
+}
+
+[data-theme="light"] {
+  --bg: #f6f8fa;
+  --surface: #ffffff;
+  --panel: #eaeef2;
+  --border: #d0d7de;
+  --text: #1f2328;
+  --muted: #57606a;
+  --link: #0969da;
+  --accent: #0969da;
+  --accent-hover: #0550ae;
+  --success: #1a7f37;
+  --success-text: #1a7f37;
+  --danger: #cf222e;
+  --danger-text: #cf222e;
+  --warning-text: #9a6700;
+  --approval-text: #0969da;
+
+  /* node colours stay vivid in light mode */
+  --node-trigger: #1a7f37;
+  --node-http: #0969da;
+  --node-agent: #6639ba;
+  --node-condition: #9a6700;
+  --node-approval: #0550ae;
+  --node-catch: #bc4c00;
 }
 
 html, body, #root { height: 100%; }
@@ -191,6 +336,126 @@ label { font-size: 12px; color: var(--muted); display: block; margin-bottom: 4px
 .flow-node-code .flow-node-header { background: var(--node-code); }
 .flow-node-slack .flow-node-header { background: var(--node-slack); }
 .flow-node-email .flow-node-header { background: var(--node-email); }
+.flow-node-openai .flow-node-header { background: var(--node-openai); }
+.flow-node-gemini .flow-node-header { background: var(--node-gemini); }
+.flow-node-database .flow-node-header { background: var(--node-database); }
+.flow-node-extract .flow-node-header { background: var(--node-extract); }
+.flow-node-merge .flow-node-header { background: var(--node-merge); }
+.flow-node-loop .flow-node-header { background: var(--node-loop); }
+.flow-node-graphql .flow-node-header { background: var(--node-graphql); }
+.flow-node-validate .flow-node-header { background: var(--node-validate); }
+.flow-node-note .flow-node-header { background: var(--node-note); }
+.flow-node-note { border-style: dashed !important; opacity: 0.85; }
+.flow-node-claude .flow-node-header { background: var(--node-claude); }
+.flow-node-split .flow-node-header { background: var(--node-split); }
+.flow-node-join .flow-node-header { background: var(--node-join); }
+.flow-node-switch .flow-node-header { background: var(--node-switch); }
+.flow-node-random .flow-node-header { background: var(--node-random); }
+.flow-node-dedupe .flow-node-header  { background: var(--node-dedupe); }
+.flow-node-regex .flow-node-header   { background: var(--node-regex); }
+.flow-node-csv .flow-node-header     { background: var(--node-csv); }
+.flow-node-rename .flow-node-header  { background: var(--node-rename); }
+.flow-node-format .flow-node-header  { background: var(--node-format); }
+.flow-node-github .flow-node-header  { background: var(--node-github); }
+.flow-node-webhook .flow-node-header { background: var(--node-webhook); }
+.flow-node-jira .flow-node-header       { background: var(--node-jira); }
+.flow-node-notion .flow-node-header     { background: var(--node-notion); }
+.flow-node-linear .flow-node-header     { background: var(--node-linear); }
+.flow-node-airtable .flow-node-header   { background: var(--node-airtable); color: #000; }
+.flow-node-for_each .flow-node-header   { background: var(--node-for-each); }
+.flow-node-discord .flow-node-header    { background: var(--node-discord); }
+.flow-node-teams .flow-node-header      { background: var(--node-teams); }
+.flow-node-sheets .flow-node-header     { background: var(--node-sheets); }
+.flow-node-xml .flow-node-header        { background: var(--node-xml); }
+.flow-node-yaml .flow-node-header       { background: var(--node-yaml); }
+.flow-node-twilio .flow-node-header     { background: var(--node-twilio); }
+.flow-node-stripe .flow-node-header     { background: var(--node-stripe); }
+.flow-node-crypto .flow-node-header      { background: var(--node-crypto); }
+.flow-node-hubspot .flow-node-header     { background: var(--node-hubspot); }
+.flow-node-date .flow-node-header        { background: var(--node-date); }
+.flow-node-zendesk .flow-node-header     { background: var(--node-zendesk); }
+.flow-node-redis .flow-node-header       { background: var(--node-redis); }
+.flow-node-elasticsearch .flow-node-header { background: var(--node-elasticsearch); color: #000; }
+.flow-node-pagerduty .flow-node-header   { background: var(--node-pagerduty); color: #000; }
+.flow-node-handlebars .flow-node-header  { background: var(--node-handlebars); }
+.flow-node-math .flow-node-header        { background: var(--node-math); }
+.flow-node-array_utils .flow-node-header { background: var(--node-array-utils); }
+.flow-node-shopify .flow-node-header     { background: var(--node-shopify); color: #000; }
+.flow-node-datadog .flow-node-header     { background: var(--node-datadog); }
+.flow-node-salesforce .flow-node-header  { background: var(--node-salesforce); color: #000; }
+.flow-node-freshdesk .flow-node-header   { background: var(--node-freshdesk); color: #000; }
+.flow-node-mailgun .flow-node-header     { background: var(--node-mailgun); }
+.flow-node-asana .flow-node-header        { background: var(--node-asana); }
+.flow-node-servicenow .flow-node-header  { background: var(--node-servicenow); color: #000; }
+.flow-node-confluence .flow-node-header  { background: var(--node-confluence); }
+.flow-node-bitbucket .flow-node-header   { background: var(--node-bitbucket); }
+.flow-node-azure_devops .flow-node-header { background: var(--node-azure-devops); }
+.flow-node-twitch .flow-node-header      { background: var(--node-twitch); }
+.flow-node-figma .flow-node-header       { background: var(--node-figma); }
+.flow-node-dropbox .flow-node-header     { background: var(--node-dropbox); }
+.flow-node-cloudflare .flow-node-header  { background: var(--node-cloudflare); color: #000; }
+.flow-node-box .flow-node-header         { background: var(--node-box); }
+.flow-node-okta .flow-node-header        { background: var(--node-okta); }
+.flow-node-zoom .flow-node-header        { background: var(--node-zoom); }
+.flow-node-spotify .flow-node-header     { background: var(--node-spotify); }
+.flow-node-typeform .flow-node-header    { background: var(--node-typeform); }
+.flow-node-webflow .flow-node-header     { background: var(--node-webflow); }
+.flow-node-intercom .flow-node-header    { background: var(--node-intercom); }
+.flow-node-pipedrive .flow-node-header   { background: var(--node-pipedrive); }
+.flow-node-trello .flow-node-header      { background: var(--node-trello); }
+.flow-node-monday .flow-node-header      { background: var(--node-monday); }
+.flow-node-clickup .flow-node-header     { background: var(--node-clickup); }
+.flow-node-amplitude .flow-node-header   { background: var(--node-amplitude); }
+.flow-node-mixpanel .flow-node-header    { background: var(--node-mixpanel); }
+.flow-node-segment .flow-node-header     { background: var(--node-segment); }
+.flow-node-sendgrid .flow-node-header    { background: var(--node-sendgrid); }
+.flow-node-braintree .flow-node-header   { background: var(--node-braintree); }
+.flow-node-paypal .flow-node-header      { background: var(--node-paypal); }
+.flow-node-razorpay .flow-node-header    { background: var(--node-razorpay); }
+.flow-node-firebase .flow-node-header    { background: var(--node-firebase); }
+.flow-node-supabase .flow-node-header    { background: var(--node-supabase); color: #000; }
+.flow-node-mailchimp .flow-node-header   { background: var(--node-mailchimp); color: #000; }
+.flow-node-activecampaign .flow-node-header { background: var(--node-activecampaign); }
+.flow-node-klaviyo .flow-node-header     { background: var(--node-klaviyo); }
+.flow-node-resend .flow-node-header      { background: var(--node-resend); }
+.flow-node-contentful .flow-node-header  { background: var(--node-contentful); }
+.flow-node-algolia .flow-node-header     { background: var(--node-algolia); }
+.flow-node-postmark .flow-node-header    { background: var(--node-postmark); color: #000; }
+.flow-node-vonage .flow-node-header      { background: var(--node-vonage); }
+.flow-node-telegram .flow-node-header    { background: var(--node-telegram); }
+.flow-node-replicate .flow-node-header   { background: var(--node-replicate); }
+.flow-node-mistral .flow-node-header     { background: var(--node-mistral); }
+.flow-node-whatsapp .flow-node-header    { background: var(--node-whatsapp); color: #000; }
+.flow-node-googledocs .flow-node-header  { background: var(--node-googledocs); }
+.flow-node-perplexity .flow-node-header  { background: var(--node-perplexity); }
+.flow-node-cohere .flow-node-header      { background: var(--node-cohere); color: #000; }
+.flow-node-googledrive .flow-node-header { background: var(--node-googledrive); }
+.flow-node-woocommerce .flow-node-header { background: var(--node-woocommerce); }
+.flow-node-pinecone .flow-node-header    { background: var(--node-pinecone); }
+.flow-node-togetherai .flow-node-header  { background: var(--node-togetherai); }
+.flow-node-awss3 .flow-node-header       { background: var(--node-awss3); color: #000; }
+.flow-node-huggingface .flow-node-header { background: var(--node-huggingface); color: #000; }
+.flow-node-groq .flow-node-header        { background: var(--node-groq); }
+.flow-node-openrouter .flow-node-header  { background: var(--node-openrouter); }
+.flow-node-qdrant .flow-node-header      { background: var(--node-qdrant); }
+.flow-node-cloudinary .flow-node-header  { background: var(--node-cloudinary); }
+.flow-node-gcal .flow-node-header        { background: var(--node-gcal); }
+.flow-node-docusign .flow-node-header    { background: var(--node-docusign); }
+.flow-node-xero .flow-node-header        { background: var(--node-xero); }
+.flow-node-calendly .flow-node-header    { background: var(--node-calendly); }
+.flow-node-apify .flow-node-header       { background: var(--node-apify); color: #000; }
+.flow-node-ganalytics .flow-node-header  { background: var(--node-ganalytics); }
+.flow-node-neon .flow-node-header        { background: var(--node-neon); color: #000; }
+.flow-node-copper .flow-node-header      { background: var(--node-copper); }
+/* 国内大模型 */
+.flow-node-deepseek .flow-node-header  { background: var(--node-deepseek); }
+.flow-node-qwen .flow-node-header      { background: var(--node-qwen); }
+.flow-node-zhipu .flow-node-header     { background: var(--node-zhipu); }
+.flow-node-moonshot .flow-node-header  { background: var(--node-moonshot); }
+.flow-node-doubao .flow-node-header    { background: var(--node-doubao); }
+.flow-node-minimax .flow-node-header   { background: var(--node-minimax); }
+.flow-node-ernie .flow-node-header     { background: var(--node-ernie); }
+.flow-node-hunyuan .flow-node-header   { background: var(--node-hunyuan); color: #000; }
 
 /* Execution state border on nodes */
 .flow-node.exec-succeeded         { border-color: var(--success-text); }

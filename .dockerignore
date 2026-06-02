@@ -1,0 +1,9 @@
+target/
+node_modules/
+apps/web/node_modules/
+apps/web/dist/
+.git/
+*.md
+docs/
+skills/
+templates/

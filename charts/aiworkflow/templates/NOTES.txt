@@ -1,0 +1,84 @@
+===========================================================================
+  aiworkflow — AI Agent Workflow Platform
+  Release: {{ .Release.Name }}   Namespace: {{ .Release.Namespace }}
+===========================================================================
+
+  Platform installed successfully.
+
+  GETTING THE SERVICE URL
+  -----------------------
+{{- if .Values.ingress.enabled }}
+  Your ingress is configured. Access the platform at:
+
+    http{{ if .Values.ingress.tls.enabled }}s{{ end }}://{{ .Values.ingress.host }}
+
+  Ensure your DNS points {{ .Values.ingress.host }} to your ingress controller's
+  external IP. To find the ingress IP:
+
+    kubectl get ingress -n {{ .Release.Namespace }} {{ include "aiworkflow.fullname" . }}
+
+{{- else }}
+  Ingress is disabled. To forward the service locally:
+
+    kubectl port-forward -n {{ .Release.Namespace }} \
+      svc/{{ include "aiworkflow.fullname" . }} 8080:{{ .Values.service.port }}
+
+  Then open: http://localhost:8080
+
+{{- end }}
+
+  CHECK STATUS
+  ------------
+  kubectl get pods -n {{ .Release.Namespace }} -l app.kubernetes.io/instance={{ .Release.Name }}
+
+  Watch rollout:
+    kubectl rollout status deployment/{{ include "aiworkflow.fullname" . }} \
+      -n {{ .Release.Namespace }}
+
+  View logs:
+    kubectl logs -n {{ .Release.Namespace }} \
+      -l app.kubernetes.io/instance={{ .Release.Name }},app.kubernetes.io/name={{ include "aiworkflow.name" . }} \
+      --tail=100 -f
+
+  UPGRADE
+  -------
+  helm upgrade {{ .Release.Name }} ./charts/aiworkflow \
+    --namespace {{ .Release.Namespace }} \
+    --reuse-values \
+    --set image.tag=<new-tag>
+
+  CONFIGURATION NOTES
+  -------------------
+{{- if not .Values.secrets.jwtSecret }}
+  WARNING: secrets.jwtSecret is not set. Set it to a strong random value:
+    --set secrets.jwtSecret="$(openssl rand -hex 32)"
+{{- end }}
+{{- if not .Values.secrets.databaseUrl }}
+  {{- if .Values.postgresql.enabled }}
+  PostgreSQL is managed by this chart.
+  The database password is stored in the Secret:
+    {{ include "aiworkflow.fullname" . }}-postgresql
+  Retrieve it with:
+    kubectl get secret -n {{ .Release.Namespace }} \
+      {{ include "aiworkflow.fullname" . }}-postgresql \
+      -o jsonpath='{.data.POSTGRES_PASSWORD}' | base64 -d
+  {{- else }}
+  WARNING: secrets.databaseUrl is not set and postgresql.enabled=false.
+  The platform will fail to start without a database connection.
+  {{- end }}
+{{- end }}
+{{- if .Values.executor.enabled }}
+
+  EXECUTOR SERVICE
+  ----------------
+  The executor service is enabled and reachable cluster-internally at:
+    http://{{ include "aiworkflow.fullname" . }}-executor:38081
+  HPA range: {{ .Values.executor.autoscaling.minReplicas }}–{{ .Values.executor.autoscaling.maxReplicas }} replicas
+{{- end }}
+
+  DOCUMENTATION
+  -------------
+  Full docs: https://github.com/aiworkflow/aiworkflow/wiki
+  Issues:    https://github.com/aiworkflow/aiworkflow/issues
+
+===========================================================================

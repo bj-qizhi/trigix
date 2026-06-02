@@ -1,3 +1,6 @@
+// Copyright © 2026 北京祺智科技有限公司. All rights reserved.
+// Contact: managecode@gmail.com
+
 use serde_json::{json, Value};
 
 /// OpenAPI 3.0.3 specification for the Velara Platform API.

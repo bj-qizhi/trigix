@@ -1,5 +1,10 @@
-import { useState } from 'react'
+// Copyright © 2026 北京祺智科技有限公司. All rights reserved.
+// Contact: managecode@gmail.com
+
+import { useState, useCallback, useEffect } from 'react'
 import { AuthProvider, useAuth } from './AuthContext'
+import * as api from './api/client'
+import { useLocale } from './useLocale'
 import { LoginPage } from './components/LoginPage'
 import { WorkflowList } from './components/WorkflowList'
 import { WorkflowEditor } from './components/WorkflowEditor'
@@ -7,28 +12,91 @@ import { CredentialsPage } from './components/CredentialsPage'
 import { AuditLogPage } from './components/AuditLogPage'
 import { RunsPage } from './components/RunsPage'
 import { ExecutionDetailPage } from './components/ExecutionDetailPage'
+import { AnalyticsPage } from './components/AnalyticsPage'
+import { EnvironmentPage } from './components/EnvironmentPage'
+import { WorkspacePage } from './components/WorkspacePage'
+import { WebhookPage } from './components/WebhookPage'
+import { ApiKeysPage } from './components/ApiKeysPage'
+import { EventSubscriptionsPage } from './components/EventSubscriptionsPage'
+import { FormPage } from './components/FormPage'
+import { OrgPage } from './components/OrgPage'
+import { AccountPage } from './components/AccountPage'
+import { UsersPage } from './components/UsersPage'
+import { SchedulesPage } from './components/SchedulesPage'
+import { MonitoringPage } from './components/MonitoringPage'
+import { ApprovalsPage } from './components/ApprovalsPage'
+import { WorkflowDepsPage } from './components/WorkflowDepsPage'
 
 type Page =
   | { name: 'list' }
-  | { name: 'editor'; workflowId: string }
+  | { name: 'editor'; workflowId: string; initialInput?: string }
   | { name: 'credentials' }
   | { name: 'audit' }
-  | { name: 'runs' }
+  | { name: 'runs'; workflowFilter?: string }
+  | { name: 'analytics' }
+  | { name: 'environment' }
+  | { name: 'workspaces' }
+  | { name: 'webhooks' }
+  | { name: 'apikeys' }
+  | { name: 'event-subscriptions' }
+  | { name: 'orgs' }
+  | { name: 'account' }
+  | { name: 'users' }
+  | { name: 'schedules' }
+  | { name: 'monitoring' }
+  | { name: 'approvals' }
+  | { name: 'workflow-deps' }
   | { name: 'execution'; executionId: string; fromRuns?: boolean }
+
+function EmailVerificationBanner({ email }: { email?: string }) {
+  const [dismissed, setDismissed] = useState(false)
+  const [sent, setSent] = useState(false)
+  const { t } = useLocale()
+  const handleResend = useCallback(() => {
+    if (!email) return
+    api.resendVerification(email).then(() => setSent(true)).catch(() => {})
+  }, [email])
+  if (dismissed) return null
+  return (
+    <div style={{ background: '#7c3aed', color: '#fff', padding: '0.5rem 1rem', display: 'flex', alignItems: 'center', gap: '0.75rem', fontSize: '0.85rem' }}>
+      <span>{t('verify.banner')}</span>
+      {!sent && email && (
+        <button onClick={handleResend} style={{ background: 'rgba(255,255,255,0.2)', border: 'none', color: '#fff', padding: '0.2rem 0.6rem', borderRadius: '4px', cursor: 'pointer', fontSize: '0.8rem' }}>
+          {t('verify.resend')}
+        </button>
+      )}
+      {sent && <span style={{ opacity: 0.8 }}>{t('verify.sent')}</span>}
+      <button onClick={() => setDismissed(true)} style={{ marginLeft: 'auto', background: 'none', border: 'none', color: '#fff', cursor: 'pointer', fontSize: '1rem', lineHeight: 1 }}>
+        ×
+      </button>
+    </div>
+  )
+}
 
 function AppInner() {
   const { auth } = useAuth()
   const [page, setPage] = useState<Page>({ name: 'list' })
 
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    if (params.get('billing') === 'success') {
+      setPage({ name: 'account' })
+      window.history.replaceState({}, '', window.location.pathname)
+    }
+  }, [])
+
   if (!auth) {
     return <LoginPage />
   }
+
+  const showVerifyBanner = auth.emailVerified === false
 
   if (page.name === 'editor') {
     return (
       <WorkflowEditor
         workflowId={page.workflowId}
         onBack={() => setPage({ name: 'list' })}
+        initialInput={page.initialInput}
       />
     )
   }
@@ -46,6 +114,88 @@ function AppInner() {
       <RunsPage
         onBack={() => setPage({ name: 'list' })}
         onOpenExecution={(id) => setPage({ name: 'execution', executionId: id, fromRuns: true })}
+        onOpenWorkflow={(id) => setPage({ name: 'editor', workflowId: id })}
+        initialWorkflowFilter={page.workflowFilter}
+      />
+    )
+  }
+
+  if (page.name === 'analytics') {
+    return <AnalyticsPage onBack={() => setPage({ name: 'list' })} />
+  }
+
+  if (page.name === 'environment') {
+    return <EnvironmentPage onBack={() => setPage({ name: 'list' })} />
+  }
+
+  if (page.name === 'workspaces') {
+    return <WorkspacePage onBack={() => setPage({ name: 'list' })} />
+  }
+
+  if (page.name === 'webhooks') {
+    return (
+      <WebhookPage
+        onBack={() => setPage({ name: 'list' })}
+        onOpenWorkflow={(id) => setPage({ name: 'editor', workflowId: id })}
+      />
+    )
+  }
+
+  if (page.name === 'apikeys') {
+    return <ApiKeysPage onBack={() => setPage({ name: 'list' })} />
+  }
+
+  if (page.name === 'event-subscriptions') {
+    return <EventSubscriptionsPage onBack={() => setPage({ name: 'list' })} />
+  }
+
+  if (page.name === 'orgs') {
+    return <OrgPage onBack={() => setPage({ name: 'list' })} />
+  }
+
+  if (page.name === 'account') {
+    return <AccountPage onBack={() => setPage({ name: 'list' })} />
+  }
+
+  if (page.name === 'users') {
+    return <UsersPage onBack={() => setPage({ name: 'list' })} />
+  }
+
+  if (page.name === 'schedules') {
+    return (
+      <SchedulesPage
+        onBack={() => setPage({ name: 'list' })}
+        onOpenWorkflow={(id) => setPage({ name: 'editor', workflowId: id })}
+        onOpenExecution={(id) => setPage({ name: 'execution', executionId: id })}
+      />
+    )
+  }
+
+  if (page.name === 'monitoring') {
+    return (
+      <MonitoringPage
+        onBack={() => setPage({ name: 'list' })}
+        onOpenExecution={(id) => setPage({ name: 'execution', executionId: id })}
+        onOpenWorkflow={(id) => setPage({ name: 'editor', workflowId: id })}
+      />
+    )
+  }
+
+  if (page.name === 'approvals') {
+    return (
+      <ApprovalsPage
+        onBack={() => setPage({ name: 'list' })}
+        onOpenExecution={(id) => setPage({ name: 'execution', executionId: id, fromRuns: false })}
+        onOpenWorkflow={(id) => setPage({ name: 'editor', workflowId: id })}
+      />
+    )
+  }
+
+  if (page.name === 'workflow-deps') {
+    return (
+      <WorkflowDepsPage
+        onBack={() => setPage({ name: 'list' })}
+        onOpenWorkflow={(id) => setPage({ name: 'editor', workflowId: id })}
       />
     )
   }
@@ -55,26 +205,77 @@ function AppInner() {
       <ExecutionDetailPage
         executionId={page.executionId}
         onBack={() => setPage(page.fromRuns ? { name: 'runs' } : { name: 'list' })}
-        onOpenWorkflow={(id) => setPage({ name: 'editor', workflowId: id })}
+        onOpenWorkflow={(id, input) => setPage({ name: 'editor', workflowId: id, initialInput: input })}
         onRetry={(newId) => setPage({ name: 'execution', executionId: newId, fromRuns: page.fromRuns })}
+        onOpenExecution={(id) => setPage({ name: 'execution', executionId: id, fromRuns: page.fromRuns })}
       />
     )
   }
 
   return (
-    <WorkflowList
-      onOpen={(id) => setPage({ name: 'editor', workflowId: id })}
-      onCredentials={() => setPage({ name: 'credentials' })}
-      onAuditLog={() => setPage({ name: 'audit' })}
-      onRuns={() => setPage({ name: 'runs' })}
-    />
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+      {showVerifyBanner && <EmailVerificationBanner email={auth.email} />}
+      <WorkflowList
+        onOpen={(id) => setPage({ name: 'editor', workflowId: id })}
+        onOpenExecution={(id) => setPage({ name: 'execution', executionId: id })}
+        onCredentials={() => setPage({ name: 'credentials' })}
+        onAuditLog={() => setPage({ name: 'audit' })}
+        onRuns={(wf) => setPage({ name: 'runs', workflowFilter: wf })}
+        onAnalytics={() => setPage({ name: 'analytics' })}
+        onEnvironment={() => setPage({ name: 'environment' })}
+        onWorkspaces={() => setPage({ name: 'workspaces' })}
+        onWebhooks={() => setPage({ name: 'webhooks' })}
+        onApiKeys={() => setPage({ name: 'apikeys' })}
+        onEventSubscriptions={() => setPage({ name: 'event-subscriptions' })}
+        onOrgs={() => setPage({ name: 'orgs' })}
+        onAccount={() => setPage({ name: 'account' })}
+        onUsers={() => setPage({ name: 'users' })}
+        onSchedules={() => setPage({ name: 'schedules' })}
+        onMonitoring={() => setPage({ name: 'monitoring' })}
+        onApprovals={() => setPage({ name: 'approvals' })}
+        onWorkflowDeps={() => setPage({ name: 'workflow-deps' })}
+      />
+    </div>
+  )
+}
+
+// Public form route: /forms/:token
+function PublicFormRoute() {
+  const m = window.location.pathname.match(/^\/forms\/([^/]+)/)
+  if (m) return <FormPage token={m[1]} />
+  return null
+}
+
+function Footer() {
+  return (
+    <footer style={{
+      borderTop: '1px solid var(--border)',
+      background: 'var(--surface)',
+      color: 'var(--muted)',
+      fontSize: '12px',
+      textAlign: 'center',
+      padding: '10px 16px',
+    }}>
+      © {new Date().getFullYear()} 北京祺智科技有限公司 · All rights reserved ·{' '}
+      <a href="mailto:managecode@gmail.com" style={{ color: 'var(--muted)', textDecoration: 'none' }}>
+        managecode@gmail.com
+      </a>
+    </footer>
   )
 }
 
 export function App() {
+  if (window.location.pathname.startsWith('/forms/')) {
+    return <PublicFormRoute />
+  }
   return (
     <AuthProvider>
-      <AppInner />
+      <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
+        <div style={{ flex: 1 }}>
+          <AppInner />
+        </div>
+        <Footer />
+      </div>
     </AuthProvider>
   )
 }
