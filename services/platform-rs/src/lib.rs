@@ -26,6 +26,7 @@ pub mod orgs;
 pub mod password_reset;
 pub mod retention;
 pub mod scheduler;
+pub mod sso;
 pub mod stripe_billing;
 pub mod token_usage;
 pub mod users;

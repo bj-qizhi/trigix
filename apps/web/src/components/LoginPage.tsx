@@ -3,7 +3,7 @@
 
 import { useEffect, useState } from 'react'
 import { useAuth } from '../AuthContext'
-import { loginUser, registerUser, acceptInvite, getInvitation, forgotPassword, resetPassword, verifyEmail, resendVerification } from '../api/client'
+import { loginUser, registerUser, acceptInvite, getInvitation, forgotPassword, resetPassword, verifyEmail, resendVerification, listPublicSso, type PublicSsoConnection } from '../api/client'
 import { useLocale } from '../useLocale'
 import logoWordmark from '../assets/logo-wordmark.svg'
 
@@ -44,6 +44,35 @@ export function LoginPage() {
   const [name, setName] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
+
+  // Enterprise SSO state
+  const [ssoConns, setSsoConns] = useState<PublicSsoConnection[]>([])
+
+  // Handle SSO callback redirect (?sso_token / ?sso_error) and load SSO buttons.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    const ssoToken = params.get('sso_token')
+    const ssoError = params.get('sso_error')
+    if (ssoError) {
+      setError(ssoError)
+      window.history.replaceState({}, '', window.location.pathname)
+    }
+    if (ssoToken) {
+      const claims = parseJwtPayload(ssoToken)
+      login({
+        token: ssoToken,
+        tenantId: (claims.tenant_id as string) || 'tenant-1',
+        workspaceId: (claims.workspace_id as string) || 'workspace-1',
+        projectId: (claims.project_id as string) || 'project-1',
+        role: (claims.role as string) || 'editor',
+        email: claims.email as string | undefined,
+        emailVerified: true,
+      })
+      window.history.replaceState({}, '', window.location.pathname)
+      return
+    }
+    listPublicSso().then(setSsoConns).catch(() => {})
+  }, [login])
 
   // Forgot password state
   const [forgotEmail, setForgotEmail] = useState('')
@@ -370,6 +399,31 @@ export function LoginPage() {
               </button>
             )}
           </form>
+        )}
+
+        {(mode === 'apikey' || mode === 'email') && ssoConns.length > 0 && (
+          <div style={{ marginTop: '1.25rem' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', margin: '0.5rem 0 1rem' }}>
+              <div style={{ flex: 1, height: 1, background: 'var(--border)' }} />
+              <span style={{ color: '#94a3b8', fontSize: '0.75rem' }}>
+                {locale === 'zh' ? '或使用企业账号' : 'or continue with'}
+              </span>
+              <div style={{ flex: 1, height: 1, background: 'var(--border)' }} />
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+              {ssoConns.map((c) => (
+                <button
+                  key={c.slug}
+                  type="button"
+                  className="btn"
+                  style={{ width: '100%' }}
+                  onClick={() => { window.location.href = `${API_BASE}/v1/sso/${c.slug}/login` }}
+                >
+                  {locale === 'zh' ? `使用 ${c.provider} 登录` : `Sign in with ${c.provider}`}
+                </button>
+              ))}
+            </div>
+          </div>
         )}
 
         {mode === 'forgot' && (

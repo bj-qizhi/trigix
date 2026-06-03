@@ -1189,6 +1189,49 @@ export function getCurrentUser(): Promise<User> {
   return request('/v1/auth/me')
 }
 
+// ── Enterprise SSO (OIDC) ──────────────────────────────────────────────────
+
+export interface PublicSsoConnection {
+  slug: string
+  provider: string
+}
+
+export interface SsoConnection {
+  id: string
+  tenant_id: string
+  slug: string
+  provider: string
+  issuer: string
+  client_id: string
+  scopes: string
+  enabled: boolean
+  created_at: number
+}
+
+/** Enabled SSO connections to render login buttons (no secrets). */
+export function listPublicSso(): Promise<PublicSsoConnection[]> {
+  return request('/v1/sso/public')
+}
+
+export function listSsoConnections(): Promise<SsoConnection[]> {
+  return request('/v1/sso-connections')
+}
+
+export function createSsoConnection(body: {
+  slug: string
+  provider: string
+  issuer: string
+  client_id: string
+  client_secret: string
+  scopes?: string
+}): Promise<SsoConnection> {
+  return request('/v1/sso-connections', { method: 'POST', body: JSON.stringify(body) })
+}
+
+export function deleteSsoConnection(id: string): Promise<void> {
+  return request(`/v1/sso-connections/${id}`, { method: 'DELETE' })
+}
+
 export interface UpdateProfileRequest {
   name?: string
   current_password?: string
