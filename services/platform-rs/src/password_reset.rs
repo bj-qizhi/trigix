@@ -2,9 +2,9 @@
 // https://www.qzso.com/ · managecode@gmail.com
 
 use serde::{Deserialize, Serialize};
-use std::sync::{Arc, RwLock};
-use std::collections::HashMap;
 use sqlx::PgPool;
+use std::collections::HashMap;
+use std::sync::{Arc, RwLock};
 
 fn unix_now() -> i64 {
     std::time::SystemTime::now()
@@ -57,7 +57,9 @@ pub struct MemoryPasswordResetStore {
 
 impl MemoryPasswordResetStore {
     pub fn new() -> Self {
-        Self { records: RwLock::new(HashMap::new()) }
+        Self {
+            records: RwLock::new(HashMap::new()),
+        }
     }
 }
 
@@ -72,7 +74,10 @@ impl PasswordResetStore for MemoryPasswordResetStore {
             expires_at: unix_now() + expires_hours * 3600,
             used_at: None,
         };
-        self.records.write().unwrap().insert(record.token.clone(), record.clone());
+        self.records
+            .write()
+            .unwrap()
+            .insert(record.token.clone(), record.clone());
         record
     }
 
@@ -83,14 +88,21 @@ impl PasswordResetStore for MemoryPasswordResetStore {
     fn mark_used(&self, token: &str) -> Result<PasswordReset, ResetError> {
         let mut map = self.records.write().unwrap();
         let record = map.get_mut(token).ok_or(ResetError::NotFound)?;
-        if record.used_at.is_some() { return Err(ResetError::AlreadyUsed); }
-        if record.expires_at <= unix_now() { return Err(ResetError::Expired); }
+        if record.used_at.is_some() {
+            return Err(ResetError::AlreadyUsed);
+        }
+        if record.expires_at <= unix_now() {
+            return Err(ResetError::Expired);
+        }
         record.used_at = Some(unix_now());
         Ok(record.clone())
     }
 
     fn delete_for_user(&self, user_id: &str) {
-        self.records.write().unwrap().retain(|_, v| v.user_id != user_id);
+        self.records
+            .write()
+            .unwrap()
+            .retain(|_, v| v.user_id != user_id);
     }
 }
 
@@ -101,7 +113,9 @@ pub struct PostgresPasswordResetStore {
 }
 
 impl PostgresPasswordResetStore {
-    pub fn new(pool: PgPool) -> Self { Self { pool } }
+    pub fn new(pool: PgPool) -> Self {
+        Self { pool }
+    }
 }
 
 impl PasswordResetStore for PostgresPasswordResetStore {
@@ -138,28 +152,43 @@ impl PasswordResetStore for PostgresPasswordResetStore {
             tokio::runtime::Handle::current().block_on(async {
                 sqlx::query_as::<_, PostgresResetRow>(
                     "SELECT id, user_id, email, token, created_at, expires_at, used_at \
-                     FROM af_password_resets WHERE token = $1"
+                     FROM af_password_resets WHERE token = $1",
                 )
                 .bind(&token)
-                .fetch_optional(&pool).await.ok().flatten().map(|r| r.into_record())
+                .fetch_optional(&pool)
+                .await
+                .ok()
+                .flatten()
+                .map(|r| r.into_record())
             })
         })
     }
 
     fn mark_used(&self, token: &str) -> Result<PasswordReset, ResetError> {
         let existing = self.find_by_token(token).ok_or(ResetError::NotFound)?;
-        if existing.used_at.is_some() { return Err(ResetError::AlreadyUsed); }
-        if existing.expires_at <= unix_now() { return Err(ResetError::Expired); }
+        if existing.used_at.is_some() {
+            return Err(ResetError::AlreadyUsed);
+        }
+        if existing.expires_at <= unix_now() {
+            return Err(ResetError::Expired);
+        }
         let pool = self.pool.clone();
         let token = token.to_string();
         let now = unix_now();
         tokio::task::block_in_place(|| {
             tokio::runtime::Handle::current().block_on(async {
                 sqlx::query("UPDATE af_password_resets SET used_at = $1 WHERE token = $2")
-                    .bind(now).bind(&token).execute(&pool).await.ok();
+                    .bind(now)
+                    .bind(&token)
+                    .execute(&pool)
+                    .await
+                    .ok();
             })
         });
-        Ok(PasswordReset { used_at: Some(now), ..existing })
+        Ok(PasswordReset {
+            used_at: Some(now),
+            ..existing
+        })
     }
 
     fn delete_for_user(&self, user_id: &str) {
@@ -168,7 +197,9 @@ impl PasswordResetStore for PostgresPasswordResetStore {
         tokio::task::block_in_place(|| {
             tokio::runtime::Handle::current().block_on(async {
                 let _ = sqlx::query("DELETE FROM af_password_resets WHERE user_id = $1")
-                    .bind(&uid).execute(&pool).await;
+                    .bind(&uid)
+                    .execute(&pool)
+                    .await;
             })
         });
     }
@@ -189,9 +220,13 @@ struct PostgresResetRow {
 impl PostgresResetRow {
     fn into_record(self) -> PasswordReset {
         PasswordReset {
-            id: self.id, user_id: self.user_id, email: self.email,
-            token: self.token, created_at: self.created_at,
-            expires_at: self.expires_at, used_at: self.used_at,
+            id: self.id,
+            user_id: self.user_id,
+            email: self.email,
+            token: self.token,
+            created_at: self.created_at,
+            expires_at: self.expires_at,
+            used_at: self.used_at,
         }
     }
 }
@@ -214,15 +249,27 @@ impl PlatformPasswordResetStore {
 
 impl PasswordResetStore for PlatformPasswordResetStore {
     fn create(&self, user_id: &str, email: &str, expires_hours: i64) -> PasswordReset {
-        match self { Self::Memory(s) => s.create(user_id, email, expires_hours), Self::Postgres(s) => s.create(user_id, email, expires_hours) }
+        match self {
+            Self::Memory(s) => s.create(user_id, email, expires_hours),
+            Self::Postgres(s) => s.create(user_id, email, expires_hours),
+        }
     }
     fn find_by_token(&self, token: &str) -> Option<PasswordReset> {
-        match self { Self::Memory(s) => s.find_by_token(token), Self::Postgres(s) => s.find_by_token(token) }
+        match self {
+            Self::Memory(s) => s.find_by_token(token),
+            Self::Postgres(s) => s.find_by_token(token),
+        }
     }
     fn mark_used(&self, token: &str) -> Result<PasswordReset, ResetError> {
-        match self { Self::Memory(s) => s.mark_used(token), Self::Postgres(s) => s.mark_used(token) }
+        match self {
+            Self::Memory(s) => s.mark_used(token),
+            Self::Postgres(s) => s.mark_used(token),
+        }
     }
     fn delete_for_user(&self, user_id: &str) {
-        match self { Self::Memory(s) => s.delete_for_user(user_id), Self::Postgres(s) => s.delete_for_user(user_id) }
+        match self {
+            Self::Memory(s) => s.delete_for_user(user_id),
+            Self::Postgres(s) => s.delete_for_user(user_id),
+        }
     }
 }

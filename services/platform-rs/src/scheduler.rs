@@ -61,7 +61,11 @@ impl ScheduleStore {
     }
 
     pub fn unregister(&self, workflow_version_id: &str) -> bool {
-        self.entries.lock().unwrap().remove(workflow_version_id).is_some()
+        self.entries
+            .lock()
+            .unwrap()
+            .remove(workflow_version_id)
+            .is_some()
     }
 
     pub fn list(&self, tenant_id: &str) -> Vec<ScheduleSummary> {
@@ -160,12 +164,17 @@ impl Default for PlatformScheduleStore {
 
 impl PlatformScheduleStore {
     pub fn postgres(pool: PgPool) -> Self {
-        Self::Postgres { memory: ScheduleStore::default(), pool }
+        Self::Postgres {
+            memory: ScheduleStore::default(),
+            pool,
+        }
     }
 
     /// Load persisted entries from Postgres into the in-memory cache on startup.
     pub async fn bootstrap_from_postgres(&self) {
-        let Self::Postgres { memory, pool } = self else { return };
+        let Self::Postgres { memory, pool } = self else {
+            return;
+        };
 
         #[derive(sqlx::FromRow)]
         struct Row {
@@ -246,13 +255,11 @@ impl PlatformScheduleStore {
                     let pool = pool.clone();
                     let vid = workflow_version_id.to_string();
                     tokio::spawn(async move {
-                        sqlx::query(
-                            "DELETE FROM af_schedules WHERE workflow_version_id = $1",
-                        )
-                        .bind(vid)
-                        .execute(&pool)
-                        .await
-                        .ok();
+                        sqlx::query("DELETE FROM af_schedules WHERE workflow_version_id = $1")
+                            .bind(vid)
+                            .execute(&pool)
+                            .await
+                            .ok();
                     });
                 }
                 removed
@@ -296,9 +303,7 @@ impl PlatformScheduleStore {
     pub async fn take_due(&self) -> Vec<ScheduleEntry> {
         match self {
             Self::Memory(s) => s.take_due(),
-            Self::Postgres { memory, pool } => {
-                take_due_postgres(memory, pool).await
-            }
+            Self::Postgres { memory, pool } => take_due_postgres(memory, pool).await,
         }
     }
 }
@@ -490,7 +495,10 @@ mod tests {
         // Pause the schedule
         assert!(store.set_paused("v-1", true));
         let due = store.take_due();
-        assert!(due.is_empty(), "paused entries should not be returned by take_due");
+        assert!(
+            due.is_empty(),
+            "paused entries should not be returned by take_due"
+        );
 
         // Resume and verify it fires again
         store.set_paused("v-1", false);

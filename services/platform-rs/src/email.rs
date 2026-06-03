@@ -24,15 +24,18 @@ impl EmailClient {
         let host = std::env::var("SMTP_HOST").ok();
         let config = host.map(|host| SmtpConfig {
             host,
-            port: std::env::var("SMTP_PORT").ok()
-                .and_then(|p| p.parse().ok()).unwrap_or(587),
+            port: std::env::var("SMTP_PORT")
+                .ok()
+                .and_then(|p| p.parse().ok())
+                .unwrap_or(587),
             user: std::env::var("SMTP_USER").unwrap_or_default(),
             password: std::env::var("SMTP_PASSWORD").unwrap_or_default(),
         });
         Self {
             config,
             from: std::env::var("SMTP_FROM").unwrap_or_else(|_| "noreply@trigix.local".to_string()),
-            base_url: std::env::var("APP_BASE_URL").unwrap_or_else(|_| "http://localhost:5173".to_string()),
+            base_url: std::env::var("APP_BASE_URL")
+                .unwrap_or_else(|_| "http://localhost:5173".to_string()),
         }
     }
 
@@ -78,7 +81,10 @@ impl EmailClient {
 
     /// Send an execution success notification.
     pub async fn send_execution_success(&self, to: &str, workflow_name: &str, execution_id: &str) {
-        let subject = format!("Trigix: workflow \"{}\" completed successfully", workflow_name);
+        let subject = format!(
+            "Trigix: workflow \"{}\" completed successfully",
+            workflow_name
+        );
         let body = format!(
             "Workflow \"{}\" completed successfully.\n\nExecution ID: {}\n",
             workflow_name, execution_id
@@ -87,9 +93,22 @@ impl EmailClient {
     }
 
     /// Send a quota threshold warning (80% or 100% exhausted).
-    pub async fn send_quota_warning(&self, to: &str, tenant_id: &str, used: i64, max: i64, tier: &str, pct: f64) {
-        let level = if pct >= 100.0 { "exhausted" } else { "80% warning" };
-        let subject = format!("Trigix billing alert: execution quota {level} for tenant {tenant_id}");
+    pub async fn send_quota_warning(
+        &self,
+        to: &str,
+        tenant_id: &str,
+        used: i64,
+        max: i64,
+        tier: &str,
+        pct: f64,
+    ) {
+        let level = if pct >= 100.0 {
+            "exhausted"
+        } else {
+            "80% warning"
+        };
+        let subject =
+            format!("Trigix billing alert: execution quota {level} for tenant {tenant_id}");
         let body = format!(
             "Your Trigix execution quota is {level}.\n\n\
              Tenant: {tenant_id}\n\
@@ -106,7 +125,13 @@ impl EmailClient {
     }
 
     /// Send an execution failure alert.
-    pub async fn send_execution_failure(&self, to: &str, workflow_name: &str, execution_id: &str, error: &str) {
+    pub async fn send_execution_failure(
+        &self,
+        to: &str,
+        workflow_name: &str,
+        execution_id: &str,
+        error: &str,
+    ) {
         let subject = format!("Trigix: workflow \"{}\" failed", workflow_name);
         let body = format!(
             "Workflow \"{}\" failed.\n\nExecution ID: {}\nError: {}\n",
@@ -127,12 +152,13 @@ impl EmailClient {
             }
             Some(cfg) => {
                 use lettre::{
+                    transport::smtp::authentication::Credentials, AsyncSmtpTransport,
                     AsyncTransport, Message,
-                    transport::smtp::authentication::Credentials,
-                    AsyncSmtpTransport,
                 };
                 let from_addr = self.from.parse().unwrap_or_else(|_| {
-                    "noreply@trigix.local".parse().expect("fallback address parses")
+                    "noreply@trigix.local"
+                        .parse()
+                        .expect("fallback address parses")
                 });
                 let to_addr = match to.parse() {
                     Ok(a) => a,
@@ -154,7 +180,8 @@ impl EmailClient {
                     }
                 };
                 let creds = Credentials::new(cfg.user.clone(), cfg.password.clone());
-                let transport = match AsyncSmtpTransport::<lettre::Tokio1Executor>::relay(&cfg.host) {
+                let transport = match AsyncSmtpTransport::<lettre::Tokio1Executor>::relay(&cfg.host)
+                {
                     Ok(b) => b.port(cfg.port).credentials(creds).build(),
                     Err(e) => {
                         tracing::error!(smtp_host = %cfg.host, error = %e, "Failed to build SMTP transport");
@@ -163,7 +190,9 @@ impl EmailClient {
                 };
                 match transport.send(email).await {
                     Ok(_) => tracing::info!(to = %to, subject = %subject, "Email sent via SMTP"),
-                    Err(e) => tracing::error!(to = %to, subject = %subject, error = %e, "SMTP send failed"),
+                    Err(e) => {
+                        tracing::error!(to = %to, subject = %subject, error = %e, "SMTP send failed")
+                    }
                 }
             }
         }
@@ -188,5 +217,12 @@ fn format_unix(ts: i64) -> String {
     let day_of_year = days_since_epoch % 365;
     let month = day_of_year / 30 + 1;
     let day = day_of_year % 30 + 1;
-    format!("{}-{:02}-{:02} {:02}:{:02} UTC", year, month.min(12), day.min(31), h, m)
+    format!(
+        "{}-{:02}-{:02} {:02}:{:02} UTC",
+        year,
+        month.min(12),
+        day.min(31),
+        h,
+        m
+    )
 }

@@ -1,9 +1,9 @@
 // Copyright © 2026 北京祺智科技有限公司. All rights reserved.
 // https://www.qzso.com/ · managecode@gmail.com
 
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
-use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NotificationPrefs {
@@ -40,13 +40,19 @@ pub struct MemoryNotificationPrefsStore {
 
 impl NotificationPrefsStore for MemoryNotificationPrefsStore {
     fn get(&self, user_id: &str) -> NotificationPrefs {
-        self.data.read().unwrap()
-            .get(user_id).cloned()
+        self.data
+            .read()
+            .unwrap()
+            .get(user_id)
+            .cloned()
             .unwrap_or_else(|| NotificationPrefs::default_for(user_id))
     }
 
     fn upsert(&self, prefs: NotificationPrefs) {
-        self.data.write().unwrap().insert(prefs.user_id.clone(), prefs);
+        self.data
+            .write()
+            .unwrap()
+            .insert(prefs.user_id.clone(), prefs);
     }
 }
 
@@ -57,7 +63,9 @@ pub struct PostgresNotificationPrefsStore {
 }
 
 impl PostgresNotificationPrefsStore {
-    pub fn new(pool: sqlx::PgPool) -> Self { Self { pool } }
+    pub fn new(pool: sqlx::PgPool) -> Self {
+        Self { pool }
+    }
 }
 
 #[derive(sqlx::FromRow)]
@@ -77,9 +85,18 @@ impl NotificationPrefsStore for PostgresNotificationPrefsStore {
             tokio::runtime::Handle::current().block_on(async move {
                 sqlx::query_as::<_, PrefsRow>(
                     "SELECT user_id, email_on_failure, email_on_success \
-                     FROM af_notification_prefs WHERE user_id = $1"
-                ).bind(&uid).fetch_optional(&pool).await.ok().flatten()
-                .map(|r| NotificationPrefs { user_id: r.user_id, email_on_failure: r.email_on_failure, email_on_success: r.email_on_success })
+                     FROM af_notification_prefs WHERE user_id = $1",
+                )
+                .bind(&uid)
+                .fetch_optional(&pool)
+                .await
+                .ok()
+                .flatten()
+                .map(|r| NotificationPrefs {
+                    user_id: r.user_id,
+                    email_on_failure: r.email_on_failure,
+                    email_on_success: r.email_on_success,
+                })
                 .unwrap_or_else(|| NotificationPrefs::default_for(&uid))
             })
         })
@@ -112,15 +129,25 @@ pub enum PlatformNotificationPrefsStore {
 }
 
 impl PlatformNotificationPrefsStore {
-    pub fn memory() -> Self { Self::Memory(Arc::new(MemoryNotificationPrefsStore::default())) }
-    pub fn postgres(pool: sqlx::PgPool) -> Self { Self::Postgres(PostgresNotificationPrefsStore::new(pool)) }
+    pub fn memory() -> Self {
+        Self::Memory(Arc::new(MemoryNotificationPrefsStore::default()))
+    }
+    pub fn postgres(pool: sqlx::PgPool) -> Self {
+        Self::Postgres(PostgresNotificationPrefsStore::new(pool))
+    }
 }
 
 impl NotificationPrefsStore for PlatformNotificationPrefsStore {
     fn get(&self, user_id: &str) -> NotificationPrefs {
-        match self { Self::Memory(s) => s.get(user_id), Self::Postgres(s) => s.get(user_id) }
+        match self {
+            Self::Memory(s) => s.get(user_id),
+            Self::Postgres(s) => s.get(user_id),
+        }
     }
     fn upsert(&self, prefs: NotificationPrefs) {
-        match self { Self::Memory(s) => s.upsert(prefs), Self::Postgres(s) => s.upsert(prefs) }
+        match self {
+            Self::Memory(s) => s.upsert(prefs),
+            Self::Postgres(s) => s.upsert(prefs),
+        }
     }
 }

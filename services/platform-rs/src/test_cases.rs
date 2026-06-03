@@ -11,7 +11,10 @@ use crate::execution::unix_now;
 
 fn next_id() -> String {
     use std::time::{SystemTime, UNIX_EPOCH};
-    let ts = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_nanos();
+    let ts = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
     format!("tc_{:x}", ts)
 }
 
@@ -37,7 +40,9 @@ pub struct CreateTestCaseRequest {
     #[serde(default)]
     pub expected_output: Option<String>,
 }
-fn default_json() -> String { "{}".to_string() }
+fn default_json() -> String {
+    "{}".to_string()
+}
 
 #[derive(Debug, Deserialize)]
 pub struct UpdateTestCaseRequest {
@@ -73,19 +78,26 @@ pub struct MemoryTestCaseStore {
 
 impl MemoryTestCaseStore {
     pub async fn create(&self, tc: TestCase) -> Result<TestCase, TestCaseError> {
-        let mut m = self.inner.write().map_err(|_| TestCaseError::StoreUnavailable)?;
+        let mut m = self
+            .inner
+            .write()
+            .map_err(|_| TestCaseError::StoreUnavailable)?;
         m.insert(tc.id.clone(), tc.clone());
         Ok(tc)
     }
 
     pub async fn get(&self, id: &str) -> Result<TestCase, TestCaseError> {
-        let m = self.inner.read().map_err(|_| TestCaseError::StoreUnavailable)?;
+        let m = self
+            .inner
+            .read()
+            .map_err(|_| TestCaseError::StoreUnavailable)?;
         m.get(id).cloned().ok_or(TestCaseError::NotFound)
     }
 
     pub async fn list(&self, tenant_id: &str, workflow_id: &str) -> Vec<TestCase> {
         let m = self.inner.read().unwrap_or_else(|e| e.into_inner());
-        let mut cases: Vec<_> = m.values()
+        let mut cases: Vec<_> = m
+            .values()
             .filter(|tc| tc.tenant_id == tenant_id && tc.workflow_id == workflow_id)
             .cloned()
             .collect();
@@ -93,18 +105,34 @@ impl MemoryTestCaseStore {
         cases
     }
 
-    pub async fn update(&self, id: &str, req: UpdateTestCaseRequest) -> Result<TestCase, TestCaseError> {
-        let mut m = self.inner.write().map_err(|_| TestCaseError::StoreUnavailable)?;
+    pub async fn update(
+        &self,
+        id: &str,
+        req: UpdateTestCaseRequest,
+    ) -> Result<TestCase, TestCaseError> {
+        let mut m = self
+            .inner
+            .write()
+            .map_err(|_| TestCaseError::StoreUnavailable)?;
         let tc = m.get_mut(id).ok_or(TestCaseError::NotFound)?;
-        if let Some(name) = req.name { tc.name = name; }
-        if let Some(input) = req.input_json { tc.input_json = input; }
-        if req.expected_output.is_some() { tc.expected_output = req.expected_output; }
+        if let Some(name) = req.name {
+            tc.name = name;
+        }
+        if let Some(input) = req.input_json {
+            tc.input_json = input;
+        }
+        if req.expected_output.is_some() {
+            tc.expected_output = req.expected_output;
+        }
         tc.updated_at = unix_now();
         Ok(tc.clone())
     }
 
     pub async fn delete(&self, id: &str) -> Result<(), TestCaseError> {
-        let mut m = self.inner.write().map_err(|_| TestCaseError::StoreUnavailable)?;
+        let mut m = self
+            .inner
+            .write()
+            .map_err(|_| TestCaseError::StoreUnavailable)?;
         m.remove(id).map(|_| ()).ok_or(TestCaseError::NotFound)
     }
 }
@@ -193,19 +221,25 @@ impl PostgresTestCaseStore {
         .fetch_all(&self.pool)
         .await
         .unwrap_or_default();
-        rows.into_iter().map(|r| TestCase {
-            id: r.id,
-            tenant_id: r.tenant_id,
-            workflow_id: r.workflow_id,
-            name: r.name,
-            input_json: r.input_json,
-            expected_output: r.expected_output,
-            created_at: r.created_at as u64,
-            updated_at: r.updated_at as u64,
-        }).collect()
+        rows.into_iter()
+            .map(|r| TestCase {
+                id: r.id,
+                tenant_id: r.tenant_id,
+                workflow_id: r.workflow_id,
+                name: r.name,
+                input_json: r.input_json,
+                expected_output: r.expected_output,
+                created_at: r.created_at as u64,
+                updated_at: r.updated_at as u64,
+            })
+            .collect()
     }
 
-    pub async fn update(&self, id: &str, req: UpdateTestCaseRequest) -> Result<TestCase, TestCaseError> {
+    pub async fn update(
+        &self,
+        id: &str,
+        req: UpdateTestCaseRequest,
+    ) -> Result<TestCase, TestCaseError> {
         let now = unix_now();
         let result = sqlx::query(
             "UPDATE af_test_cases SET \
@@ -302,7 +336,11 @@ impl PlatformTestCaseStore {
         }
     }
 
-    pub async fn update(&self, id: &str, req: UpdateTestCaseRequest) -> Result<TestCase, TestCaseError> {
+    pub async fn update(
+        &self,
+        id: &str,
+        req: UpdateTestCaseRequest,
+    ) -> Result<TestCase, TestCaseError> {
         match self {
             Self::Memory(s) => s.update(id, req).await,
             Self::Postgres(s) => s.update(id, req).await,

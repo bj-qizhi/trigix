@@ -277,11 +277,8 @@ impl WorkflowGraph {
     pub fn topological_levels(&self) -> Result<Vec<Vec<String>>, GraphError> {
         self.validate()?;
 
-        let mut indegree: HashMap<&str, usize> = self
-            .nodes
-            .iter()
-            .map(|n| (n.id.as_str(), 0usize))
-            .collect();
+        let mut indegree: HashMap<&str, usize> =
+            self.nodes.iter().map(|n| (n.id.as_str(), 0usize)).collect();
         let mut outgoing: HashMap<&str, Vec<&str>> = HashMap::new();
 
         for edge in &self.edges {
@@ -289,7 +286,10 @@ impl WorkflowGraph {
                 return Err(GraphError::UnknownEdgeTarget(edge.target.clone()));
             };
             *deg += 1;
-            outgoing.entry(edge.source.as_str()).or_default().push(edge.target.as_str());
+            outgoing
+                .entry(edge.source.as_str())
+                .or_default()
+                .push(edge.target.as_str());
         }
 
         let mut current_level: Vec<&str> = indegree

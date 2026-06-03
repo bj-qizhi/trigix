@@ -42,53 +42,60 @@ use axum::response::sse::{Event, KeepAlive, Sse};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{delete, get, patch, post, put};
 use axum::{Json, Router};
-use tokio_stream::wrappers::ReceiverStream;
 use serde::{Deserialize, Serialize};
+use tokio_stream::wrappers::ReceiverStream;
 
-use trigix_executor::approval::{ApprovalError as GateError, ApprovalGate};
 use execution_core::ExecutionStatus;
 use tracing::info;
+use trigix_executor::approval::{ApprovalError as GateError, ApprovalGate};
 
-use crate::audit::{PlatformAuditStore, action as audit_action};
-use crate::comments::{CreateCommentRequest, EditCommentRequest, PlatformCommentStore};
-use crate::event_subscriptions::{CreateSubscriptionRequest, PlatformSubscriptionStore, SubscriptionError, fire_event, EVENT_EXECUTION_STARTED, EVENT_EXECUTION_COMPLETED, EVENT_EXECUTION_FAILED, EVENT_EXECUTION_CANCELLED};
-use crate::form::{FormError, PlatformFormStore, PublishFormRequest};
-use crate::test_cases::{CreateTestCaseRequest, PlatformTestCaseStore, TestCaseError, UpdateTestCaseRequest};
-use crate::auth::{Claims, sign_token, verify_token};
-use crate::credentials::{
-    CredentialError, CredentialStore, PlatformCredentialStore,
-    resolve_credentials_in_json,
+use crate::api_keys::PlatformApiKeyStore;
+use crate::audit::{action as audit_action, PlatformAuditStore};
+use crate::auth::{sign_token, verify_token, Claims};
+use crate::billing::{
+    secs_until_quota_reset, BillingStatus, BillingStore, PlatformBillingStore, TenantQuota,
 };
+use crate::cache::CacheClient;
+use crate::comments::{CreateCommentRequest, EditCommentRequest, PlatformCommentStore};
+use crate::credentials::{
+    resolve_credentials_in_json, CredentialError, CredentialStore, PlatformCredentialStore,
+};
+use crate::email_verification::EmailVerificationStore;
 use crate::env_vars::{
-    DEFAULT_SET, EnvSetSummary, EnvVarError, EnvVarRecord, EnvVarStore,
-    PlatformEnvVarStore, resolve_env_in_json,
+    resolve_env_in_json, EnvSetSummary, EnvVarError, EnvVarRecord, EnvVarStore,
+    PlatformEnvVarStore, DEFAULT_SET,
+};
+use crate::event_subscriptions::{
+    fire_event, CreateSubscriptionRequest, PlatformSubscriptionStore, SubscriptionError,
+    EVENT_EXECUTION_CANCELLED, EVENT_EXECUTION_COMPLETED, EVENT_EXECUTION_FAILED,
+    EVENT_EXECUTION_STARTED,
 };
 use crate::execution::{
-    ExecutionError, ExecutionRecord, ExecutionService, ExecutionSummary,
-    PlatformExecutionStore, PlatformExecutorClient, StartExecutionRequest,
+    ExecutionError, ExecutionRecord, ExecutionService, ExecutionSummary, PlatformExecutionStore,
+    PlatformExecutorClient, StartExecutionRequest,
 };
-use crate::scheduler::{PlatformScheduleStore, ScheduleEntry};
-use crate::webhook::{PlatformWebhookStore, WebhookError, WebhookRecord, WebhookStore};
-use crate::api_keys::PlatformApiKeyStore;
-use crate::token_usage::{PlatformTokenUsageStore, TokenUsageStore};
-use crate::cache::CacheClient;
-use crate::openapi as oa;
-use crate::users::UserStore;
-use crate::orgs::OrgStore;
+use crate::form::{FormError, PlatformFormStore, PublishFormRequest};
 use crate::invitations::{InviteStore, PlatformInviteStore};
-use crate::password_reset::PasswordResetStore;
-use crate::email_verification::EmailVerificationStore;
 use crate::notification_prefs::NotificationPrefsStore;
-use crate::billing::{BillingStore, BillingStatus, PlatformBillingStore, TenantQuota, secs_until_quota_reset};
-use crate::stripe_billing::{StripeClient, price_id_to_tier, tier_to_price_id};
 use crate::notifications::{NotificationStore, PlatformNotificationStore};
+use crate::openapi as oa;
+use crate::orgs::OrgStore;
+use crate::password_reset::PasswordResetStore;
+use crate::scheduler::{PlatformScheduleStore, ScheduleEntry};
+use crate::stripe_billing::{price_id_to_tier, tier_to_price_id, StripeClient};
+use crate::test_cases::{
+    CreateTestCaseRequest, PlatformTestCaseStore, TestCaseError, UpdateTestCaseRequest,
+};
+use crate::token_usage::{PlatformTokenUsageStore, TokenUsageStore};
+use crate::users::UserStore;
 use crate::variables::PlatformVariableStore;
-use crate::workspace::PlatformWorkspaceStore;
+use crate::webhook::{PlatformWebhookStore, WebhookError, WebhookRecord, WebhookStore};
 use crate::workflow::{
     ArchiveWorkflowRequest, CreateWorkflowRequest, CreateWorkflowVersionRequest,
     PlatformWorkflowVersionStore, PublishWorkflowVersionRequest, RestoreWorkflowRequest,
     UpdateWorkflowRequest, WorkflowError, WorkflowRecord, WorkflowService, WorkflowVersionRecord,
 };
+use crate::workspace::PlatformWorkspaceStore;
 
 type PlatformService = ExecutionService<PlatformExecutionStore, PlatformExecutorClient>;
 type PlatformWorkflowService = WorkflowService<PlatformWorkflowVersionStore>;
@@ -175,7 +182,11 @@ pub(crate) fn default_app_state() -> AppState {
     let usage_store = Arc::new(PlatformTokenUsageStore::default());
     let service = ExecutionService::new(
         store.clone(),
-        PlatformExecutorClient::inline_with_gate_and_usage(store, Arc::clone(&gate), Arc::clone(&usage_store)),
+        PlatformExecutorClient::inline_with_gate_and_usage(
+            store,
+            Arc::clone(&gate),
+            Arc::clone(&usage_store),
+        ),
     );
     AppState {
         execution_service: Arc::new(service),
@@ -199,8 +210,12 @@ pub(crate) fn default_app_state() -> AppState {
         org_store: Arc::new(crate::orgs::PlatformOrgStore::default()),
         invite_store: Arc::new(crate::invitations::PlatformInviteStore::default()),
         reset_store: Arc::new(crate::password_reset::PlatformPasswordResetStore::memory()),
-        verification_store: Arc::new(crate::email_verification::PlatformEmailVerificationStore::memory()),
-        notification_prefs_store: Arc::new(crate::notification_prefs::PlatformNotificationPrefsStore::memory()),
+        verification_store: Arc::new(
+            crate::email_verification::PlatformEmailVerificationStore::memory(),
+        ),
+        notification_prefs_store: Arc::new(
+            crate::notification_prefs::PlatformNotificationPrefsStore::memory(),
+        ),
         email_client: Arc::new(crate::email::EmailClient::default()),
         billing_store: Arc::new(PlatformBillingStore::memory()),
         stripe_client: StripeClient::from_env().map(Arc::new),
@@ -266,7 +281,10 @@ fn spawn_execution_timeout_guard(state: AppState) {
             // Since this is in-memory we can inspect all summaries across the store.
             // For the inline executor, running executions are actually completed synchronously,
             // so this guard primarily catches stuck/orphaned entries.
-            let _ = state.execution_service.cancel_stale_running(timeout_secs, now).await;
+            let _ = state
+                .execution_service
+                .cancel_stale_running(timeout_secs, now)
+                .await;
         }
     });
 }
@@ -291,15 +309,20 @@ fn spawn_credential_expiry_checker(state: AppState) {
             // and skip for Postgres (notifications fired per-request instead).
             if let Ok(expiring) = state.credential_store.list_expiring("", warn_horizon).await {
                 for cred in expiring {
-                    let days_left = cred.expires_at
+                    let days_left = cred
+                        .expires_at
                         .map(|e| (e.saturating_sub(now)) / 86400)
                         .unwrap_or(0);
                     let level = if days_left == 0 { "error" } else { "warning" };
                     let tenant_id = "tenant-1"; // TODO: resolve from credential store metadata
                     state.notification_store.create(
-                        tenant_id, None,
+                        tenant_id,
+                        None,
                         &format!("Credential expiring: {}", cred.name),
-                        &format!("Credential '{}' expires in {} day(s). Rotate it before it expires.", cred.name, days_left),
+                        &format!(
+                            "Credential '{}' expires in {} day(s). Rotate it before it expires.",
+                            cred.name, days_left
+                        ),
                         level,
                     );
                 }
@@ -323,12 +346,14 @@ fn spawn_queue_worker(state: AppState) {
         tracing::info!(worker_id = %worker_id, "Queue worker started");
 
         loop {
-            let messages = state.cache
+            let messages = state
+                .cache
                 .xreadgroup(stream, group, &worker_id, 10, 5000)
                 .await;
 
             for (msg_id, fields) in messages {
-                let job_json = fields.iter()
+                let job_json = fields
+                    .iter()
                     .find(|(k, _)| k == "job")
                     .map(|(_, v)| v.clone())
                     .unwrap_or_default();
@@ -338,7 +363,8 @@ fn spawn_queue_worker(state: AppState) {
                         let inline = crate::execution::InlineExecutorClient::new(
                             state.execution_service.store().clone(),
                             Arc::clone(&state.approval_gate),
-                        ).with_token_usage(Arc::clone(&state.token_usage_store));
+                        )
+                        .with_token_usage(Arc::clone(&state.token_usage_store));
                         use crate::execution::ExecutorClient;
                         let result = inline.start(&record).await;
                         if let Err(e) = result {
@@ -382,8 +408,8 @@ fn spawn_execution_notification(
 
     tokio::spawn(async move {
         use crate::notification_prefs::NotificationPrefsStore;
-        use crate::users::UserStore;
         use crate::notifications::NotificationStore;
+        use crate::users::UserStore;
 
         // Poll until terminal (max ~60s for inline executor, longer for queue)
         let mut terminal_status: Option<ExecutionStatus> = None;
@@ -396,7 +422,9 @@ fn spawn_execution_notification(
             };
             match exec.status {
                 ExecutionStatus::Failed => {
-                    error_msg = exec.node_results.iter()
+                    error_msg = exec
+                        .node_results
+                        .iter()
                         .filter_map(|r| r.error.as_deref())
                         .next()
                         .unwrap_or("Execution failed")
@@ -413,7 +441,10 @@ fn spawn_execution_notification(
             }
         }
 
-        let status = match terminal_status { Some(s) => s, None => return };
+        let status = match terminal_status {
+            Some(s) => s,
+            None => return,
+        };
 
         // SLA breach: fire a warning notification when execution exceeded the configured threshold
         if let Some(sla) = sla_seconds {
@@ -443,23 +474,29 @@ fn spawn_execution_notification(
             if status == ExecutionStatus::Succeeded {
                 if let Ok(exec) = exec_service.get(&tenant, &exec_id).await {
                     let usage_records = crate::token_usage::extract_token_usage(
-                        &tenant, &exec_id, &exec.node_results, crate::execution::unix_now(),
+                        &tenant,
+                        &exec_id,
+                        &exec.node_results,
+                        crate::execution::unix_now(),
                     );
-                    let cost: f64 = usage_records.iter().map(|r| {
-                        let price_per_m = match r.model.as_str() {
-                            m if m.contains("gpt-4o") => 5.0,
-                            m if m.contains("gpt-4") => 30.0,
-                            m if m.contains("gpt-3.5") => 0.5,
-                            m if m.contains("gemini-2.0") => 0.1,
-                            m if m.contains("gemini-1.5-pro") => 3.5,
-                            m if m.contains("gemini") => 0.075,
-                            m if m.contains("claude-opus") => 15.0,
-                            m if m.contains("claude-sonnet") => 3.0,
-                            m if m.contains("claude-haiku") => 0.25,
-                            _ => 2.0,
-                        };
-                        (r.total_tokens as f64 / 1_000_000.0) * price_per_m
-                    }).sum();
+                    let cost: f64 = usage_records
+                        .iter()
+                        .map(|r| {
+                            let price_per_m = match r.model.as_str() {
+                                m if m.contains("gpt-4o") => 5.0,
+                                m if m.contains("gpt-4") => 30.0,
+                                m if m.contains("gpt-3.5") => 0.5,
+                                m if m.contains("gemini-2.0") => 0.1,
+                                m if m.contains("gemini-1.5-pro") => 3.5,
+                                m if m.contains("gemini") => 0.075,
+                                m if m.contains("claude-opus") => 15.0,
+                                m if m.contains("claude-sonnet") => 3.0,
+                                m if m.contains("claude-haiku") => 0.25,
+                                _ => 2.0,
+                            };
+                            (r.total_tokens as f64 / 1_000_000.0) * price_per_m
+                        })
+                        .sum();
                     if cost > budget {
                         notif_store.create(
                             &tenant,
@@ -467,7 +504,9 @@ fn spawn_execution_notification(
                             &format!("Budget exceeded: {}", wf_name),
                             &format!(
                                 "Execution {} estimated AI cost ${:.4} exceeded budget of ${:.2}.",
-                                &exec_id[..exec_id.len().min(16)], cost, budget,
+                                &exec_id[..exec_id.len().min(16)],
+                                cost,
+                                budget,
                             ),
                             "warning",
                         );
@@ -480,12 +519,19 @@ fn spawn_execution_notification(
         let (title, body, level) = match status {
             ExecutionStatus::Failed => (
                 format!("Execution failed: {}", wf_name),
-                format!("Execution {} failed — {}", &exec_id[..exec_id.len().min(16)], error_msg),
+                format!(
+                    "Execution {} failed — {}",
+                    &exec_id[..exec_id.len().min(16)],
+                    error_msg
+                ),
                 "error",
             ),
             ExecutionStatus::Succeeded => (
                 format!("Execution succeeded: {}", wf_name),
-                format!("Execution {} completed successfully.", &exec_id[..exec_id.len().min(16)]),
+                format!(
+                    "Execution {} completed successfully.",
+                    &exec_id[..exec_id.len().min(16)]
+                ),
                 "info",
             ),
             _ => return,
@@ -496,27 +542,40 @@ fn spawn_execution_notification(
             let store = Arc::clone(&prefs_store);
             let uid = creator_id.clone();
             move || store.get(&uid)
-        }).await.unwrap_or_else(|_| crate::notification_prefs::NotificationPrefs::default_for(&creator_id));
+        })
+        .await
+        .unwrap_or_else(|_| crate::notification_prefs::NotificationPrefs::default_for(&creator_id));
 
         let should_notify = match status {
-            ExecutionStatus::Failed    => prefs.email_on_failure,
+            ExecutionStatus::Failed => prefs.email_on_failure,
             ExecutionStatus::Succeeded => prefs.email_on_success,
             _ => false,
         };
-        if !should_notify { return; }
+        if !should_notify {
+            return;
+        }
 
         let user = tokio::task::spawn_blocking({
             let store = Arc::clone(&user_store);
             let uid = creator_id.clone();
             move || store.find_by_id(&uid)
-        }).await.ok().flatten();
+        })
+        .await
+        .ok()
+        .flatten();
 
         if let Some(user) = user {
             match status {
-                ExecutionStatus::Failed =>
-                    email_client.send_execution_failure(&user.email, &wf_name, &exec_id, &error_msg).await,
-                ExecutionStatus::Succeeded =>
-                    email_client.send_execution_success(&user.email, &wf_name, &exec_id).await,
+                ExecutionStatus::Failed => {
+                    email_client
+                        .send_execution_failure(&user.email, &wf_name, &exec_id, &error_msg)
+                        .await
+                }
+                ExecutionStatus::Succeeded => {
+                    email_client
+                        .send_execution_success(&user.email, &wf_name, &exec_id)
+                        .await
+                }
                 _ => {}
             }
         }
@@ -537,10 +596,26 @@ async fn request_id_middleware(mut req: Request, next: Next) -> Response {
 async fn security_headers_middleware(req: Request, next: Next) -> Response {
     let mut resp = next.run(req).await;
     let h = resp.headers_mut();
-    h.insert("x-frame-options", "DENY".parse().expect("static header value"));
-    h.insert("x-content-type-options", "nosniff".parse().expect("static header value"));
-    h.insert("referrer-policy", "strict-origin-when-cross-origin".parse().expect("static header value"));
-    h.insert("strict-transport-security", "max-age=31536000; includeSubDomains".parse().expect("static header value"));
+    h.insert(
+        "x-frame-options",
+        "DENY".parse().expect("static header value"),
+    );
+    h.insert(
+        "x-content-type-options",
+        "nosniff".parse().expect("static header value"),
+    );
+    h.insert(
+        "referrer-policy",
+        "strict-origin-when-cross-origin"
+            .parse()
+            .expect("static header value"),
+    );
+    h.insert(
+        "strict-transport-security",
+        "max-age=31536000; includeSubDomains"
+            .parse()
+            .expect("static header value"),
+    );
     resp
 }
 
@@ -548,11 +623,7 @@ async fn security_headers_middleware(req: Request, next: Next) -> Response {
 /// Also accepts a `?token=<jwt>` query param for SSE endpoints (EventSource can't set headers).
 /// Enforces auth only when `AUTH_REQUIRED=true` is set in the environment.
 /// Applies per-tenant rate limiting (300 req/60s sliding window).
-async fn auth_middleware(
-    State(state): State<AppState>,
-    mut req: Request,
-    next: Next,
-) -> Response {
+async fn auth_middleware(State(state): State<AppState>, mut req: Request, next: Next) -> Response {
     let path = req.uri().path().to_owned();
     let public = path == "/v1/auth/token"
         || path == "/v1/auth/register"
@@ -574,7 +645,8 @@ async fn auth_middleware(
 
     // Extract claims for auth check and rate-limit key
     let claims: Option<Claims> = extract_claims(req.headers()).or_else(|| {
-        req.uri().query()
+        req.uri()
+            .query()
             .and_then(|q| {
                 q.split('&')
                     .find(|p| p.starts_with("token="))
@@ -630,11 +702,28 @@ pub(crate) fn build_router(state: AppState) -> Router {
         .route("/v1/executions/batch", post(start_execution_batch))
         .route("/v1/executions/stats", get(execution_stats_handler))
         .route("/v1/executions/stream", get(list_executions_stream))
-        .route("/v1/executions/cancel-running", post(cancel_all_running_executions))
-        .route("/v1/executions/:execution_id", get(get_execution).delete(delete_execution).patch(patch_execution_label))
-        .route("/v1/executions/:execution_id/note", post(set_execution_note_handler))
-        .route("/v1/executions/:execution_id/star", post(star_execution_handler))
-        .route("/v1/executions/:execution_id/unstar", post(unstar_execution_handler))
+        .route(
+            "/v1/executions/cancel-running",
+            post(cancel_all_running_executions),
+        )
+        .route(
+            "/v1/executions/:execution_id",
+            get(get_execution)
+                .delete(delete_execution)
+                .patch(patch_execution_label),
+        )
+        .route(
+            "/v1/executions/:execution_id/note",
+            post(set_execution_note_handler),
+        )
+        .route(
+            "/v1/executions/:execution_id/star",
+            post(star_execution_handler),
+        )
+        .route(
+            "/v1/executions/:execution_id/unstar",
+            post(unstar_execution_handler),
+        )
         .route("/v1/executions/:execution_id/events", get(execution_events))
         .route(
             "/v1/executions/:execution_id/approve",
@@ -716,76 +805,180 @@ pub(crate) fn build_router(state: AppState) -> Router {
         .route("/v1/webhooks", get(list_webhooks_handler))
         .route(
             "/v1/webhooks/:token",
-            get(method_not_allowed).post(trigger_webhook).delete(delete_webhook_handler),
+            get(method_not_allowed)
+                .post(trigger_webhook)
+                .delete(delete_webhook_handler),
         )
-        .route("/v1/webhooks/:token/deliveries", get(list_webhook_deliveries_handler))
-        .route("/v1/webhooks/:token/condition", patch(update_webhook_condition_handler))
-        .route("/v1/webhooks/:token/rate-limit", patch(update_webhook_rate_limit_handler))
+        .route(
+            "/v1/webhooks/:token/deliveries",
+            get(list_webhook_deliveries_handler),
+        )
+        .route(
+            "/v1/webhooks/:token/condition",
+            patch(update_webhook_condition_handler),
+        )
+        .route(
+            "/v1/webhooks/:token/rate-limit",
+            patch(update_webhook_rate_limit_handler),
+        )
         .route("/v1/webhooks/:token/pause", post(pause_webhook_handler))
         .route("/v1/webhooks/:token/resume", post(resume_webhook_handler))
-        .route("/v1/webhooks/:token/rotate-secret", post(rotate_webhook_secret_handler))
-        .route("/v1/webhooks/:token/payload-transform", post(set_payload_transform_handler))
-        .route("/v1/credentials", get(list_credentials).post(create_credential))
+        .route(
+            "/v1/webhooks/:token/rotate-secret",
+            post(rotate_webhook_secret_handler),
+        )
+        .route(
+            "/v1/webhooks/:token/payload-transform",
+            post(set_payload_transform_handler),
+        )
+        .route(
+            "/v1/credentials",
+            get(list_credentials).post(create_credential),
+        )
         .route("/v1/credentials/expiring", get(list_expiring_credentials))
         .route("/v1/credentials/usage", get(credential_usage_handler))
         .route(
             "/v1/credentials/:credential_id",
-            get(method_not_allowed).delete(delete_credential).patch(update_credential),
+            get(method_not_allowed)
+                .delete(delete_credential)
+                .patch(update_credential),
         )
         .route("/v1/env-vars", get(list_env_vars))
         .route(
             "/v1/env-vars/:key",
-            get(method_not_allowed).put(upsert_env_var).delete(delete_env_var),
+            get(method_not_allowed)
+                .put(upsert_env_var)
+                .delete(delete_env_var),
         )
         .route("/v1/env-sets", get(list_env_sets).delete(delete_env_set))
         .route("/v1/schedules", get(list_schedules))
-        .route("/v1/schedules/:version_id/pause", post(pause_schedule_handler))
-        .route("/v1/schedules/:version_id/resume", post(resume_schedule_handler))
+        .route(
+            "/v1/schedules/:version_id/pause",
+            post(pause_schedule_handler),
+        )
+        .route(
+            "/v1/schedules/:version_id/resume",
+            post(resume_schedule_handler),
+        )
         .route("/v1/audit-log", get(list_audit_log))
         .route("/v1/token-usage", get(get_token_usage_handler))
         .route("/v1/analytics/node-types", get(node_type_analytics_handler))
         .route("/v1/analytics/workflow-deps", get(workflow_deps_handler))
-        .route("/v1/analytics/workflow-stats", get(workflow_stats_analytics_handler))
+        .route(
+            "/v1/analytics/workflow-stats",
+            get(workflow_stats_analytics_handler),
+        )
         .route("/v1/analytics/sla-breaches", get(sla_breaches_handler))
         .route("/v1/analytics/errors", get(error_analysis_handler))
-        .route("/v1/workflows/:workflow_id/latest-execution", get(get_latest_execution_handler))
-        .route("/v1/workflows/:workflow_id/variables", get(list_variables_handler))
-        .route("/v1/workflows/:workflow_id/variables/:key", get(get_variable_handler).put(set_variable_handler).delete(delete_variable_handler))
-        .route("/v1/workflows/:workflow_id/variables/:key/increment", post(increment_variable_handler))
-        .route("/v1/workspaces", get(list_workspaces_handler).post(create_workspace_handler))
-        .route("/v1/workspaces/:workspace_id", get(method_not_allowed).delete(delete_workspace_handler))
-        .route("/v1/workspaces/:workspace_id/projects", get(list_projects_handler).post(create_project_handler))
-        .route("/v1/projects/:project_id", get(method_not_allowed).delete(delete_project_handler))
+        .route(
+            "/v1/workflows/:workflow_id/latest-execution",
+            get(get_latest_execution_handler),
+        )
+        .route(
+            "/v1/workflows/:workflow_id/variables",
+            get(list_variables_handler),
+        )
+        .route(
+            "/v1/workflows/:workflow_id/variables/:key",
+            get(get_variable_handler)
+                .put(set_variable_handler)
+                .delete(delete_variable_handler),
+        )
+        .route(
+            "/v1/workflows/:workflow_id/variables/:key/increment",
+            post(increment_variable_handler),
+        )
+        .route(
+            "/v1/workspaces",
+            get(list_workspaces_handler).post(create_workspace_handler),
+        )
+        .route(
+            "/v1/workspaces/:workspace_id",
+            get(method_not_allowed).delete(delete_workspace_handler),
+        )
+        .route(
+            "/v1/workspaces/:workspace_id/projects",
+            get(list_projects_handler).post(create_project_handler),
+        )
+        .route(
+            "/v1/projects/:project_id",
+            get(method_not_allowed).delete(delete_project_handler),
+        )
         .route("/v1/workflows/:workflow_id/export", get(export_workflow))
-        .route("/v1/workflows/:workflow_id/stats", get(workflow_stats_handler))
-        .route("/v1/workflows/:workflow_id/estimate", get(workflow_estimate_handler))
-        .route("/v1/workflows/:workflow_id/node-stats", get(workflow_node_stats_handler))
-        .route("/v1/workflows/:workflow_id/health", get(workflow_health_handler))
-        .route("/v1/workflows/:workflow_id/json-schema", get(workflow_json_schema_handler))
+        .route(
+            "/v1/workflows/:workflow_id/stats",
+            get(workflow_stats_handler),
+        )
+        .route(
+            "/v1/workflows/:workflow_id/estimate",
+            get(workflow_estimate_handler),
+        )
+        .route(
+            "/v1/workflows/:workflow_id/node-stats",
+            get(workflow_node_stats_handler),
+        )
+        .route(
+            "/v1/workflows/:workflow_id/health",
+            get(workflow_health_handler),
+        )
+        .route(
+            "/v1/workflows/:workflow_id/json-schema",
+            get(workflow_json_schema_handler),
+        )
         .route(
             "/v1/workflows/:workflow_id/duplicate",
             get(method_not_allowed).post(duplicate_workflow),
         )
-        .route("/v1/workflows/import", get(method_not_allowed).post(import_workflow))
-        .route("/v1/workflows/generate", get(method_not_allowed).post(generate_workflow))
+        .route(
+            "/v1/workflows/import",
+            get(method_not_allowed).post(import_workflow),
+        )
+        .route(
+            "/v1/workflows/generate",
+            get(method_not_allowed).post(generate_workflow),
+        )
         .route("/v1/copilot", get(method_not_allowed).post(copilot_handler))
-        .route("/v1/api-keys", get(list_api_keys_handler).post(create_api_key_handler))
-        .route("/v1/api-keys/:key_id", get(method_not_allowed).delete(delete_api_key_handler))
+        .route(
+            "/v1/api-keys",
+            get(list_api_keys_handler).post(create_api_key_handler),
+        )
+        .route(
+            "/v1/api-keys/:key_id",
+            get(method_not_allowed).delete(delete_api_key_handler),
+        )
         .route("/v1/auth/token", get(method_not_allowed).post(create_token))
-        .route("/v1/auth/register", get(method_not_allowed).post(register_user))
+        .route(
+            "/v1/auth/register",
+            get(method_not_allowed).post(register_user),
+        )
         .route("/v1/auth/login", get(method_not_allowed).post(login_user))
         .route("/v1/auth/me", get(me_handler).patch(update_me_handler))
-        .route("/v1/auth/me/notifications", get(get_notifications_handler).put(put_notifications_handler))
+        .route(
+            "/v1/auth/me/notifications",
+            get(get_notifications_handler).put(put_notifications_handler),
+        )
         .route("/v1/admin/users", get(admin_list_users_handler))
-        .route("/v1/admin/users/:user_id", delete(admin_delete_user_handler))
-        .route("/v1/admin/invitations", get(admin_list_invitations_handler).post(admin_create_invitation_handler))
-        .route("/v1/admin/invitations/:invite_id", delete(admin_delete_invitation_handler))
+        .route(
+            "/v1/admin/users/:user_id",
+            delete(admin_delete_user_handler),
+        )
+        .route(
+            "/v1/admin/invitations",
+            get(admin_list_invitations_handler).post(admin_create_invitation_handler),
+        )
+        .route(
+            "/v1/admin/invitations/:invite_id",
+            delete(admin_delete_invitation_handler),
+        )
         .route("/v1/invitations/:token", get(get_invitation_handler))
         .route("/v1/auth/accept-invite", post(accept_invite_handler))
         .route("/v1/auth/forgot-password", post(forgot_password_handler))
         .route("/v1/auth/reset-password", post(reset_password_handler))
         .route("/v1/auth/verify-email", post(verify_email_handler))
-        .route("/v1/auth/resend-verification", post(resend_verification_handler))
+        .route(
+            "/v1/auth/resend-verification",
+            post(resend_verification_handler),
+        )
         .route("/v1/cron/preview", post(cron_preview_handler))
         .route(
             "/v1/workflows/:workflow_id/test-cases",
@@ -793,7 +986,9 @@ pub(crate) fn build_router(state: AppState) -> Router {
         )
         .route(
             "/v1/test-cases/:test_case_id",
-            get(get_test_case_handler).patch(update_test_case_handler).delete(delete_test_case_handler),
+            get(get_test_case_handler)
+                .patch(update_test_case_handler)
+                .delete(delete_test_case_handler),
         )
         .route(
             "/v1/test-cases/:test_case_id/run",
@@ -803,10 +998,7 @@ pub(crate) fn build_router(state: AppState) -> Router {
             "/v1/workflows/:workflow_id/publish-form",
             get(method_not_allowed).post(publish_form_handler),
         )
-        .route(
-            "/v1/workflows/:workflow_id/forms",
-            get(list_forms_handler),
-        )
+        .route("/v1/workflows/:workflow_id/forms", get(list_forms_handler))
         .route(
             "/v1/forms/:token",
             get(get_form_handler).delete(delete_form_handler),
@@ -820,14 +1012,32 @@ pub(crate) fn build_router(state: AppState) -> Router {
             "/v1/comments/:comment_id",
             patch(edit_workflow_comment_handler).delete(delete_workflow_comment_handler),
         )
-        .route("/v1/event-subscriptions", get(list_event_subscriptions_handler).post(create_event_subscription_handler))
-        .route("/v1/event-subscriptions/:sub_id", delete(delete_event_subscription_handler))
+        .route(
+            "/v1/event-subscriptions",
+            get(list_event_subscriptions_handler).post(create_event_subscription_handler),
+        )
+        .route(
+            "/v1/event-subscriptions/:sub_id",
+            delete(delete_event_subscription_handler),
+        )
         .route("/v1/orgs", get(list_orgs_handler).post(create_org_handler))
-        .route("/v1/orgs/:org_id", get(get_org_handler).delete(delete_org_handler))
-        .route("/v1/orgs/:org_id/members", get(list_org_members_handler).post(add_org_member_handler))
-        .route("/v1/orgs/:org_id/members/:user_id", delete(remove_org_member_handler))
+        .route(
+            "/v1/orgs/:org_id",
+            get(get_org_handler).delete(delete_org_handler),
+        )
+        .route(
+            "/v1/orgs/:org_id/members",
+            get(list_org_members_handler).post(add_org_member_handler),
+        )
+        .route(
+            "/v1/orgs/:org_id/members/:user_id",
+            delete(remove_org_member_handler),
+        )
         .route("/v1/orgs/:org_id/switch", post(switch_org_handler))
-        .route("/v1/workflows/:workflow_id/rollback/:version_id", post(rollback_workflow_version))
+        .route(
+            "/v1/workflows/:workflow_id/rollback/:version_id",
+            post(rollback_workflow_version),
+        )
         .route("/.well-known/mcp.json", get(mcp_manifest))
         .route("/v1/mcp/tools", post(mcp_execute_tool))
         .route("/v1/billing/status", get(billing_status_handler))
@@ -835,12 +1045,27 @@ pub(crate) fn build_router(state: AppState) -> Router {
         .route("/v1/billing/checkout", post(billing_checkout_handler))
         .route("/v1/billing/portal", post(billing_portal_handler))
         .route("/v1/stripe/webhook", post(stripe_webhook_handler))
-        .route("/v1/admin/billing/:tenant_id/quota", put(admin_set_quota_handler))
+        .route(
+            "/v1/admin/billing/:tenant_id/quota",
+            put(admin_set_quota_handler),
+        )
         .route("/v1/notifications", get(list_notifications_handler))
-        .route("/v1/notifications/read-all", post(mark_all_notifications_read_handler))
-        .route("/v1/notifications/:notif_id", delete(delete_notification_handler))
-        .route("/v1/notifications/:notif_id/read", post(mark_notification_read_handler))
-        .layer(middleware::from_fn_with_state(state.clone(), auth_middleware))
+        .route(
+            "/v1/notifications/read-all",
+            post(mark_all_notifications_read_handler),
+        )
+        .route(
+            "/v1/notifications/:notif_id",
+            delete(delete_notification_handler),
+        )
+        .route(
+            "/v1/notifications/:notif_id/read",
+            post(mark_notification_read_handler),
+        )
+        .layer(middleware::from_fn_with_state(
+            state.clone(),
+            auth_middleware,
+        ))
         .layer(middleware::from_fn(request_id_middleware))
         .layer(middleware::from_fn(security_headers_middleware))
         .with_state(state)
@@ -906,8 +1131,12 @@ pub fn router_with_services(
         org_store: Arc::new(crate::orgs::PlatformOrgStore::default()),
         invite_store: Arc::new(crate::invitations::PlatformInviteStore::default()),
         reset_store: Arc::new(crate::password_reset::PlatformPasswordResetStore::memory()),
-        verification_store: Arc::new(crate::email_verification::PlatformEmailVerificationStore::memory()),
-        notification_prefs_store: Arc::new(crate::notification_prefs::PlatformNotificationPrefsStore::memory()),
+        verification_store: Arc::new(
+            crate::email_verification::PlatformEmailVerificationStore::memory(),
+        ),
+        notification_prefs_store: Arc::new(
+            crate::notification_prefs::PlatformNotificationPrefsStore::memory(),
+        ),
         email_client: Arc::new(crate::email::EmailClient::default()),
         billing_store: Arc::new(PlatformBillingStore::memory()),
         stripe_client: StripeClient::from_env().map(Arc::new),
@@ -1011,7 +1240,11 @@ struct HealthDetail {
 }
 
 async fn healthz_detail(State(state): State<AppState>) -> Json<HealthDetail> {
-    let database = state.workflow_service.list_workflows("__health__", None, None, None).await.is_ok();
+    let database = state
+        .workflow_service
+        .list_workflows("__health__", None, None, None)
+        .await
+        .is_ok();
     let cache = state.cache.is_available();
     Json(HealthDetail {
         status: "ok",
@@ -1043,11 +1276,24 @@ async fn system_info() -> Json<SystemInfo> {
         running_executions: METRIC_EXEC_RUNNING.load(Ordering::Relaxed),
         rust_edition: "2021",
         features: &[
-            "jwt-auth", "webhook-signature", "sse-streaming",
-            "parallel-fanout", "postgres-persistence", "cron-scheduling",
-            "input-schema-validation", "token-usage-tracking", "named-env-sets",
-            "per-tenant-quota", "distributed-scheduler-lock", "webhook-retry", "workflow-locking",
-            "event-subscriptions", "rbac", "openapi-docs", "redis-streams-queue", "user-management",
+            "jwt-auth",
+            "webhook-signature",
+            "sse-streaming",
+            "parallel-fanout",
+            "postgres-persistence",
+            "cron-scheduling",
+            "input-schema-validation",
+            "token-usage-tracking",
+            "named-env-sets",
+            "per-tenant-quota",
+            "distributed-scheduler-lock",
+            "webhook-retry",
+            "workflow-locking",
+            "event-subscriptions",
+            "rbac",
+            "openapi-docs",
+            "redis-streams-queue",
+            "user-management",
             "stripe-billing",
         ],
     })
@@ -1062,7 +1308,10 @@ struct QueueDepthResponse {
 async fn queue_depth_handler(State(state): State<AppState>) -> Json<QueueDepthResponse> {
     let stream = crate::cache::keys::exec_queue_stream();
     let queue_depth = state.cache.xlen(stream).await;
-    Json(QueueDepthResponse { queue_depth, stream })
+    Json(QueueDepthResponse {
+        queue_depth,
+        stream,
+    })
 }
 
 // ── Billing helpers ───────────────────────────────────────────────────────────
@@ -1072,12 +1321,16 @@ async fn queue_depth_handler(State(state): State<AppState>) -> Json<QueueDepthRe
 fn spawn_quota_alert(state: &AppState, tenant_id: &str, prev_used: i64) {
     let quota = state.billing_store.get_quota(tenant_id);
     let max = quota.max_executions_per_month;
-    if max == i64::MAX || max == 0 { return; }
+    if max == i64::MAX || max == 0 {
+        return;
+    }
     let t80 = (max as f64 * 0.8) as i64;
     // Only fire once: when usage transitions from below the threshold to at/above it
     let ym = {
         let now = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs();
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
         let days = (now / 86400) as i64;
         let year = 1970 + days / 365;
         let month = (days % 365 / 30).clamp(0, 11) + 1;
@@ -1087,18 +1340,33 @@ fn spawn_quota_alert(state: &AppState, tenant_id: &str, prev_used: i64) {
     let cur = usage.executions_used;
     let crossed_80 = prev_used < t80 && cur >= t80 && cur < max;
     let crossed_100 = prev_used < max && cur >= max;
-    if !crossed_80 && !crossed_100 { return; }
+    if !crossed_80 && !crossed_100 {
+        return;
+    }
     let pct = (cur as f64 / max as f64 * 100.0).min(100.0);
     let tier = quota.tier.clone();
     let tenant_id = tenant_id.to_string();
     let email_client = Arc::clone(&state.email_client);
     // Push in-app notification for quota warning
     let (notif_title, notif_body, notif_level) = if crossed_100 {
-        ("Execution quota exceeded".to_string(), format!("{:.0}% of monthly quota used — new executions are blocked.", pct), "error")
+        (
+            "Execution quota exceeded".to_string(),
+            format!(
+                "{:.0}% of monthly quota used — new executions are blocked.",
+                pct
+            ),
+            "error",
+        )
     } else {
-        ("Execution quota warning".to_string(), format!("{:.0}% of {} monthly quota used.", pct, tier), "warning")
+        (
+            "Execution quota warning".to_string(),
+            format!("{:.0}% of {} monthly quota used.", pct, tier),
+            "warning",
+        )
     };
-    state.notification_store.create(&tenant_id, None, &notif_title, &notif_body, notif_level);
+    state
+        .notification_store
+        .create(&tenant_id, None, &notif_title, &notif_body, notif_level);
     // Use QUOTA_ALERT_EMAIL env var as recipient; log-only if not set
     let recipient = std::env::var("QUOTA_ALERT_EMAIL").unwrap_or_default();
     tokio::spawn(async move {
@@ -1109,7 +1377,9 @@ fn spawn_quota_alert(state: &AppState, tenant_id: &str, prev_used: i64) {
                 "Execution quota threshold crossed — set QUOTA_ALERT_EMAIL to send email"
             );
         } else {
-            email_client.send_quota_warning(&recipient, &tenant_id, cur, max, &tier, pct).await;
+            email_client
+                .send_quota_warning(&recipient, &tenant_id, cur, max, &tier, pct)
+                .await;
         }
     });
 }
@@ -1135,7 +1405,12 @@ async fn billing_status_handler(
     let has_subscription = subscription_id.is_some();
     let stripe_enabled = state.stripe_client.is_some();
     let reset_in_secs = secs_until_quota_reset();
-    Json(BillingStatusResponse { status, has_subscription, stripe_enabled, reset_in_secs })
+    Json(BillingStatusResponse {
+        status,
+        has_subscription,
+        stripe_enabled,
+        reset_in_secs,
+    })
 }
 
 #[derive(Deserialize)]
@@ -1143,7 +1418,9 @@ struct HistoryQuery {
     #[serde(default = "default_history_months")]
     months: usize,
 }
-fn default_history_months() -> usize { 6 }
+fn default_history_months() -> usize {
+    6
+}
 
 async fn billing_history_handler(
     State(state): State<AppState>,
@@ -1165,11 +1442,13 @@ async fn billing_checkout_handler(
     Extension(claims): Extension<Option<Claims>>,
     Json(body): Json<CheckoutBody>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
-    let stripe = state.stripe_client.as_ref()
+    let stripe = state
+        .stripe_client
+        .as_ref()
         .ok_or_else(|| ApiError::bad_request("Stripe not configured"))?;
     let tenant_id = effective_tenant_id(&claims, "");
-    let price_id = tier_to_price_id(&body.tier)
-        .ok_or_else(|| ApiError::bad_request("Unknown tier"))?;
+    let price_id =
+        tier_to_price_id(&body.tier).ok_or_else(|| ApiError::bad_request("Unknown tier"))?;
 
     let (customer_id, _) = state.billing_store.get_stripe_ids(&tenant_id);
     let customer_email = if let Some(uid) = claims.as_ref().and_then(|c| c.user_id.clone()) {
@@ -1183,19 +1462,23 @@ async fn billing_checkout_handler(
         None
     };
 
-    let base = std::env::var("APP_BASE_URL").unwrap_or_else(|_| "http://localhost:3000".to_string());
+    let base =
+        std::env::var("APP_BASE_URL").unwrap_or_else(|_| "http://localhost:3000".to_string());
     let success_url = format!("{base}/account?billing=success");
-    let cancel_url  = format!("{base}/account?billing=canceled");
+    let cancel_url = format!("{base}/account?billing=canceled");
 
-    let url = stripe.create_checkout_session(
-        &price_id,
-        &body.tier,
-        &tenant_id,
-        customer_id.as_deref(),
-        customer_email.as_deref(),
-        &success_url,
-        &cancel_url,
-    ).await.map_err(|e| ApiError::internal(&e))?;
+    let url = stripe
+        .create_checkout_session(
+            &price_id,
+            &body.tier,
+            &tenant_id,
+            customer_id.as_deref(),
+            customer_email.as_deref(),
+            &success_url,
+            &cancel_url,
+        )
+        .await
+        .map_err(|e| ApiError::internal(&e))?;
 
     Ok(Json(serde_json::json!({ "url": url })))
 }
@@ -1204,18 +1487,23 @@ async fn billing_portal_handler(
     State(state): State<AppState>,
     Extension(claims): Extension<Option<Claims>>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
-    let stripe = state.stripe_client.as_ref()
+    let stripe = state
+        .stripe_client
+        .as_ref()
         .ok_or_else(|| ApiError::bad_request("Stripe not configured"))?;
     let tenant_id = effective_tenant_id(&claims, "");
     let (customer_id, _) = state.billing_store.get_stripe_ids(&tenant_id);
-    let customer_id = customer_id
-        .ok_or_else(|| ApiError::bad_request("No Stripe customer found"))?;
+    let customer_id =
+        customer_id.ok_or_else(|| ApiError::bad_request("No Stripe customer found"))?;
 
-    let base = std::env::var("APP_BASE_URL").unwrap_or_else(|_| "http://localhost:3000".to_string());
+    let base =
+        std::env::var("APP_BASE_URL").unwrap_or_else(|_| "http://localhost:3000".to_string());
     let return_url = format!("{base}/account");
 
-    let url = stripe.create_portal_session(&customer_id, &return_url)
-        .await.map_err(|e| ApiError::internal(&e))?;
+    let url = stripe
+        .create_portal_session(&customer_id, &return_url)
+        .await
+        .map_err(|e| ApiError::internal(&e))?;
 
     Ok(Json(serde_json::json!({ "url": url })))
 }
@@ -1248,37 +1536,45 @@ async fn stripe_webhook_handler(
     match event_type {
         "checkout.session.completed" => {
             let tenant_id = obj["metadata"]["tenant_id"].as_str().unwrap_or("");
-            let tier      = obj["metadata"]["tier"].as_str().unwrap_or("pro");
-            let customer  = obj["customer"].as_str();
-            let sub_id    = obj["subscription"].as_str();
+            let tier = obj["metadata"]["tier"].as_str().unwrap_or("pro");
+            let customer = obj["customer"].as_str();
+            let sub_id = obj["subscription"].as_str();
             if !tenant_id.is_empty() {
                 let quota = match tier {
-                    "pro"        => TenantQuota::pro(tenant_id),
-                    "business"   => TenantQuota::business(tenant_id),
+                    "pro" => TenantQuota::pro(tenant_id),
+                    "business" => TenantQuota::business(tenant_id),
                     "enterprise" => TenantQuota::unlimited(tenant_id),
-                    _            => TenantQuota::pro(tenant_id),
+                    _ => TenantQuota::pro(tenant_id),
                 };
                 state.billing_store.set_quota(quota);
-                state.billing_store.set_stripe_ids(tenant_id, customer, sub_id);
-                info!(tenant_id, tier, "Stripe checkout.session.completed → quota upgraded");
+                state
+                    .billing_store
+                    .set_stripe_ids(tenant_id, customer, sub_id);
+                info!(
+                    tenant_id,
+                    tier, "Stripe checkout.session.completed → quota upgraded"
+                );
             }
         }
         "customer.subscription.updated" => {
             let customer = obj["customer"].as_str().unwrap_or("");
-            let sub_id   = obj["id"].as_str();
-            let tier = obj["items"]["data"][0]["price"]["id"].as_str()
+            let sub_id = obj["id"].as_str();
+            let tier = obj["items"]["data"][0]["price"]["id"]
+                .as_str()
                 .and_then(|pid| price_id_to_tier(pid));
             if let Some(tenant_id) = state.billing_store.get_tenant_by_stripe_customer(customer) {
                 if let Some(ref t) = tier {
                     let quota = match t.as_str() {
-                        "pro"        => TenantQuota::pro(&tenant_id),
-                        "business"   => TenantQuota::business(&tenant_id),
+                        "pro" => TenantQuota::pro(&tenant_id),
+                        "business" => TenantQuota::business(&tenant_id),
                         "enterprise" => TenantQuota::unlimited(&tenant_id),
-                        _            => TenantQuota::pro(&tenant_id),
+                        _ => TenantQuota::pro(&tenant_id),
                     };
                     state.billing_store.set_quota(quota);
                 }
-                state.billing_store.set_stripe_ids(&tenant_id, Some(customer), sub_id);
+                state
+                    .billing_store
+                    .set_stripe_ids(&tenant_id, Some(customer), sub_id);
                 info!(tenant_id, "Stripe customer.subscription.updated");
             }
         }
@@ -1286,8 +1582,13 @@ async fn stripe_webhook_handler(
             let customer = obj["customer"].as_str().unwrap_or("");
             if let Some(tenant_id) = state.billing_store.get_tenant_by_stripe_customer(customer) {
                 state.billing_store.set_quota(TenantQuota::free(&tenant_id));
-                state.billing_store.set_stripe_ids(&tenant_id, Some(customer), None);
-                info!(tenant_id, "Stripe customer.subscription.deleted → downgraded to free");
+                state
+                    .billing_store
+                    .set_stripe_ids(&tenant_id, Some(customer), None);
+                info!(
+                    tenant_id,
+                    "Stripe customer.subscription.deleted → downgraded to free"
+                );
             }
         }
         _ => {}
@@ -1309,14 +1610,24 @@ async fn admin_set_quota_handler(
 ) -> Result<Json<TenantQuota>, ApiError> {
     require_write(&claims)?;
     let quota = match body.tier.as_str() {
-        "free"       => TenantQuota::free(&tenant_id),
-        "pro"        => TenantQuota::pro(&tenant_id),
-        "business"   => TenantQuota::business(&tenant_id),
+        "free" => TenantQuota::free(&tenant_id),
+        "pro" => TenantQuota::pro(&tenant_id),
+        "business" => TenantQuota::business(&tenant_id),
         "enterprise" => TenantQuota::unlimited(&tenant_id),
-        other => return Err(ApiError::bad_request(&format!("Unknown tier: {other}. Valid: free, pro, business, enterprise"))),
+        other => {
+            return Err(ApiError::bad_request(&format!(
+                "Unknown tier: {other}. Valid: free, pro, business, enterprise"
+            )))
+        }
     };
     state.billing_store.set_quota(quota.clone());
-    state.audit_store.record(&tenant_id, "billing.quota.updated", "tenant", &tenant_id, None);
+    state.audit_store.record(
+        &tenant_id,
+        "billing.quota.updated",
+        "tenant",
+        &tenant_id,
+        None,
+    );
     Ok(Json(quota))
 }
 
@@ -1378,12 +1689,17 @@ async fn mcp_execute_tool(
                 .workflow_service
                 .list_workflows(&tenant_id, None, Some("published"), Some(100))
                 .await?;
-            let items: Vec<serde_json::Value> = workflows.iter().map(|w| serde_json::json!({
-                "id": w.id,
-                "name": w.name,
-                "description": w.description,
-                "tags": w.tags,
-            })).collect();
+            let items: Vec<serde_json::Value> = workflows
+                .iter()
+                .map(|w| {
+                    serde_json::json!({
+                        "id": w.id,
+                        "name": w.name,
+                        "description": w.description,
+                        "tags": w.tags,
+                    })
+                })
+                .collect();
             Ok(Json(serde_json::json!({ "workflows": items })))
         }
         "execute_workflow" => {
@@ -1396,42 +1712,76 @@ async fn mcp_execute_tool(
                 .and_then(|v| v.get("input"))
                 .map(|v| v.to_string())
                 .unwrap_or_else(|| "{}".to_string());
-            state.billing_store.check_execution_quota(&tenant_id)
-                .map_err(|e| ApiError { status: StatusCode::PAYMENT_REQUIRED, message: e })?;
-            let workflow = state.workflow_service.get_workflow(&tenant_id, workflow_id).await
+            state
+                .billing_store
+                .check_execution_quota(&tenant_id)
+                .map_err(|e| ApiError {
+                    status: StatusCode::PAYMENT_REQUIRED,
+                    message: e,
+                })?;
+            let workflow = state
+                .workflow_service
+                .get_workflow(&tenant_id, workflow_id)
+                .await
                 .or_else(|_| {
                     // Fallback: search by name is not supported in one step; propagate original error
-                    Err(ApiError::not_found(&format!("workflow not found: {workflow_id}")))
+                    Err(ApiError::not_found(&format!(
+                        "workflow not found: {workflow_id}"
+                    )))
                 })?;
-            let version_id = workflow.latest_version_id
+            let version_id = workflow
+                .latest_version_id
                 .ok_or(WorkflowError::NoPublishedVersion)?;
-            let version = state.workflow_service.get_version(&tenant_id, &version_id).await?;
+            let version = state
+                .workflow_service
+                .get_version(&tenant_id, &version_id)
+                .await?;
             let graph = resolve_graph_credentials(
-                version.graph, &state.credential_store, &state.env_store, &tenant_id, DEFAULT_SET,
-            ).await;
-            let record = state.execution_service.start(StartExecutionRequest {
-                tenant_id: tenant_id.clone(),
-                workflow_id: workflow.id,
-                workflow_version_id: version_id,
-                graph,
-                input_json,
-                label: Some("mcp".to_string()),
-                callback_url: None,
-                trigger_type: Some("mcp".to_string()),
-                dry_run: false,
-                retried_from: None,
-            }).await?;
-            let prev_used = state.billing_store.billing_status(&tenant_id).usage.executions_used;
+                version.graph,
+                &state.credential_store,
+                &state.env_store,
+                &tenant_id,
+                DEFAULT_SET,
+            )
+            .await;
+            let record = state
+                .execution_service
+                .start(StartExecutionRequest {
+                    tenant_id: tenant_id.clone(),
+                    workflow_id: workflow.id,
+                    workflow_version_id: version_id,
+                    graph,
+                    input_json,
+                    label: Some("mcp".to_string()),
+                    callback_url: None,
+                    trigger_type: Some("mcp".to_string()),
+                    dry_run: false,
+                    retried_from: None,
+                })
+                .await?;
+            let prev_used = state
+                .billing_store
+                .billing_status(&tenant_id)
+                .usage
+                .executions_used;
             state.billing_store.increment_execution(&tenant_id);
             spawn_quota_alert(&state, &tenant_id, prev_used);
-            state.audit_store.record(&tenant_id, "execution.started.mcp", "execution", &record.id, None);
+            state.audit_store.record(
+                &tenant_id,
+                "execution.started.mcp",
+                "execution",
+                &record.id,
+                None,
+            );
             Ok(Json(serde_json::json!({
                 "execution_id": record.id,
                 "status": format!("{:?}", record.status).to_lowercase(),
                 "workflow_id": record.workflow_id,
             })))
         }
-        other => Err(ApiError::bad_request(&format!("Unknown tool: {other}. Available: list_workflows, execute_workflow"))),
+        other => Err(ApiError::bad_request(&format!(
+            "Unknown tool: {other}. Available: list_workflows, execute_workflow"
+        ))),
     }
 }
 
@@ -1476,15 +1826,26 @@ async fn search_handler(
     let tenant_id = effective_tenant_id(&claims, &supplied);
     let q = params.q.unwrap_or_default().to_lowercase();
     if q.is_empty() {
-        return Ok(Json(SearchResult { workflows: vec![], executions: vec![] }));
+        return Ok(Json(SearchResult {
+            workflows: vec![],
+            executions: vec![],
+        }));
     }
 
-    let workflows = state.workflow_service.list_workflows(&tenant_id, None, None, None).await
+    let workflows = state
+        .workflow_service
+        .list_workflows(&tenant_id, None, None, None)
+        .await
         .map_err(|_| ApiError::bad_request("workflow list failed"))?;
-    let wf_hits: Vec<WorkflowSearchHit> = workflows.into_iter()
+    let wf_hits: Vec<WorkflowSearchHit> = workflows
+        .into_iter()
         .filter(|w| {
             w.name.to_lowercase().contains(&q)
-                || w.description.as_deref().unwrap_or("").to_lowercase().contains(&q)
+                || w.description
+                    .as_deref()
+                    .unwrap_or("")
+                    .to_lowercase()
+                    .contains(&q)
                 || w.tags.iter().any(|t| t.to_lowercase().contains(&q))
         })
         .take(10)
@@ -1496,12 +1857,15 @@ async fn search_handler(
         })
         .collect();
 
-    let executions = state.execution_service.list(&tenant_id).await
+    let executions = state
+        .execution_service
+        .list(&tenant_id)
+        .await
         .map_err(|_| ApiError::bad_request("execution list failed"))?;
-    let exec_hits: Vec<ExecutionSearchHit> = executions.into_iter()
+    let exec_hits: Vec<ExecutionSearchHit> = executions
+        .into_iter()
         .filter(|e| {
-            e.id.starts_with(&q)
-                || e.label.as_deref().unwrap_or("").to_lowercase().contains(&q)
+            e.id.starts_with(&q) || e.label.as_deref().unwrap_or("").to_lowercase().contains(&q)
         })
         .take(10)
         .map(|e| ExecutionSearchHit {
@@ -1512,7 +1876,10 @@ async fn search_handler(
         })
         .collect();
 
-    Ok(Json(SearchResult { workflows: wf_hits, executions: exec_hits }))
+    Ok(Json(SearchResult {
+        workflows: wf_hits,
+        executions: exec_hits,
+    }))
 }
 
 async fn metrics_handler() -> axum::response::Response {
@@ -1531,13 +1898,21 @@ async fn metrics_handler() -> axum::response::Response {
     out.push_str(&format!("af_executions_started_total {started}\n"));
     out.push_str("# HELP af_executions_completed_total Executions completed by outcome\n");
     out.push_str("# TYPE af_executions_completed_total counter\n");
-    out.push_str(&format!("af_executions_completed_total{{outcome=\"succeeded\"}} {succeeded}\n"));
-    out.push_str(&format!("af_executions_completed_total{{outcome=\"failed\"}} {failed}\n"));
-    out.push_str(&format!("af_executions_completed_total{{outcome=\"cancelled\"}} {cancelled}\n"));
+    out.push_str(&format!(
+        "af_executions_completed_total{{outcome=\"succeeded\"}} {succeeded}\n"
+    ));
+    out.push_str(&format!(
+        "af_executions_completed_total{{outcome=\"failed\"}} {failed}\n"
+    ));
+    out.push_str(&format!(
+        "af_executions_completed_total{{outcome=\"cancelled\"}} {cancelled}\n"
+    ));
     out.push_str("# HELP af_executions_running Current number of in-flight executions\n");
     out.push_str("# TYPE af_executions_running gauge\n");
     out.push_str(&format!("af_executions_running {running}\n"));
-    out.push_str("# HELP af_executions_max_concurrent Configured max concurrent executions limit\n");
+    out.push_str(
+        "# HELP af_executions_max_concurrent Configured max concurrent executions limit\n",
+    );
     out.push_str("# TYPE af_executions_max_concurrent gauge\n");
     out.push_str(&format!("af_executions_max_concurrent {max_concurrent}\n"));
     let per_tenant_max = max_executions_per_tenant();
@@ -1561,11 +1936,19 @@ async fn start_execution(
     Json(mut request): Json<StartExecutionRequest>,
 ) -> Result<(StatusCode, Json<ExecutionRecord>), ApiError> {
     if DRAINING.load(Ordering::Relaxed) {
-        return Err(ApiError { status: StatusCode::SERVICE_UNAVAILABLE, message: "Server is shutting down; new executions are not accepted.".to_string() });
+        return Err(ApiError {
+            status: StatusCode::SERVICE_UNAVAILABLE,
+            message: "Server is shutting down; new executions are not accepted.".to_string(),
+        });
     }
     request.tenant_id = effective_tenant_id(&claims, &request.tenant_id);
-    state.billing_store.check_execution_quota(&request.tenant_id)
-        .map_err(|e| ApiError { status: StatusCode::PAYMENT_REQUIRED, message: e })?;
+    state
+        .billing_store
+        .check_execution_quota(&request.tenant_id)
+        .map_err(|e| ApiError {
+            status: StatusCode::PAYMENT_REQUIRED,
+            message: e,
+        })?;
     request.graph = resolve_graph_credentials(
         request.graph,
         &state.credential_store,
@@ -1581,21 +1964,33 @@ async fn start_execution(
         &request.tenant_id,
     )
     .await;
-    let running = state.execution_service.count_all_running().await.unwrap_or(0);
+    let running = state
+        .execution_service
+        .count_all_running()
+        .await
+        .unwrap_or(0);
     if running >= max_concurrent_executions() {
         return Err(ApiError::bad_request(&format!(
             "Too many concurrent executions ({running}/{max}). Try again shortly.",
             max = max_concurrent_executions()
         )));
     }
-    let tenant_running = state.execution_service.count_running_by_tenant(&request.tenant_id).await.unwrap_or(0);
+    let tenant_running = state
+        .execution_service
+        .count_running_by_tenant(&request.tenant_id)
+        .await
+        .unwrap_or(0);
     let per_tenant_max = max_executions_per_tenant();
     if tenant_running >= per_tenant_max {
         return Err(ApiError::bad_request(&format!(
             "Tenant execution limit reached ({tenant_running}/{per_tenant_max} active). Try again when a run completes."
         )));
     }
-    let prev_used = state.billing_store.billing_status(&request.tenant_id).usage.executions_used;
+    let prev_used = state
+        .billing_store
+        .billing_status(&request.tenant_id)
+        .usage
+        .executions_used;
     let record = state.execution_service.start(request).await?;
     info!(execution_id = %record.id, tenant_id = %record.tenant_id, "execution started");
     METRIC_EXEC_STARTED.fetch_add(1, Ordering::Relaxed);
@@ -1603,14 +1998,37 @@ async fn start_execution(
     state.billing_store.increment_execution(&record.tenant_id);
     spawn_quota_alert(&state, &record.tenant_id, prev_used);
     state.audit_store.record(
-        &record.tenant_id, audit_action::EXECUTION_STARTED,
-        "execution", &record.id, None,
+        &record.tenant_id,
+        audit_action::EXECUTION_STARTED,
+        "execution",
+        &record.id,
+        None,
     );
-    fire_event(Arc::clone(&state.subscription_store), record.tenant_id.clone(), EVENT_EXECUTION_STARTED, serde_json::json!({"execution_id": &record.id, "workflow_id": &record.workflow_id, "status": "running"}));
+    fire_event(
+        Arc::clone(&state.subscription_store),
+        record.tenant_id.clone(),
+        EVENT_EXECUTION_STARTED,
+        serde_json::json!({"execution_id": &record.id, "workflow_id": &record.workflow_id, "status": "running"}),
+    );
     match record.status {
-        ExecutionStatus::Succeeded => fire_event(Arc::clone(&state.subscription_store), record.tenant_id.clone(), EVENT_EXECUTION_COMPLETED, serde_json::json!({"execution_id": &record.id, "workflow_id": &record.workflow_id, "status": "succeeded"})),
-        ExecutionStatus::Failed    => fire_event(Arc::clone(&state.subscription_store), record.tenant_id.clone(), EVENT_EXECUTION_FAILED,    serde_json::json!({"execution_id": &record.id, "workflow_id": &record.workflow_id, "status": "failed"})),
-        ExecutionStatus::Cancelled => fire_event(Arc::clone(&state.subscription_store), record.tenant_id.clone(), EVENT_EXECUTION_CANCELLED,  serde_json::json!({"execution_id": &record.id, "workflow_id": &record.workflow_id, "status": "cancelled"})),
+        ExecutionStatus::Succeeded => fire_event(
+            Arc::clone(&state.subscription_store),
+            record.tenant_id.clone(),
+            EVENT_EXECUTION_COMPLETED,
+            serde_json::json!({"execution_id": &record.id, "workflow_id": &record.workflow_id, "status": "succeeded"}),
+        ),
+        ExecutionStatus::Failed => fire_event(
+            Arc::clone(&state.subscription_store),
+            record.tenant_id.clone(),
+            EVENT_EXECUTION_FAILED,
+            serde_json::json!({"execution_id": &record.id, "workflow_id": &record.workflow_id, "status": "failed"}),
+        ),
+        ExecutionStatus::Cancelled => fire_event(
+            Arc::clone(&state.subscription_store),
+            record.tenant_id.clone(),
+            EVENT_EXECUTION_CANCELLED,
+            serde_json::json!({"execution_id": &record.id, "workflow_id": &record.workflow_id, "status": "cancelled"}),
+        ),
         _ => {}
     }
     Ok((StatusCode::ACCEPTED, Json(record)))
@@ -1627,19 +2045,43 @@ async fn start_execution_batch(
     Json(body): Json<BatchStartBody>,
 ) -> Result<(StatusCode, Json<Vec<ExecutionRecord>>), ApiError> {
     if DRAINING.load(Ordering::Relaxed) {
-        return Err(ApiError { status: StatusCode::SERVICE_UNAVAILABLE, message: "Server is shutting down; new executions are not accepted.".to_string() });
+        return Err(ApiError {
+            status: StatusCode::SERVICE_UNAVAILABLE,
+            message: "Server is shutting down; new executions are not accepted.".to_string(),
+        });
     }
     if body.requests.len() > 20 {
-        return Err(ApiError::bad_request("Batch size limited to 20 executions."));
+        return Err(ApiError::bad_request(
+            "Batch size limited to 20 executions.",
+        ));
     }
     let mut results = Vec::with_capacity(body.requests.len());
     for mut req in body.requests {
         req.tenant_id = effective_tenant_id(&claims, &req.tenant_id);
-        req.graph = resolve_graph_credentials(req.graph, &state.credential_store, &state.env_store, &req.tenant_id, DEFAULT_SET).await;
-        req.graph = inject_sub_workflow_graphs(req.graph, &state.workflow_service, &state.credential_store, &req.tenant_id).await;
+        req.graph = resolve_graph_credentials(
+            req.graph,
+            &state.credential_store,
+            &state.env_store,
+            &req.tenant_id,
+            DEFAULT_SET,
+        )
+        .await;
+        req.graph = inject_sub_workflow_graphs(
+            req.graph,
+            &state.workflow_service,
+            &state.credential_store,
+            &req.tenant_id,
+        )
+        .await;
         let record = state.execution_service.start(req).await?;
         METRIC_EXEC_STARTED.fetch_add(1, Ordering::Relaxed);
-        state.audit_store.record(&record.tenant_id, audit_action::EXECUTION_STARTED, "execution", &record.id, None);
+        state.audit_store.record(
+            &record.tenant_id,
+            audit_action::EXECUTION_STARTED,
+            "execution",
+            &record.id,
+            None,
+        );
         results.push(record);
     }
     Ok((StatusCode::ACCEPTED, Json(results)))
@@ -1652,11 +2094,19 @@ async fn start_execution_from_workflow_version(
     Json(mut request): Json<StartWorkflowVersionExecutionRequest>,
 ) -> Result<(StatusCode, Json<ExecutionRecord>), ApiError> {
     if DRAINING.load(Ordering::Relaxed) {
-        return Err(ApiError { status: StatusCode::SERVICE_UNAVAILABLE, message: "Server is shutting down; new executions are not accepted.".to_string() });
+        return Err(ApiError {
+            status: StatusCode::SERVICE_UNAVAILABLE,
+            message: "Server is shutting down; new executions are not accepted.".to_string(),
+        });
     }
     request.tenant_id = effective_tenant_id(&claims, &request.tenant_id);
-    state.billing_store.check_execution_quota(&request.tenant_id)
-        .map_err(|e| ApiError { status: StatusCode::PAYMENT_REQUIRED, message: e })?;
+    state
+        .billing_store
+        .check_execution_quota(&request.tenant_id)
+        .map_err(|e| ApiError {
+            status: StatusCode::PAYMENT_REQUIRED,
+            message: e,
+        })?;
     let workflow_version = state
         .workflow_service
         .get_version(&request.tenant_id, &workflow_version_id)
@@ -1702,12 +2152,19 @@ async fn start_execution_from_workflow_version(
             retried_from: None,
         })
         .await?;
-    let prev_used = state.billing_store.billing_status(&record.tenant_id).usage.executions_used;
+    let prev_used = state
+        .billing_store
+        .billing_status(&record.tenant_id)
+        .usage
+        .executions_used;
     state.billing_store.increment_execution(&record.tenant_id);
     spawn_quota_alert(&state, &record.tenant_id, prev_used);
     state.audit_store.record(
-        &record.tenant_id, audit_action::EXECUTION_STARTED,
-        "execution", &record.id, None,
+        &record.tenant_id,
+        audit_action::EXECUTION_STARTED,
+        "execution",
+        &record.id,
+        None,
     );
     // Fire user notification on failure/success based on workflow creator's prefs
     spawn_execution_notification(&state, &record, &workflow);
@@ -1721,11 +2178,19 @@ async fn start_execution_from_workflow(
     Json(mut request): Json<StartWorkflowExecutionRequest>,
 ) -> Result<(StatusCode, Json<ExecutionRecord>), ApiError> {
     if DRAINING.load(Ordering::Relaxed) {
-        return Err(ApiError { status: StatusCode::SERVICE_UNAVAILABLE, message: "Server is shutting down; new executions are not accepted.".to_string() });
+        return Err(ApiError {
+            status: StatusCode::SERVICE_UNAVAILABLE,
+            message: "Server is shutting down; new executions are not accepted.".to_string(),
+        });
     }
     request.tenant_id = effective_tenant_id(&claims, &request.tenant_id);
-    state.billing_store.check_execution_quota(&request.tenant_id)
-        .map_err(|e| ApiError { status: StatusCode::PAYMENT_REQUIRED, message: e })?;
+    state
+        .billing_store
+        .check_execution_quota(&request.tenant_id)
+        .map_err(|e| ApiError {
+            status: StatusCode::PAYMENT_REQUIRED,
+            message: e,
+        })?;
     let workflow = state
         .workflow_service
         .get_workflow(&request.tenant_id, &workflow_id)
@@ -1758,7 +2223,11 @@ async fn start_execution_from_workflow(
     )
     .await;
     let tenant_id = request.tenant_id.clone();
-    let tenant_running = state.execution_service.count_running_by_tenant(&tenant_id).await.unwrap_or(0);
+    let tenant_running = state
+        .execution_service
+        .count_running_by_tenant(&tenant_id)
+        .await
+        .unwrap_or(0);
     let per_tenant_max = max_executions_per_tenant();
     if tenant_running >= per_tenant_max {
         return Err(ApiError::bad_request(&format!(
@@ -1772,17 +2241,30 @@ async fn start_execution_from_workflow(
             .unwrap_or_default()
             .as_secs()
             .saturating_sub(3600);
-        let recent = state.execution_service.list(&tenant_id).await.unwrap_or_default()
+        let recent = state
+            .execution_service
+            .list(&tenant_id)
+            .await
+            .unwrap_or_default()
             .into_iter()
             .filter(|e| e.workflow_id == workflow_id && e.started_at >= hour_ago)
             .count() as u32;
         if recent >= max_per_hour {
-            return Err(ApiError { status: StatusCode::TOO_MANY_REQUESTS, message: format!("Workflow rate limit reached ({recent}/{max_per_hour} runs in the last hour)") });
+            return Err(ApiError {
+                status: StatusCode::TOO_MANY_REQUESTS,
+                message: format!(
+                    "Workflow rate limit reached ({recent}/{max_per_hour} runs in the last hour)"
+                ),
+            });
         }
     }
     // Per-workflow concurrent execution limit
     if let Some(max_concurrent) = workflow.max_concurrent_runs {
-        let wf_running = state.execution_service.count_running_by_workflow(&tenant_id, &workflow_id).await.unwrap_or(0);
+        let wf_running = state
+            .execution_service
+            .count_running_by_workflow(&tenant_id, &workflow_id)
+            .await
+            .unwrap_or(0);
         if wf_running >= max_concurrent as u64 {
             return Err(ApiError { status: StatusCode::TOO_MANY_REQUESTS, message: format!("Workflow concurrent execution limit reached ({wf_running}/{max_concurrent} active runs)") });
         }
@@ -1802,12 +2284,19 @@ async fn start_execution_from_workflow(
             retried_from: None,
         })
         .await?;
-    let prev_used = state.billing_store.billing_status(&record.tenant_id).usage.executions_used;
+    let prev_used = state
+        .billing_store
+        .billing_status(&record.tenant_id)
+        .usage
+        .executions_used;
     state.billing_store.increment_execution(&record.tenant_id);
     spawn_quota_alert(&state, &record.tenant_id, prev_used);
     state.audit_store.record(
-        &record.tenant_id, audit_action::EXECUTION_STARTED,
-        "execution", &record.id, None,
+        &record.tenant_id,
+        audit_action::EXECUTION_STARTED,
+        "execution",
+        &record.id,
+        None,
     );
     spawn_execution_notification(&state, &record, &workflow_for_notif);
     Ok((StatusCode::ACCEPTED, Json(record)))
@@ -1849,16 +2338,33 @@ async fn inject_sub_workflow_graphs(
             Some(c) => c,
             None => continue,
         };
-        let workflow_id = match config.get("workflow_id").and_then(|v| v.as_str()).map(str::to_owned) {
+        let workflow_id = match config
+            .get("workflow_id")
+            .and_then(|v| v.as_str())
+            .map(str::to_owned)
+        {
             Some(id) => id,
             None => continue,
         };
 
-        let Ok(workflow) = workflow_service.get_workflow(tenant_id, &workflow_id).await else { continue };
-        let Some(version_id) = workflow.latest_version_id else { continue };
-        let Ok(version) = workflow_service.get_version(tenant_id, &version_id).await else { continue };
+        let Ok(workflow) = workflow_service.get_workflow(tenant_id, &workflow_id).await else {
+            continue;
+        };
+        let Some(version_id) = workflow.latest_version_id else {
+            continue;
+        };
+        let Ok(version) = workflow_service.get_version(tenant_id, &version_id).await else {
+            continue;
+        };
 
-        let sub_graph = resolve_graph_credentials(version.graph, credential_store, &env_store, tenant_id, DEFAULT_SET).await;
+        let sub_graph = resolve_graph_credentials(
+            version.graph,
+            credential_store,
+            &env_store,
+            tenant_id,
+            DEFAULT_SET,
+        )
+        .await;
         let sub_graph_json = match serde_json::to_value(&sub_graph) {
             Ok(v) => v,
             Err(_) => continue,
@@ -1879,10 +2385,21 @@ async fn list_executions(
     let records = state.execution_service.list(&tenant_id).await?;
     let filtered: Vec<_> = records
         .into_iter()
-        .filter(|r| query.workflow_id.as_ref().map_or(true, |id| &r.workflow_id == id))
-        .filter(|r| query.label.as_ref().map_or(true, |l| r.label.as_deref() == Some(l.as_str())))
-        .filter(|r| query.status.as_ref().map_or(true, |s| {
-            format!("{:?}", r.status).to_lowercase() == s.to_lowercase() ||
+        .filter(|r| {
+            query
+                .workflow_id
+                .as_ref()
+                .map_or(true, |id| &r.workflow_id == id)
+        })
+        .filter(|r| {
+            query
+                .label
+                .as_ref()
+                .map_or(true, |l| r.label.as_deref() == Some(l.as_str()))
+        })
+        .filter(|r| {
+            query.status.as_ref().map_or(true, |s| {
+                format!("{:?}", r.status).to_lowercase() == s.to_lowercase() ||
             // match the canonical string forms too
             matches!((&r.status, s.as_str()),
                 (execution_core::ExecutionStatus::Running, "running") |
@@ -1891,12 +2408,17 @@ async fn list_executions(
                 (execution_core::ExecutionStatus::Failed, "failed") |
                 (execution_core::ExecutionStatus::Cancelled, "cancelled")
             )
-        }))
-        .filter(|r| query.search.as_ref().map_or(true, |s| {
-            let s = s.to_lowercase();
-            r.id.to_lowercase().starts_with(&s) ||
-            r.label.as_deref().map_or(false, |l| l.to_lowercase().contains(&s))
-        }))
+            })
+        })
+        .filter(|r| {
+            query.search.as_ref().map_or(true, |s| {
+                let s = s.to_lowercase();
+                r.id.to_lowercase().starts_with(&s)
+                    || r.label
+                        .as_deref()
+                        .map_or(false, |l| l.to_lowercase().contains(&s))
+            })
+        })
         .collect();
     let total = filtered.len();
     let offset = query.offset.unwrap_or(0);
@@ -1930,12 +2452,16 @@ async fn list_executions_stream(
             let filtered: Vec<_> = records
                 .into_iter()
                 .filter(|r| {
-                    query.workflow_id.as_ref().map_or(true, |id| &r.workflow_id == id)
+                    query
+                        .workflow_id
+                        .as_ref()
+                        .map_or(true, |id| &r.workflow_id == id)
                 })
                 .filter(|r| {
-                    query.label.as_ref().map_or(true, |l| {
-                        r.label.as_deref() == Some(l.as_str())
-                    })
+                    query
+                        .label
+                        .as_ref()
+                        .map_or(true, |l| r.label.as_deref() == Some(l.as_str()))
                 })
                 .collect();
 
@@ -1983,12 +2509,29 @@ async fn delete_execution(
 ) -> Result<StatusCode, ApiError> {
     let tenant_id = effective_tenant_id(&claims, &query.tenant_id);
     // Only allow deleting terminal-state executions
-    let record = state.execution_service.get(&tenant_id, &execution_id).await?;
-    if matches!(record.status, ExecutionStatus::Running | ExecutionStatus::WaitingApproval) {
-        return Err(ApiError::bad_request("Cannot delete a running execution. Cancel it first."));
+    let record = state
+        .execution_service
+        .get(&tenant_id, &execution_id)
+        .await?;
+    if matches!(
+        record.status,
+        ExecutionStatus::Running | ExecutionStatus::WaitingApproval
+    ) {
+        return Err(ApiError::bad_request(
+            "Cannot delete a running execution. Cancel it first.",
+        ));
     }
-    state.execution_service.delete(&tenant_id, &execution_id).await?;
-    state.audit_store.record(&tenant_id, "EXECUTION_DELETED", "execution", &execution_id, None);
+    state
+        .execution_service
+        .delete(&tenant_id, &execution_id)
+        .await?;
+    state.audit_store.record(
+        &tenant_id,
+        "EXECUTION_DELETED",
+        "execution",
+        &execution_id,
+        None,
+    );
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -2006,7 +2549,10 @@ async fn patch_execution_label(
     Json(body): Json<PatchExecutionBody>,
 ) -> Result<StatusCode, ApiError> {
     let tenant_id = effective_tenant_id(&claims, &body.tenant_id);
-    state.execution_service.set_label(&tenant_id, &execution_id, body.label).await?;
+    state
+        .execution_service
+        .set_label(&tenant_id, &execution_id, body.label)
+        .await?;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -2025,7 +2571,10 @@ async fn set_execution_note_handler(
 ) -> Result<impl IntoResponse, ApiError> {
     require_write(&claims)?;
     let tenant_id = effective_tenant_id(&claims, &body.tenant_id);
-    state.execution_service.set_note(&tenant_id, &execution_id, body.note.clone()).await?;
+    state
+        .execution_service
+        .set_note(&tenant_id, &execution_id, body.note.clone())
+        .await?;
     Ok(Json(serde_json::json!({ "ok": true, "note": body.note })))
 }
 
@@ -2037,7 +2586,10 @@ async fn star_execution_handler(
 ) -> Result<impl IntoResponse, ApiError> {
     require_write(&claims)?;
     let tenant_id = effective_tenant_id(&claims, &query.tenant_id);
-    state.execution_service.set_starred(&tenant_id, &execution_id, true).await?;
+    state
+        .execution_service
+        .set_starred(&tenant_id, &execution_id, true)
+        .await?;
     Ok(Json(serde_json::json!({ "ok": true, "starred": true })))
 }
 
@@ -2049,7 +2601,10 @@ async fn unstar_execution_handler(
 ) -> Result<impl IntoResponse, ApiError> {
     require_write(&claims)?;
     let tenant_id = effective_tenant_id(&claims, &query.tenant_id);
-    state.execution_service.set_starred(&tenant_id, &execution_id, false).await?;
+    state
+        .execution_service
+        .set_starred(&tenant_id, &execution_id, false)
+        .await?;
     Ok(Json(serde_json::json!({ "ok": true, "starred": false })))
 }
 
@@ -2082,7 +2637,11 @@ async fn execution_events(
             );
 
             if let Ok(data) = serde_json::to_string(&record) {
-                if tx.send(Ok(Event::default().event("update").data(data))).await.is_err() {
+                if tx
+                    .send(Ok(Event::default().event("update").data(data)))
+                    .await
+                    .is_err()
+                {
                     break;
                 }
             }
@@ -2120,9 +2679,14 @@ async fn rollback_workflow_version(
 ) -> Result<(StatusCode, Json<WorkflowVersionRecord>), ApiError> {
     require_write(&claims)?;
     let tenant_id = effective_tenant_id(&claims, &query.tenant_id);
-    let source = state.workflow_service.get_version(&tenant_id, &version_id).await?;
+    let source = state
+        .workflow_service
+        .get_version(&tenant_id, &version_id)
+        .await?;
     if source.workflow_id != workflow_id {
-        return Err(ApiError::not_found("workflow version not found for this workflow"));
+        return Err(ApiError::not_found(
+            "workflow version not found for this workflow",
+        ));
     }
     let new_version = state
         .workflow_service
@@ -2137,8 +2701,11 @@ async fn rollback_workflow_version(
         )
         .await?;
     state.audit_store.record(
-        &tenant_id, "workflow.version.rollback",
-        "workflow_version", &new_version.id, None,
+        &tenant_id,
+        "workflow.version.rollback",
+        "workflow_version",
+        &new_version.id,
+        None,
     );
     Ok((StatusCode::CREATED, Json(new_version)))
 }
@@ -2155,8 +2722,11 @@ async fn create_workflow(
     }
     let record = state.workflow_service.create_workflow(request).await?;
     state.audit_store.record(
-        &record.tenant_id, audit_action::WORKFLOW_CREATED,
-        "workflow", &record.id, None,
+        &record.tenant_id,
+        audit_action::WORKFLOW_CREATED,
+        "workflow",
+        &record.id,
+        None,
     );
     Ok((StatusCode::CREATED, Json(record)))
 }
@@ -2228,14 +2798,20 @@ async fn update_workflow(
         .update_workflow(&workflow_id, request)
         .await?;
     state.audit_store.record(
-        &tenant_id, audit_action::WORKFLOW_UPDATED,
-        "workflow", &workflow_id, None,
+        &tenant_id,
+        audit_action::WORKFLOW_UPDATED,
+        "workflow",
+        &workflow_id,
+        None,
     );
     if tags_changed && !record.tags.is_empty() {
         let tag_detail = serde_json::Value::String(record.tags.join(","));
         state.audit_store.record(
-            &tenant_id, audit_action::WORKFLOW_TAGGED,
-            "workflow", &workflow_id, Some(tag_detail),
+            &tenant_id,
+            audit_action::WORKFLOW_TAGGED,
+            "workflow",
+            &workflow_id,
+            Some(tag_detail),
         );
     }
     Ok(Json(record))
@@ -2258,14 +2834,20 @@ async fn archive_workflow(
     if let Some(version_id) = &record.latest_version_id {
         if state.schedule_store.unregister(version_id) {
             state.audit_store.record(
-                &tenant_id, audit_action::SCHEDULE_REMOVED,
-                "workflow_version", version_id, None,
+                &tenant_id,
+                audit_action::SCHEDULE_REMOVED,
+                "workflow_version",
+                version_id,
+                None,
             );
         }
     }
     state.audit_store.record(
-        &tenant_id, audit_action::WORKFLOW_ARCHIVED,
-        "workflow", &workflow_id, None,
+        &tenant_id,
+        audit_action::WORKFLOW_ARCHIVED,
+        "workflow",
+        &workflow_id,
+        None,
     );
     Ok(Json(record))
 }
@@ -2284,8 +2866,11 @@ async fn restore_workflow(
         .restore_workflow(&workflow_id, request)
         .await?;
     state.audit_store.record(
-        &tenant_id, audit_action::WORKFLOW_RESTORED,
-        "workflow", &workflow_id, None,
+        &tenant_id,
+        audit_action::WORKFLOW_RESTORED,
+        "workflow",
+        &workflow_id,
+        None,
     );
     Ok(Json(record))
 }
@@ -2306,8 +2891,11 @@ async fn pin_workflow(
         .pin_workflow(&tenant_id, &workflow_id)
         .await?;
     state.audit_store.record(
-        &tenant_id, audit_action::WORKFLOW_PINNED,
-        "workflow", &workflow_id, None,
+        &tenant_id,
+        audit_action::WORKFLOW_PINNED,
+        "workflow",
+        &workflow_id,
+        None,
     );
     Ok(Json(record))
 }
@@ -2328,8 +2916,11 @@ async fn unpin_workflow(
         .unpin_workflow(&tenant_id, &workflow_id)
         .await?;
     state.audit_store.record(
-        &tenant_id, audit_action::WORKFLOW_UNPINNED,
-        "workflow", &workflow_id, None,
+        &tenant_id,
+        audit_action::WORKFLOW_UNPINNED,
+        "workflow",
+        &workflow_id,
+        None,
     );
     Ok(Json(record))
 }
@@ -2345,8 +2936,17 @@ async fn lock_workflow_handler(
         &claims,
         body.get("tenant_id").and_then(|v| v.as_str()).unwrap_or(""),
     );
-    let record = state.workflow_service.lock_workflow(&tenant_id, &workflow_id).await?;
-    state.audit_store.record(&tenant_id, audit_action::WORKFLOW_LOCKED, "workflow", &workflow_id, None);
+    let record = state
+        .workflow_service
+        .lock_workflow(&tenant_id, &workflow_id)
+        .await?;
+    state.audit_store.record(
+        &tenant_id,
+        audit_action::WORKFLOW_LOCKED,
+        "workflow",
+        &workflow_id,
+        None,
+    );
     Ok(Json(record))
 }
 
@@ -2361,8 +2961,17 @@ async fn unlock_workflow_handler(
         &claims,
         body.get("tenant_id").and_then(|v| v.as_str()).unwrap_or(""),
     );
-    let record = state.workflow_service.unlock_workflow(&tenant_id, &workflow_id).await?;
-    state.audit_store.record(&tenant_id, audit_action::WORKFLOW_UNLOCKED, "workflow", &workflow_id, None);
+    let record = state
+        .workflow_service
+        .unlock_workflow(&tenant_id, &workflow_id)
+        .await?;
+    state.audit_store.record(
+        &tenant_id,
+        audit_action::WORKFLOW_UNLOCKED,
+        "workflow",
+        &workflow_id,
+        None,
+    );
     Ok(Json(record))
 }
 
@@ -2381,13 +2990,19 @@ async fn set_workflow_visibility_handler(
 ) -> Result<Json<WorkflowRecord>, ApiError> {
     require_write(&claims)?;
     body.tenant_id = effective_tenant_id(&claims, &body.tenant_id);
-    let existing = state.workflow_service.get_workflow(&body.tenant_id, &workflow_id).await?;
+    let existing = state
+        .workflow_service
+        .get_workflow(&body.tenant_id, &workflow_id)
+        .await?;
     let caller_user_id = claims.as_ref().and_then(|c| c.user_id.clone());
     let caller_role = claims.as_ref().map(|c| c.role.as_str()).unwrap_or("");
     if caller_role != "admin" && existing.created_by.as_deref() != caller_user_id.as_deref() {
-        return Err(ApiError::forbidden("Only the creator or an admin can change workflow visibility"));
+        return Err(ApiError::forbidden(
+            "Only the creator or an admin can change workflow visibility",
+        ));
     }
-    let record = state.workflow_service
+    let record = state
+        .workflow_service
         .set_workflow_visibility(&body.tenant_id, &workflow_id, &body.visibility)
         .await?;
     Ok(Json(record))
@@ -2408,22 +3023,28 @@ async fn move_workflow_folder(
 ) -> Result<Json<WorkflowRecord>, ApiError> {
     require_write(&claims)?;
     body.tenant_id = effective_tenant_id(&claims, &body.tenant_id);
-    let current = state.workflow_service.get_workflow(&body.tenant_id, &workflow_id).await?;
-    let record = state.workflow_service.update_workflow(
-        &workflow_id,
-        UpdateWorkflowRequest {
-            tenant_id: body.tenant_id.clone(),
-            name: current.name,
-            tags: None,
-            description: None,
-            readme: None,
-            folder: Some(body.folder.unwrap_or_default()).filter(|s| !s.is_empty()),
-            sla_seconds: None,
-            max_runs_per_hour: None,
-            max_concurrent_runs: None,
-            budget_usd: None,
-        },
-    ).await?;
+    let current = state
+        .workflow_service
+        .get_workflow(&body.tenant_id, &workflow_id)
+        .await?;
+    let record = state
+        .workflow_service
+        .update_workflow(
+            &workflow_id,
+            UpdateWorkflowRequest {
+                tenant_id: body.tenant_id.clone(),
+                name: current.name,
+                tags: None,
+                description: None,
+                readme: None,
+                folder: Some(body.folder.unwrap_or_default()).filter(|s| !s.is_empty()),
+                sla_seconds: None,
+                max_runs_per_hour: None,
+                max_concurrent_runs: None,
+                budget_usd: None,
+            },
+        )
+        .await?;
     Ok(Json(record))
 }
 
@@ -2442,14 +3063,36 @@ async fn workflow_stats_handler(
     Path(workflow_id): Path<String>,
     Query(query): Query<std::collections::HashMap<String, String>>,
 ) -> Result<Json<WorkflowStats>, ApiError> {
-    let tenant_id = effective_tenant_id(&claims, query.get("tenant_id").map(|s| s.as_str()).unwrap_or(""));
+    let tenant_id = effective_tenant_id(
+        &claims,
+        query.get("tenant_id").map(|s| s.as_str()).unwrap_or(""),
+    );
     let records = state.execution_service.list(&tenant_id).await?;
-    let wf_execs: Vec<_> = records.into_iter().filter(|r| r.workflow_id == workflow_id).collect();
-    let total     = wf_execs.len();
-    let succeeded = wf_execs.iter().filter(|r| matches!(r.status, execution_core::ExecutionStatus::Succeeded)).count();
-    let failed    = wf_execs.iter().filter(|r| matches!(r.status, execution_core::ExecutionStatus::Failed)).count();
-    let running   = wf_execs.iter().filter(|r| matches!(r.status, execution_core::ExecutionStatus::Running | execution_core::ExecutionStatus::WaitingApproval)).count();
-    let durations: Vec<f64> = wf_execs.iter()
+    let wf_execs: Vec<_> = records
+        .into_iter()
+        .filter(|r| r.workflow_id == workflow_id)
+        .collect();
+    let total = wf_execs.len();
+    let succeeded = wf_execs
+        .iter()
+        .filter(|r| matches!(r.status, execution_core::ExecutionStatus::Succeeded))
+        .count();
+    let failed = wf_execs
+        .iter()
+        .filter(|r| matches!(r.status, execution_core::ExecutionStatus::Failed))
+        .count();
+    let running = wf_execs
+        .iter()
+        .filter(|r| {
+            matches!(
+                r.status,
+                execution_core::ExecutionStatus::Running
+                    | execution_core::ExecutionStatus::WaitingApproval
+            )
+        })
+        .count();
+    let durations: Vec<f64> = wf_execs
+        .iter()
         .filter_map(|r| r.finished_at.map(|f| (f as f64) - (r.started_at as f64)))
         .filter(|&d| d >= 0.0)
         .collect();
@@ -2458,7 +3101,13 @@ async fn workflow_stats_handler(
     } else {
         Some(durations.iter().sum::<f64>() / durations.len() as f64)
     };
-    Ok(Json(WorkflowStats { total, succeeded, failed, running, avg_duration_secs }))
+    Ok(Json(WorkflowStats {
+        total,
+        succeeded,
+        failed,
+        running,
+        avg_duration_secs,
+    }))
 }
 
 #[derive(serde::Serialize)]
@@ -2476,17 +3125,30 @@ async fn workflow_estimate_handler(
     Path(workflow_id): Path<String>,
     Query(query): Query<std::collections::HashMap<String, String>>,
 ) -> Json<WorkflowEstimate> {
-    let tenant_id = effective_tenant_id(&claims, query.get("tenant_id").map(|s| s.as_str()).unwrap_or(""));
-    let records = state.execution_service.list(&tenant_id).await.unwrap_or_default();
-    let mut durations: Vec<f64> = records.into_iter()
-        .filter(|r| r.workflow_id == workflow_id && matches!(r.status, execution_core::ExecutionStatus::Succeeded))
+    let tenant_id = effective_tenant_id(
+        &claims,
+        query.get("tenant_id").map(|s| s.as_str()).unwrap_or(""),
+    );
+    let records = state
+        .execution_service
+        .list(&tenant_id)
+        .await
+        .unwrap_or_default();
+    let mut durations: Vec<f64> = records
+        .into_iter()
+        .filter(|r| {
+            r.workflow_id == workflow_id
+                && matches!(r.status, execution_core::ExecutionStatus::Succeeded)
+        })
         .filter_map(|r| r.finished_at.map(|f| (f as f64) - (r.started_at as f64)))
         .filter(|&d| d >= 0.0)
         .collect();
     durations.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
     let n = durations.len();
     let percentile = |p: f64| -> Option<f64> {
-        if n == 0 { return None; }
+        if n == 0 {
+            return None;
+        }
         let idx = ((n as f64) * p).floor() as usize;
         Some(durations[idx.min(n - 1)])
     };
@@ -2516,9 +3178,19 @@ async fn workflow_node_stats_handler(
     Path(workflow_id): Path<String>,
     Query(query): Query<std::collections::HashMap<String, String>>,
 ) -> Json<Vec<NodeStat>> {
-    let tenant_id = effective_tenant_id(&claims, query.get("tenant_id").map(|s| s.as_str()).unwrap_or(""));
-    let records = state.execution_service.list(&tenant_id).await.unwrap_or_default();
-    let wf_execs: Vec<_> = records.into_iter().filter(|r| r.workflow_id == workflow_id).collect();
+    let tenant_id = effective_tenant_id(
+        &claims,
+        query.get("tenant_id").map(|s| s.as_str()).unwrap_or(""),
+    );
+    let records = state
+        .execution_service
+        .list(&tenant_id)
+        .await
+        .unwrap_or_default();
+    let wf_execs: Vec<_> = records
+        .into_iter()
+        .filter(|r| r.workflow_id == workflow_id)
+        .collect();
 
     let mut map: HashMap<String, NodeStat> = HashMap::new();
     let mut durations: HashMap<String, Vec<f64>> = HashMap::new();
@@ -2529,7 +3201,10 @@ async fn workflow_node_stats_handler(
                 let st = map.entry(nr.node_id.clone()).or_insert(NodeStat {
                     node_id: nr.node_id.clone(),
                     node_type: nr.node_type.clone(),
-                    total: 0, succeeded: 0, failed: 0, skipped: 0,
+                    total: 0,
+                    succeeded: 0,
+                    failed: 0,
+                    skipped: 0,
                     avg_duration_ms: None,
                 });
                 st.total += 1;
@@ -2540,7 +3215,10 @@ async fn workflow_node_stats_handler(
                     _ => {}
                 }
                 if nr.duration_ms > 0 {
-                    durations.entry(nr.node_id.clone()).or_default().push(nr.duration_ms as f64);
+                    durations
+                        .entry(nr.node_id.clone())
+                        .or_default()
+                        .push(nr.duration_ms as f64);
                 }
             }
         }
@@ -2565,7 +3243,10 @@ async fn create_workflow_version(
 ) -> Result<(StatusCode, Json<WorkflowVersionRecord>), ApiError> {
     require_write(&claims)?;
     request.tenant_id = effective_tenant_id(&claims, &request.tenant_id);
-    let wf = state.workflow_service.get_workflow(&request.tenant_id, &workflow_id).await?;
+    let wf = state
+        .workflow_service
+        .get_workflow(&request.tenant_id, &workflow_id)
+        .await?;
     if wf.locked {
         return Err(WorkflowError::LockedWorkflow.into());
     }
@@ -2610,13 +3291,19 @@ async fn publish_workflow_version(
             paused: false,
         });
         state.audit_store.record(
-            &request.tenant_id, audit_action::SCHEDULE_REGISTERED,
-            "workflow_version", &record.id, None,
+            &request.tenant_id,
+            audit_action::SCHEDULE_REGISTERED,
+            "workflow_version",
+            &record.id,
+            None,
         );
     }
     state.audit_store.record(
-        &request.tenant_id, audit_action::WORKFLOW_PUBLISHED,
-        "workflow_version", &record.id, None,
+        &request.tenant_id,
+        audit_action::WORKFLOW_PUBLISHED,
+        "workflow_version",
+        &record.id,
+        None,
     );
 
     Ok(Json(record))
@@ -2656,13 +3343,20 @@ async fn approve_execution(
                 message: "NoApprovalPending".to_string(),
             },
         })?;
-    let comment_meta = body.comment.as_ref().map(|c| serde_json::json!({ "comment": c }));
+    let comment_meta = body
+        .comment
+        .as_ref()
+        .map(|c| serde_json::json!({ "comment": c }));
     state.audit_store.record(
         body.tenant_id.as_deref().unwrap_or(""),
         audit_action::EXECUTION_APPROVED,
-        "execution", &execution_id, comment_meta,
+        "execution",
+        &execution_id,
+        comment_meta,
     );
-    Ok(Json(serde_json::json!({ "ok": true, "comment": body.comment })))
+    Ok(Json(
+        serde_json::json!({ "ok": true, "comment": body.comment }),
+    ))
 }
 
 async fn reject_execution(
@@ -2680,13 +3374,20 @@ async fn reject_execution(
                 message: "NoApprovalPending".to_string(),
             },
         })?;
-    let comment_meta = body.comment.as_ref().map(|c| serde_json::json!({ "comment": c }));
+    let comment_meta = body
+        .comment
+        .as_ref()
+        .map(|c| serde_json::json!({ "comment": c }));
     state.audit_store.record(
         body.tenant_id.as_deref().unwrap_or(""),
         audit_action::EXECUTION_REJECTED,
-        "execution", &execution_id, comment_meta,
+        "execution",
+        &execution_id,
+        comment_meta,
     );
-    Ok(Json(serde_json::json!({ "ok": true, "comment": body.comment })))
+    Ok(Json(
+        serde_json::json!({ "ok": true, "comment": body.comment }),
+    ))
 }
 
 async fn cancel_execution(
@@ -2707,7 +3408,9 @@ async fn cancel_execution(
     state.audit_store.record(
         &tenant_id,
         audit_action::EXECUTION_CANCELLED,
-        "execution", &execution_id, None,
+        "execution",
+        &execution_id,
+        None,
     );
     Ok(Json(serde_json::json!({ "ok": true })))
 }
@@ -2725,7 +3428,8 @@ async fn cancel_all_running_executions(
     state.audit_store.record(
         &tenant_id,
         audit_action::EXECUTION_CANCELLED,
-        "execution", "*",
+        "execution",
+        "*",
         Some(serde_json::json!({ "bulk_cancel": count })),
     );
     Ok(Json(serde_json::json!({ "cancelled": count })))
@@ -2749,7 +3453,10 @@ async fn retry_execution(
             workflow_id: original.workflow_id.clone(),
             workflow_version_id: original.workflow_version_id.clone(),
             graph: original.graph.clone(),
-            input_json: body.input_json.clone().unwrap_or_else(|| original.input_json.clone()),
+            input_json: body
+                .input_json
+                .clone()
+                .unwrap_or_else(|| original.input_json.clone()),
             label: body.label.clone().or_else(|| original.label.clone()),
             callback_url: None,
             trigger_type: Some("retry".to_string()),
@@ -2760,7 +3467,8 @@ async fn retry_execution(
     state.audit_store.record(
         &tenant_id,
         audit_action::EXECUTION_RETRIED,
-        "execution", &record.id,
+        "execution",
+        &record.id,
         Some(serde_json::json!({ "retried_from": execution_id })),
     );
     Ok((StatusCode::CREATED, Json(record)))
@@ -2773,7 +3481,11 @@ async fn create_webhook(
     Json(mut body): Json<CreateWebhookBody>,
 ) -> Result<Json<WebhookResponse>, ApiError> {
     body.tenant_id = effective_tenant_id(&claims, &body.tenant_id);
-    match state.webhook_store.get_by_version(&workflow_version_id).await {
+    match state
+        .webhook_store
+        .get_by_version(&workflow_version_id)
+        .await
+    {
         Ok(Some(existing)) => {
             return Ok(Json(WebhookResponse {
                 url: format!("/v1/webhooks/{}", existing.token),
@@ -2822,7 +3534,10 @@ async fn trigger_webhook(
     body: Bytes,
 ) -> Result<(StatusCode, Json<ExecutionRecord>), ApiError> {
     if DRAINING.load(Ordering::Relaxed) {
-        return Err(ApiError { status: StatusCode::SERVICE_UNAVAILABLE, message: "Server is shutting down; new executions are not accepted.".to_string() });
+        return Err(ApiError {
+            status: StatusCode::SERVICE_UNAVAILABLE,
+            message: "Server is shutting down; new executions are not accepted.".to_string(),
+        });
     }
     let webhook = state
         .webhook_store
@@ -2836,8 +3551,13 @@ async fn trigger_webhook(
     let delivery_store = state.webhook_store.clone();
 
     let inner_result: Result<ExecutionRecord, ApiError> = async {
-        state.billing_store.check_execution_quota(&webhook.tenant_id)
-            .map_err(|e| ApiError { status: StatusCode::PAYMENT_REQUIRED, message: e })?;
+        state
+            .billing_store
+            .check_execution_quota(&webhook.tenant_id)
+            .map_err(|e| ApiError {
+                status: StatusCode::PAYMENT_REQUIRED,
+                message: e,
+            })?;
 
         // Replay-attack protection: reject requests where the timestamp header is
         // absent (when a secret is set) or outside a ±5-minute window.
@@ -2893,7 +3613,10 @@ async fn trigger_webhook(
 
         // Per-webhook rate limit (in-memory sliding window)
         if let Some(max_per_min) = webhook.max_calls_per_minute {
-            if !state.rate_limiter.check_with_limit(&format!("wh:{}", &webhook.token), max_per_min) {
+            if !state
+                .rate_limiter
+                .check_with_limit(&format!("wh:{}", &webhook.token), max_per_min)
+            {
                 return Err(ApiError {
                     status: StatusCode::TOO_MANY_REQUESTS,
                     message: format!("Webhook rate limit exceeded ({max_per_min}/min)"),
@@ -2904,7 +3627,8 @@ async fn trigger_webhook(
         // Evaluate optional condition expression against payload
         if let Some(cond) = &webhook.condition_expr {
             if !cond.is_empty() {
-                let payload: serde_json::Value = serde_json::from_str(&input_json).unwrap_or(serde_json::Value::Null);
+                let payload: serde_json::Value =
+                    serde_json::from_str(&input_json).unwrap_or(serde_json::Value::Null);
                 if !crate::webhook::eval_condition(cond, &payload) {
                     // Condition not met — accepted but no execution started (202 Accepted)
                     return Err(ApiError {
@@ -2951,19 +3675,29 @@ async fn trigger_webhook(
                 retried_from: None,
             })
             .await?;
-        let prev_used = state.billing_store.billing_status(&record.tenant_id).usage.executions_used;
+        let prev_used = state
+            .billing_store
+            .billing_status(&record.tenant_id)
+            .usage
+            .executions_used;
         state.billing_store.increment_execution(&record.tenant_id);
         spawn_quota_alert(&state, &record.tenant_id, prev_used);
         state.audit_store.record(
-            &record.tenant_id, audit_action::EXECUTION_STARTED,
-            "execution", &record.id, None,
+            &record.tenant_id,
+            audit_action::EXECUTION_STARTED,
+            "execution",
+            &record.id,
+            None,
         );
         Ok(record)
-    }.await;
+    }
+    .await;
 
     // Record delivery outcome regardless of success or failure
     let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs() as i64;
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs() as i64;
     let delivery = crate::webhook::WebhookDelivery {
         id: uuid::Uuid::new_v4().to_string(),
         webhook_token: delivery_token,
@@ -3004,7 +3738,9 @@ async fn pause_schedule_handler(
     require_write(&claims)?;
     let found = state.schedule_store.set_paused(&version_id, true);
     if found {
-        Ok(Json(serde_json::json!({"ok": true, "paused": true, "workflow_version_id": version_id})))
+        Ok(Json(
+            serde_json::json!({"ok": true, "paused": true, "workflow_version_id": version_id}),
+        ))
     } else {
         Err(ApiError::not_found("schedule"))
     }
@@ -3018,7 +3754,9 @@ async fn resume_schedule_handler(
     require_write(&claims)?;
     let found = state.schedule_store.set_paused(&version_id, false);
     if found {
-        Ok(Json(serde_json::json!({"ok": true, "paused": false, "workflow_version_id": version_id})))
+        Ok(Json(
+            serde_json::json!({"ok": true, "paused": false, "workflow_version_id": version_id}),
+        ))
     } else {
         Err(ApiError::not_found("schedule"))
     }
@@ -3081,8 +3819,11 @@ async fn create_credential(
         .create(&body.tenant_id, &body.name, &body.value)
         .await?;
     state.audit_store.record(
-        &body.tenant_id, audit_action::CREDENTIAL_CREATED,
-        "credential", &summary.id, None,
+        &body.tenant_id,
+        audit_action::CREDENTIAL_CREATED,
+        "credential",
+        &summary.id,
+        None,
     );
     Ok((StatusCode::CREATED, Json(summary)))
 }
@@ -3095,10 +3836,16 @@ async fn delete_credential(
 ) -> Result<StatusCode, ApiError> {
     require_write(&claims)?;
     let tenant_id = effective_tenant_id(&claims, &query.tenant_id);
-    state.credential_store.delete(&tenant_id, &credential_id).await?;
+    state
+        .credential_store
+        .delete(&tenant_id, &credential_id)
+        .await?;
     state.audit_store.record(
-        &tenant_id, audit_action::CREDENTIAL_DELETED,
-        "credential", &credential_id, None,
+        &tenant_id,
+        audit_action::CREDENTIAL_DELETED,
+        "credential",
+        &credential_id,
+        None,
     );
     Ok(StatusCode::NO_CONTENT)
 }
@@ -3119,7 +3866,9 @@ struct ExpiringQuery {
     #[serde(default = "default_expiry_days")]
     within_days: u64,
 }
-fn default_expiry_days() -> u64 { 30 }
+fn default_expiry_days() -> u64 {
+    30
+}
 
 async fn update_credential(
     State(state): State<AppState>,
@@ -3141,15 +3890,22 @@ async fn update_credential(
         None => None,
         _ => None,
     };
-    let summary = state.credential_store.update(
-        &tenant_id, &credential_id,
-        body.value.as_deref(),
-        description,
-        expires_at,
-    ).await?;
+    let summary = state
+        .credential_store
+        .update(
+            &tenant_id,
+            &credential_id,
+            body.value.as_deref(),
+            description,
+            expires_at,
+        )
+        .await?;
     state.audit_store.record(
-        &tenant_id, "credential.updated",
-        "credential", &credential_id, None,
+        &tenant_id,
+        "credential.updated",
+        "credential",
+        &credential_id,
+        None,
     );
     Ok(Json(summary))
 }
@@ -3165,7 +3921,10 @@ async fn list_expiring_credentials(
         .unwrap_or_default()
         .as_secs();
     let before_unix = now + query.within_days * 86400;
-    let list = state.credential_store.list_expiring(&tenant_id, before_unix).await?;
+    let list = state
+        .credential_store
+        .list_expiring(&tenant_id, before_unix)
+        .await?;
     Ok(Json(list))
 }
 
@@ -3191,16 +3950,23 @@ async fn credential_usage_handler(
 ) -> Result<Json<CredentialUsageResponse>, ApiError> {
     let tenant_id = effective_tenant_id(&claims, &q.tenant_id);
     // list all workflows, then for each check published versions for credential refs
-    let workflows = state.workflow_service.list_workflows(
-        &tenant_id, None, None, None,
-    ).await.map_err(|_| ApiError::internal("Failed to list workflows"))?;
+    let workflows = state
+        .workflow_service
+        .list_workflows(&tenant_id, None, None, None)
+        .await
+        .map_err(|_| ApiError::internal("Failed to list workflows"))?;
 
-    let mut usages: std::collections::HashMap<String, Vec<CredentialUsageEntry>> = std::collections::HashMap::new();
+    let mut usages: std::collections::HashMap<String, Vec<CredentialUsageEntry>> =
+        std::collections::HashMap::new();
 
     for wf in &workflows {
         // only check the latest version
         if let Some(vid) = &wf.latest_version_id {
-            if let Ok(versions) = state.workflow_service.list_versions(&tenant_id, &wf.id, None, None).await {
+            if let Ok(versions) = state
+                .workflow_service
+                .list_versions(&tenant_id, &wf.id, None, None)
+                .await
+            {
                 if let Some(ver) = versions.iter().find(|v| &v.id == vid) {
                     let graph_str = serde_json::to_string(&ver.graph).unwrap_or_default();
                     // find all {{credential.NAME}} patterns
@@ -3210,12 +3976,15 @@ async fn credential_usage_handler(
                         if let Some(end) = graph_str[abs..].find("}}") {
                             let cred_name = graph_str[abs..abs + end].trim().to_string();
                             if !cred_name.is_empty() {
-                                usages.entry(cred_name).or_default().push(CredentialUsageEntry {
-                                    workflow_id: wf.id.clone(),
-                                    workflow_name: wf.name.clone(),
-                                    version_id: ver.id.clone(),
-                                    version: ver.version as u32,
-                                });
+                                usages
+                                    .entry(cred_name)
+                                    .or_default()
+                                    .push(CredentialUsageEntry {
+                                        workflow_id: wf.id.clone(),
+                                        workflow_name: wf.name.clone(),
+                                        version_id: ver.id.clone(),
+                                        version: ver.version as u32,
+                                    });
                             }
                             start = abs + end + 2;
                         } else {
@@ -3275,7 +4044,10 @@ async fn upsert_env_var(
 ) -> Result<Json<EnvVarRecord>, ApiError> {
     let tenant_id = effective_tenant_id(&claims, &query.tenant_id);
     let set = query.set.as_deref().unwrap_or(DEFAULT_SET);
-    let record = state.env_store.set_in(&tenant_id, set, &key, &body.value).await?;
+    let record = state
+        .env_store
+        .set_in(&tenant_id, set, &key, &body.value)
+        .await?;
     Ok(Json(record))
 }
 
@@ -3322,7 +4094,9 @@ async fn export_workflow(
         .workflow_service
         .get_workflow(&tenant_id, &workflow_id)
         .await?;
-    let version_id = workflow.latest_version_id.ok_or(WorkflowError::NoPublishedVersion)?;
+    let version_id = workflow
+        .latest_version_id
+        .ok_or(WorkflowError::NoPublishedVersion)?;
     let version = state
         .workflow_service
         .get_version(&tenant_id, &version_id)
@@ -3348,7 +4122,9 @@ async fn import_workflow(
 ) -> Result<(StatusCode, Json<WorkflowRecord>), ApiError> {
     require_write(&claims)?;
     body.tenant_id = effective_tenant_id(&claims, &body.tenant_id);
-    let name = body.name.filter(|n| !n.trim().is_empty())
+    let name = body
+        .name
+        .filter(|n| !n.trim().is_empty())
         .unwrap_or_else(|| "Imported Workflow".to_string());
     let mut workflow = state
         .workflow_service
@@ -3368,7 +4144,11 @@ async fn import_workflow(
             tenant_id: body.tenant_id.clone(),
             name: workflow.name.clone(),
             description: body.description.clone(),
-            tags: if body.tags.is_empty() { None } else { Some(body.tags.clone()) },
+            tags: if body.tags.is_empty() {
+                None
+            } else {
+                Some(body.tags.clone())
+            },
             readme: body.readme.clone(),
             folder: None,
             sla_seconds: None,
@@ -3376,7 +4156,11 @@ async fn import_workflow(
             max_concurrent_runs: None,
             budget_usd: None,
         };
-        if let Ok(updated) = state.workflow_service.update_workflow(&workflow.id, update).await {
+        if let Ok(updated) = state
+            .workflow_service
+            .update_workflow(&workflow.id, update)
+            .await
+        {
             workflow = updated;
         }
     }
@@ -3440,10 +4224,19 @@ async fn generate_workflow(
     require_write(&claims)?;
     body.tenant_id = effective_tenant_id(&claims, &body.tenant_id);
 
-    let api_key = body.api_key
+    let api_key = body
+        .api_key
         .or_else(|| std::env::var("ANTHROPIC_API_KEY").ok())
-        .ok_or_else(|| ApiError::bad_request("No Claude API key: provide api_key in request or set ANTHROPIC_API_KEY env var"))?;
-    let model = body.model.as_deref().unwrap_or("claude-sonnet-4-6").to_string();
+        .ok_or_else(|| {
+            ApiError::bad_request(
+                "No Claude API key: provide api_key in request or set ANTHROPIC_API_KEY env var",
+            )
+        })?;
+    let model = body
+        .model
+        .as_deref()
+        .unwrap_or("claude-sonnet-4-6")
+        .to_string();
 
     let system_prompt = r#"You are an expert workflow designer for Trigix, an AI-powered automation platform.
 
@@ -3524,7 +4317,9 @@ Rules:
         return Err(ApiError::bad_request(&format!("Claude API {code}: {text}")));
     }
 
-    let resp_json: serde_json::Value = resp.json().await
+    let resp_json: serde_json::Value = resp
+        .json()
+        .await
         .map_err(|e| ApiError::bad_request(&format!("Claude response parse error: {e}")))?;
 
     let raw_content = resp_json["content"][0]["text"]
@@ -3550,62 +4345,84 @@ Rules:
     let generated: serde_json::Value = serde_json::from_str(&json_str)
         .map_err(|_| ApiError::bad_request(&format!("Claude returned invalid JSON: {json_str}")))?;
 
-    let name = generated["name"].as_str().unwrap_or("Generated Workflow").to_string();
+    let name = generated["name"]
+        .as_str()
+        .unwrap_or("Generated Workflow")
+        .to_string();
     let description = generated["description"].as_str().unwrap_or("").to_string();
     let graph = generated["graph"].clone();
 
     if graph.is_null() {
-        return Err(ApiError::bad_request("Claude response missing 'graph' field"));
+        return Err(ApiError::bad_request(
+            "Claude response missing 'graph' field",
+        ));
     }
 
     let mut workflow_record: Option<crate::workflow::WorkflowRecord> = None;
 
     if body.create {
-        let wf = state.workflow_service.create_workflow(crate::workflow::CreateWorkflowRequest {
-            tenant_id: body.tenant_id.clone(),
-            workspace_id: body.workspace_id.unwrap_or_default(),
-            project_id: body.project_id.unwrap_or_default(),
-            name: name.clone(),
-            description: Some(description.clone()),
-            folder: None,
-            created_by: claims.as_ref().and_then(|c| c.user_id.clone()),
-        }).await?;
+        let wf = state
+            .workflow_service
+            .create_workflow(crate::workflow::CreateWorkflowRequest {
+                tenant_id: body.tenant_id.clone(),
+                workspace_id: body.workspace_id.unwrap_or_default(),
+                project_id: body.project_id.unwrap_or_default(),
+                name: name.clone(),
+                description: Some(description.clone()),
+                folder: None,
+                created_by: claims.as_ref().and_then(|c| c.user_id.clone()),
+            })
+            .await?;
 
         // Deserialize the graph JSON into WorkflowGraph so create_version can store it
         let mut graph_val = graph.clone();
         if let Some(obj) = graph_val.as_object_mut() {
-            obj.insert("workflow_version_id".to_string(), serde_json::Value::String("draft".to_string()));
+            obj.insert(
+                "workflow_version_id".to_string(),
+                serde_json::Value::String("draft".to_string()),
+            );
         }
         let workflow_graph: workflow_core::WorkflowGraph = serde_json::from_value(graph_val)
             .map_err(|e| ApiError::bad_request(&format!("Invalid graph structure: {e}")))?;
 
-        state.workflow_service.create_version(
-            &wf.id,
-            crate::workflow::CreateWorkflowVersionRequest {
-                tenant_id: body.tenant_id.clone(),
-                graph: workflow_graph,
-                status: None,
-                message: Some("Generated by AI".to_string()),
-            },
-        ).await?;
+        state
+            .workflow_service
+            .create_version(
+                &wf.id,
+                crate::workflow::CreateWorkflowVersionRequest {
+                    tenant_id: body.tenant_id.clone(),
+                    graph: workflow_graph,
+                    status: None,
+                    message: Some("Generated by AI".to_string()),
+                },
+            )
+            .await?;
 
         state.audit_store.record(
-            &body.tenant_id, audit_action::WORKFLOW_CREATED,
-            "workflow", &wf.id, Some(serde_json::Value::String("ai_generated".to_string())),
+            &body.tenant_id,
+            audit_action::WORKFLOW_CREATED,
+            "workflow",
+            &wf.id,
+            Some(serde_json::Value::String("ai_generated".to_string())),
         );
 
         workflow_record = Some(wf);
     }
 
-    Ok((StatusCode::CREATED, Json(GenerateWorkflowResponse {
-        graph,
-        name,
-        description,
-        workflow: workflow_record,
-    })))
+    Ok((
+        StatusCode::CREATED,
+        Json(GenerateWorkflowResponse {
+            graph,
+            name,
+            description,
+            workflow: workflow_record,
+        }),
+    ))
 }
 
-fn default_model() -> String { "claude-sonnet-4-6".to_string() }
+fn default_model() -> String {
+    "claude-sonnet-4-6".to_string()
+}
 
 #[derive(serde::Deserialize)]
 struct CopilotRequest {
@@ -3631,9 +4448,12 @@ async fn copilot_handler(
     require_write(&claims)?;
     body.tenant_id = effective_tenant_id(&claims, &body.tenant_id);
 
-    let api_key = body.api_key
+    let api_key = body
+        .api_key
         .or_else(|| std::env::var("ANTHROPIC_API_KEY").ok())
-        .ok_or_else(|| ApiError::bad_request("No Claude API key: provide api_key or set ANTHROPIC_API_KEY"))?;
+        .ok_or_else(|| {
+            ApiError::bad_request("No Claude API key: provide api_key or set ANTHROPIC_API_KEY")
+        })?;
 
     let graph_context = if let Some(g) = &body.graph_json {
         format!("\n\nCurrent workflow graph (JSON):\n```json\n{}\n```", g)
@@ -3677,7 +4497,9 @@ async fn copilot_handler(
         return Err(ApiError::bad_request(&format!("Claude API {code}: {text}")));
     }
 
-    let resp_json: serde_json::Value = resp.json().await
+    let resp_json: serde_json::Value = resp
+        .json()
+        .await
         .map_err(|e| ApiError::bad_request(&format!("Claude response parse: {e}")))?;
 
     let reply = resp_json["content"][0]["text"]
@@ -3687,8 +4509,11 @@ async fn copilot_handler(
         .to_string();
 
     let _ = state.audit_store.record(
-        &body.tenant_id, "copilot.query",
-        "copilot", &body.tenant_id, None,
+        &body.tenant_id,
+        "copilot.query",
+        "copilot",
+        &body.tenant_id,
+        None,
     );
 
     Ok(Json(CopilotResponse { reply }))
@@ -3759,7 +4584,12 @@ async fn list_audit_log(
     let filtered = events
         .into_iter()
         .filter(|e| query.action.as_ref().map_or(true, |a| &e.action == a))
-        .filter(|e| query.resource_id.as_ref().map_or(true, |r| &e.resource_id == r))
+        .filter(|e| {
+            query
+                .resource_id
+                .as_ref()
+                .map_or(true, |r| &e.resource_id == r)
+        })
         .collect();
     Json(filtered)
 }
@@ -3808,7 +4638,11 @@ async fn execution_stats_handler(
     let all = state.execution_service.list(&tenant_id).await?;
     let mut stats = ExecutionStats {
         total: all.len() as u64,
-        running: 0, waiting_approval: 0, succeeded: 0, failed: 0, cancelled: 0,
+        running: 0,
+        waiting_approval: 0,
+        succeeded: 0,
+        failed: 0,
+        cancelled: 0,
         by_trigger: std::collections::HashMap::new(),
         avg_duration_secs: None,
     };
@@ -3879,9 +4713,15 @@ async fn workflow_json_schema_handler(
     Query(q): Query<TenantQuery>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
     let tenant_id = effective_tenant_id(&claims, &q.tenant_id);
-    let workflow = state.workflow_service.get_workflow(&tenant_id, &workflow_id).await?;
+    let workflow = state
+        .workflow_service
+        .get_workflow(&tenant_id, &workflow_id)
+        .await?;
     let schema = if let Some(version_id) = &workflow.latest_version_id {
-        state.workflow_service.get_version(&tenant_id, version_id).await
+        state
+            .workflow_service
+            .get_version(&tenant_id, version_id)
+            .await
             .ok()
             .map(|v| v.graph.input_schema)
             .unwrap_or_default()
@@ -3934,13 +4774,23 @@ async fn workflow_health_handler(
     let mut issues: Vec<WorkflowHealthIssue> = Vec::new();
 
     // Get the workflow
-    let wf = state.workflow_service.get_workflow(&tenant_id, &workflow_id)
-        .await.map_err(|_| ApiError::not_found("Workflow not found"))?;
+    let wf = state
+        .workflow_service
+        .get_workflow(&tenant_id, &workflow_id)
+        .await
+        .map_err(|_| ApiError::not_found("Workflow not found"))?;
 
     // Check published version exists
     let published_version_id: Option<String> = {
-        let versions = state.workflow_service.list_versions(&tenant_id, &workflow_id, None, None).await.unwrap_or_default();
-        versions.into_iter().find(|v| v.status == "published").map(|v| v.id)
+        let versions = state
+            .workflow_service
+            .list_versions(&tenant_id, &workflow_id, None, None)
+            .await
+            .unwrap_or_default();
+        versions
+            .into_iter()
+            .find(|v| v.status == "published")
+            .map(|v| v.id)
     };
 
     if published_version_id.is_none() {
@@ -3972,18 +4822,27 @@ async fn workflow_health_handler(
                         remaining = &remaining[end + 2..];
                     }
                 }
-                names.sort(); names.dedup(); names
+                names.sort();
+                names.dedup();
+                names
             };
             for name in &cred_names {
                 match state.credential_store.get_by_name(&tenant_id, name).await {
                     Ok(None) => issues.push(WorkflowHealthIssue {
                         severity: "error".into(),
-                        message: format!("Credential '{}' referenced in graph but not found in store.", name),
+                        message: format!(
+                            "Credential '{}' referenced in graph but not found in store.",
+                            name
+                        ),
                     }),
                     Err(_) => {}
                     Ok(Some(_)) => {
                         // Credential found — check if expiring
-                        let creds = state.credential_store.list(&tenant_id).await.unwrap_or_default();
+                        let creds = state
+                            .credential_store
+                            .list(&tenant_id)
+                            .await
+                            .unwrap_or_default();
                         let now = std::time::SystemTime::now()
                             .duration_since(std::time::UNIX_EPOCH)
                             .unwrap_or_default()
@@ -4000,7 +4859,10 @@ async fn workflow_health_handler(
                                     } else if days <= 7 {
                                         issues.push(WorkflowHealthIssue {
                                             severity: "warning".into(),
-                                            message: format!("Credential '{}' expires in {} day(s).", name, days),
+                                            message: format!(
+                                                "Credential '{}' expires in {} day(s).",
+                                                name, days
+                                            ),
                                         });
                                     }
                                 }
@@ -4013,8 +4875,13 @@ async fn workflow_health_handler(
     }
 
     // Check last run status
-    let all_execs = state.execution_service.list(&tenant_id).await.unwrap_or_default();
-    let last_exec = all_execs.iter()
+    let all_execs = state
+        .execution_service
+        .list(&tenant_id)
+        .await
+        .unwrap_or_default();
+    let last_exec = all_execs
+        .iter()
         .filter(|e| e.workflow_id == workflow_id)
         .max_by_key(|e| e.started_at);
     let last_run_status = last_exec.map(|e| format!("{:?}", e.status).to_lowercase());
@@ -4029,9 +4896,13 @@ async fn workflow_health_handler(
         }
     }
 
-    let status = if issues.iter().any(|i| i.severity == "error") { "error" }
-        else if !issues.is_empty() { "warning" }
-        else { "healthy" };
+    let status = if issues.iter().any(|i| i.severity == "error") {
+        "error"
+    } else if !issues.is_empty() {
+        "warning"
+    } else {
+        "healthy"
+    };
 
     Ok(Json(WorkflowHealthReport {
         workflow_id,
@@ -4050,8 +4921,13 @@ async fn get_latest_execution_handler(
     Query(query): Query<TenantQuery>,
 ) -> Result<Json<Option<ExecutionSummary>>, ApiError> {
     let tenant_id = effective_tenant_id(&claims, &query.tenant_id);
-    let all = state.execution_service.list(&tenant_id).await.unwrap_or_default();
-    let latest = all.into_iter()
+    let all = state
+        .execution_service
+        .list(&tenant_id)
+        .await
+        .unwrap_or_default();
+    let latest = all
+        .into_iter()
         .filter(|e| e.workflow_id == workflow_id)
         .max_by_key(|e| e.started_at);
     Ok(Json(latest))
@@ -4063,7 +4939,11 @@ async fn node_type_analytics_handler(
     Query(query): Query<TenantQuery>,
 ) -> Json<Vec<NodeTypeStat>> {
     let tenant_id = effective_tenant_id(&claims, &query.tenant_id);
-    let execs = state.execution_service.list(&tenant_id).await.unwrap_or_default();
+    let execs = state
+        .execution_service
+        .list(&tenant_id)
+        .await
+        .unwrap_or_default();
     let ids: Vec<String> = execs.iter().map(|e| e.id.clone()).collect();
 
     // Track sum+count for avg_duration_ms computation
@@ -4075,7 +4955,11 @@ async fn node_type_analytics_handler(
             for nr in &rec.node_results {
                 let st = map.entry(nr.node_type.clone()).or_insert(NodeTypeStat {
                     node_type: nr.node_type.clone(),
-                    total: 0, succeeded: 0, failed: 0, skipped: 0, avg_duration_ms: None,
+                    total: 0,
+                    succeeded: 0,
+                    failed: 0,
+                    skipped: 0,
+                    avg_duration_ms: None,
                 });
                 st.total += 1;
                 match nr.status {
@@ -4093,7 +4977,9 @@ async fn node_type_analytics_handler(
     }
     for (node_type, st) in map.iter_mut() {
         if let (Some(&sum), Some(&cnt)) = (dur_sum.get(node_type), dur_count.get(node_type)) {
-            if cnt > 0 { st.avg_duration_ms = Some(sum / cnt); }
+            if cnt > 0 {
+                st.avg_duration_ms = Some(sum / cnt);
+            }
         }
     }
     let mut stats: Vec<_> = map.into_values().collect();
@@ -4121,17 +5007,29 @@ async fn workflow_deps_handler(
     Query(query): Query<TenantQuery>,
 ) -> Json<WorkflowDepsResponse> {
     let tenant_id = effective_tenant_id(&claims, &query.tenant_id);
-    let workflows = state.workflow_service.list_workflows(&tenant_id, None, None, None).await.unwrap_or_default();
+    let workflows = state
+        .workflow_service
+        .list_workflows(&tenant_id, None, None, None)
+        .await
+        .unwrap_or_default();
     let mut edges = Vec::new();
 
     for wf in &workflows {
-        let Some(ref vid) = wf.latest_version_id else { continue };
-        let Ok(version) = state.workflow_service.get_version(&tenant_id, vid).await else { continue };
+        let Some(ref vid) = wf.latest_version_id else {
+            continue;
+        };
+        let Ok(version) = state.workflow_service.get_version(&tenant_id, vid).await else {
+            continue;
+        };
         for node in &version.graph.nodes {
             let nt = format!("{:?}", node.node_type).to_lowercase();
-            if nt != "subworkflow" && nt != "foreach" { continue }
+            if nt != "subworkflow" && nt != "foreach" {
+                continue;
+            }
             let config = node.config.as_ref().unwrap_or(&serde_json::Value::Null);
-            let Some(target_id) = config.get("workflow_id").and_then(|v| v.as_str()) else { continue };
+            let Some(target_id) = config.get("workflow_id").and_then(|v| v.as_str()) else {
+                continue;
+            };
             if target_id != wf.id {
                 edges.push(WorkflowDepEdge {
                     from_workflow_id: wf.id.clone(),
@@ -4172,7 +5070,9 @@ struct WorkflowStatsQuery {
     days: u64,
 }
 
-fn default_days() -> u64 { 30 }
+fn default_days() -> u64 {
+    30
+}
 
 async fn workflow_stats_analytics_handler(
     State(state): State<AppState>,
@@ -4180,7 +5080,11 @@ async fn workflow_stats_analytics_handler(
     Query(query): Query<WorkflowStatsQuery>,
 ) -> Json<WorkflowStatsAnalyticsResponse> {
     let tenant_id = effective_tenant_id(&claims, query.tenant_id.as_deref().unwrap_or(""));
-    let executions = state.execution_service.list(&tenant_id).await.unwrap_or_default();
+    let executions = state
+        .execution_service
+        .list(&tenant_id)
+        .await
+        .unwrap_or_default();
 
     let now_secs = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -4189,26 +5093,37 @@ async fn workflow_stats_analytics_handler(
     let since = now_secs.saturating_sub(query.days * 86400);
 
     // Aggregate per workflow_id
-    let mut map: std::collections::HashMap<String, WorkflowStatRow> = std::collections::HashMap::new();
-    let mut duration_sum: std::collections::HashMap<String, (u64, f64)> = std::collections::HashMap::new();
+    let mut map: std::collections::HashMap<String, WorkflowStatRow> =
+        std::collections::HashMap::new();
+    let mut duration_sum: std::collections::HashMap<String, (u64, f64)> =
+        std::collections::HashMap::new();
 
     for ex in executions.iter().filter(|e| e.started_at >= since) {
-        let entry = map.entry(ex.workflow_id.clone()).or_insert_with(|| WorkflowStatRow {
-            workflow_id: ex.workflow_id.clone(),
-            total: 0, succeeded: 0, failed: 0, cancelled: 0, running: 0,
-            avg_duration_secs: None, last_run_at: None,
-        });
+        let entry = map
+            .entry(ex.workflow_id.clone())
+            .or_insert_with(|| WorkflowStatRow {
+                workflow_id: ex.workflow_id.clone(),
+                total: 0,
+                succeeded: 0,
+                failed: 0,
+                cancelled: 0,
+                running: 0,
+                avg_duration_secs: None,
+                last_run_at: None,
+            });
         entry.total += 1;
         match ex.status {
             ExecutionStatus::Succeeded => entry.succeeded += 1,
-            ExecutionStatus::Failed    => entry.failed += 1,
+            ExecutionStatus::Failed => entry.failed += 1,
             ExecutionStatus::Cancelled => entry.cancelled += 1,
             ExecutionStatus::Running | ExecutionStatus::WaitingApproval => entry.running += 1,
         }
         if let Some(fin) = ex.finished_at {
             if fin > ex.started_at {
                 let dur = (fin - ex.started_at) as f64;
-                let d = duration_sum.entry(ex.workflow_id.clone()).or_insert((0, 0.0));
+                let d = duration_sum
+                    .entry(ex.workflow_id.clone())
+                    .or_insert((0, 0.0));
                 d.0 += 1;
                 d.1 += dur;
             }
@@ -4266,9 +5181,13 @@ async fn sla_breaches_handler(
     let since = now_secs.saturating_sub(query.days * 86400);
 
     // fetch workflows with SLA set
-    let workflows = state.workflow_service.list_workflows(&tenant_id, None, None, None)
-        .await.unwrap_or_default();
-    let sla_map: std::collections::HashMap<String, (String, u64)> = workflows.iter()
+    let workflows = state
+        .workflow_service
+        .list_workflows(&tenant_id, None, None, None)
+        .await
+        .unwrap_or_default();
+    let sla_map: std::collections::HashMap<String, (String, u64)> = workflows
+        .iter()
         .filter_map(|w| w.sla_seconds.map(|s| (w.id.clone(), (w.name.clone(), s))))
         .collect();
 
@@ -4281,7 +5200,11 @@ async fn sla_breaches_handler(
         });
     }
 
-    let executions = state.execution_service.list(&tenant_id).await.unwrap_or_default();
+    let executions = state
+        .execution_service
+        .list(&tenant_id)
+        .await
+        .unwrap_or_default();
 
     let mut breaches = Vec::new();
     let mut total_completed = 0usize;
@@ -4359,13 +5282,23 @@ async fn error_analysis_handler(
         .as_secs();
     let since = now_secs.saturating_sub(query.days * 86400);
 
-    let workflows = state.workflow_service.list_workflows(&tenant_id, None, None, None)
-        .await.unwrap_or_default();
-    let wf_name_map: HashMap<String, String> = workflows.iter()
-        .map(|w| (w.id.clone(), w.name.clone())).collect();
+    let workflows = state
+        .workflow_service
+        .list_workflows(&tenant_id, None, None, None)
+        .await
+        .unwrap_or_default();
+    let wf_name_map: HashMap<String, String> = workflows
+        .iter()
+        .map(|w| (w.id.clone(), w.name.clone()))
+        .collect();
 
-    let executions = state.execution_service.list(&tenant_id).await.unwrap_or_default();
-    let recent_failed: Vec<_> = executions.iter()
+    let executions = state
+        .execution_service
+        .list(&tenant_id)
+        .await
+        .unwrap_or_default();
+    let recent_failed: Vec<_> = executions
+        .iter()
         .filter(|e| e.started_at >= since && matches!(e.status, ExecutionStatus::Failed))
         .collect();
 
@@ -4385,11 +5318,16 @@ async fn error_analysis_handler(
                         count: 0,
                         node_type: nr.node_type.clone(),
                         workflow_id: ex.workflow_id.clone(),
-                        workflow_name: wf_name_map.get(&ex.workflow_id).cloned().unwrap_or_default(),
+                        workflow_name: wf_name_map
+                            .get(&ex.workflow_id)
+                            .cloned()
+                            .unwrap_or_default(),
                         last_seen: 0,
                     });
                     entry.count += 1;
-                    if ex.started_at > entry.last_seen { entry.last_seen = ex.started_at; }
+                    if ex.started_at > entry.last_seen {
+                        entry.last_seen = ex.started_at;
+                    }
                 }
             }
         }
@@ -4400,7 +5338,11 @@ async fn error_analysis_handler(
     top_errors.sort_by(|a, b| b.count.cmp(&a.count));
     top_errors.truncate(20);
 
-    Json(ErrorAnalysisResponse { top_errors, total_failed_nodes, distinct_error_types })
+    Json(ErrorAnalysisResponse {
+        top_errors,
+        total_failed_nodes,
+        distinct_error_types,
+    })
 }
 
 // ── Variables ─────────────────────────────────────────────────────────────
@@ -4421,7 +5363,9 @@ struct IncrementVariableBody {
     by: f64,
 }
 
-fn default_increment_by() -> f64 { 1.0 }
+fn default_increment_by() -> f64 {
+    1.0
+}
 
 async fn list_variables_handler(
     State(state): State<AppState>,
@@ -4440,10 +5384,15 @@ async fn get_variable_handler(
     Query(query): Query<VariableQuery>,
 ) -> Result<Json<crate::variables::Variable>, ApiError> {
     let tenant_id = effective_tenant_id(&claims, &query.tenant_id);
-    state.variable_store.get(&tenant_id, &workflow_id, &key).await.map(Json).ok_or(ApiError {
-        status: StatusCode::NOT_FOUND,
-        message: "VariableNotFound".to_string(),
-    })
+    state
+        .variable_store
+        .get(&tenant_id, &workflow_id, &key)
+        .await
+        .map(Json)
+        .ok_or(ApiError {
+            status: StatusCode::NOT_FOUND,
+            message: "VariableNotFound".to_string(),
+        })
 }
 
 async fn set_variable_handler(
@@ -4454,7 +5403,12 @@ async fn set_variable_handler(
     Json(body): Json<SetVariableBody>,
 ) -> Json<crate::variables::Variable> {
     let tenant_id = effective_tenant_id(&claims, &query.tenant_id);
-    Json(state.variable_store.set(&tenant_id, &workflow_id, &key, body.value).await)
+    Json(
+        state
+            .variable_store
+            .set(&tenant_id, &workflow_id, &key, body.value)
+            .await,
+    )
 }
 
 async fn delete_variable_handler(
@@ -4464,7 +5418,11 @@ async fn delete_variable_handler(
     Query(query): Query<VariableQuery>,
 ) -> StatusCode {
     let tenant_id = effective_tenant_id(&claims, &query.tenant_id);
-    if state.variable_store.delete(&tenant_id, &workflow_id, &key).await {
+    if state
+        .variable_store
+        .delete(&tenant_id, &workflow_id, &key)
+        .await
+    {
         StatusCode::NO_CONTENT
     } else {
         StatusCode::NOT_FOUND
@@ -4479,7 +5437,12 @@ async fn increment_variable_handler(
     Json(body): Json<IncrementVariableBody>,
 ) -> Json<crate::variables::Variable> {
     let tenant_id = effective_tenant_id(&claims, &query.tenant_id);
-    Json(state.variable_store.increment(&tenant_id, &workflow_id, &key, body.by).await)
+    Json(
+        state
+            .variable_store
+            .increment(&tenant_id, &workflow_id, &key, body.by)
+            .await,
+    )
 }
 
 // ── Workspace / Project ───────────────────────────────────────────────────
@@ -4534,7 +5497,11 @@ async fn delete_workspace_handler(
     Query(query): Query<WorkspaceQuery>,
 ) -> StatusCode {
     let tenant_id = effective_tenant_id(&claims, &query.tenant_id);
-    if state.workspace_store.delete_workspace(&tenant_id, &workspace_id).await {
+    if state
+        .workspace_store
+        .delete_workspace(&tenant_id, &workspace_id)
+        .await
+    {
         StatusCode::NO_CONTENT
     } else {
         StatusCode::NOT_FOUND
@@ -4548,7 +5515,12 @@ async fn list_projects_handler(
     Query(query): Query<WorkspaceQuery>,
 ) -> Json<Vec<crate::workspace::ProjectRecord>> {
     let tenant_id = effective_tenant_id(&claims, &query.tenant_id);
-    Json(state.workspace_store.list_projects(&tenant_id, &workspace_id).await)
+    Json(
+        state
+            .workspace_store
+            .list_projects(&tenant_id, &workspace_id)
+            .await,
+    )
 }
 
 async fn create_project_handler(
@@ -4560,7 +5532,12 @@ async fn create_project_handler(
     body.tenant_id = effective_tenant_id(&claims, &body.tenant_id);
     let record = state
         .workspace_store
-        .create_project(&body.tenant_id, &workspace_id, &body.name, body.description.as_deref())
+        .create_project(
+            &body.tenant_id,
+            &workspace_id,
+            &body.name,
+            body.description.as_deref(),
+        )
         .await
         .ok_or_else(|| ApiError {
             status: StatusCode::NOT_FOUND,
@@ -4576,7 +5553,11 @@ async fn delete_project_handler(
     Query(query): Query<WorkspaceQuery>,
 ) -> StatusCode {
     let tenant_id = effective_tenant_id(&claims, &query.tenant_id);
-    if state.workspace_store.delete_project(&tenant_id, &project_id).await {
+    if state
+        .workspace_store
+        .delete_project(&tenant_id, &project_id)
+        .await
+    {
         StatusCode::NO_CONTENT
     } else {
         StatusCode::NOT_FOUND
@@ -4589,7 +5570,11 @@ async fn list_webhooks_handler(
     Query(query): Query<CredentialQuery>,
 ) -> Result<Json<Vec<crate::webhook::WebhookRecord>>, ApiError> {
     let tenant_id = effective_tenant_id(&claims, &query.tenant_id);
-    let records = state.webhook_store.list_by_tenant(&tenant_id).await.map_err(ApiError::from)?;
+    let records = state
+        .webhook_store
+        .list_by_tenant(&tenant_id)
+        .await
+        .map_err(ApiError::from)?;
     Ok(Json(records))
 }
 
@@ -4600,7 +5585,11 @@ async fn delete_webhook_handler(
     Query(query): Query<CredentialQuery>,
 ) -> Result<StatusCode, ApiError> {
     let tenant_id = effective_tenant_id(&claims, &query.tenant_id);
-    state.webhook_store.delete_by_token(&tenant_id, &token).await.map_err(ApiError::from)?;
+    state
+        .webhook_store
+        .delete_by_token(&tenant_id, &token)
+        .await
+        .map_err(ApiError::from)?;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -4631,7 +5620,9 @@ async fn update_webhook_condition_handler(
     Json(body): Json<SetWebhookConditionBody>,
 ) -> Result<Json<crate::webhook::WebhookRecord>, ApiError> {
     let tenant_id = effective_tenant_id(&claims, "");
-    state.webhook_store.set_condition(&tenant_id, &token, body.condition_expr)
+    state
+        .webhook_store
+        .set_condition(&tenant_id, &token, body.condition_expr)
         .await
         .map(Json)
         .map_err(ApiError::from)
@@ -4649,7 +5640,9 @@ async fn update_webhook_rate_limit_handler(
     Json(body): Json<SetWebhookRateLimitBody>,
 ) -> Result<Json<crate::webhook::WebhookRecord>, ApiError> {
     let tenant_id = effective_tenant_id(&claims, "");
-    state.webhook_store.set_rate_limit(&tenant_id, &token, body.max_calls_per_minute)
+    state
+        .webhook_store
+        .set_rate_limit(&tenant_id, &token, body.max_calls_per_minute)
         .await
         .map(Json)
         .map_err(ApiError::from)
@@ -4666,7 +5659,9 @@ async fn rotate_webhook_secret_handler(
         uuid::Uuid::new_v4().to_string().replace('-', ""),
         uuid::Uuid::new_v4().to_string().replace('-', ""),
     );
-    state.webhook_store.rotate_secret(&tenant_id, &token, new_secret.clone())
+    state
+        .webhook_store
+        .rotate_secret(&tenant_id, &token, new_secret.clone())
         .await
         .map_err(ApiError::from)?;
     Ok(Json(serde_json::json!({ "secret": new_secret })))
@@ -4678,7 +5673,9 @@ async fn pause_webhook_handler(
     Path(token): Path<String>,
 ) -> Result<Json<crate::webhook::WebhookRecord>, ApiError> {
     let tenant_id = effective_tenant_id(&claims, "");
-    state.webhook_store.set_paused(&tenant_id, &token, true)
+    state
+        .webhook_store
+        .set_paused(&tenant_id, &token, true)
         .await
         .map(Json)
         .map_err(ApiError::from)
@@ -4690,7 +5687,9 @@ async fn resume_webhook_handler(
     Path(token): Path<String>,
 ) -> Result<Json<crate::webhook::WebhookRecord>, ApiError> {
     let tenant_id = effective_tenant_id(&claims, "");
-    state.webhook_store.set_paused(&tenant_id, &token, false)
+    state
+        .webhook_store
+        .set_paused(&tenant_id, &token, false)
         .await
         .map(Json)
         .map_err(ApiError::from)
@@ -4708,7 +5707,9 @@ async fn set_payload_transform_handler(
     Json(body): Json<SetPayloadTransformBody>,
 ) -> Result<Json<crate::webhook::WebhookRecord>, ApiError> {
     let tenant_id = effective_tenant_id(&claims, "");
-    state.webhook_store.set_payload_transform(&tenant_id, &token, body.script)
+    state
+        .webhook_store
+        .set_payload_transform(&tenant_id, &token, body.script)
         .await
         .map(Json)
         .map_err(ApiError::from)
@@ -4740,14 +5741,18 @@ async fn create_token(
     State(state): State<AppState>,
     Json(body): Json<TokenRequest>,
 ) -> Result<Json<TokenResponse>, ApiError> {
-    let role: crate::auth::Role = body.role.as_deref()
+    let role: crate::auth::Role = body
+        .role
+        .as_deref()
         .and_then(|r| r.parse().ok())
         .unwrap_or_default();
 
     // First check stored API keys (takes precedence so tenant_id is enforced).
     if let Some(stored) = state.api_key_store.validate(&body.api_key).await {
         let tenant_id = stored.tenant_id.clone();
-        let workspace_id = body.workspace_id.unwrap_or_else(|| "workspace-1".to_string());
+        let workspace_id = body
+            .workspace_id
+            .unwrap_or_else(|| "workspace-1".to_string());
         let project_id = body.project_id.unwrap_or_else(|| "project-1".to_string());
         let exp = std::time::SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -4769,16 +5774,27 @@ async fn create_token(
             status: StatusCode::INTERNAL_SERVER_ERROR,
             message: "Failed to sign token".to_string(),
         })?;
-        return Ok(Json(TokenResponse { token, tenant_id, workspace_id, project_id, role: role_str }));
+        return Ok(Json(TokenResponse {
+            token,
+            tenant_id,
+            workspace_id,
+            project_id,
+            role: role_str,
+        }));
     }
 
     // Fall back to the static DEV_API_KEY.
     let expected_key = std::env::var("DEV_API_KEY").unwrap_or_else(|_| "dev".to_string());
     if body.api_key != expected_key {
-        return Err(ApiError { status: StatusCode::UNAUTHORIZED, message: "Invalid api_key".to_string() });
+        return Err(ApiError {
+            status: StatusCode::UNAUTHORIZED,
+            message: "Invalid api_key".to_string(),
+        });
     }
     let tenant_id = body.tenant_id.unwrap_or_else(|| "tenant-1".to_string());
-    let workspace_id = body.workspace_id.unwrap_or_else(|| "workspace-1".to_string());
+    let workspace_id = body
+        .workspace_id
+        .unwrap_or_else(|| "workspace-1".to_string());
     let project_id = body.project_id.unwrap_or_else(|| "project-1".to_string());
     let exp = std::time::SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -4800,7 +5816,13 @@ async fn create_token(
         status: StatusCode::INTERNAL_SERVER_ERROR,
         message: "Failed to sign token".to_string(),
     })?;
-    Ok(Json(TokenResponse { token, tenant_id, workspace_id, project_id, role: role_str }))
+    Ok(Json(TokenResponse {
+        token,
+        tenant_id,
+        workspace_id,
+        project_id,
+        role: role_str,
+    }))
 }
 
 // ── User auth (register / login / me) ─────────────────────────────────────
@@ -4861,10 +5883,19 @@ async fn register_user(
         move || store.create(&email, &password, name.as_deref(), &tenant_id)
     })
     .await
-    .map_err(|_| ApiError { status: StatusCode::INTERNAL_SERVER_ERROR, message: "Task join error".to_string() })?
+    .map_err(|_| ApiError {
+        status: StatusCode::INTERNAL_SERVER_ERROR,
+        message: "Task join error".to_string(),
+    })?
     .map_err(|e| match e {
-        crate::users::UserError::EmailAlreadyExists => ApiError { status: StatusCode::CONFLICT, message: "Email already registered".to_string() },
-        other => ApiError { status: StatusCode::BAD_REQUEST, message: other.to_string() },
+        crate::users::UserError::EmailAlreadyExists => ApiError {
+            status: StatusCode::CONFLICT,
+            message: "Email already registered".to_string(),
+        },
+        other => ApiError {
+            status: StatusCode::BAD_REQUEST,
+            message: other.to_string(),
+        },
     })?;
 
     // Fire verification email non-blocking
@@ -4875,15 +5906,24 @@ async fn register_user(
         let em = user.email.clone();
         tokio::spawn(async move {
             let ver = tokio::task::spawn_blocking(move || ver_store.create(&uid, &em, 24))
-                .await.ok();
+                .await
+                .ok();
             if let Some(ver) = ver {
-                email_client.send_email_verification(&ver.email, &ver.token, ver.expires_at).await;
+                email_client
+                    .send_email_verification(&ver.email, &ver.token, ver.expires_at)
+                    .await;
             }
         });
     }
 
     let token = make_user_token(&user)?;
-    Ok((StatusCode::CREATED, Json(AuthResponse { token, user: crate::users::PublicUser::from(&user) })))
+    Ok((
+        StatusCode::CREATED,
+        Json(AuthResponse {
+            token,
+            user: crate::users::PublicUser::from(&user),
+        }),
+    ))
 }
 
 async fn login_user(
@@ -4897,14 +5937,26 @@ async fn login_user(
         move || store.verify_password(&email, &password)
     })
     .await
-    .map_err(|_| ApiError { status: StatusCode::INTERNAL_SERVER_ERROR, message: "Task join error".to_string() })?
+    .map_err(|_| ApiError {
+        status: StatusCode::INTERNAL_SERVER_ERROR,
+        message: "Task join error".to_string(),
+    })?
     .map_err(|e| match e {
-        crate::users::UserError::InvalidCredentials => ApiError { status: StatusCode::UNAUTHORIZED, message: "Invalid email or password".to_string() },
-        other => ApiError { status: StatusCode::INTERNAL_SERVER_ERROR, message: other.to_string() },
+        crate::users::UserError::InvalidCredentials => ApiError {
+            status: StatusCode::UNAUTHORIZED,
+            message: "Invalid email or password".to_string(),
+        },
+        other => ApiError {
+            status: StatusCode::INTERNAL_SERVER_ERROR,
+            message: other.to_string(),
+        },
     })?;
 
     let token = make_user_token(&user)?;
-    Ok(Json(AuthResponse { token, user: crate::users::PublicUser::from(&user) }))
+    Ok(Json(AuthResponse {
+        token,
+        user: crate::users::PublicUser::from(&user),
+    }))
 }
 
 async fn me_handler(
@@ -4915,13 +5967,22 @@ async fn me_handler(
         .as_ref()
         .and_then(|c| c.user_id.as_deref())
         .map(|s| s.to_string())
-        .ok_or_else(|| ApiError { status: StatusCode::UNAUTHORIZED, message: "Not authenticated as a user".to_string() })?;
+        .ok_or_else(|| ApiError {
+            status: StatusCode::UNAUTHORIZED,
+            message: "Not authenticated as a user".to_string(),
+        })?;
 
     let store = Arc::clone(&state.user_store);
     let user = tokio::task::spawn_blocking(move || store.find_by_id(&user_id))
         .await
-        .map_err(|_| ApiError { status: StatusCode::INTERNAL_SERVER_ERROR, message: "Task join error".to_string() })?
-        .ok_or_else(|| ApiError { status: StatusCode::NOT_FOUND, message: "User not found".to_string() })?;
+        .map_err(|_| ApiError {
+            status: StatusCode::INTERNAL_SERVER_ERROR,
+            message: "Task join error".to_string(),
+        })?
+        .ok_or_else(|| ApiError {
+            status: StatusCode::NOT_FOUND,
+            message: "User not found".to_string(),
+        })?;
 
     Ok(Json(crate::users::PublicUser::from(&user)))
 }
@@ -4941,20 +6002,35 @@ async fn update_me_handler(
     let user_id = require_user_id(&claims)?;
 
     if body.new_password.is_some() && body.current_password.is_none() {
-        return Err(ApiError { status: StatusCode::BAD_REQUEST, message: "current_password required to change password".to_string() });
+        return Err(ApiError {
+            status: StatusCode::BAD_REQUEST,
+            message: "current_password required to change password".to_string(),
+        });
     }
 
-    if let (Some(old_pw), Some(new_pw)) = (body.current_password.as_deref(), body.new_password.as_deref()) {
+    if let (Some(old_pw), Some(new_pw)) = (
+        body.current_password.as_deref(),
+        body.new_password.as_deref(),
+    ) {
         let store = Arc::clone(&state.user_store);
         let uid = user_id.clone();
         let old_pw = old_pw.to_string();
         let new_pw = new_pw.to_string();
         tokio::task::spawn_blocking(move || store.update_password(&uid, &old_pw, &new_pw))
             .await
-            .map_err(|_| ApiError { status: StatusCode::INTERNAL_SERVER_ERROR, message: "Task join error".to_string() })?
+            .map_err(|_| ApiError {
+                status: StatusCode::INTERNAL_SERVER_ERROR,
+                message: "Task join error".to_string(),
+            })?
             .map_err(|e| match e {
-                crate::users::UserError::InvalidCredentials => ApiError { status: StatusCode::UNAUTHORIZED, message: "Current password is incorrect".to_string() },
-                other => ApiError { status: StatusCode::BAD_REQUEST, message: other.to_string() },
+                crate::users::UserError::InvalidCredentials => ApiError {
+                    status: StatusCode::UNAUTHORIZED,
+                    message: "Current password is incorrect".to_string(),
+                },
+                other => ApiError {
+                    status: StatusCode::BAD_REQUEST,
+                    message: other.to_string(),
+                },
             })?;
     }
 
@@ -4964,16 +6040,28 @@ async fn update_me_handler(
         let name = name.to_string();
         tokio::task::spawn_blocking(move || store.update_name(&uid, &name))
             .await
-            .map_err(|_| ApiError { status: StatusCode::INTERNAL_SERVER_ERROR, message: "Task join error".to_string() })?
-            .map_err(|e| ApiError { status: StatusCode::BAD_REQUEST, message: e.to_string() })?;
+            .map_err(|_| ApiError {
+                status: StatusCode::INTERNAL_SERVER_ERROR,
+                message: "Task join error".to_string(),
+            })?
+            .map_err(|e| ApiError {
+                status: StatusCode::BAD_REQUEST,
+                message: e.to_string(),
+            })?;
     }
 
     let store = Arc::clone(&state.user_store);
     let uid = user_id.clone();
     let user = tokio::task::spawn_blocking(move || store.find_by_id(&uid))
         .await
-        .map_err(|_| ApiError { status: StatusCode::INTERNAL_SERVER_ERROR, message: "Task join error".to_string() })?
-        .ok_or_else(|| ApiError { status: StatusCode::NOT_FOUND, message: "User not found".to_string() })?;
+        .map_err(|_| ApiError {
+            status: StatusCode::INTERNAL_SERVER_ERROR,
+            message: "Task join error".to_string(),
+        })?
+        .ok_or_else(|| ApiError {
+            status: StatusCode::NOT_FOUND,
+            message: "User not found".to_string(),
+        })?;
 
     Ok(Json(crate::users::PublicUser::from(&user)))
 }
@@ -5024,11 +6112,18 @@ async fn admin_list_users_handler(
     Extension(claims): Extension<Option<Claims>>,
 ) -> Result<Json<Vec<crate::users::PublicUser>>, ApiError> {
     require_admin(&claims)?;
-    let tenant_id = claims.as_ref().map(|c| c.tenant_id.as_str()).unwrap_or("tenant-1").to_string();
+    let tenant_id = claims
+        .as_ref()
+        .map(|c| c.tenant_id.as_str())
+        .unwrap_or("tenant-1")
+        .to_string();
     let store = Arc::clone(&state.user_store);
     let users = tokio::task::spawn_blocking(move || store.list_by_tenant(&tenant_id))
         .await
-        .map_err(|_| ApiError { status: StatusCode::INTERNAL_SERVER_ERROR, message: "Task join error".to_string() })?;
+        .map_err(|_| ApiError {
+            status: StatusCode::INTERNAL_SERVER_ERROR,
+            message: "Task join error".to_string(),
+        })?;
     Ok(Json(users))
 }
 
@@ -5040,15 +6135,27 @@ async fn admin_delete_user_handler(
     require_admin(&claims)?;
     let caller_id = require_user_id(&claims)?;
     if user_id == caller_id {
-        return Err(ApiError { status: StatusCode::FORBIDDEN, message: "Cannot delete your own account".to_string() });
+        return Err(ApiError {
+            status: StatusCode::FORBIDDEN,
+            message: "Cannot delete your own account".to_string(),
+        });
     }
     let store = Arc::clone(&state.user_store);
     tokio::task::spawn_blocking(move || store.delete_user(&user_id))
         .await
-        .map_err(|_| ApiError { status: StatusCode::INTERNAL_SERVER_ERROR, message: "Task join error".to_string() })?
+        .map_err(|_| ApiError {
+            status: StatusCode::INTERNAL_SERVER_ERROR,
+            message: "Task join error".to_string(),
+        })?
         .map_err(|e| match e {
-            crate::users::UserError::NotFound => ApiError { status: StatusCode::NOT_FOUND, message: "User not found".to_string() },
-            other => ApiError { status: StatusCode::INTERNAL_SERVER_ERROR, message: other.to_string() },
+            crate::users::UserError::NotFound => ApiError {
+                status: StatusCode::NOT_FOUND,
+                message: "User not found".to_string(),
+            },
+            other => ApiError {
+                status: StatusCode::INTERNAL_SERVER_ERROR,
+                message: other.to_string(),
+            },
         })?;
     Ok(StatusCode::NO_CONTENT)
 }
@@ -5064,7 +6171,9 @@ struct CreateInvitationBody {
     expires_hours: u64,
 }
 
-fn default_invite_ttl_hours() -> u64 { 72 }
+fn default_invite_ttl_hours() -> u64 {
+    72
+}
 
 async fn admin_create_invitation_handler(
     State(state): State<AppState>,
@@ -5072,14 +6181,22 @@ async fn admin_create_invitation_handler(
     Json(body): Json<CreateInvitationBody>,
 ) -> Result<(StatusCode, Json<crate::invitations::Invitation>), ApiError> {
     require_admin(&claims)?;
-    let tenant_id = claims.as_ref().map(|c| c.tenant_id.as_str()).unwrap_or("tenant-1").to_string();
+    let tenant_id = claims
+        .as_ref()
+        .map(|c| c.tenant_id.as_str())
+        .unwrap_or("tenant-1")
+        .to_string();
     let store = Arc::clone(&state.invite_store);
     let email = body.email.clone();
     let role = body.role.clone();
     let expires_hours = body.expires_hours;
-    let inv = tokio::task::spawn_blocking(move || store.create(&email, &role, &tenant_id, expires_hours))
-        .await
-        .map_err(|_| ApiError { status: StatusCode::INTERNAL_SERVER_ERROR, message: "Task join error".to_string() })?;
+    let inv =
+        tokio::task::spawn_blocking(move || store.create(&email, &role, &tenant_id, expires_hours))
+            .await
+            .map_err(|_| ApiError {
+                status: StatusCode::INTERNAL_SERVER_ERROR,
+                message: "Task join error".to_string(),
+            })?;
     // Send invitation email (non-blocking, best-effort)
     let email_client = Arc::clone(&state.email_client);
     let inv_token = inv.token.clone();
@@ -5087,7 +6204,9 @@ async fn admin_create_invitation_handler(
     let inv_role = inv.role.clone();
     let inv_expires = inv.expires_at;
     tokio::spawn(async move {
-        email_client.send_invitation(&inv_email, &inv_token, &inv_role, inv_expires).await;
+        email_client
+            .send_invitation(&inv_email, &inv_token, &inv_role, inv_expires)
+            .await;
     });
     Ok((StatusCode::CREATED, Json(inv)))
 }
@@ -5097,11 +6216,18 @@ async fn admin_list_invitations_handler(
     Extension(claims): Extension<Option<Claims>>,
 ) -> Result<Json<Vec<crate::invitations::Invitation>>, ApiError> {
     require_admin(&claims)?;
-    let tenant_id = claims.as_ref().map(|c| c.tenant_id.as_str()).unwrap_or("tenant-1").to_string();
+    let tenant_id = claims
+        .as_ref()
+        .map(|c| c.tenant_id.as_str())
+        .unwrap_or("tenant-1")
+        .to_string();
     let store = Arc::clone(&state.invite_store);
     let list = tokio::task::spawn_blocking(move || store.list_by_tenant(&tenant_id))
         .await
-        .map_err(|_| ApiError { status: StatusCode::INTERNAL_SERVER_ERROR, message: "Task join error".to_string() })?;
+        .map_err(|_| ApiError {
+            status: StatusCode::INTERNAL_SERVER_ERROR,
+            message: "Task join error".to_string(),
+        })?;
     Ok(Json(list))
 }
 
@@ -5114,8 +6240,14 @@ async fn admin_delete_invitation_handler(
     let store = Arc::clone(&state.invite_store);
     tokio::task::spawn_blocking(move || store.delete(&invite_id))
         .await
-        .map_err(|_| ApiError { status: StatusCode::INTERNAL_SERVER_ERROR, message: "Task join error".to_string() })?
-        .map_err(|_| ApiError { status: StatusCode::NOT_FOUND, message: "Invitation not found".to_string() })?;
+        .map_err(|_| ApiError {
+            status: StatusCode::INTERNAL_SERVER_ERROR,
+            message: "Task join error".to_string(),
+        })?
+        .map_err(|_| ApiError {
+            status: StatusCode::NOT_FOUND,
+            message: "Invitation not found".to_string(),
+        })?;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -5127,12 +6259,23 @@ async fn get_invitation_handler(
     let store = Arc::clone(&state.invite_store);
     let inv = tokio::task::spawn_blocking(move || store.find_by_token(&token))
         .await
-        .map_err(|_| ApiError { status: StatusCode::INTERNAL_SERVER_ERROR, message: "Task join error".to_string() })?
-        .ok_or_else(|| ApiError { status: StatusCode::NOT_FOUND, message: "Invitation not found".to_string() })?;
+        .map_err(|_| ApiError {
+            status: StatusCode::INTERNAL_SERVER_ERROR,
+            message: "Task join error".to_string(),
+        })?
+        .ok_or_else(|| ApiError {
+            status: StatusCode::NOT_FOUND,
+            message: "Invitation not found".to_string(),
+        })?;
     if !inv.is_valid() {
-        return Err(ApiError { status: StatusCode::GONE, message: "Invitation has expired or already been used".to_string() });
+        return Err(ApiError {
+            status: StatusCode::GONE,
+            message: "Invitation has expired or already been used".to_string(),
+        });
     }
-    Ok(Json(serde_json::json!({ "email": inv.email, "role": inv.role, "valid": true })))
+    Ok(Json(
+        serde_json::json!({ "email": inv.email, "role": inv.role, "valid": true }),
+    ))
 }
 
 #[derive(Debug, Deserialize)]
@@ -5151,11 +6294,23 @@ async fn accept_invite_handler(
     let token = body.token.clone();
     let inv = tokio::task::spawn_blocking(move || invite_store.mark_used(&token))
         .await
-        .map_err(|_| ApiError { status: StatusCode::INTERNAL_SERVER_ERROR, message: "Task join error".to_string() })?
+        .map_err(|_| ApiError {
+            status: StatusCode::INTERNAL_SERVER_ERROR,
+            message: "Task join error".to_string(),
+        })?
         .map_err(|e| match e {
-            crate::invitations::InviteError::NotFound    => ApiError { status: StatusCode::NOT_FOUND, message: "Invitation not found".to_string() },
-            crate::invitations::InviteError::AlreadyUsed => ApiError { status: StatusCode::GONE, message: "Invitation already used".to_string() },
-            crate::invitations::InviteError::Expired     => ApiError { status: StatusCode::GONE, message: "Invitation has expired".to_string() },
+            crate::invitations::InviteError::NotFound => ApiError {
+                status: StatusCode::NOT_FOUND,
+                message: "Invitation not found".to_string(),
+            },
+            crate::invitations::InviteError::AlreadyUsed => ApiError {
+                status: StatusCode::GONE,
+                message: "Invitation already used".to_string(),
+            },
+            crate::invitations::InviteError::Expired => ApiError {
+                status: StatusCode::GONE,
+                message: "Invitation has expired".to_string(),
+            },
         })?;
 
     // Register the user with the invited email + tenant
@@ -5164,16 +6319,33 @@ async fn accept_invite_handler(
     let password = body.password.clone();
     let name = body.name.clone();
     let tenant_id = inv.tenant_id.clone();
-    let user = tokio::task::spawn_blocking(move || user_store.create(&email, &password, name.as_deref(), &tenant_id))
-        .await
-        .map_err(|_| ApiError { status: StatusCode::INTERNAL_SERVER_ERROR, message: "Task join error".to_string() })?
-        .map_err(|e| match e {
-            crate::users::UserError::EmailAlreadyExists => ApiError { status: StatusCode::CONFLICT, message: "Email already registered".to_string() },
-            other => ApiError { status: StatusCode::BAD_REQUEST, message: other.to_string() },
-        })?;
+    let user = tokio::task::spawn_blocking(move || {
+        user_store.create(&email, &password, name.as_deref(), &tenant_id)
+    })
+    .await
+    .map_err(|_| ApiError {
+        status: StatusCode::INTERNAL_SERVER_ERROR,
+        message: "Task join error".to_string(),
+    })?
+    .map_err(|e| match e {
+        crate::users::UserError::EmailAlreadyExists => ApiError {
+            status: StatusCode::CONFLICT,
+            message: "Email already registered".to_string(),
+        },
+        other => ApiError {
+            status: StatusCode::BAD_REQUEST,
+            message: other.to_string(),
+        },
+    })?;
 
     let token = make_user_token(&user)?;
-    Ok((StatusCode::CREATED, Json(AuthResponse { token, user: crate::users::PublicUser::from(&user) })))
+    Ok((
+        StatusCode::CREATED,
+        Json(AuthResponse {
+            token,
+            user: crate::users::PublicUser::from(&user),
+        }),
+    ))
 }
 
 // ── Password reset ─────────────────────────────────────────────────────────
@@ -5214,14 +6386,18 @@ async fn forgot_password_handler(
                 .map_err(|_| ApiError::internal("Task join error"))?;
             let tok = reset.token.clone();
             let exp = reset.expires_at;
-            state.email_client.send_password_reset(&email, &tok, exp).await;
+            state
+                .email_client
+                .send_password_reset(&email, &tok, exp)
+                .await;
             (Some(tok), exp)
         }
         None => {
             let exp = std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap_or_default()
-                .as_secs() as i64 + 7200;
+                .as_secs() as i64
+                + 7200;
             (None, exp)
         }
     };
@@ -5246,7 +6422,9 @@ async fn reset_password_handler(
     Json(body): Json<ResetPasswordBody>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
     if body.new_password.len() < 6 {
-        return Err(ApiError::bad_request("Password must be at least 6 characters"));
+        return Err(ApiError::bad_request(
+            "Password must be at least 6 characters",
+        ));
     }
     let reset_store = Arc::clone(&state.reset_store);
     let token = body.token.clone();
@@ -5254,10 +6432,20 @@ async fn reset_password_handler(
         .await
         .map_err(|_| ApiError::internal("Task join error"))?
         .map_err(|e| match e {
-            crate::password_reset::ResetError::NotFound        => ApiError::not_found("Reset token not found or already used"),
-            crate::password_reset::ResetError::AlreadyUsed     => ApiError { status: StatusCode::GONE, message: "Reset token already used".to_string() },
-            crate::password_reset::ResetError::Expired         => ApiError { status: StatusCode::GONE, message: "Reset token has expired".to_string() },
-            crate::password_reset::ResetError::StoreUnavailable => ApiError::internal("Store unavailable"),
+            crate::password_reset::ResetError::NotFound => {
+                ApiError::not_found("Reset token not found or already used")
+            }
+            crate::password_reset::ResetError::AlreadyUsed => ApiError {
+                status: StatusCode::GONE,
+                message: "Reset token already used".to_string(),
+            },
+            crate::password_reset::ResetError::Expired => ApiError {
+                status: StatusCode::GONE,
+                message: "Reset token has expired".to_string(),
+            },
+            crate::password_reset::ResetError::StoreUnavailable => {
+                ApiError::internal("Store unavailable")
+            }
         })?;
 
     let user_store = Arc::clone(&state.user_store);
@@ -5268,7 +6456,9 @@ async fn reset_password_handler(
         .map_err(|_| ApiError::internal("Task join error"))?
         .map_err(|_| ApiError::internal("Failed to update password"))?;
 
-    Ok(Json(serde_json::json!({ "ok": true, "message": "Password updated successfully" })))
+    Ok(Json(
+        serde_json::json!({ "ok": true, "message": "Password updated successfully" }),
+    ))
 }
 
 #[derive(Debug, Deserialize)]
@@ -5287,9 +6477,17 @@ async fn verify_email_handler(
         .await
         .map_err(|_| ApiError::internal("Task join error"))?
         .map_err(|e| match e {
-            VerificationError::NotFound     => ApiError::not_found("Verification token not found or already used"),
-            VerificationError::AlreadyUsed  => ApiError { status: StatusCode::GONE, message: "Verification token already used".to_string() },
-            VerificationError::Expired      => ApiError { status: StatusCode::GONE, message: "Verification token has expired".to_string() },
+            VerificationError::NotFound => {
+                ApiError::not_found("Verification token not found or already used")
+            }
+            VerificationError::AlreadyUsed => ApiError {
+                status: StatusCode::GONE,
+                message: "Verification token already used".to_string(),
+            },
+            VerificationError::Expired => ApiError {
+                status: StatusCode::GONE,
+                message: "Verification token has expired".to_string(),
+            },
             VerificationError::StoreUnavailable => ApiError::internal("Store unavailable"),
         })?;
 
@@ -5300,7 +6498,9 @@ async fn verify_email_handler(
         .map_err(|_| ApiError::internal("Task join error"))?
         .map_err(|_| ApiError::internal("Failed to mark email verified"))?;
 
-    Ok(Json(serde_json::json!({ "ok": true, "message": "Email verified successfully" })))
+    Ok(Json(
+        serde_json::json!({ "ok": true, "message": "Email verified successfully" }),
+    ))
 }
 
 #[derive(Debug, Deserialize)]
@@ -5328,15 +6528,20 @@ async fn resend_verification_handler(
             let em2 = email.clone();
             tokio::spawn(async move {
                 let ver = tokio::task::spawn_blocking(move || ver_store.create(&uid, &em2, 24))
-                    .await.ok();
+                    .await
+                    .ok();
                 if let Some(ver) = ver {
-                    email_client.send_email_verification(&ver.email, &ver.token, ver.expires_at).await;
+                    email_client
+                        .send_email_verification(&ver.email, &ver.token, ver.expires_at)
+                        .await;
                 }
             });
         }
     }
 
-    Ok(Json(serde_json::json!({ "ok": true, "message": "If an unverified account exists with that email, a verification link has been sent." })))
+    Ok(Json(
+        serde_json::json!({ "ok": true, "message": "If an unverified account exists with that email, a verification link has been sent." }),
+    ))
 }
 
 // ── Organization management ────────────────────────────────────────────────
@@ -5353,12 +6558,18 @@ struct AddMemberBody {
     role: String,
 }
 
-fn default_editor_role() -> String { "editor".to_string() }
+fn default_editor_role() -> String {
+    "editor".to_string()
+}
 
 fn require_user_id(claims: &Option<Claims>) -> Result<String, ApiError> {
-    claims.as_ref()
+    claims
+        .as_ref()
         .and_then(|c| c.user_id.clone())
-        .ok_or_else(|| ApiError { status: StatusCode::UNAUTHORIZED, message: "Must be authenticated as a user".to_string() })
+        .ok_or_else(|| ApiError {
+            status: StatusCode::UNAUTHORIZED,
+            message: "Must be authenticated as a user".to_string(),
+        })
 }
 
 async fn list_orgs_handler(
@@ -5369,7 +6580,10 @@ async fn list_orgs_handler(
     let store = Arc::clone(&state.org_store);
     let orgs = tokio::task::spawn_blocking(move || store.list_for_user(&user_id))
         .await
-        .map_err(|_| ApiError { status: StatusCode::INTERNAL_SERVER_ERROR, message: "Task join error".to_string() })?;
+        .map_err(|_| ApiError {
+            status: StatusCode::INTERNAL_SERVER_ERROR,
+            message: "Task join error".to_string(),
+        })?;
     Ok(Json(orgs))
 }
 
@@ -5383,8 +6597,14 @@ async fn create_org_handler(
     let store = Arc::clone(&state.org_store);
     let org = tokio::task::spawn_blocking(move || store.create(&org_id, &body.name, &user_id))
         .await
-        .map_err(|_| ApiError { status: StatusCode::INTERNAL_SERVER_ERROR, message: "Task join error".to_string() })?
-        .map_err(|e| ApiError { status: StatusCode::INTERNAL_SERVER_ERROR, message: e.to_string() })?;
+        .map_err(|_| ApiError {
+            status: StatusCode::INTERNAL_SERVER_ERROR,
+            message: "Task join error".to_string(),
+        })?
+        .map_err(|e| ApiError {
+            status: StatusCode::INTERNAL_SERVER_ERROR,
+            message: e.to_string(),
+        })?;
     Ok((StatusCode::CREATED, Json(org)))
 }
 
@@ -5402,16 +6622,28 @@ async fn get_org_handler(
         move || store.get_member(&org_id2, &user_id)
     })
     .await
-    .map_err(|_| ApiError { status: StatusCode::INTERNAL_SERVER_ERROR, message: "Task join error".to_string() })?;
+    .map_err(|_| ApiError {
+        status: StatusCode::INTERNAL_SERVER_ERROR,
+        message: "Task join error".to_string(),
+    })?;
 
     if member.is_none() {
-        return Err(ApiError { status: StatusCode::FORBIDDEN, message: "Not a member of this organization".to_string() });
+        return Err(ApiError {
+            status: StatusCode::FORBIDDEN,
+            message: "Not a member of this organization".to_string(),
+        });
     }
 
     let org = tokio::task::spawn_blocking(move || store.find_by_id(&org_id))
         .await
-        .map_err(|_| ApiError { status: StatusCode::INTERNAL_SERVER_ERROR, message: "Task join error".to_string() })?
-        .ok_or_else(|| ApiError { status: StatusCode::NOT_FOUND, message: "Organization not found".to_string() })?;
+        .map_err(|_| ApiError {
+            status: StatusCode::INTERNAL_SERVER_ERROR,
+            message: "Task join error".to_string(),
+        })?
+        .ok_or_else(|| ApiError {
+            status: StatusCode::NOT_FOUND,
+            message: "Organization not found".to_string(),
+        })?;
     Ok(Json(org))
 }
 
@@ -5430,16 +6662,28 @@ async fn delete_org_handler(
         move || store.find_by_id(&org_id2)
     })
     .await
-    .map_err(|_| ApiError { status: StatusCode::INTERNAL_SERVER_ERROR, message: "Task join error".to_string() })?
-    .ok_or_else(|| ApiError { status: StatusCode::NOT_FOUND, message: "Organization not found".to_string() })?;
+    .map_err(|_| ApiError {
+        status: StatusCode::INTERNAL_SERVER_ERROR,
+        message: "Task join error".to_string(),
+    })?
+    .ok_or_else(|| ApiError {
+        status: StatusCode::NOT_FOUND,
+        message: "Organization not found".to_string(),
+    })?;
 
     if org.owner_id != user_id {
-        return Err(ApiError { status: StatusCode::FORBIDDEN, message: "Only the owner can delete an organization".to_string() });
+        return Err(ApiError {
+            status: StatusCode::FORBIDDEN,
+            message: "Only the owner can delete an organization".to_string(),
+        });
     }
 
     tokio::task::spawn_blocking(move || store.delete(&org_id))
         .await
-        .map_err(|_| ApiError { status: StatusCode::INTERNAL_SERVER_ERROR, message: "Task join error".to_string() })?;
+        .map_err(|_| ApiError {
+            status: StatusCode::INTERNAL_SERVER_ERROR,
+            message: "Task join error".to_string(),
+        })?;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -5458,15 +6702,24 @@ async fn list_org_members_handler(
         move || store.get_member(&org_id2, &user_id)
     })
     .await
-    .map_err(|_| ApiError { status: StatusCode::INTERNAL_SERVER_ERROR, message: "Task join error".to_string() })?;
+    .map_err(|_| ApiError {
+        status: StatusCode::INTERNAL_SERVER_ERROR,
+        message: "Task join error".to_string(),
+    })?;
 
     if member.is_none() {
-        return Err(ApiError { status: StatusCode::FORBIDDEN, message: "Not a member of this organization".to_string() });
+        return Err(ApiError {
+            status: StatusCode::FORBIDDEN,
+            message: "Not a member of this organization".to_string(),
+        });
     }
 
     let members = tokio::task::spawn_blocking(move || store.list_members(&org_id))
         .await
-        .map_err(|_| ApiError { status: StatusCode::INTERNAL_SERVER_ERROR, message: "Task join error".to_string() })?;
+        .map_err(|_| ApiError {
+            status: StatusCode::INTERNAL_SERVER_ERROR,
+            message: "Task join error".to_string(),
+        })?;
     Ok(Json(members))
 }
 
@@ -5486,20 +6739,38 @@ async fn add_org_member_handler(
         move || store.get_member(&org_id2, &caller_id)
     })
     .await
-    .map_err(|_| ApiError { status: StatusCode::INTERNAL_SERVER_ERROR, message: "Task join error".to_string() })?;
+    .map_err(|_| ApiError {
+        status: StatusCode::INTERNAL_SERVER_ERROR,
+        message: "Task join error".to_string(),
+    })?;
 
     match caller_member {
         Some(m) if m.role == "admin" => {}
-        _ => return Err(ApiError { status: StatusCode::FORBIDDEN, message: "Only admin members can add members".to_string() }),
+        _ => {
+            return Err(ApiError {
+                status: StatusCode::FORBIDDEN,
+                message: "Only admin members can add members".to_string(),
+            })
+        }
     }
 
-    let member = tokio::task::spawn_blocking(move || store.add_member(&org_id, &body.user_id, &body.role))
-        .await
-        .map_err(|_| ApiError { status: StatusCode::INTERNAL_SERVER_ERROR, message: "Task join error".to_string() })?
-        .map_err(|e| match e {
-            crate::orgs::OrgError::AlreadyMember => ApiError { status: StatusCode::CONFLICT, message: "User is already a member".to_string() },
-            other => ApiError { status: StatusCode::BAD_REQUEST, message: other.to_string() },
-        })?;
+    let member =
+        tokio::task::spawn_blocking(move || store.add_member(&org_id, &body.user_id, &body.role))
+            .await
+            .map_err(|_| ApiError {
+                status: StatusCode::INTERNAL_SERVER_ERROR,
+                message: "Task join error".to_string(),
+            })?
+            .map_err(|e| match e {
+                crate::orgs::OrgError::AlreadyMember => ApiError {
+                    status: StatusCode::CONFLICT,
+                    message: "User is already a member".to_string(),
+                },
+                other => ApiError {
+                    status: StatusCode::BAD_REQUEST,
+                    message: other.to_string(),
+                },
+            })?;
     Ok((StatusCode::CREATED, Json(member)))
 }
 
@@ -5518,19 +6789,31 @@ async fn remove_org_member_handler(
         move || store.get_member(&org_id2, &caller_id2)
     })
     .await
-    .map_err(|_| ApiError { status: StatusCode::INTERNAL_SERVER_ERROR, message: "Task join error".to_string() })?;
+    .map_err(|_| ApiError {
+        status: StatusCode::INTERNAL_SERVER_ERROR,
+        message: "Task join error".to_string(),
+    })?;
 
     // Admins can remove anyone; members can only remove themselves
     let is_admin = caller_member.map(|m| m.role == "admin").unwrap_or(false);
     let is_self = caller_id == target_user_id;
     if !is_admin && !is_self {
-        return Err(ApiError { status: StatusCode::FORBIDDEN, message: "Not authorized to remove this member".to_string() });
+        return Err(ApiError {
+            status: StatusCode::FORBIDDEN,
+            message: "Not authorized to remove this member".to_string(),
+        });
     }
 
     tokio::task::spawn_blocking(move || store.remove_member(&org_id, &target_user_id))
         .await
-        .map_err(|_| ApiError { status: StatusCode::INTERNAL_SERVER_ERROR, message: "Task join error".to_string() })?
-        .map_err(|_| ApiError { status: StatusCode::NOT_FOUND, message: "Member not found".to_string() })?;
+        .map_err(|_| ApiError {
+            status: StatusCode::INTERNAL_SERVER_ERROR,
+            message: "Task join error".to_string(),
+        })?
+        .map_err(|_| ApiError {
+            status: StatusCode::NOT_FOUND,
+            message: "Member not found".to_string(),
+        })?;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -5551,8 +6834,14 @@ async fn switch_org_handler(
         move || store.get_member(&org_id2, &user_id2)
     })
     .await
-    .map_err(|_| ApiError { status: StatusCode::INTERNAL_SERVER_ERROR, message: "Task join error".to_string() })?
-    .ok_or_else(|| ApiError { status: StatusCode::FORBIDDEN, message: "Not a member of this organization".to_string() })?;
+    .map_err(|_| ApiError {
+        status: StatusCode::INTERNAL_SERVER_ERROR,
+        message: "Task join error".to_string(),
+    })?
+    .ok_or_else(|| ApiError {
+        status: StatusCode::FORBIDDEN,
+        message: "Not a member of this organization".to_string(),
+    })?;
 
     let role: crate::auth::Role = member.role.parse().unwrap_or_default();
     let exp = std::time::SystemTime::now()
@@ -5620,8 +6909,17 @@ async fn create_api_key_handler(
     require_admin(&claims)?;
     body.tenant_id = effective_tenant_id(&claims, &body.tenant_id);
     let raw_key = crate::api_keys::generate_api_key();
-    let record = state.api_key_store.create(&body.tenant_id, &body.name, &raw_key).await;
-    Ok((StatusCode::CREATED, Json(CreateApiKeyResponse { record, key: raw_key })))
+    let record = state
+        .api_key_store
+        .create(&body.tenant_id, &body.name, &raw_key)
+        .await;
+    Ok((
+        StatusCode::CREATED,
+        Json(CreateApiKeyResponse {
+            record,
+            key: raw_key,
+        }),
+    ))
 }
 
 async fn delete_api_key_handler(
@@ -5640,7 +6938,10 @@ async fn delete_api_key_handler(
 }
 
 pub fn extract_bearer(headers: &axum::http::HeaderMap) -> Option<String> {
-    let value = headers.get(axum::http::header::AUTHORIZATION)?.to_str().ok()?;
+    let value = headers
+        .get(axum::http::header::AUTHORIZATION)?
+        .to_str()
+        .ok()?;
     value.strip_prefix("Bearer ").map(|s| s.to_string())
 }
 
@@ -5661,7 +6962,11 @@ fn effective_tenant_id(claims: &Option<Claims>, supplied: &str) -> String {
     effective_tenant_id_with_flag(auth_required, claims, supplied)
 }
 
-fn effective_tenant_id_with_flag(auth_required: bool, claims: &Option<Claims>, supplied: &str) -> String {
+fn effective_tenant_id_with_flag(
+    auth_required: bool,
+    claims: &Option<Claims>,
+    supplied: &str,
+) -> String {
     // JWT always wins when present — prevents tenant_id spoofing regardless of AUTH_REQUIRED.
     // Falls back to supplied only in dev mode (no JWT issued yet).
     match claims {
@@ -5852,38 +7157,64 @@ struct ApiError {
 
 impl ApiError {
     fn bad_request(msg: &str) -> Self {
-        Self { status: StatusCode::BAD_REQUEST, message: msg.to_string() }
+        Self {
+            status: StatusCode::BAD_REQUEST,
+            message: msg.to_string(),
+        }
     }
     fn forbidden(msg: &str) -> Self {
-        Self { status: StatusCode::FORBIDDEN, message: msg.to_string() }
+        Self {
+            status: StatusCode::FORBIDDEN,
+            message: msg.to_string(),
+        }
     }
     fn not_found(msg: &str) -> Self {
-        Self { status: StatusCode::NOT_FOUND, message: msg.to_string() }
+        Self {
+            status: StatusCode::NOT_FOUND,
+            message: msg.to_string(),
+        }
     }
     fn internal(msg: &str) -> Self {
-        Self { status: StatusCode::INTERNAL_SERVER_ERROR, message: msg.to_string() }
+        Self {
+            status: StatusCode::INTERNAL_SERVER_ERROR,
+            message: msg.to_string(),
+        }
     }
 }
 
 fn auth_required() -> bool {
-    std::env::var("AUTH_REQUIRED").map(|v| v == "true" || v == "1").unwrap_or(false)
+    std::env::var("AUTH_REQUIRED")
+        .map(|v| v == "true" || v == "1")
+        .unwrap_or(false)
 }
 
-fn require_write_inner(claims: &Option<crate::auth::Claims>, enforced: bool) -> Result<(), ApiError> {
-    if !enforced { return Ok(()); }
+fn require_write_inner(
+    claims: &Option<crate::auth::Claims>,
+    enforced: bool,
+) -> Result<(), ApiError> {
+    if !enforced {
+        return Ok(());
+    }
     match claims {
         Some(c) if c.can_write() => Ok(()),
-        Some(_) => Err(ApiError::forbidden("Viewer role cannot perform write operations")),
-        None    => Err(ApiError::forbidden("Authentication required")),
+        Some(_) => Err(ApiError::forbidden(
+            "Viewer role cannot perform write operations",
+        )),
+        None => Err(ApiError::forbidden("Authentication required")),
     }
 }
 
-fn require_admin_inner(claims: &Option<crate::auth::Claims>, enforced: bool) -> Result<(), ApiError> {
-    if !enforced { return Ok(()); }
+fn require_admin_inner(
+    claims: &Option<crate::auth::Claims>,
+    enforced: bool,
+) -> Result<(), ApiError> {
+    if !enforced {
+        return Ok(());
+    }
     match claims {
         Some(c) if c.is_admin() => Ok(()),
         Some(_) => Err(ApiError::forbidden("Admin role required")),
-        None    => Err(ApiError::forbidden("Authentication required")),
+        None => Err(ApiError::forbidden("Authentication required")),
     }
 }
 
@@ -5926,9 +7257,14 @@ impl From<CredentialError> for ApiError {
         let (status, message) = match e {
             CredentialError::NotFound => (StatusCode::NOT_FOUND, "CredentialNotFound"),
             CredentialError::NameTaken => (StatusCode::CONFLICT, "CredentialNameTaken"),
-            CredentialError::StoreUnavailable => (StatusCode::INTERNAL_SERVER_ERROR, "StoreUnavailable"),
+            CredentialError::StoreUnavailable => {
+                (StatusCode::INTERNAL_SERVER_ERROR, "StoreUnavailable")
+            }
         };
-        Self { status, message: message.to_string() }
+        Self {
+            status,
+            message: message.to_string(),
+        }
     }
 }
 
@@ -5936,9 +7272,14 @@ impl From<EnvVarError> for ApiError {
     fn from(e: EnvVarError) -> Self {
         let (status, message) = match e {
             EnvVarError::NotFound => (StatusCode::NOT_FOUND, "EnvVarNotFound"),
-            EnvVarError::StoreUnavailable => (StatusCode::INTERNAL_SERVER_ERROR, "StoreUnavailable"),
+            EnvVarError::StoreUnavailable => {
+                (StatusCode::INTERNAL_SERVER_ERROR, "StoreUnavailable")
+            }
         };
-        Self { status, message: message.to_string() }
+        Self {
+            status,
+            message: message.to_string(),
+        }
     }
 }
 
@@ -5946,9 +7287,14 @@ impl From<WebhookError> for ApiError {
     fn from(e: WebhookError) -> Self {
         let (status, message) = match e {
             WebhookError::NotFound => (StatusCode::NOT_FOUND, "WebhookNotFound"),
-            WebhookError::StoreUnavailable => (StatusCode::INTERNAL_SERVER_ERROR, "StoreUnavailable"),
+            WebhookError::StoreUnavailable => {
+                (StatusCode::INTERNAL_SERVER_ERROR, "StoreUnavailable")
+            }
         };
-        Self { status, message: message.to_string() }
+        Self {
+            status,
+            message: message.to_string(),
+        }
     }
 }
 
@@ -5999,7 +7345,9 @@ struct CronPreviewRequest {
     #[serde(default = "default_cron_count")]
     count: usize,
 }
-fn default_cron_count() -> usize { 5 }
+fn default_cron_count() -> usize {
+    5
+}
 
 #[derive(Serialize)]
 struct CronPreviewResponse {
@@ -6007,11 +7355,9 @@ struct CronPreviewResponse {
     error: Option<String>,
 }
 
-async fn cron_preview_handler(
-    Json(req): Json<CronPreviewRequest>,
-) -> impl IntoResponse {
-    use cron::Schedule;
+async fn cron_preview_handler(Json(req): Json<CronPreviewRequest>) -> impl IntoResponse {
     use chrono::Utc;
+    use cron::Schedule;
     use std::str::FromStr;
 
     let count = req.count.min(10);
@@ -6045,7 +7391,12 @@ async fn list_test_cases_handler(
     let tenant_id = q.get("tenant_id").map(|s| s.as_str()).unwrap_or("");
     let tenant_id = effective_tenant_id(&claims, tenant_id);
     let cases = state.test_case_store.list(&tenant_id, &workflow_id).await;
-    Json(cases.into_iter().map(|tc| serde_json::to_value(&tc).unwrap_or_default()).collect())
+    Json(
+        cases
+            .into_iter()
+            .map(|tc| serde_json::to_value(&tc).unwrap_or_default())
+            .collect(),
+    )
 }
 
 async fn create_test_case_handler(
@@ -6061,17 +7412,24 @@ async fn create_test_case_handler(
         .create(&tenant_id, &workflow_id, request)
         .await
         .map_err(|_| ApiError::internal("test_case_create_failed"))?;
-    Ok((StatusCode::CREATED, Json(serde_json::to_value(&tc).unwrap_or_default())))
+    Ok((
+        StatusCode::CREATED,
+        Json(serde_json::to_value(&tc).unwrap_or_default()),
+    ))
 }
 
 async fn get_test_case_handler(
     State(state): State<AppState>,
     Path(test_case_id): Path<String>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
-    let tc = state.test_case_store.get(&test_case_id).await.map_err(|e| match e {
-        TestCaseError::NotFound => ApiError::not_found("test_case"),
-        _ => ApiError::internal("test_case_store"),
-    })?;
+    let tc = state
+        .test_case_store
+        .get(&test_case_id)
+        .await
+        .map_err(|e| match e {
+            TestCaseError::NotFound => ApiError::not_found("test_case"),
+            _ => ApiError::internal("test_case_store"),
+        })?;
     Ok(Json(serde_json::to_value(&tc).unwrap_or_default()))
 }
 
@@ -6080,10 +7438,14 @@ async fn update_test_case_handler(
     Path(test_case_id): Path<String>,
     Json(request): Json<UpdateTestCaseRequest>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
-    let tc = state.test_case_store.update(&test_case_id, request).await.map_err(|e| match e {
-        TestCaseError::NotFound => ApiError::not_found("test_case"),
-        _ => ApiError::internal("test_case_store"),
-    })?;
+    let tc = state
+        .test_case_store
+        .update(&test_case_id, request)
+        .await
+        .map_err(|e| match e {
+            TestCaseError::NotFound => ApiError::not_found("test_case"),
+            _ => ApiError::internal("test_case_store"),
+        })?;
     Ok(Json(serde_json::to_value(&tc).unwrap_or_default()))
 }
 
@@ -6093,10 +7455,14 @@ async fn delete_test_case_handler(
     Path(test_case_id): Path<String>,
 ) -> Result<StatusCode, ApiError> {
     require_write(&claims)?;
-    state.test_case_store.delete(&test_case_id).await.map_err(|e| match e {
-        TestCaseError::NotFound => ApiError::not_found("test_case"),
-        _ => ApiError::internal("test_case_store"),
-    })?;
+    state
+        .test_case_store
+        .delete(&test_case_id)
+        .await
+        .map_err(|e| match e {
+            TestCaseError::NotFound => ApiError::not_found("test_case"),
+            _ => ApiError::internal("test_case_store"),
+        })?;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -6115,10 +7481,14 @@ async fn run_test_case_handler(
     Extension(claims): Extension<Option<Claims>>,
     Path(test_case_id): Path<String>,
 ) -> Result<Json<TestCaseRunResult>, ApiError> {
-    let tc = state.test_case_store.get(&test_case_id).await.map_err(|e| match e {
-        TestCaseError::NotFound => ApiError::not_found("test_case"),
-        _ => ApiError::internal("test_case_store"),
-    })?;
+    let tc = state
+        .test_case_store
+        .get(&test_case_id)
+        .await
+        .map_err(|e| match e {
+            TestCaseError::NotFound => ApiError::not_found("test_case"),
+            _ => ApiError::internal("test_case_store"),
+        })?;
     // Verify caller owns this test case's tenant (returns 404 to avoid leaking existence).
     let caller_tenant = effective_tenant_id(&claims, &tc.tenant_id);
     if caller_tenant != tc.tenant_id {
@@ -6165,7 +7535,8 @@ async fn run_test_case_handler(
             retried_from: None,
         })
         .await?;
-    let passed = if let (Some(expected), Some(actual)) = (&tc.expected_output, &record.output_json) {
+    let passed = if let (Some(expected), Some(actual)) = (&tc.expected_output, &record.output_json)
+    {
         let ev: serde_json::Value = serde_json::from_str(expected).unwrap_or_default();
         let av: serde_json::Value = serde_json::from_str(actual).unwrap_or_default();
         ev == av
@@ -6191,9 +7562,16 @@ async fn list_event_subscriptions_handler(
 ) -> Result<Json<Vec<serde_json::Value>>, ApiError> {
     let tenant_id = q.get("tenant_id").map(|s| s.as_str()).unwrap_or("");
     let tenant_id = effective_tenant_id(&claims, tenant_id);
-    let subs = state.subscription_store.list(&tenant_id).await
+    let subs = state
+        .subscription_store
+        .list(&tenant_id)
+        .await
         .map_err(|_| ApiError::internal("subscription_store"))?;
-    Ok(Json(subs.into_iter().map(|s| serde_json::to_value(&s).unwrap_or_default()).collect()))
+    Ok(Json(
+        subs.into_iter()
+            .map(|s| serde_json::to_value(&s).unwrap_or_default())
+            .collect(),
+    ))
 }
 
 async fn create_event_subscription_handler(
@@ -6202,11 +7580,20 @@ async fn create_event_subscription_handler(
     Json(mut req): Json<CreateSubscriptionRequest>,
 ) -> Result<(StatusCode, Json<serde_json::Value>), ApiError> {
     req.tenant_id = effective_tenant_id(&claims, &req.tenant_id);
-    let sub = state.subscription_store.create(req).await.map_err(|e| match e {
-        SubscriptionError::InvalidUrl => ApiError::bad_request("url must start with http or https"),
-        _ => ApiError::internal("subscription_store"),
-    })?;
-    Ok((StatusCode::CREATED, Json(serde_json::to_value(&sub).unwrap_or_default())))
+    let sub = state
+        .subscription_store
+        .create(req)
+        .await
+        .map_err(|e| match e {
+            SubscriptionError::InvalidUrl => {
+                ApiError::bad_request("url must start with http or https")
+            }
+            _ => ApiError::internal("subscription_store"),
+        })?;
+    Ok((
+        StatusCode::CREATED,
+        Json(serde_json::to_value(&sub).unwrap_or_default()),
+    ))
 }
 
 async fn delete_event_subscription_handler(
@@ -6218,10 +7605,14 @@ async fn delete_event_subscription_handler(
     require_write(&claims)?;
     let tenant_id = q.get("tenant_id").map(|s| s.as_str()).unwrap_or("");
     let tenant_id = effective_tenant_id(&claims, tenant_id);
-    state.subscription_store.delete(&tenant_id, &sub_id).await.map_err(|e| match e {
-        SubscriptionError::NotFound => ApiError::not_found("event_subscription"),
-        _ => ApiError::internal("subscription_store"),
-    })?;
+    state
+        .subscription_store
+        .delete(&tenant_id, &sub_id)
+        .await
+        .map_err(|e| match e {
+            SubscriptionError::NotFound => ApiError::not_found("event_subscription"),
+            _ => ApiError::internal("subscription_store"),
+        })?;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -6235,9 +7626,17 @@ async fn list_workflow_comments_handler(
 ) -> Result<Json<Vec<serde_json::Value>>, ApiError> {
     let tenant_id = q.get("tenant_id").map(|s| s.as_str()).unwrap_or("");
     let tenant_id = effective_tenant_id(&claims, tenant_id);
-    let comments = state.comment_store.list(&tenant_id, &workflow_id).await
+    let comments = state
+        .comment_store
+        .list(&tenant_id, &workflow_id)
+        .await
         .map_err(|_| ApiError::internal("comment_store"))?;
-    Ok(Json(comments.into_iter().map(|c| serde_json::to_value(&c).unwrap_or_default()).collect()))
+    Ok(Json(
+        comments
+            .into_iter()
+            .map(|c| serde_json::to_value(&c).unwrap_or_default())
+            .collect(),
+    ))
 }
 
 #[derive(Debug, Deserialize)]
@@ -6255,16 +7654,23 @@ async fn create_workflow_comment_handler(
 ) -> Result<(StatusCode, Json<serde_json::Value>), ApiError> {
     let tenant_id = effective_tenant_id(&claims, &req.tenant_id);
     use crate::comments::CommentError;
-    let comment = state.comment_store.create(CreateCommentRequest {
-        tenant_id,
-        workflow_id,
-        author: req.author,
-        body: req.body,
-    }).await.map_err(|e| match e {
-        CommentError::EmptyBody => ApiError::bad_request("comment body must not be empty"),
-        _ => ApiError::internal("comment_store"),
-    })?;
-    Ok((StatusCode::CREATED, Json(serde_json::to_value(&comment).unwrap_or_default())))
+    let comment = state
+        .comment_store
+        .create(CreateCommentRequest {
+            tenant_id,
+            workflow_id,
+            author: req.author,
+            body: req.body,
+        })
+        .await
+        .map_err(|e| match e {
+            CommentError::EmptyBody => ApiError::bad_request("comment body must not be empty"),
+            _ => ApiError::internal("comment_store"),
+        })?;
+    Ok((
+        StatusCode::CREATED,
+        Json(serde_json::to_value(&comment).unwrap_or_default()),
+    ))
 }
 
 #[derive(Debug, Deserialize)]
@@ -6281,14 +7687,22 @@ async fn edit_workflow_comment_handler(
 ) -> Result<Json<serde_json::Value>, ApiError> {
     let tenant_id = effective_tenant_id(&claims, &req.tenant_id);
     use crate::comments::CommentError;
-    let comment = state.comment_store.edit(&tenant_id, &comment_id, EditCommentRequest {
-        tenant_id: tenant_id.clone(),
-        body: req.body,
-    }).await.map_err(|e| match e {
-        CommentError::NotFound => ApiError::not_found("comment"),
-        CommentError::EmptyBody => ApiError::bad_request("comment body must not be empty"),
-        _ => ApiError::internal("comment_store"),
-    })?;
+    let comment = state
+        .comment_store
+        .edit(
+            &tenant_id,
+            &comment_id,
+            EditCommentRequest {
+                tenant_id: tenant_id.clone(),
+                body: req.body,
+            },
+        )
+        .await
+        .map_err(|e| match e {
+            CommentError::NotFound => ApiError::not_found("comment"),
+            CommentError::EmptyBody => ApiError::bad_request("comment body must not be empty"),
+            _ => ApiError::internal("comment_store"),
+        })?;
     Ok(Json(serde_json::to_value(&comment).unwrap_or_default()))
 }
 
@@ -6302,10 +7716,14 @@ async fn delete_workflow_comment_handler(
     let tenant_id = q.get("tenant_id").map(|s| s.as_str()).unwrap_or("");
     let tenant_id = effective_tenant_id(&claims, tenant_id);
     use crate::comments::CommentError;
-    state.comment_store.delete(&tenant_id, &comment_id).await.map_err(|e| match e {
-        CommentError::NotFound => ApiError::not_found("comment"),
-        _ => ApiError::internal("comment_store"),
-    })?;
+    state
+        .comment_store
+        .delete(&tenant_id, &comment_id)
+        .await
+        .map_err(|e| match e {
+            CommentError::NotFound => ApiError::not_found("comment"),
+            _ => ApiError::internal("comment_store"),
+        })?;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -6330,7 +7748,9 @@ async fn publish_form_handler(
             .ok();
         version
             .and_then(|v| {
-                v.graph.nodes.iter()
+                v.graph
+                    .nodes
+                    .iter()
                     .find(|n| n.node_type == workflow_core::NodeType::Trigger)
                     .and_then(|n| n.config.clone())
                     .and_then(|c| c.get("input_schema").cloned())
@@ -6360,13 +7780,23 @@ async fn list_forms_handler(
 ) -> Json<Vec<serde_json::Value>> {
     let tenant_id = q.get("tenant_id").map(|s| s.as_str()).unwrap_or("");
     let tenant_id = effective_tenant_id(&claims, tenant_id);
-    let forms = state.form_store.list_by_workflow(&tenant_id, &workflow_id).await;
-    Json(forms.into_iter().map(|f| serde_json::json!({
-        "token": f.token,
-        "title": f.title,
-        "description": f.description,
-        "created_at": f.created_at,
-    })).collect())
+    let forms = state
+        .form_store
+        .list_by_workflow(&tenant_id, &workflow_id)
+        .await;
+    Json(
+        forms
+            .into_iter()
+            .map(|f| {
+                serde_json::json!({
+                    "token": f.token,
+                    "title": f.title,
+                    "description": f.description,
+                    "created_at": f.created_at,
+                })
+            })
+            .collect(),
+    )
 }
 
 async fn get_form_handler(
@@ -6405,7 +7835,9 @@ struct FormSubmitBody {
     #[serde(default = "empty_json")]
     input_json: String,
 }
-fn empty_json() -> String { "{}".to_string() }
+fn empty_json() -> String {
+    "{}".to_string()
+}
 
 async fn submit_form_handler(
     State(state): State<AppState>,
@@ -6468,7 +7900,9 @@ struct NotifQuery {
     #[serde(default = "default_notif_limit")]
     limit: usize,
 }
-fn default_notif_limit() -> usize { 50 }
+fn default_notif_limit() -> usize {
+    50
+}
 
 async fn list_notifications_handler(
     State(state): State<AppState>,
@@ -6477,7 +7911,9 @@ async fn list_notifications_handler(
 ) -> Json<serde_json::Value> {
     let tenant_id = effective_tenant_id(&claims, query.tenant_id.as_deref().unwrap_or(""));
     let user_id = claims.as_ref().and_then(|c| c.user_id.as_deref());
-    let items = state.notification_store.list(&tenant_id, user_id, query.limit);
+    let items = state
+        .notification_store
+        .list(&tenant_id, user_id, query.limit);
     let unread = state.notification_store.unread_count(&tenant_id, user_id);
     Json(serde_json::json!({ "notifications": items, "unread_count": unread }))
 }
@@ -6490,8 +7926,14 @@ async fn mark_notification_read_handler(
 ) -> impl IntoResponse {
     let tenant_id = effective_tenant_id(&claims, &q.tenant_id);
     let found = state.notification_store.mark_read(&notif_id, &tenant_id);
-    if found { (StatusCode::OK, Json(serde_json::json!({"ok": true}))) }
-    else { (StatusCode::NOT_FOUND, Json(serde_json::json!({"error": "not found"}))) }
+    if found {
+        (StatusCode::OK, Json(serde_json::json!({"ok": true})))
+    } else {
+        (
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({"error": "not found"})),
+        )
+    }
 }
 
 async fn mark_all_notifications_read_handler(
@@ -6513,15 +7955,30 @@ async fn delete_notification_handler(
 ) -> impl IntoResponse {
     let tenant_id = effective_tenant_id(&claims, &q.tenant_id);
     let found = state.notification_store.delete(&notif_id, &tenant_id);
-    if found { StatusCode::NO_CONTENT.into_response() }
-    else { (StatusCode::NOT_FOUND, Json(serde_json::json!({"error": "not found"}))).into_response() }
+    if found {
+        StatusCode::NO_CONTENT.into_response()
+    } else {
+        (
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({"error": "not found"})),
+        )
+            .into_response()
+    }
 }
 
 // Helper to fire a notification (non-blocking)
-pub(crate) fn push_notification(state: &AppState, tenant_id: &str, user_id: Option<&str>, title: &str, body: &str, level: &str) {
-    state.notification_store.create(tenant_id, user_id, title, body, level);
+pub(crate) fn push_notification(
+    state: &AppState,
+    tenant_id: &str,
+    user_id: Option<&str>,
+    title: &str,
+    body: &str,
+    level: &str,
+) {
+    state
+        .notification_store
+        .create(tenant_id, user_id, title, body, level);
 }
-
 
 #[cfg(test)]
 #[path = "http_tests.rs"]

@@ -84,7 +84,10 @@ impl OrgStore for MemoryOrgStore {
             owner_id: owner_id.to_owned(),
             created_at: unix_now(),
         };
-        self.orgs.write().unwrap().insert(id.to_owned(), org.clone());
+        self.orgs
+            .write()
+            .unwrap()
+            .insert(id.to_owned(), org.clone());
         // Auto-add owner as admin member
         let _ = self.add_member(id, owner_id, "admin");
         Ok(org)
@@ -95,20 +98,30 @@ impl OrgStore for MemoryOrgStore {
     }
 
     fn list_by_owner(&self, owner_id: &str) -> Vec<OrgRecord> {
-        self.orgs.read().unwrap().values()
+        self.orgs
+            .read()
+            .unwrap()
+            .values()
             .filter(|o| o.owner_id == owner_id)
             .cloned()
             .collect()
     }
 
     fn list_for_user(&self, user_id: &str) -> Vec<OrgRecord> {
-        let member_org_ids: Vec<String> = self.members.read().unwrap()
+        let member_org_ids: Vec<String> = self
+            .members
+            .read()
+            .unwrap()
             .iter()
             .filter(|m| m.user_id == user_id)
             .map(|m| m.org_id.clone())
             .collect();
         let orgs = self.orgs.read().unwrap();
-        member_org_ids.iter().filter_map(|id| orgs.get(id)).cloned().collect()
+        member_org_ids
+            .iter()
+            .filter_map(|id| orgs.get(id))
+            .cloned()
+            .collect()
     }
 
     fn delete(&self, id: &str) -> bool {
@@ -121,7 +134,10 @@ impl OrgStore for MemoryOrgStore {
 
     fn add_member(&self, org_id: &str, user_id: &str, role: &str) -> Result<OrgMember, OrgError> {
         let mut members = self.members.write().unwrap();
-        if members.iter().any(|m| m.org_id == org_id && m.user_id == user_id) {
+        if members
+            .iter()
+            .any(|m| m.org_id == org_id && m.user_id == user_id)
+        {
             return Err(OrgError::AlreadyMember);
         }
         let member = OrgMember {
@@ -138,11 +154,17 @@ impl OrgStore for MemoryOrgStore {
         let mut members = self.members.write().unwrap();
         let before = members.len();
         members.retain(|m| !(m.org_id == org_id && m.user_id == user_id));
-        if members.len() < before { Ok(()) } else { Err(OrgError::NotMember) }
+        if members.len() < before {
+            Ok(())
+        } else {
+            Err(OrgError::NotMember)
+        }
     }
 
     fn list_members(&self, org_id: &str) -> Vec<OrgMember> {
-        self.members.read().unwrap()
+        self.members
+            .read()
+            .unwrap()
             .iter()
             .filter(|m| m.org_id == org_id)
             .cloned()
@@ -150,7 +172,9 @@ impl OrgStore for MemoryOrgStore {
     }
 
     fn get_member(&self, org_id: &str, user_id: &str) -> Option<OrgMember> {
-        self.members.read().unwrap()
+        self.members
+            .read()
+            .unwrap()
             .iter()
             .find(|m| m.org_id == org_id && m.user_id == user_id)
             .cloned()
@@ -164,7 +188,9 @@ pub struct PostgresOrgStore {
 }
 
 impl PostgresOrgStore {
-    pub fn new(pool: sqlx::PgPool) -> Self { Self { pool } }
+    pub fn new(pool: sqlx::PgPool) -> Self {
+        Self { pool }
+    }
 }
 
 #[derive(sqlx::FromRow)]
@@ -177,7 +203,12 @@ struct OrgRow {
 
 impl From<OrgRow> for OrgRecord {
     fn from(r: OrgRow) -> Self {
-        Self { id: r.id, name: r.name, owner_id: r.owner_id, created_at: r.created_at }
+        Self {
+            id: r.id,
+            name: r.name,
+            owner_id: r.owner_id,
+            created_at: r.created_at,
+        }
     }
 }
 
@@ -191,7 +222,12 @@ struct MemberRow {
 
 impl From<MemberRow> for OrgMember {
     fn from(r: MemberRow) -> Self {
-        Self { org_id: r.org_id, user_id: r.user_id, role: r.role, joined_at: r.joined_at }
+        Self {
+            org_id: r.org_id,
+            user_id: r.user_id,
+            role: r.role,
+            joined_at: r.joined_at,
+        }
     }
 }
 
@@ -271,8 +307,11 @@ impl OrgStore for PostgresOrgStore {
         tokio::task::block_in_place(|| {
             tokio::runtime::Handle::current().block_on(async move {
                 sqlx::query("DELETE FROM af_orgs WHERE id = $1")
-                    .bind(&id).execute(&pool).await
-                    .map(|r| r.rows_affected() > 0).unwrap_or(false)
+                    .bind(&id)
+                    .execute(&pool)
+                    .await
+                    .map(|r| r.rows_affected() > 0)
+                    .unwrap_or(false)
             })
         })
     }
@@ -305,9 +344,18 @@ impl OrgStore for PostgresOrgStore {
         tokio::task::block_in_place(|| {
             tokio::runtime::Handle::current().block_on(async move {
                 sqlx::query("DELETE FROM af_org_members WHERE org_id = $1 AND user_id = $2")
-                    .bind(&org_id).bind(&user_id).execute(&pool).await
+                    .bind(&org_id)
+                    .bind(&user_id)
+                    .execute(&pool)
+                    .await
                     .map_err(|e| OrgError::StoreError(e.to_string()))
-                    .and_then(|r| if r.rows_affected() > 0 { Ok(()) } else { Err(OrgError::NotMember) })
+                    .and_then(|r| {
+                        if r.rows_affected() > 0 {
+                            Ok(())
+                        } else {
+                            Err(OrgError::NotMember)
+                        }
+                    })
             })
         })
     }
@@ -348,41 +396,74 @@ pub enum PlatformOrgStore {
 }
 
 impl PlatformOrgStore {
-    pub fn memory() -> Self { Self::Memory(Arc::new(MemoryOrgStore::default())) }
-    pub fn postgres(pool: sqlx::PgPool) -> Self { Self::Postgres(PostgresOrgStore::new(pool)) }
+    pub fn memory() -> Self {
+        Self::Memory(Arc::new(MemoryOrgStore::default()))
+    }
+    pub fn postgres(pool: sqlx::PgPool) -> Self {
+        Self::Postgres(PostgresOrgStore::new(pool))
+    }
 }
 
 impl Default for PlatformOrgStore {
-    fn default() -> Self { Self::memory() }
+    fn default() -> Self {
+        Self::memory()
+    }
 }
 
 impl OrgStore for PlatformOrgStore {
     fn create(&self, id: &str, name: &str, owner_id: &str) -> Result<OrgRecord, OrgError> {
-        match self { Self::Memory(s) => s.create(id, name, owner_id), Self::Postgres(s) => s.create(id, name, owner_id) }
+        match self {
+            Self::Memory(s) => s.create(id, name, owner_id),
+            Self::Postgres(s) => s.create(id, name, owner_id),
+        }
     }
     fn find_by_id(&self, id: &str) -> Option<OrgRecord> {
-        match self { Self::Memory(s) => s.find_by_id(id), Self::Postgres(s) => s.find_by_id(id) }
+        match self {
+            Self::Memory(s) => s.find_by_id(id),
+            Self::Postgres(s) => s.find_by_id(id),
+        }
     }
     fn list_by_owner(&self, owner_id: &str) -> Vec<OrgRecord> {
-        match self { Self::Memory(s) => s.list_by_owner(owner_id), Self::Postgres(s) => s.list_by_owner(owner_id) }
+        match self {
+            Self::Memory(s) => s.list_by_owner(owner_id),
+            Self::Postgres(s) => s.list_by_owner(owner_id),
+        }
     }
     fn list_for_user(&self, user_id: &str) -> Vec<OrgRecord> {
-        match self { Self::Memory(s) => s.list_for_user(user_id), Self::Postgres(s) => s.list_for_user(user_id) }
+        match self {
+            Self::Memory(s) => s.list_for_user(user_id),
+            Self::Postgres(s) => s.list_for_user(user_id),
+        }
     }
     fn delete(&self, id: &str) -> bool {
-        match self { Self::Memory(s) => s.delete(id), Self::Postgres(s) => s.delete(id) }
+        match self {
+            Self::Memory(s) => s.delete(id),
+            Self::Postgres(s) => s.delete(id),
+        }
     }
     fn add_member(&self, org_id: &str, user_id: &str, role: &str) -> Result<OrgMember, OrgError> {
-        match self { Self::Memory(s) => s.add_member(org_id, user_id, role), Self::Postgres(s) => s.add_member(org_id, user_id, role) }
+        match self {
+            Self::Memory(s) => s.add_member(org_id, user_id, role),
+            Self::Postgres(s) => s.add_member(org_id, user_id, role),
+        }
     }
     fn remove_member(&self, org_id: &str, user_id: &str) -> Result<(), OrgError> {
-        match self { Self::Memory(s) => s.remove_member(org_id, user_id), Self::Postgres(s) => s.remove_member(org_id, user_id) }
+        match self {
+            Self::Memory(s) => s.remove_member(org_id, user_id),
+            Self::Postgres(s) => s.remove_member(org_id, user_id),
+        }
     }
     fn list_members(&self, org_id: &str) -> Vec<OrgMember> {
-        match self { Self::Memory(s) => s.list_members(org_id), Self::Postgres(s) => s.list_members(org_id) }
+        match self {
+            Self::Memory(s) => s.list_members(org_id),
+            Self::Postgres(s) => s.list_members(org_id),
+        }
     }
     fn get_member(&self, org_id: &str, user_id: &str) -> Option<OrgMember> {
-        match self { Self::Memory(s) => s.get_member(org_id, user_id), Self::Postgres(s) => s.get_member(org_id, user_id) }
+        match self {
+            Self::Memory(s) => s.get_member(org_id, user_id),
+            Self::Postgres(s) => s.get_member(org_id, user_id),
+        }
     }
 }
 
@@ -392,7 +473,9 @@ impl OrgStore for PlatformOrgStore {
 mod tests {
     use super::*;
 
-    fn store() -> MemoryOrgStore { MemoryOrgStore::default() }
+    fn store() -> MemoryOrgStore {
+        MemoryOrgStore::default()
+    }
 
     #[test]
     fn create_org_auto_adds_owner() {
@@ -421,7 +504,10 @@ mod tests {
         let s = store();
         s.create("org-1", "Acme", "owner").unwrap();
         s.add_member("org-1", "user-2", "editor").unwrap();
-        assert!(matches!(s.add_member("org-1", "user-2", "editor"), Err(OrgError::AlreadyMember)));
+        assert!(matches!(
+            s.add_member("org-1", "user-2", "editor"),
+            Err(OrgError::AlreadyMember)
+        ));
     }
 
     #[test]

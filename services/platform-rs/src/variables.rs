@@ -50,7 +50,10 @@ impl MemoryVariableStore {
     ) -> Variable {
         let k = Self::make_key(tenant_id, workflow_id, key);
         self.data.write().unwrap().insert(k, value.clone());
-        Variable { key: key.to_string(), value }
+        Variable {
+            key: key.to_string(),
+            value,
+        }
     }
 
     pub async fn delete(&self, tenant_id: &str, workflow_id: &str, key: &str) -> bool {
@@ -93,7 +96,10 @@ impl MemoryVariableStore {
             serde_json::json!(next)
         };
         map.insert(k, value.clone());
-        Variable { key: key.to_string(), value }
+        Variable {
+            key: key.to_string(),
+            value,
+        }
     }
 }
 
@@ -121,7 +127,10 @@ impl PostgresVariableStore {
         .await
         .ok()
         .flatten()
-        .map(|(value,)| Variable { key: key.to_string(), value })
+        .map(|(value,)| Variable {
+            key: key.to_string(),
+            value,
+        })
     }
 
     pub async fn set(
@@ -145,7 +154,10 @@ impl PostgresVariableStore {
         .bind(now)
         .execute(&self.pool)
         .await;
-        Variable { key: key.to_string(), value }
+        Variable {
+            key: key.to_string(),
+            value,
+        }
     }
 
     pub async fn delete(&self, tenant_id: &str, workflow_id: &str, key: &str) -> bool {
@@ -218,7 +230,10 @@ impl PostgresVariableStore {
         } else {
             value
         };
-        Variable { key: key.to_string(), value }
+        Variable {
+            key: key.to_string(),
+            value,
+        }
     }
 }
 

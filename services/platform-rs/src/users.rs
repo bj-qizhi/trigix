@@ -75,12 +75,23 @@ impl std::fmt::Display for UserError {
 // ── Store trait ───────────────────────────────────────────────────────────────
 
 pub trait UserStore: Send + Sync {
-    fn create(&self, email: &str, password: &str, name: Option<&str>, tenant_id: &str) -> Result<User, UserError>;
+    fn create(
+        &self,
+        email: &str,
+        password: &str,
+        name: Option<&str>,
+        tenant_id: &str,
+    ) -> Result<User, UserError>;
     fn find_by_email(&self, email: &str) -> Option<User>;
     fn find_by_id(&self, id: &str) -> Option<User>;
     fn verify_password(&self, email: &str, password: &str) -> Result<User, UserError>;
     fn update_name(&self, id: &str, name: &str) -> Result<User, UserError>;
-    fn update_password(&self, id: &str, old_password: &str, new_password: &str) -> Result<(), UserError>;
+    fn update_password(
+        &self,
+        id: &str,
+        old_password: &str,
+        new_password: &str,
+    ) -> Result<(), UserError>;
     fn reset_password(&self, id: &str, new_password: &str) -> Result<(), UserError>;
     fn mark_email_verified(&self, id: &str) -> Result<(), UserError>;
     fn list_by_tenant(&self, tenant_id: &str) -> Vec<PublicUser>;
@@ -96,7 +107,13 @@ pub struct MemoryUserStore {
 }
 
 impl UserStore for MemoryUserStore {
-    fn create(&self, email: &str, password: &str, name: Option<&str>, tenant_id: &str) -> Result<User, UserError> {
+    fn create(
+        &self,
+        email: &str,
+        password: &str,
+        name: Option<&str>,
+        tenant_id: &str,
+    ) -> Result<User, UserError> {
         let mut map = self.users.write().unwrap();
         if map.values().any(|u| u.email == email) {
             return Err(UserError::EmailAlreadyExists);
@@ -117,7 +134,12 @@ impl UserStore for MemoryUserStore {
     }
 
     fn find_by_email(&self, email: &str) -> Option<User> {
-        self.users.read().unwrap().values().find(|u| u.email == email).cloned()
+        self.users
+            .read()
+            .unwrap()
+            .values()
+            .find(|u| u.email == email)
+            .cloned()
     }
 
     fn find_by_id(&self, id: &str) -> Option<User> {
@@ -125,10 +147,16 @@ impl UserStore for MemoryUserStore {
     }
 
     fn verify_password(&self, email: &str, password: &str) -> Result<User, UserError> {
-        let user = self.find_by_email(email).ok_or(UserError::InvalidCredentials)?;
+        let user = self
+            .find_by_email(email)
+            .ok_or(UserError::InvalidCredentials)?;
         let valid = bcrypt::verify(password, &user.password_hash)
             .map_err(|e| UserError::HashError(e.to_string()))?;
-        if valid { Ok(user) } else { Err(UserError::InvalidCredentials) }
+        if valid {
+            Ok(user)
+        } else {
+            Err(UserError::InvalidCredentials)
+        }
     }
 
     fn update_name(&self, id: &str, name: &str) -> Result<User, UserError> {
@@ -138,12 +166,19 @@ impl UserStore for MemoryUserStore {
         Ok(user.clone())
     }
 
-    fn update_password(&self, id: &str, old_password: &str, new_password: &str) -> Result<(), UserError> {
+    fn update_password(
+        &self,
+        id: &str,
+        old_password: &str,
+        new_password: &str,
+    ) -> Result<(), UserError> {
         let mut map = self.users.write().unwrap();
         let user = map.get_mut(id).ok_or(UserError::NotFound)?;
         let valid = bcrypt::verify(old_password, &user.password_hash)
             .map_err(|e| UserError::HashError(e.to_string()))?;
-        if !valid { return Err(UserError::InvalidCredentials); }
+        if !valid {
+            return Err(UserError::InvalidCredentials);
+        }
         user.password_hash = bcrypt::hash(new_password, bcrypt::DEFAULT_COST)
             .map_err(|e| UserError::HashError(e.to_string()))?;
         Ok(())
@@ -165,7 +200,10 @@ impl UserStore for MemoryUserStore {
     }
 
     fn list_by_tenant(&self, tenant_id: &str) -> Vec<PublicUser> {
-        self.users.read().unwrap().values()
+        self.users
+            .read()
+            .unwrap()
+            .values()
             .filter(|u| u.tenant_id == tenant_id)
             .map(|u| PublicUser::from(u))
             .collect()
@@ -173,7 +211,11 @@ impl UserStore for MemoryUserStore {
 
     fn delete_user(&self, id: &str) -> Result<(), UserError> {
         let mut map = self.users.write().unwrap();
-        if map.remove(id).is_some() { Ok(()) } else { Err(UserError::NotFound) }
+        if map.remove(id).is_some() {
+            Ok(())
+        } else {
+            Err(UserError::NotFound)
+        }
     }
 }
 
@@ -216,7 +258,13 @@ impl From<UserRow> for User {
 }
 
 impl UserStore for PostgresUserStore {
-    fn create(&self, email: &str, password: &str, name: Option<&str>, tenant_id: &str) -> Result<User, UserError> {
+    fn create(
+        &self,
+        email: &str,
+        password: &str,
+        name: Option<&str>,
+        tenant_id: &str,
+    ) -> Result<User, UserError> {
         let hash = bcrypt::hash(password, bcrypt::DEFAULT_COST)
             .map_err(|e| UserError::HashError(e.to_string()))?;
         let id = uuid::Uuid::new_v4().to_string();
@@ -274,10 +322,16 @@ impl UserStore for PostgresUserStore {
     }
 
     fn verify_password(&self, email: &str, password: &str) -> Result<User, UserError> {
-        let user = self.find_by_email(email).ok_or(UserError::InvalidCredentials)?;
+        let user = self
+            .find_by_email(email)
+            .ok_or(UserError::InvalidCredentials)?;
         let valid = bcrypt::verify(password, &user.password_hash)
             .map_err(|e| UserError::HashError(e.to_string()))?;
-        if valid { Ok(user) } else { Err(UserError::InvalidCredentials) }
+        if valid {
+            Ok(user)
+        } else {
+            Err(UserError::InvalidCredentials)
+        }
     }
 
     fn update_name(&self, id: &str, name: &str) -> Result<User, UserError> {
@@ -295,11 +349,18 @@ impl UserStore for PostgresUserStore {
         })
     }
 
-    fn update_password(&self, id: &str, old_password: &str, new_password: &str) -> Result<(), UserError> {
+    fn update_password(
+        &self,
+        id: &str,
+        old_password: &str,
+        new_password: &str,
+    ) -> Result<(), UserError> {
         let user = self.find_by_id(id).ok_or(UserError::NotFound)?;
         let valid = bcrypt::verify(old_password, &user.password_hash)
             .map_err(|e| UserError::HashError(e.to_string()))?;
-        if !valid { return Err(UserError::InvalidCredentials); }
+        if !valid {
+            return Err(UserError::InvalidCredentials);
+        }
         self.reset_password(id, new_password)
     }
 
@@ -311,7 +372,10 @@ impl UserStore for PostgresUserStore {
         tokio::task::block_in_place(|| {
             tokio::runtime::Handle::current().block_on(async move {
                 sqlx::query("UPDATE af_users SET password_hash = $1 WHERE id = $2")
-                    .bind(&new_hash).bind(&id).execute(&pool).await
+                    .bind(&new_hash)
+                    .bind(&id)
+                    .execute(&pool)
+                    .await
                     .map_err(|e| UserError::HashError(e.to_string()))
                     .map(|_| ())
             })
@@ -324,9 +388,15 @@ impl UserStore for PostgresUserStore {
         tokio::task::block_in_place(|| {
             tokio::runtime::Handle::current().block_on(async move {
                 let result = sqlx::query("UPDATE af_users SET email_verified = TRUE WHERE id = $1")
-                    .bind(&id).execute(&pool).await
+                    .bind(&id)
+                    .execute(&pool)
+                    .await
                     .map_err(|e| UserError::HashError(e.to_string()))?;
-                if result.rows_affected() == 0 { Err(UserError::NotFound) } else { Ok(()) }
+                if result.rows_affected() == 0 {
+                    Err(UserError::NotFound)
+                } else {
+                    Ok(())
+                }
             })
         })
     }
@@ -350,9 +420,15 @@ impl UserStore for PostgresUserStore {
         tokio::task::block_in_place(|| {
             tokio::runtime::Handle::current().block_on(async move {
                 let result = sqlx::query("DELETE FROM af_users WHERE id = $1")
-                    .bind(&id).execute(&pool).await
+                    .bind(&id)
+                    .execute(&pool)
+                    .await
                     .map_err(|e| UserError::HashError(e.to_string()))?;
-                if result.rows_affected() == 0 { Err(UserError::NotFound) } else { Ok(()) }
+                if result.rows_affected() == 0 {
+                    Err(UserError::NotFound)
+                } else {
+                    Ok(())
+                }
             })
         })
     }
@@ -375,38 +451,76 @@ impl PlatformUserStore {
 }
 
 impl UserStore for PlatformUserStore {
-    fn create(&self, email: &str, password: &str, name: Option<&str>, tenant_id: &str) -> Result<User, UserError> {
-        match self { Self::Memory(s) => s.create(email, password, name, tenant_id), Self::Postgres(s) => s.create(email, password, name, tenant_id) }
+    fn create(
+        &self,
+        email: &str,
+        password: &str,
+        name: Option<&str>,
+        tenant_id: &str,
+    ) -> Result<User, UserError> {
+        match self {
+            Self::Memory(s) => s.create(email, password, name, tenant_id),
+            Self::Postgres(s) => s.create(email, password, name, tenant_id),
+        }
     }
     fn find_by_email(&self, email: &str) -> Option<User> {
-        match self { Self::Memory(s) => s.find_by_email(email), Self::Postgres(s) => s.find_by_email(email) }
+        match self {
+            Self::Memory(s) => s.find_by_email(email),
+            Self::Postgres(s) => s.find_by_email(email),
+        }
     }
     fn find_by_id(&self, id: &str) -> Option<User> {
-        match self { Self::Memory(s) => s.find_by_id(id), Self::Postgres(s) => s.find_by_id(id) }
+        match self {
+            Self::Memory(s) => s.find_by_id(id),
+            Self::Postgres(s) => s.find_by_id(id),
+        }
     }
     fn verify_password(&self, email: &str, password: &str) -> Result<User, UserError> {
-        match self { Self::Memory(s) => s.verify_password(email, password), Self::Postgres(s) => s.verify_password(email, password) }
+        match self {
+            Self::Memory(s) => s.verify_password(email, password),
+            Self::Postgres(s) => s.verify_password(email, password),
+        }
     }
     fn update_name(&self, id: &str, name: &str) -> Result<User, UserError> {
-        match self { Self::Memory(s) => s.update_name(id, name), Self::Postgres(s) => s.update_name(id, name) }
+        match self {
+            Self::Memory(s) => s.update_name(id, name),
+            Self::Postgres(s) => s.update_name(id, name),
+        }
     }
     fn update_password(&self, id: &str, old: &str, new: &str) -> Result<(), UserError> {
-        match self { Self::Memory(s) => s.update_password(id, old, new), Self::Postgres(s) => s.update_password(id, old, new) }
+        match self {
+            Self::Memory(s) => s.update_password(id, old, new),
+            Self::Postgres(s) => s.update_password(id, old, new),
+        }
     }
     fn reset_password(&self, id: &str, new_password: &str) -> Result<(), UserError> {
-        match self { Self::Memory(s) => s.reset_password(id, new_password), Self::Postgres(s) => s.reset_password(id, new_password) }
+        match self {
+            Self::Memory(s) => s.reset_password(id, new_password),
+            Self::Postgres(s) => s.reset_password(id, new_password),
+        }
     }
     fn mark_email_verified(&self, id: &str) -> Result<(), UserError> {
-        match self { Self::Memory(s) => s.mark_email_verified(id), Self::Postgres(s) => s.mark_email_verified(id) }
+        match self {
+            Self::Memory(s) => s.mark_email_verified(id),
+            Self::Postgres(s) => s.mark_email_verified(id),
+        }
     }
     fn list_by_tenant(&self, tenant_id: &str) -> Vec<PublicUser> {
-        match self { Self::Memory(s) => s.list_by_tenant(tenant_id), Self::Postgres(s) => s.list_by_tenant(tenant_id) }
+        match self {
+            Self::Memory(s) => s.list_by_tenant(tenant_id),
+            Self::Postgres(s) => s.list_by_tenant(tenant_id),
+        }
     }
     fn delete_user(&self, id: &str) -> Result<(), UserError> {
-        match self { Self::Memory(s) => s.delete_user(id), Self::Postgres(s) => s.delete_user(id) }
+        match self {
+            Self::Memory(s) => s.delete_user(id),
+            Self::Postgres(s) => s.delete_user(id),
+        }
     }
 }
 
 impl Default for PlatformUserStore {
-    fn default() -> Self { Self::memory() }
+    fn default() -> Self {
+        Self::memory()
+    }
 }

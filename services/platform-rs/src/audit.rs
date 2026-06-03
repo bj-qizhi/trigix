@@ -21,26 +21,26 @@ pub struct AuditEvent {
 
 // Well-known action constants
 pub mod action {
-    pub const EXECUTION_STARTED:   &str = "execution.started";
-    pub const EXECUTION_APPROVED:  &str = "execution.approved";
-    pub const EXECUTION_REJECTED:  &str = "execution.rejected";
+    pub const EXECUTION_STARTED: &str = "execution.started";
+    pub const EXECUTION_APPROVED: &str = "execution.approved";
+    pub const EXECUTION_REJECTED: &str = "execution.rejected";
     pub const EXECUTION_CANCELLED: &str = "execution.cancelled";
-    pub const EXECUTION_RETRIED:   &str = "execution.retried";
-    pub const WORKFLOW_CREATED:    &str = "workflow.created";
-    pub const WORKFLOW_UPDATED:    &str = "workflow.updated";
-    pub const WORKFLOW_PUBLISHED:  &str = "workflow.published";
-    pub const WORKFLOW_ARCHIVED:   &str = "workflow.archived";
-    pub const WORKFLOW_RESTORED:    &str = "workflow.restored";
-    pub const WORKFLOW_DUPLICATED:  &str = "workflow.duplicated";
-    pub const WORKFLOW_TAGGED:      &str = "workflow.tagged";
-    pub const WORKFLOW_PINNED:      &str = "workflow.pinned";
-    pub const WORKFLOW_UNPINNED:    &str = "workflow.unpinned";
-    pub const WORKFLOW_LOCKED:      &str = "workflow.locked";
-    pub const WORKFLOW_UNLOCKED:    &str = "workflow.unlocked";
-    pub const CREDENTIAL_CREATED:  &str = "credential.created";
-    pub const CREDENTIAL_DELETED:  &str = "credential.deleted";
+    pub const EXECUTION_RETRIED: &str = "execution.retried";
+    pub const WORKFLOW_CREATED: &str = "workflow.created";
+    pub const WORKFLOW_UPDATED: &str = "workflow.updated";
+    pub const WORKFLOW_PUBLISHED: &str = "workflow.published";
+    pub const WORKFLOW_ARCHIVED: &str = "workflow.archived";
+    pub const WORKFLOW_RESTORED: &str = "workflow.restored";
+    pub const WORKFLOW_DUPLICATED: &str = "workflow.duplicated";
+    pub const WORKFLOW_TAGGED: &str = "workflow.tagged";
+    pub const WORKFLOW_PINNED: &str = "workflow.pinned";
+    pub const WORKFLOW_UNPINNED: &str = "workflow.unpinned";
+    pub const WORKFLOW_LOCKED: &str = "workflow.locked";
+    pub const WORKFLOW_UNLOCKED: &str = "workflow.unlocked";
+    pub const CREDENTIAL_CREATED: &str = "credential.created";
+    pub const CREDENTIAL_DELETED: &str = "credential.deleted";
     pub const SCHEDULE_REGISTERED: &str = "schedule.registered";
-    pub const SCHEDULE_REMOVED:    &str = "schedule.removed";
+    pub const SCHEDULE_REMOVED: &str = "schedule.removed";
 }
 
 fn unix_now() -> u64 {
@@ -269,7 +269,13 @@ mod tests {
     fn respects_limit() {
         let store = MemoryAuditStore::default();
         for i in 0..20 {
-            store.record("t1", action::EXECUTION_STARTED, "execution", &format!("exec-{i}"), None);
+            store.record(
+                "t1",
+                action::EXECUTION_STARTED,
+                "execution",
+                &format!("exec-{i}"),
+                None,
+            );
         }
         let events = store.list("t1", 5);
         assert_eq!(events.len(), 5);

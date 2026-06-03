@@ -1,24 +1,45 @@
 // Copyright © 2026 北京祺智科技有限公司. All rights reserved.
 // https://www.qzso.com/ · managecode@gmail.com
 
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
-use serde::{Deserialize, Serialize};
 
 fn epoch_to_year_month(secs: u64) -> String {
     let mut days = secs / 86400;
     let mut y = 1970u32;
     loop {
-        let dy = if (y % 4 == 0 && y % 100 != 0) || y % 400 == 0 { 366u64 } else { 365u64 };
-        if days < dy { break; }
+        let dy = if (y % 4 == 0 && y % 100 != 0) || y % 400 == 0 {
+            366u64
+        } else {
+            365u64
+        };
+        if days < dy {
+            break;
+        }
         days -= dy;
         y += 1;
     }
     let leap = (y % 4 == 0 && y % 100 != 0) || y % 400 == 0;
-    let month_days: [u64; 12] = [31, if leap { 29 } else { 28 }, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+    let month_days: [u64; 12] = [
+        31,
+        if leap { 29 } else { 28 },
+        31,
+        30,
+        31,
+        30,
+        31,
+        31,
+        30,
+        31,
+        30,
+        31,
+    ];
     let mut m = 0u32;
     for &md in &month_days {
-        if days < md { break; }
+        if days < md {
+            break;
+        }
         days -= md;
         m += 1;
     }
@@ -42,16 +63,37 @@ pub fn recent_year_months(n: usize) -> Vec<String> {
     let mut days = now / 86400;
     let mut y = 1970u32;
     loop {
-        let dy: u64 = if (y % 4 == 0 && y % 100 != 0) || y % 400 == 0 { 366 } else { 365 };
-        if days < dy { break; }
+        let dy: u64 = if (y % 4 == 0 && y % 100 != 0) || y % 400 == 0 {
+            366
+        } else {
+            365
+        };
+        if days < dy {
+            break;
+        }
         days -= dy;
         y += 1;
     }
     let leap = (y % 4 == 0 && y % 100 != 0) || y % 400 == 0;
-    let month_days: [u64; 12] = [31, if leap { 29 } else { 28 }, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+    let month_days: [u64; 12] = [
+        31,
+        if leap { 29 } else { 28 },
+        31,
+        30,
+        31,
+        30,
+        31,
+        31,
+        30,
+        31,
+        30,
+        31,
+    ];
     let mut m = 1u32;
     for &md in &month_days {
-        if days < md { break; }
+        if days < md {
+            break;
+        }
         days -= md;
         m += 1;
     }
@@ -61,7 +103,12 @@ pub fn recent_year_months(n: usize) -> Vec<String> {
     let mut cm = m;
     for _ in 0..n {
         result.push(format!("{:04}{:02}", cy, cm));
-        if cm == 1 { cm = 12; cy -= 1; } else { cm -= 1; }
+        if cm == 1 {
+            cm = 12;
+            cy -= 1;
+        } else {
+            cm -= 1;
+        }
     }
     result
 }
@@ -77,17 +124,39 @@ pub fn secs_until_quota_reset() -> u64 {
     let now_secs_in_day = now % 86400;
     let mut y = 1970u32;
     loop {
-        let dy: u64 = if (y % 4 == 0 && y % 100 != 0) || y % 400 == 0 { 366 } else { 365 };
-        if days_remaining < dy { break; }
+        let dy: u64 = if (y % 4 == 0 && y % 100 != 0) || y % 400 == 0 {
+            366
+        } else {
+            365
+        };
+        if days_remaining < dy {
+            break;
+        }
         days_remaining -= dy;
         y += 1;
     }
     let leap = (y % 4 == 0 && y % 100 != 0) || y % 400 == 0;
-    let month_days: [u64; 12] = [31, if leap { 29 } else { 28 }, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+    let month_days: [u64; 12] = [
+        31,
+        if leap { 29 } else { 28 },
+        31,
+        30,
+        31,
+        30,
+        31,
+        31,
+        30,
+        31,
+        30,
+        31,
+    ];
     let mut m = 0usize;
     let mut day_of_month = days_remaining;
     for (i, &md) in month_days.iter().enumerate() {
-        if day_of_month < md { m = i; break; }
+        if day_of_month < md {
+            m = i;
+            break;
+        }
         day_of_month -= md;
     }
     // days_in_current_month - day_of_month = remaining days in month
@@ -169,7 +238,12 @@ pub trait BillingStore: Send + Sync {
     /// Returns `(stripe_customer_id, stripe_subscription_id)` for the tenant.
     fn get_stripe_ids(&self, tenant_id: &str) -> (Option<String>, Option<String>);
     /// Persists Stripe customer/subscription IDs.  `None` values leave existing data unchanged.
-    fn set_stripe_ids(&self, tenant_id: &str, customer_id: Option<&str>, subscription_id: Option<&str>);
+    fn set_stripe_ids(
+        &self,
+        tenant_id: &str,
+        customer_id: Option<&str>,
+        subscription_id: Option<&str>,
+    );
     /// Looks up which tenant owns the given Stripe customer ID.
     fn get_tenant_by_stripe_customer(&self, customer_id: &str) -> Option<String>;
     /// Returns usage records for the last `months` months (newest first).
@@ -179,16 +253,25 @@ pub trait BillingStore: Send + Sync {
         let ym = current_year_month();
         let usage = self.get_usage(tenant_id, &ym);
         let remaining = (quota.max_executions_per_month - usage.executions_used).max(0);
-        let pct = if quota.max_executions_per_month == 0 || quota.max_executions_per_month == i64::MAX {
-            0.0
-        } else {
-            (usage.executions_used as f64 / quota.max_executions_per_month as f64 * 100.0).min(100.0)
-        };
-        BillingStatus { quota, usage, executions_remaining: remaining, usage_pct: pct }
+        let pct =
+            if quota.max_executions_per_month == 0 || quota.max_executions_per_month == i64::MAX {
+                0.0
+            } else {
+                (usage.executions_used as f64 / quota.max_executions_per_month as f64 * 100.0)
+                    .min(100.0)
+            };
+        BillingStatus {
+            quota,
+            usage,
+            executions_remaining: remaining,
+            usage_pct: pct,
+        }
     }
     fn check_execution_quota(&self, tenant_id: &str) -> Result<(), String> {
         let quota = self.get_quota(tenant_id);
-        if quota.max_executions_per_month == i64::MAX { return Ok(()); }
+        if quota.max_executions_per_month == i64::MAX {
+            return Ok(());
+        }
         let ym = current_year_month();
         let usage = self.get_usage(tenant_id, &ym);
         if usage.executions_used >= quota.max_executions_per_month {
@@ -213,16 +296,23 @@ pub struct MemoryBillingStore {
 
 impl BillingStore for MemoryBillingStore {
     fn get_quota(&self, tenant_id: &str) -> TenantQuota {
-        self.quotas.read().unwrap()
+        self.quotas
+            .read()
+            .unwrap()
             .get(tenant_id)
             .cloned()
             .unwrap_or_else(|| TenantQuota::free(tenant_id))
     }
     fn set_quota(&self, quota: TenantQuota) {
-        self.quotas.write().unwrap().insert(quota.tenant_id.clone(), quota);
+        self.quotas
+            .write()
+            .unwrap()
+            .insert(quota.tenant_id.clone(), quota);
     }
     fn get_usage(&self, tenant_id: &str, year_month: &str) -> UsageSummary {
-        self.usage.read().unwrap()
+        self.usage
+            .read()
+            .unwrap()
             .get(&(tenant_id.to_string(), year_month.to_string()))
             .cloned()
             .unwrap_or_else(|| UsageSummary {
@@ -254,19 +344,32 @@ impl BillingStore for MemoryBillingStore {
         entry.tokens_used += tokens;
     }
     fn get_stripe_ids(&self, tenant_id: &str) -> (Option<String>, Option<String>) {
-        self.stripe_ids.read().unwrap()
+        self.stripe_ids
+            .read()
+            .unwrap()
             .get(tenant_id)
             .cloned()
             .unwrap_or((None, None))
     }
-    fn set_stripe_ids(&self, tenant_id: &str, customer_id: Option<&str>, subscription_id: Option<&str>) {
+    fn set_stripe_ids(
+        &self,
+        tenant_id: &str,
+        customer_id: Option<&str>,
+        subscription_id: Option<&str>,
+    ) {
         let mut map = self.stripe_ids.write().unwrap();
         let entry = map.entry(tenant_id.to_string()).or_insert((None, None));
-        if let Some(cid) = customer_id { entry.0 = Some(cid.to_string()); }
-        if let Some(sid) = subscription_id { entry.1 = Some(sid.to_string()); }
+        if let Some(cid) = customer_id {
+            entry.0 = Some(cid.to_string());
+        }
+        if let Some(sid) = subscription_id {
+            entry.1 = Some(sid.to_string());
+        }
     }
     fn get_tenant_by_stripe_customer(&self, customer_id: &str) -> Option<String> {
-        self.stripe_ids.read().unwrap()
+        self.stripe_ids
+            .read()
+            .unwrap()
             .iter()
             .find(|(_, (cid, _))| cid.as_deref() == Some(customer_id))
             .map(|(tid, _)| tid.clone())
@@ -274,11 +377,17 @@ impl BillingStore for MemoryBillingStore {
     fn get_usage_history(&self, tenant_id: &str, months: usize) -> Vec<UsageSummary> {
         let yms = recent_year_months(months);
         let map = self.usage.read().unwrap();
-        yms.into_iter().map(|ym| {
-            map.get(&(tenant_id.to_string(), ym.clone()))
-                .cloned()
-                .unwrap_or_else(|| UsageSummary { tenant_id: tenant_id.to_string(), year_month: ym, ..Default::default() })
-        }).collect()
+        yms.into_iter()
+            .map(|ym| {
+                map.get(&(tenant_id.to_string(), ym.clone()))
+                    .cloned()
+                    .unwrap_or_else(|| UsageSummary {
+                        tenant_id: tenant_id.to_string(),
+                        year_month: ym,
+                        ..Default::default()
+                    })
+            })
+            .collect()
     }
 }
 
@@ -289,7 +398,9 @@ pub struct PostgresBillingStore {
 }
 
 impl PostgresBillingStore {
-    pub fn new(pool: sqlx::PgPool) -> Self { Self { pool } }
+    pub fn new(pool: sqlx::PgPool) -> Self {
+        Self { pool }
+    }
 }
 
 impl BillingStore for PostgresBillingStore {
@@ -353,7 +464,7 @@ impl BillingStore for PostgresBillingStore {
             tokio::runtime::Handle::current().block_on(async move {
                 sqlx::query_as::<_, (i64, i64)>(
                     "SELECT executions_used, tokens_used FROM af_usage_ledger \
-                     WHERE tenant_id = $1 AND year_month = $2"
+                     WHERE tenant_id = $1 AND year_month = $2",
                 )
                 .bind(&tid)
                 .bind(&ym)
@@ -417,7 +528,7 @@ impl BillingStore for PostgresBillingStore {
             tokio::runtime::Handle::current().block_on(async move {
                 sqlx::query_as::<_, (Option<String>, Option<String>)>(
                     "SELECT stripe_customer_id, stripe_subscription_id \
-                     FROM af_tenant_quotas WHERE tenant_id = $1"
+                     FROM af_tenant_quotas WHERE tenant_id = $1",
                 )
                 .bind(&tid)
                 .fetch_optional(&pool)
@@ -428,7 +539,12 @@ impl BillingStore for PostgresBillingStore {
             })
         })
     }
-    fn set_stripe_ids(&self, tenant_id: &str, customer_id: Option<&str>, subscription_id: Option<&str>) {
+    fn set_stripe_ids(
+        &self,
+        tenant_id: &str,
+        customer_id: Option<&str>,
+        subscription_id: Option<&str>,
+    ) {
         let pool = self.pool.clone();
         let tid = tenant_id.to_string();
         let cid = customer_id.map(|s| s.to_string());
@@ -462,7 +578,7 @@ impl BillingStore for PostgresBillingStore {
         tokio::task::block_in_place(|| {
             tokio::runtime::Handle::current().block_on(async move {
                 sqlx::query_as::<_, (String,)>(
-                    "SELECT tenant_id FROM af_tenant_quotas WHERE stripe_customer_id = $1 LIMIT 1"
+                    "SELECT tenant_id FROM af_tenant_quotas WHERE stripe_customer_id = $1 LIMIT 1",
                 )
                 .bind(&cid)
                 .fetch_optional(&pool)
@@ -482,7 +598,7 @@ impl BillingStore for PostgresBillingStore {
                 let rows: Vec<(String, i64, i64)> = sqlx::query_as(
                     "SELECT year_month, executions_used, tokens_used \
                      FROM af_usage_ledger WHERE tenant_id = $1 \
-                     ORDER BY year_month DESC LIMIT 24"
+                     ORDER BY year_month DESC LIMIT 24",
                 )
                 .bind(&tid)
                 .fetch_all(&pool)
@@ -490,10 +606,17 @@ impl BillingStore for PostgresBillingStore {
                 .unwrap_or_default();
                 let map: std::collections::HashMap<String, (i64, i64)> =
                     rows.into_iter().map(|(ym, e, t)| (ym, (e, t))).collect();
-                yms.into_iter().map(|ym| {
-                    let (exec, tok) = map.get(&ym).copied().unwrap_or((0, 0));
-                    UsageSummary { tenant_id: tid.clone(), year_month: ym, executions_used: exec, tokens_used: tok }
-                }).collect()
+                yms.into_iter()
+                    .map(|ym| {
+                        let (exec, tok) = map.get(&ym).copied().unwrap_or((0, 0));
+                        UsageSummary {
+                            tenant_id: tid.clone(),
+                            year_month: ym,
+                            executions_used: exec,
+                            tokens_used: tok,
+                        }
+                    })
+                    .collect()
             })
         })
     }
@@ -508,37 +631,68 @@ pub enum PlatformBillingStore {
 }
 
 impl PlatformBillingStore {
-    pub fn memory() -> Self { Self::Memory(Arc::new(MemoryBillingStore::default())) }
-    pub fn postgres(pool: sqlx::PgPool) -> Self { Self::Postgres(Arc::new(PostgresBillingStore::new(pool))) }
+    pub fn memory() -> Self {
+        Self::Memory(Arc::new(MemoryBillingStore::default()))
+    }
+    pub fn postgres(pool: sqlx::PgPool) -> Self {
+        Self::Postgres(Arc::new(PostgresBillingStore::new(pool)))
+    }
 }
 
 impl BillingStore for PlatformBillingStore {
     fn get_quota(&self, t: &str) -> TenantQuota {
-        match self { Self::Memory(s) => s.get_quota(t), Self::Postgres(s) => s.get_quota(t) }
+        match self {
+            Self::Memory(s) => s.get_quota(t),
+            Self::Postgres(s) => s.get_quota(t),
+        }
     }
     fn set_quota(&self, q: TenantQuota) {
-        match self { Self::Memory(s) => s.set_quota(q), Self::Postgres(s) => s.set_quota(q) }
+        match self {
+            Self::Memory(s) => s.set_quota(q),
+            Self::Postgres(s) => s.set_quota(q),
+        }
     }
     fn get_usage(&self, t: &str, ym: &str) -> UsageSummary {
-        match self { Self::Memory(s) => s.get_usage(t, ym), Self::Postgres(s) => s.get_usage(t, ym) }
+        match self {
+            Self::Memory(s) => s.get_usage(t, ym),
+            Self::Postgres(s) => s.get_usage(t, ym),
+        }
     }
     fn increment_execution(&self, t: &str) {
-        match self { Self::Memory(s) => s.increment_execution(t), Self::Postgres(s) => s.increment_execution(t) }
+        match self {
+            Self::Memory(s) => s.increment_execution(t),
+            Self::Postgres(s) => s.increment_execution(t),
+        }
     }
     fn increment_tokens(&self, t: &str, tokens: i64) {
-        match self { Self::Memory(s) => s.increment_tokens(t, tokens), Self::Postgres(s) => s.increment_tokens(t, tokens) }
+        match self {
+            Self::Memory(s) => s.increment_tokens(t, tokens),
+            Self::Postgres(s) => s.increment_tokens(t, tokens),
+        }
     }
     fn get_stripe_ids(&self, t: &str) -> (Option<String>, Option<String>) {
-        match self { Self::Memory(s) => s.get_stripe_ids(t), Self::Postgres(s) => s.get_stripe_ids(t) }
+        match self {
+            Self::Memory(s) => s.get_stripe_ids(t),
+            Self::Postgres(s) => s.get_stripe_ids(t),
+        }
     }
     fn set_stripe_ids(&self, t: &str, cid: Option<&str>, sid: Option<&str>) {
-        match self { Self::Memory(s) => s.set_stripe_ids(t, cid, sid), Self::Postgres(s) => s.set_stripe_ids(t, cid, sid) }
+        match self {
+            Self::Memory(s) => s.set_stripe_ids(t, cid, sid),
+            Self::Postgres(s) => s.set_stripe_ids(t, cid, sid),
+        }
     }
     fn get_tenant_by_stripe_customer(&self, cid: &str) -> Option<String> {
-        match self { Self::Memory(s) => s.get_tenant_by_stripe_customer(cid), Self::Postgres(s) => s.get_tenant_by_stripe_customer(cid) }
+        match self {
+            Self::Memory(s) => s.get_tenant_by_stripe_customer(cid),
+            Self::Postgres(s) => s.get_tenant_by_stripe_customer(cid),
+        }
     }
     fn get_usage_history(&self, t: &str, months: usize) -> Vec<UsageSummary> {
-        match self { Self::Memory(s) => s.get_usage_history(t, months), Self::Postgres(s) => s.get_usage_history(t, months) }
+        match self {
+            Self::Memory(s) => s.get_usage_history(t, months),
+            Self::Postgres(s) => s.get_usage_history(t, months),
+        }
     }
 }
 
@@ -595,6 +749,9 @@ mod tests {
         assert!(store.check_execution_quota("t1").is_ok());
         store.increment_execution("t1");
         store.increment_execution("t1");
-        assert!(store.check_execution_quota("t1").is_err(), "quota should be exhausted after 2 increments");
+        assert!(
+            store.check_execution_quota("t1").is_err(),
+            "quota should be exhausted after 2 increments"
+        );
     }
 }

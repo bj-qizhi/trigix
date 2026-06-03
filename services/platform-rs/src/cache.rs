@@ -115,8 +115,13 @@ impl CacheClient {
         if let Self::Redis(conn) = self {
             let mut c = conn.clone();
             let _: redis::RedisResult<()> = redis::cmd("XGROUP")
-                .arg("CREATE").arg(stream).arg(group).arg("$").arg("MKSTREAM")
-                .query_async(&mut c).await;
+                .arg("CREATE")
+                .arg(stream)
+                .arg(group)
+                .arg("$")
+                .arg("MKSTREAM")
+                .query_async(&mut c)
+                .await;
         }
     }
 
@@ -135,11 +140,18 @@ impl CacheClient {
             Self::Redis(conn) => {
                 let mut c = conn.clone();
                 let result: redis::RedisResult<redis::Value> = redis::cmd("XREADGROUP")
-                    .arg("GROUP").arg(group).arg(consumer)
-                    .arg("COUNT").arg(count)
-                    .arg("BLOCK").arg(block_ms)
-                    .arg("STREAMS").arg(stream).arg(">")
-                    .query_async(&mut c).await;
+                    .arg("GROUP")
+                    .arg(group)
+                    .arg(consumer)
+                    .arg("COUNT")
+                    .arg(count)
+                    .arg("BLOCK")
+                    .arg(block_ms)
+                    .arg("STREAMS")
+                    .arg(stream)
+                    .arg(">")
+                    .query_async(&mut c)
+                    .await;
 
                 parse_xreadgroup_response(result)
             }
@@ -152,7 +164,11 @@ impl CacheClient {
             Self::Noop => None,
             Self::Redis(conn) => {
                 let mut c = conn.clone();
-                redis::cmd("XLEN").arg(stream).query_async::<u64>(&mut c).await.ok()
+                redis::cmd("XLEN")
+                    .arg(stream)
+                    .query_async::<u64>(&mut c)
+                    .await
+                    .ok()
             }
         }
     }
@@ -162,8 +178,11 @@ impl CacheClient {
         if let Self::Redis(conn) = self {
             let mut c = conn.clone();
             let _: redis::RedisResult<()> = redis::cmd("XACK")
-                .arg(stream).arg(group).arg(msg_id)
-                .query_async(&mut c).await;
+                .arg(stream)
+                .arg(group)
+                .arg(msg_id)
+                .query_async(&mut c)
+                .await;
         }
     }
 }
@@ -187,7 +206,9 @@ fn parse_xreadgroup_response(
             redis::Value::Array(p) => p,
             _ => continue,
         };
-        if parts.len() < 2 { continue; }
+        if parts.len() < 2 {
+            continue;
+        }
         let messages = match &parts[1] {
             redis::Value::Array(msgs) => msgs,
             _ => continue,
@@ -197,7 +218,9 @@ fn parse_xreadgroup_response(
                 redis::Value::Array(p) => p,
                 _ => continue,
             };
-            if msg_parts.len() < 2 { continue; }
+            if msg_parts.len() < 2 {
+                continue;
+            }
             let id = match &msg_parts[0] {
                 redis::Value::BulkString(b) => String::from_utf8_lossy(b).to_string(),
                 redis::Value::SimpleString(s) => s.clone(),

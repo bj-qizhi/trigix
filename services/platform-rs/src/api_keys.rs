@@ -53,12 +53,7 @@ pub struct MemoryApiKeyStore {
 }
 
 impl MemoryApiKeyStore {
-    pub async fn create(
-        &self,
-        tenant_id: &str,
-        name: &str,
-        raw_key: &str,
-    ) -> ApiKeyRecord {
+    pub async fn create(&self, tenant_id: &str, name: &str, raw_key: &str) -> ApiKeyRecord {
         let record = ApiKeyRecord {
             id: next_id(),
             tenant_id: tenant_id.to_string(),
@@ -67,7 +62,10 @@ impl MemoryApiKeyStore {
             key_hash: hash_api_key(raw_key),
             created_at: unix_now(),
         };
-        self.keys.write().unwrap().insert(record.id.clone(), record.clone());
+        self.keys
+            .write()
+            .unwrap()
+            .insert(record.id.clone(), record.clone());
         record
     }
 
@@ -118,12 +116,7 @@ impl PostgresApiKeyStore {
         Self { pool }
     }
 
-    pub async fn create(
-        &self,
-        tenant_id: &str,
-        name: &str,
-        raw_key: &str,
-    ) -> ApiKeyRecord {
+    pub async fn create(&self, tenant_id: &str, name: &str, raw_key: &str) -> ApiKeyRecord {
         let id = next_id();
         let now = unix_now();
         let prefix: String = raw_key.chars().take(12).collect();
@@ -140,7 +133,14 @@ impl PostgresApiKeyStore {
         .bind(now as i64)
         .execute(&self.pool)
         .await;
-        ApiKeyRecord { id, tenant_id: tenant_id.to_string(), name: name.to_string(), prefix, key_hash, created_at: now }
+        ApiKeyRecord {
+            id,
+            tenant_id: tenant_id.to_string(),
+            name: name.to_string(),
+            prefix,
+            key_hash,
+            created_at: now,
+        }
     }
 
     pub async fn list(&self, tenant_id: &str) -> Vec<ApiKeyRecord> {
@@ -153,9 +153,16 @@ impl PostgresApiKeyStore {
         .await
         .unwrap_or_default()
         .into_iter()
-        .map(|(id, tenant_id, name, prefix, key_hash, created_at)| ApiKeyRecord {
-            id, tenant_id, name, prefix, key_hash, created_at: created_at as u64,
-        })
+        .map(
+            |(id, tenant_id, name, prefix, key_hash, created_at)| ApiKeyRecord {
+                id,
+                tenant_id,
+                name,
+                prefix,
+                key_hash,
+                created_at: created_at as u64,
+            },
+        )
         .collect()
     }
 
@@ -180,9 +187,16 @@ impl PostgresApiKeyStore {
         .await
         .ok()
         .flatten()
-        .map(|(id, tenant_id, name, prefix, key_hash, created_at)| ApiKeyRecord {
-            id, tenant_id, name, prefix, key_hash, created_at: created_at as u64,
-        })
+        .map(
+            |(id, tenant_id, name, prefix, key_hash, created_at)| ApiKeyRecord {
+                id,
+                tenant_id,
+                name,
+                prefix,
+                key_hash,
+                created_at: created_at as u64,
+            },
+        )
     }
 }
 
@@ -201,8 +215,12 @@ impl Default for PlatformApiKeyStore {
 }
 
 impl PlatformApiKeyStore {
-    pub fn memory() -> Self { Self::Memory(MemoryApiKeyStore::default()) }
-    pub fn postgres(s: PostgresApiKeyStore) -> Self { Self::Postgres(s) }
+    pub fn memory() -> Self {
+        Self::Memory(MemoryApiKeyStore::default())
+    }
+    pub fn postgres(s: PostgresApiKeyStore) -> Self {
+        Self::Postgres(s)
+    }
 
     pub async fn create(&self, tenant_id: &str, name: &str, raw_key: &str) -> ApiKeyRecord {
         match self {

@@ -131,11 +131,14 @@ impl TokenUsageStore for PostgresTokenUsageStore {
             total_prompt += row.prompt_tokens;
             total_completion += row.completion_tokens;
             total += row.total_tokens;
-            by_model.insert(row.model, ModelUsage {
-                prompt_tokens: row.prompt_tokens,
-                completion_tokens: row.completion_tokens,
-                total_tokens: row.total_tokens,
-            });
+            by_model.insert(
+                row.model,
+                ModelUsage {
+                    prompt_tokens: row.prompt_tokens,
+                    completion_tokens: row.completion_tokens,
+                    total_tokens: row.total_tokens,
+                },
+            );
         }
 
         TokenUsageSummary {
@@ -192,7 +195,9 @@ fn build_summary<'a>(records: impl Iterator<Item = &'a TokenUsageRecord>) -> Tok
         total_completion += r.completion_tokens;
         total += r.total_tokens;
         let entry = by_model.entry(r.model.clone()).or_insert(ModelUsage {
-            prompt_tokens: 0, completion_tokens: 0, total_tokens: 0,
+            prompt_tokens: 0,
+            completion_tokens: 0,
+            total_tokens: 0,
         });
         entry.prompt_tokens += r.prompt_tokens;
         entry.completion_tokens += r.completion_tokens;
@@ -221,23 +226,31 @@ pub fn extract_token_usage(
         if nr.node_type != "openai" && nr.node_type != "gemini" && nr.node_type != "claude" {
             continue;
         }
-        let Some(output) = &nr.output_json else { continue };
-        let Ok(v) = serde_json::from_str::<serde_json::Value>(output) else { continue };
+        let Some(output) = &nr.output_json else {
+            continue;
+        };
+        let Ok(v) = serde_json::from_str::<serde_json::Value>(output) else {
+            continue;
+        };
         let usage = v.get("usage").or_else(|| v.get("usageMetadata"));
         let Some(usage) = usage else { continue };
-        let prompt = usage.get("prompt_tokens")
+        let prompt = usage
+            .get("prompt_tokens")
             .or_else(|| usage.get("promptTokenCount"))
             .and_then(|v| v.as_i64())
             .unwrap_or(0);
-        let completion = usage.get("completion_tokens")
+        let completion = usage
+            .get("completion_tokens")
             .or_else(|| usage.get("candidatesTokenCount"))
             .and_then(|v| v.as_i64())
             .unwrap_or(0);
-        let total = usage.get("total_tokens")
+        let total = usage
+            .get("total_tokens")
             .or_else(|| usage.get("totalTokenCount"))
             .and_then(|v| v.as_i64())
             .unwrap_or(prompt + completion);
-        let model = v.get("model")
+        let model = v
+            .get("model")
             .and_then(|m| m.as_str())
             .unwrap_or(&nr.node_type)
             .to_string();
