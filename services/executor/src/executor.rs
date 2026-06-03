@@ -16,10 +16,14 @@ use workflow_core::{Node, NodeType};
 use crate::approval::ApprovalGate;
 use crate::runtime::{ExecutionContext, NodeExecutionResult, NodeExecutor};
 
-// Late-stage integrations (slices 274+) live in a real submodule (executor/late.rs)
+// Late-stage integrations (slices 274+) live in real submodules (executor/late*.rs)
 // instead of being textually `include!`d into this file.
 mod late;
+mod late2;
+mod late3;
 use late::*;
+use late2::*;
+use late3::*;
 
 // Chinese-vendor LLM nodes extracted into their own submodule.
 mod nodes_cn_llm;
@@ -1391,6 +1395,17 @@ fn redis_value_to_json(val: redis::Value) -> serde_json::Value {
         redis::Value::Okay => serde_json::Value::String("OK".to_string()),
         _ => serde_json::Value::Null,
     }
+}
+
+// Shared by late-stage integration nodes (URL query encoding).
+fn urlencoding_simple(s: &str) -> String {
+    s.chars()
+        .map(|c| match c {
+            'A'..='Z' | 'a'..='z' | '0'..='9' | '-' | '_' | '.' | '~' => c.to_string(),
+            ' ' => "+".to_string(),
+            c => format!("%{:02X}", c as u32),
+        })
+        .collect()
 }
 
 #[cfg(test)]
