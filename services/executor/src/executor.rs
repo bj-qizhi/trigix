@@ -16,6 +16,11 @@ use workflow_core::{Node, NodeType};
 use crate::approval::ApprovalGate;
 use crate::runtime::{ExecutionContext, NodeExecutionResult, NodeExecutor};
 
+// Late-stage integrations (slices 274+) live in a real submodule (executor/late.rs)
+// instead of being textually `include!`d into this file.
+mod late;
+use late::*;
+
 // Global per-process node output cache: key → (cached_at, output_json)
 static NODE_CACHE: OnceLock<Arc<Mutex<LruCache<String, (Instant, String)>>>> = OnceLock::new();
 
@@ -8426,5 +8431,3 @@ mod cn_llm_tests {
     }
 }
 
-// Late-stage integrations (slices 274+) split into a separate file
-include!("executor_late.rs");

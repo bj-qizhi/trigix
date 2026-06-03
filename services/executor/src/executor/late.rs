@@ -1,9 +1,13 @@
 // Copyright © 2026 北京祺智科技有限公司. All rights reserved.
 // https://www.qzso.com/ · managecode@gmail.com
 
+use super::*;
+use crate::runtime::{ExecutionContext, NodeExecutionResult};
+use workflow_core::Node;
+
 // ── Slice 274: Twitch ─────────────────────────────────────────────────────────
 
-async fn execute_twitch(
+pub(super) async fn execute_twitch(
     node: &Node,
     context: &ExecutionContext,
     client: &reqwest::Client,
@@ -59,7 +63,7 @@ async fn execute_twitch(
 
 // ── Slice 275: Figma ──────────────────────────────────────────────────────────
 
-async fn execute_figma(
+pub(super) async fn execute_figma(
     node: &Node,
     context: &ExecutionContext,
     client: &reqwest::Client,
@@ -110,7 +114,7 @@ async fn execute_figma(
 
 // ── Slice 276: Dropbox ────────────────────────────────────────────────────────
 
-async fn execute_dropbox(
+pub(super) async fn execute_dropbox(
     node: &Node,
     context: &ExecutionContext,
     client: &reqwest::Client,
@@ -192,7 +196,7 @@ async fn execute_dropbox(
 
 // ── Slice 277: Cloudflare ─────────────────────────────────────────────────────
 
-async fn execute_cloudflare(
+pub(super) async fn execute_cloudflare(
     node: &Node,
     context: &ExecutionContext,
     client: &reqwest::Client,
@@ -341,7 +345,7 @@ mod tests_274_277 {
 
 // ── Slice 278: Box ────────────────────────────────────────────────────────────
 
-async fn execute_box(
+pub(super) async fn execute_box(
     node: &Node,
     context: &ExecutionContext,
     client: &reqwest::Client,
@@ -392,7 +396,7 @@ async fn execute_box(
 
 // ── Slice 279: Okta ───────────────────────────────────────────────────────────
 
-async fn execute_okta(
+pub(super) async fn execute_okta(
     node: &Node,
     context: &ExecutionContext,
     client: &reqwest::Client,
@@ -455,7 +459,7 @@ async fn execute_okta(
 
 // ── Slice 280: Zoom ───────────────────────────────────────────────────────────
 
-async fn execute_zoom(
+pub(super) async fn execute_zoom(
     node: &Node,
     context: &ExecutionContext,
     client: &reqwest::Client,
@@ -506,7 +510,7 @@ async fn execute_zoom(
 
 // ── Slice 281: Spotify ────────────────────────────────────────────────────────
 
-async fn execute_spotify(
+pub(super) async fn execute_spotify(
     node: &Node,
     context: &ExecutionContext,
     client: &reqwest::Client,
@@ -658,7 +662,7 @@ mod tests_278_281 {
 
 // ── Slice 282: Typeform ────────────────────────────────────────────────────────
 
-async fn execute_typeform(node: &Node, context: &ExecutionContext, http_client: &reqwest::Client) -> NodeExecutionResult {
+pub(super) async fn execute_typeform(node: &Node, context: &ExecutionContext, http_client: &reqwest::Client) -> NodeExecutionResult {
     let raw = node.config.clone().unwrap_or_default();
     let cfg = resolve_config_strings(&raw, context);
 
@@ -701,7 +705,7 @@ async fn execute_typeform(node: &Node, context: &ExecutionContext, http_client: 
 
 // ── Slice 283: Webflow ─────────────────────────────────────────────────────────
 
-async fn execute_webflow(node: &Node, context: &ExecutionContext, http_client: &reqwest::Client) -> NodeExecutionResult {
+pub(super) async fn execute_webflow(node: &Node, context: &ExecutionContext, http_client: &reqwest::Client) -> NodeExecutionResult {
     let raw = node.config.clone().unwrap_or_default();
     let cfg = resolve_config_strings(&raw, context);
 
@@ -746,7 +750,7 @@ async fn execute_webflow(node: &Node, context: &ExecutionContext, http_client: &
 
 // ── Slice 284: Intercom ────────────────────────────────────────────────────────
 
-async fn execute_intercom(node: &Node, context: &ExecutionContext, http_client: &reqwest::Client) -> NodeExecutionResult {
+pub(super) async fn execute_intercom(node: &Node, context: &ExecutionContext, http_client: &reqwest::Client) -> NodeExecutionResult {
     let raw = node.config.clone().unwrap_or_default();
     let cfg = resolve_config_strings(&raw, context);
 
@@ -791,7 +795,7 @@ async fn execute_intercom(node: &Node, context: &ExecutionContext, http_client: 
 
 // ── Slice 285: Pipedrive ───────────────────────────────────────────────────────
 
-async fn execute_pipedrive(node: &Node, context: &ExecutionContext, http_client: &reqwest::Client) -> NodeExecutionResult {
+pub(super) async fn execute_pipedrive(node: &Node, context: &ExecutionContext, http_client: &reqwest::Client) -> NodeExecutionResult {
     let raw = node.config.clone().unwrap_or_default();
     let cfg = resolve_config_strings(&raw, context);
 
@@ -931,7 +935,7 @@ mod tests_282_285 {
 
 // ── Slice 286: Trello ──────────────────────────────────────────────────────────
 
-async fn execute_trello(node: &Node, context: &ExecutionContext, http_client: &reqwest::Client) -> NodeExecutionResult {
+pub(super) async fn execute_trello(node: &Node, context: &ExecutionContext, http_client: &reqwest::Client) -> NodeExecutionResult {
     let raw = node.config.clone().unwrap_or_default();
     let cfg = resolve_config_strings(&raw, context);
 
@@ -979,7 +983,7 @@ async fn execute_trello(node: &Node, context: &ExecutionContext, http_client: &r
 
 // ── Slice 287: Monday ──────────────────────────────────────────────────────────
 
-async fn execute_monday(node: &Node, context: &ExecutionContext, http_client: &reqwest::Client) -> NodeExecutionResult {
+pub(super) async fn execute_monday(node: &Node, context: &ExecutionContext, http_client: &reqwest::Client) -> NodeExecutionResult {
     let raw = node.config.clone().unwrap_or_default();
     let cfg = resolve_config_strings(&raw, context);
 
@@ -1017,7 +1021,7 @@ async fn execute_monday(node: &Node, context: &ExecutionContext, http_client: &r
 
 // ── Slice 288: ClickUp ─────────────────────────────────────────────────────────
 
-async fn execute_clickup(node: &Node, context: &ExecutionContext, http_client: &reqwest::Client) -> NodeExecutionResult {
+pub(super) async fn execute_clickup(node: &Node, context: &ExecutionContext, http_client: &reqwest::Client) -> NodeExecutionResult {
     let raw = node.config.clone().unwrap_or_default();
     let cfg = resolve_config_strings(&raw, context);
 
@@ -1061,7 +1065,7 @@ async fn execute_clickup(node: &Node, context: &ExecutionContext, http_client: &
 
 // ── Slice 289: Amplitude ───────────────────────────────────────────────────────
 
-async fn execute_amplitude(node: &Node, context: &ExecutionContext, http_client: &reqwest::Client) -> NodeExecutionResult {
+pub(super) async fn execute_amplitude(node: &Node, context: &ExecutionContext, http_client: &reqwest::Client) -> NodeExecutionResult {
     let raw = node.config.clone().unwrap_or_default();
     let cfg = resolve_config_strings(&raw, context);
 
@@ -1248,7 +1252,7 @@ mod tests_286_289 {
 
 // ── Slice 290: Mixpanel ────────────────────────────────────────────────────────
 
-async fn execute_mixpanel(node: &Node, context: &ExecutionContext, http_client: &reqwest::Client) -> NodeExecutionResult {
+pub(super) async fn execute_mixpanel(node: &Node, context: &ExecutionContext, http_client: &reqwest::Client) -> NodeExecutionResult {
     let raw = node.config.clone().unwrap_or_default();
     let cfg = resolve_config_strings(&raw, context);
 
@@ -1324,7 +1328,7 @@ async fn execute_mixpanel(node: &Node, context: &ExecutionContext, http_client: 
 
 // ── Slice 291: Segment ─────────────────────────────────────────────────────────
 
-async fn execute_segment(node: &Node, context: &ExecutionContext, http_client: &reqwest::Client) -> NodeExecutionResult {
+pub(super) async fn execute_segment(node: &Node, context: &ExecutionContext, http_client: &reqwest::Client) -> NodeExecutionResult {
     let raw = node.config.clone().unwrap_or_default();
     let cfg = resolve_config_strings(&raw, context);
 
@@ -1374,7 +1378,7 @@ async fn execute_segment(node: &Node, context: &ExecutionContext, http_client: &
 
 // ── Slice 292: SendGrid ────────────────────────────────────────────────────────
 
-async fn execute_sendgrid(node: &Node, context: &ExecutionContext, http_client: &reqwest::Client) -> NodeExecutionResult {
+pub(super) async fn execute_sendgrid(node: &Node, context: &ExecutionContext, http_client: &reqwest::Client) -> NodeExecutionResult {
     let raw = node.config.clone().unwrap_or_default();
     let cfg = resolve_config_strings(&raw, context);
 
@@ -1422,7 +1426,7 @@ async fn execute_sendgrid(node: &Node, context: &ExecutionContext, http_client: 
 
 // ── Slice 293: Braintree ───────────────────────────────────────────────────────
 
-async fn execute_braintree(node: &Node, context: &ExecutionContext, http_client: &reqwest::Client) -> NodeExecutionResult {
+pub(super) async fn execute_braintree(node: &Node, context: &ExecutionContext, http_client: &reqwest::Client) -> NodeExecutionResult {
     let raw = node.config.clone().unwrap_or_default();
     let cfg = resolve_config_strings(&raw, context);
 
@@ -1601,7 +1605,7 @@ mod tests_290_293 {
 
 // ── Slice 294: PayPal ──────────────────────────────────────────────────────────
 
-async fn execute_paypal(node: &Node, context: &ExecutionContext, http_client: &reqwest::Client) -> NodeExecutionResult {
+pub(super) async fn execute_paypal(node: &Node, context: &ExecutionContext, http_client: &reqwest::Client) -> NodeExecutionResult {
     let raw = node.config.clone().unwrap_or_default();
     let cfg = resolve_config_strings(&raw, context);
 
@@ -1684,7 +1688,7 @@ async fn execute_paypal(node: &Node, context: &ExecutionContext, http_client: &r
 
 // ── Slice 295: Razorpay ────────────────────────────────────────────────────────
 
-async fn execute_razorpay(node: &Node, context: &ExecutionContext, http_client: &reqwest::Client) -> NodeExecutionResult {
+pub(super) async fn execute_razorpay(node: &Node, context: &ExecutionContext, http_client: &reqwest::Client) -> NodeExecutionResult {
     let raw = node.config.clone().unwrap_or_default();
     let cfg = resolve_config_strings(&raw, context);
 
@@ -1736,7 +1740,7 @@ async fn execute_razorpay(node: &Node, context: &ExecutionContext, http_client: 
 
 // ── Slice 296: Firebase ────────────────────────────────────────────────────────
 
-async fn execute_firebase(node: &Node, context: &ExecutionContext, http_client: &reqwest::Client) -> NodeExecutionResult {
+pub(super) async fn execute_firebase(node: &Node, context: &ExecutionContext, http_client: &reqwest::Client) -> NodeExecutionResult {
     let raw = node.config.clone().unwrap_or_default();
     let cfg = resolve_config_strings(&raw, context);
 
@@ -1799,7 +1803,7 @@ async fn execute_firebase(node: &Node, context: &ExecutionContext, http_client: 
 
 // ── Slice 297: Supabase ────────────────────────────────────────────────────────
 
-async fn execute_supabase(node: &Node, context: &ExecutionContext, http_client: &reqwest::Client) -> NodeExecutionResult {
+pub(super) async fn execute_supabase(node: &Node, context: &ExecutionContext, http_client: &reqwest::Client) -> NodeExecutionResult {
     let raw = node.config.clone().unwrap_or_default();
     let cfg = resolve_config_strings(&raw, context);
 
@@ -1986,7 +1990,7 @@ mod tests_294_297 {
 
 // ── Slice 298: Mailchimp ───────────────────────────────────────────────────────
 
-async fn execute_mailchimp(node: &Node, context: &ExecutionContext, http_client: &reqwest::Client) -> NodeExecutionResult {
+pub(super) async fn execute_mailchimp(node: &Node, context: &ExecutionContext, http_client: &reqwest::Client) -> NodeExecutionResult {
     let raw = node.config.clone().unwrap_or_default();
     let cfg = resolve_config_strings(&raw, context);
 
@@ -2044,7 +2048,7 @@ async fn execute_mailchimp(node: &Node, context: &ExecutionContext, http_client:
 
 // ── Slice 299: ActiveCampaign ──────────────────────────────────────────────────
 
-async fn execute_activecampaign(node: &Node, context: &ExecutionContext, http_client: &reqwest::Client) -> NodeExecutionResult {
+pub(super) async fn execute_activecampaign(node: &Node, context: &ExecutionContext, http_client: &reqwest::Client) -> NodeExecutionResult {
     let raw = node.config.clone().unwrap_or_default();
     let cfg = resolve_config_strings(&raw, context);
 
@@ -2093,7 +2097,7 @@ async fn execute_activecampaign(node: &Node, context: &ExecutionContext, http_cl
 
 // ── Slice 300: Klaviyo ─────────────────────────────────────────────────────────
 
-async fn execute_klaviyo(node: &Node, context: &ExecutionContext, http_client: &reqwest::Client) -> NodeExecutionResult {
+pub(super) async fn execute_klaviyo(node: &Node, context: &ExecutionContext, http_client: &reqwest::Client) -> NodeExecutionResult {
     let raw = node.config.clone().unwrap_or_default();
     let cfg = resolve_config_strings(&raw, context);
 
@@ -2138,7 +2142,7 @@ async fn execute_klaviyo(node: &Node, context: &ExecutionContext, http_client: &
 
 // ── Slice 301: Resend ──────────────────────────────────────────────────────────
 
-async fn execute_resend(node: &Node, context: &ExecutionContext, http_client: &reqwest::Client) -> NodeExecutionResult {
+pub(super) async fn execute_resend(node: &Node, context: &ExecutionContext, http_client: &reqwest::Client) -> NodeExecutionResult {
     let raw = node.config.clone().unwrap_or_default();
     let cfg = resolve_config_strings(&raw, context);
 
@@ -2298,7 +2302,7 @@ mod tests_298_301 {
 
 // ── Slice 302: Contentful ──────────────────────────────────────────────────────
 
-async fn execute_contentful(node: &Node, context: &ExecutionContext, http_client: &reqwest::Client) -> NodeExecutionResult {
+pub(super) async fn execute_contentful(node: &Node, context: &ExecutionContext, http_client: &reqwest::Client) -> NodeExecutionResult {
     let raw = node.config.clone().unwrap_or_default();
     let cfg = resolve_config_strings(&raw, context);
 
@@ -2353,7 +2357,7 @@ async fn execute_contentful(node: &Node, context: &ExecutionContext, http_client
 
 // ── Slice 303: Algolia ─────────────────────────────────────────────────────────
 
-async fn execute_algolia(node: &Node, context: &ExecutionContext, http_client: &reqwest::Client) -> NodeExecutionResult {
+pub(super) async fn execute_algolia(node: &Node, context: &ExecutionContext, http_client: &reqwest::Client) -> NodeExecutionResult {
     let raw = node.config.clone().unwrap_or_default();
     let cfg = resolve_config_strings(&raw, context);
 
@@ -2402,7 +2406,7 @@ async fn execute_algolia(node: &Node, context: &ExecutionContext, http_client: &
 
 // ── Slice 304: Postmark ────────────────────────────────────────────────────────
 
-async fn execute_postmark(node: &Node, context: &ExecutionContext, http_client: &reqwest::Client) -> NodeExecutionResult {
+pub(super) async fn execute_postmark(node: &Node, context: &ExecutionContext, http_client: &reqwest::Client) -> NodeExecutionResult {
     let raw = node.config.clone().unwrap_or_default();
     let cfg = resolve_config_strings(&raw, context);
 
@@ -2447,7 +2451,7 @@ async fn execute_postmark(node: &Node, context: &ExecutionContext, http_client: 
 
 // ── Slice 305: Vonage ──────────────────────────────────────────────────────────
 
-async fn execute_vonage(node: &Node, context: &ExecutionContext, http_client: &reqwest::Client) -> NodeExecutionResult {
+pub(super) async fn execute_vonage(node: &Node, context: &ExecutionContext, http_client: &reqwest::Client) -> NodeExecutionResult {
     let raw = node.config.clone().unwrap_or_default();
     let cfg = resolve_config_strings(&raw, context);
 
@@ -2643,7 +2647,7 @@ mod tests_302_305 {
     }
 }
 // ── Slice 308: Telegram ────────────────────────────────────────────────────────
-async fn execute_telegram(node: &Node, context: &ExecutionContext, http_client: &reqwest::Client) -> NodeExecutionResult {
+pub(super) async fn execute_telegram(node: &Node, context: &ExecutionContext, http_client: &reqwest::Client) -> NodeExecutionResult {
     let raw = node.config.clone().unwrap_or_default();
     let cfg = resolve_config_strings(&raw, context);
     let bot_token = match cfg.get("bot_token").and_then(|v| v.as_str()) {
@@ -2787,7 +2791,7 @@ mod tests_306_309 {
 }
 
 // ── Slice 310: Replicate ───────────────────────────────────────────────────────
-async fn execute_replicate(node: &Node, context: &ExecutionContext, http_client: &reqwest::Client) -> NodeExecutionResult {
+pub(super) async fn execute_replicate(node: &Node, context: &ExecutionContext, http_client: &reqwest::Client) -> NodeExecutionResult {
     let raw = node.config.clone().unwrap_or_default();
     let cfg = resolve_config_strings(&raw, context);
     let api_token = match cfg.get("api_token").and_then(|v| v.as_str()) {
@@ -2862,7 +2866,7 @@ async fn execute_replicate(node: &Node, context: &ExecutionContext, http_client:
 }
 
 // ── Slice 311: Mistral ─────────────────────────────────────────────────────────
-async fn execute_mistral(node: &Node, context: &ExecutionContext, http_client: &reqwest::Client) -> NodeExecutionResult {
+pub(super) async fn execute_mistral(node: &Node, context: &ExecutionContext, http_client: &reqwest::Client) -> NodeExecutionResult {
     let raw = node.config.clone().unwrap_or_default();
     let cfg = resolve_config_strings(&raw, context);
     let api_key = match cfg.get("api_key").and_then(|v| v.as_str()) {
@@ -2950,7 +2954,7 @@ async fn execute_mistral(node: &Node, context: &ExecutionContext, http_client: &
 }
 
 // ── Slice 312: WhatsApp Business ───────────────────────────────────────────────
-async fn execute_whatsapp(node: &Node, context: &ExecutionContext, http_client: &reqwest::Client) -> NodeExecutionResult {
+pub(super) async fn execute_whatsapp(node: &Node, context: &ExecutionContext, http_client: &reqwest::Client) -> NodeExecutionResult {
     let raw = node.config.clone().unwrap_or_default();
     let cfg = resolve_config_strings(&raw, context);
     let access_token = match cfg.get("access_token").and_then(|v| v.as_str()) {
@@ -3029,7 +3033,7 @@ async fn execute_whatsapp(node: &Node, context: &ExecutionContext, http_client: 
 }
 
 // ── Slice 313: Google Docs ─────────────────────────────────────────────────────
-async fn execute_googledocs(node: &Node, context: &ExecutionContext, http_client: &reqwest::Client) -> NodeExecutionResult {
+pub(super) async fn execute_googledocs(node: &Node, context: &ExecutionContext, http_client: &reqwest::Client) -> NodeExecutionResult {
     let raw = node.config.clone().unwrap_or_default();
     let cfg = resolve_config_strings(&raw, context);
     let access_token = match cfg.get("access_token").and_then(|v| v.as_str()) {
@@ -3280,7 +3284,7 @@ mod tests_310_313 {
 }
 
 // ── Slice 314: Perplexity ──────────────────────────────────────────────────────
-async fn execute_perplexity(node: &Node, context: &ExecutionContext, http_client: &reqwest::Client) -> NodeExecutionResult {
+pub(super) async fn execute_perplexity(node: &Node, context: &ExecutionContext, http_client: &reqwest::Client) -> NodeExecutionResult {
     let raw = node.config.clone().unwrap_or_default();
     let cfg = resolve_config_strings(&raw, context);
     let api_key = match cfg.get("api_key").and_then(|v| v.as_str()) {
@@ -3319,7 +3323,7 @@ async fn execute_perplexity(node: &Node, context: &ExecutionContext, http_client
 }
 
 // ── Slice 315: Cohere ──────────────────────────────────────────────────────────
-async fn execute_cohere(node: &Node, context: &ExecutionContext, http_client: &reqwest::Client) -> NodeExecutionResult {
+pub(super) async fn execute_cohere(node: &Node, context: &ExecutionContext, http_client: &reqwest::Client) -> NodeExecutionResult {
     let raw = node.config.clone().unwrap_or_default();
     let cfg = resolve_config_strings(&raw, context);
     let api_key = match cfg.get("api_key").and_then(|v| v.as_str()) {
@@ -3437,7 +3441,7 @@ async fn execute_cohere(node: &Node, context: &ExecutionContext, http_client: &r
 }
 
 // ── Slice 316: Google Drive ────────────────────────────────────────────────────
-async fn execute_googledrive(node: &Node, context: &ExecutionContext, http_client: &reqwest::Client) -> NodeExecutionResult {
+pub(super) async fn execute_googledrive(node: &Node, context: &ExecutionContext, http_client: &reqwest::Client) -> NodeExecutionResult {
     let raw = node.config.clone().unwrap_or_default();
     let cfg = resolve_config_strings(&raw, context);
     let access_token = match cfg.get("access_token").and_then(|v| v.as_str()) {
@@ -3533,7 +3537,7 @@ fn urlencoding_simple(s: &str) -> String {
 }
 
 // ── Slice 317: WooCommerce ─────────────────────────────────────────────────────
-async fn execute_woocommerce(node: &Node, context: &ExecutionContext, http_client: &reqwest::Client) -> NodeExecutionResult {
+pub(super) async fn execute_woocommerce(node: &Node, context: &ExecutionContext, http_client: &reqwest::Client) -> NodeExecutionResult {
     let raw = node.config.clone().unwrap_or_default();
     let cfg = resolve_config_strings(&raw, context);
     let consumer_key = match cfg.get("consumer_key").and_then(|v| v.as_str()) {
@@ -3729,7 +3733,7 @@ mod tests_314_317 {
 }
 
 // ── Slice 318: Pinecone ────────────────────────────────────────────────────────
-async fn execute_pinecone(node: &Node, context: &ExecutionContext, http_client: &reqwest::Client) -> NodeExecutionResult {
+pub(super) async fn execute_pinecone(node: &Node, context: &ExecutionContext, http_client: &reqwest::Client) -> NodeExecutionResult {
     let raw = node.config.clone().unwrap_or_default();
     let cfg = resolve_config_strings(&raw, context);
     let api_key = match cfg.get("api_key").and_then(|v| v.as_str()) {
@@ -3818,7 +3822,7 @@ async fn execute_pinecone(node: &Node, context: &ExecutionContext, http_client: 
 }
 
 // ── Slice 319: Together AI ─────────────────────────────────────────────────────
-async fn execute_togetherai(node: &Node, context: &ExecutionContext, http_client: &reqwest::Client) -> NodeExecutionResult {
+pub(super) async fn execute_togetherai(node: &Node, context: &ExecutionContext, http_client: &reqwest::Client) -> NodeExecutionResult {
     let raw = node.config.clone().unwrap_or_default();
     let cfg = resolve_config_strings(&raw, context);
     let api_key = match cfg.get("api_key").and_then(|v| v.as_str()) {
@@ -3913,7 +3917,7 @@ async fn execute_togetherai(node: &Node, context: &ExecutionContext, http_client
 }
 
 // ── Slice 320: AWS S3 ──────────────────────────────────────────────────────────
-async fn execute_awss3(node: &Node, context: &ExecutionContext, http_client: &reqwest::Client) -> NodeExecutionResult {
+pub(super) async fn execute_awss3(node: &Node, context: &ExecutionContext, http_client: &reqwest::Client) -> NodeExecutionResult {
     let raw = node.config.clone().unwrap_or_default();
     let cfg = resolve_config_strings(&raw, context);
     let access_key_id = match cfg.get("access_key_id").and_then(|v| v.as_str()) {
@@ -4153,7 +4157,7 @@ fn epoch_to_ymd(secs: u64) -> (u32, u32, u32) {
 }
 
 // ── Slice 321: Hugging Face ────────────────────────────────────────────────────
-async fn execute_huggingface(node: &Node, context: &ExecutionContext, http_client: &reqwest::Client) -> NodeExecutionResult {
+pub(super) async fn execute_huggingface(node: &Node, context: &ExecutionContext, http_client: &reqwest::Client) -> NodeExecutionResult {
     let raw = node.config.clone().unwrap_or_default();
     let cfg = resolve_config_strings(&raw, context);
     let api_token = match cfg.get("api_token").and_then(|v| v.as_str()) {
@@ -4454,7 +4458,7 @@ mod tests_318_321 {
 }
 
 // ── Slice 322: Groq ────────────────────────────────────────────────────────────
-async fn execute_groq(node: &Node, context: &ExecutionContext, http_client: &reqwest::Client) -> NodeExecutionResult {
+pub(super) async fn execute_groq(node: &Node, context: &ExecutionContext, http_client: &reqwest::Client) -> NodeExecutionResult {
     let raw = node.config.clone().unwrap_or_default();
     let cfg = resolve_config_strings(&raw, context);
     let api_key = match cfg.get("api_key").and_then(|v| v.as_str()) {
@@ -4534,7 +4538,7 @@ async fn execute_groq(node: &Node, context: &ExecutionContext, http_client: &req
 }
 
 // ── Slice 323: OpenRouter ──────────────────────────────────────────────────────
-async fn execute_openrouter(node: &Node, context: &ExecutionContext, http_client: &reqwest::Client) -> NodeExecutionResult {
+pub(super) async fn execute_openrouter(node: &Node, context: &ExecutionContext, http_client: &reqwest::Client) -> NodeExecutionResult {
     let raw = node.config.clone().unwrap_or_default();
     let cfg = resolve_config_strings(&raw, context);
     let api_key = match cfg.get("api_key").and_then(|v| v.as_str()) {
@@ -4579,7 +4583,7 @@ async fn execute_openrouter(node: &Node, context: &ExecutionContext, http_client
 }
 
 // ── Slice 324: Qdrant ──────────────────────────────────────────────────────────
-async fn execute_qdrant(node: &Node, context: &ExecutionContext, http_client: &reqwest::Client) -> NodeExecutionResult {
+pub(super) async fn execute_qdrant(node: &Node, context: &ExecutionContext, http_client: &reqwest::Client) -> NodeExecutionResult {
     let raw = node.config.clone().unwrap_or_default();
     let cfg = resolve_config_strings(&raw, context);
     let host = match cfg.get("host").and_then(|v| v.as_str()) {
@@ -4675,7 +4679,7 @@ async fn execute_qdrant(node: &Node, context: &ExecutionContext, http_client: &r
 }
 
 // ── Slice 325: Cloudinary ──────────────────────────────────────────────────────
-async fn execute_cloudinary(node: &Node, context: &ExecutionContext, http_client: &reqwest::Client) -> NodeExecutionResult {
+pub(super) async fn execute_cloudinary(node: &Node, context: &ExecutionContext, http_client: &reqwest::Client) -> NodeExecutionResult {
     let raw = node.config.clone().unwrap_or_default();
     let cfg = resolve_config_strings(&raw, context);
     let cloud_name = match cfg.get("cloud_name").and_then(|v| v.as_str()) {
@@ -4941,7 +4945,7 @@ mod tests_322_325 {
     }
 }
 
-async fn execute_gcal(node: &Node, context: &ExecutionContext, http_client: &reqwest::Client) -> NodeExecutionResult {
+pub(super) async fn execute_gcal(node: &Node, context: &ExecutionContext, http_client: &reqwest::Client) -> NodeExecutionResult {
     let raw = node.config.clone().unwrap_or_default();
     let cfg = resolve_config_strings(&raw, context);
     let access_token = match cfg.get("access_token").and_then(|v| v.as_str()) {
@@ -5040,7 +5044,7 @@ async fn execute_gcal(node: &Node, context: &ExecutionContext, http_client: &req
     }
 }
 
-async fn execute_docusign(node: &Node, context: &ExecutionContext, http_client: &reqwest::Client) -> NodeExecutionResult {
+pub(super) async fn execute_docusign(node: &Node, context: &ExecutionContext, http_client: &reqwest::Client) -> NodeExecutionResult {
     let raw = node.config.clone().unwrap_or_default();
     let cfg = resolve_config_strings(&raw, context);
     let access_token = match cfg.get("access_token").and_then(|v| v.as_str()) {
@@ -5116,7 +5120,7 @@ async fn execute_docusign(node: &Node, context: &ExecutionContext, http_client: 
     }
 }
 
-async fn execute_xero(node: &Node, context: &ExecutionContext, http_client: &reqwest::Client) -> NodeExecutionResult {
+pub(super) async fn execute_xero(node: &Node, context: &ExecutionContext, http_client: &reqwest::Client) -> NodeExecutionResult {
     let raw = node.config.clone().unwrap_or_default();
     let cfg = resolve_config_strings(&raw, context);
     let access_token = match cfg.get("access_token").and_then(|v| v.as_str()) {
@@ -5157,7 +5161,7 @@ async fn execute_xero(node: &Node, context: &ExecutionContext, http_client: &req
     }
 }
 
-async fn execute_calendly(node: &Node, context: &ExecutionContext, http_client: &reqwest::Client) -> NodeExecutionResult {
+pub(super) async fn execute_calendly(node: &Node, context: &ExecutionContext, http_client: &reqwest::Client) -> NodeExecutionResult {
     let raw = node.config.clone().unwrap_or_default();
     let cfg = resolve_config_strings(&raw, context);
     let api_key = match cfg.get("api_key").and_then(|v| v.as_str()) {
@@ -5387,7 +5391,7 @@ mod tests_326_329 {
     }
 }
 
-async fn execute_apify(node: &Node, context: &ExecutionContext, http_client: &reqwest::Client) -> NodeExecutionResult {
+pub(super) async fn execute_apify(node: &Node, context: &ExecutionContext, http_client: &reqwest::Client) -> NodeExecutionResult {
     let raw = node.config.clone().unwrap_or_default();
     let cfg = resolve_config_strings(&raw, context);
     let api_token = match cfg.get("api_token").and_then(|v| v.as_str()) {
@@ -5461,7 +5465,7 @@ async fn execute_apify(node: &Node, context: &ExecutionContext, http_client: &re
     }
 }
 
-async fn execute_ganalytics(node: &Node, context: &ExecutionContext, http_client: &reqwest::Client) -> NodeExecutionResult {
+pub(super) async fn execute_ganalytics(node: &Node, context: &ExecutionContext, http_client: &reqwest::Client) -> NodeExecutionResult {
     let raw = node.config.clone().unwrap_or_default();
     let cfg = resolve_config_strings(&raw, context);
     let access_token = match cfg.get("access_token").and_then(|v| v.as_str()) {
@@ -5530,7 +5534,7 @@ async fn execute_ganalytics(node: &Node, context: &ExecutionContext, http_client
     }
 }
 
-async fn execute_neon(node: &Node, context: &ExecutionContext, http_client: &reqwest::Client) -> NodeExecutionResult {
+pub(super) async fn execute_neon(node: &Node, context: &ExecutionContext, http_client: &reqwest::Client) -> NodeExecutionResult {
     let raw = node.config.clone().unwrap_or_default();
     let cfg = resolve_config_strings(&raw, context);
     let api_key = match cfg.get("api_key").and_then(|v| v.as_str()) {
@@ -5598,7 +5602,7 @@ async fn execute_neon(node: &Node, context: &ExecutionContext, http_client: &req
     }
 }
 
-async fn execute_copper(node: &Node, context: &ExecutionContext, http_client: &reqwest::Client) -> NodeExecutionResult {
+pub(super) async fn execute_copper(node: &Node, context: &ExecutionContext, http_client: &reqwest::Client) -> NodeExecutionResult {
     let raw = node.config.clone().unwrap_or_default();
     let cfg = resolve_config_strings(&raw, context);
     let api_key = match cfg.get("api_key").and_then(|v| v.as_str()) {
