@@ -6,15 +6,15 @@ use std::sync::atomic::Ordering as AtomicOrdering;
 use std::sync::{Arc, RwLock};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use trigix_executor::approval::ApprovalGate;
 use crate::token_usage::TokenUsageStore;
-use trigix_executor::runtime::{
-    run_workflow_with_progress, ExecutionReport, NodeProgressCallback, NodeReport,
-};
 use execution_core::{ExecutionStatus, NodeStatus};
 use serde::{Deserialize, Serialize};
 use sqlx::postgres::PgPool;
 use sqlx::types::Json;
+use trigix_executor::approval::ApprovalGate;
+use trigix_executor::runtime::{
+    run_workflow_with_progress, ExecutionReport, NodeProgressCallback, NodeReport,
+};
 use workflow_core::{Node, WorkflowGraph};
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -71,7 +71,9 @@ pub struct ExecutionRecord {
     pub retried_from: Option<String>,
 }
 
-fn is_zero_u32(v: &u32) -> bool { *v == 0 }
+fn is_zero_u32(v: &u32) -> bool {
+    *v == 0
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct NodeExecutionRecord {
@@ -285,11 +287,7 @@ where
         self.store.get(tenant_id, execution_id).await
     }
 
-    pub async fn cancel(
-        &self,
-        tenant_id: &str,
-        execution_id: &str,
-    ) -> Result<(), ExecutionError> {
+    pub async fn cancel(&self, tenant_id: &str, execution_id: &str) -> Result<(), ExecutionError> {
         self.store.cancel(tenant_id, execution_id).await
     }
 
@@ -321,7 +319,11 @@ where
 
     /// Cancel all running executions whose `started_at` is older than `now - timeout_secs`.
     /// Called by the background timeout guard; scans across all tenants.
-    pub async fn cancel_stale_running(&self, timeout_secs: u64, now: u64) -> Result<usize, ExecutionError> {
+    pub async fn cancel_stale_running(
+        &self,
+        timeout_secs: u64,
+        now: u64,
+    ) -> Result<usize, ExecutionError> {
         let stale = self.store.list_stale_running(timeout_secs, now).await?;
         let count = stale.len();
         for summary in stale {
@@ -331,27 +333,54 @@ where
     }
 
     pub async fn delete(&self, tenant_id: &str, execution_id: &str) -> Result<(), ExecutionError> {
-        if tenant_id.is_empty() { return Err(ExecutionError::MissingTenant); }
+        if tenant_id.is_empty() {
+            return Err(ExecutionError::MissingTenant);
+        }
         self.store.delete(tenant_id, execution_id).await
     }
 
-    pub async fn set_label(&self, tenant_id: &str, execution_id: &str, label: Option<String>) -> Result<(), ExecutionError> {
-        if tenant_id.is_empty() { return Err(ExecutionError::MissingTenant); }
+    pub async fn set_label(
+        &self,
+        tenant_id: &str,
+        execution_id: &str,
+        label: Option<String>,
+    ) -> Result<(), ExecutionError> {
+        if tenant_id.is_empty() {
+            return Err(ExecutionError::MissingTenant);
+        }
         self.store.set_label(tenant_id, execution_id, label).await
     }
 
-    pub async fn set_note(&self, tenant_id: &str, execution_id: &str, note: Option<String>) -> Result<(), ExecutionError> {
-        if tenant_id.is_empty() { return Err(ExecutionError::MissingTenant); }
+    pub async fn set_note(
+        &self,
+        tenant_id: &str,
+        execution_id: &str,
+        note: Option<String>,
+    ) -> Result<(), ExecutionError> {
+        if tenant_id.is_empty() {
+            return Err(ExecutionError::MissingTenant);
+        }
         self.store.set_note(tenant_id, execution_id, note).await
     }
 
-    pub async fn set_starred(&self, tenant_id: &str, execution_id: &str, starred: bool) -> Result<(), ExecutionError> {
-        if tenant_id.is_empty() { return Err(ExecutionError::MissingTenant); }
-        self.store.set_starred(tenant_id, execution_id, starred).await
+    pub async fn set_starred(
+        &self,
+        tenant_id: &str,
+        execution_id: &str,
+        starred: bool,
+    ) -> Result<(), ExecutionError> {
+        if tenant_id.is_empty() {
+            return Err(ExecutionError::MissingTenant);
+        }
+        self.store
+            .set_starred(tenant_id, execution_id, starred)
+            .await
     }
 
     pub async fn count_running_by_tenant(&self, tenant_id: &str) -> Result<u64, ExecutionError> {
-        if tenant_id.is_empty() { return Err(ExecutionError::MissingTenant); }
+        if tenant_id.is_empty() {
+            return Err(ExecutionError::MissingTenant);
+        }
         self.store.count_running_by_tenant(tenant_id).await
     }
 
@@ -359,9 +388,17 @@ where
         self.store.count_all_running().await
     }
 
-    pub async fn count_running_by_workflow(&self, tenant_id: &str, workflow_id: &str) -> Result<u64, ExecutionError> {
-        if tenant_id.is_empty() { return Err(ExecutionError::MissingTenant); }
-        self.store.count_running_by_workflow(tenant_id, workflow_id).await
+    pub async fn count_running_by_workflow(
+        &self,
+        tenant_id: &str,
+        workflow_id: &str,
+    ) -> Result<u64, ExecutionError> {
+        if tenant_id.is_empty() {
+            return Err(ExecutionError::MissingTenant);
+        }
+        self.store
+            .count_running_by_workflow(tenant_id, workflow_id)
+            .await
     }
 }
 
@@ -433,7 +470,12 @@ impl ExecutionStore for MemoryExecutionStore {
             .filter(|record| record.tenant_id == tenant_id)
             .map(execution_summary)
             .collect::<Vec<_>>();
-        summaries.sort_by(|left, right| right.started_at.cmp(&left.started_at).then(right.id.cmp(&left.id)));
+        summaries.sort_by(|left, right| {
+            right
+                .started_at
+                .cmp(&left.started_at)
+                .then(right.id.cmp(&left.id))
+        });
         Ok(summaries)
     }
 
@@ -502,7 +544,10 @@ impl ExecutionStore for MemoryExecutionStore {
             .get_mut(&key(tenant_id, execution_id))
             .ok_or(ExecutionError::NotFound)?;
         // Only cancel if still in a non-terminal state.
-        if matches!(record.status, ExecutionStatus::Running | ExecutionStatus::WaitingApproval) {
+        if matches!(
+            record.status,
+            ExecutionStatus::Running | ExecutionStatus::WaitingApproval
+        ) {
             record.status = ExecutionStatus::Cancelled;
             record.finished_at = Some(unix_now());
         }
@@ -521,7 +566,11 @@ impl ExecutionStore for MemoryExecutionStore {
             .map_err(|_| ExecutionError::StoreUnavailable)?;
         if let Some(record) = records.get_mut(&key(tenant_id, execution_id)) {
             // Replace existing entry for this node_id or append
-            if let Some(pos) = record.node_results.iter().position(|nr| nr.node_id == node_result.node_id) {
+            if let Some(pos) = record
+                .node_results
+                .iter()
+                .position(|nr| nr.node_id == node_result.node_id)
+            {
                 record.node_results[pos] = node_result;
             } else {
                 record.node_results.push(node_result);
@@ -543,8 +592,10 @@ impl ExecutionStore for MemoryExecutionStore {
         let summaries = records
             .values()
             .filter(|r| {
-                matches!(r.status, ExecutionStatus::Running | ExecutionStatus::WaitingApproval)
-                    && r.started_at < cutoff
+                matches!(
+                    r.status,
+                    ExecutionStatus::Running | ExecutionStatus::WaitingApproval
+                ) && r.started_at < cutoff
             })
             .map(execution_summary)
             .collect();
@@ -552,55 +603,123 @@ impl ExecutionStore for MemoryExecutionStore {
     }
 
     async fn delete(&self, tenant_id: &str, execution_id: &str) -> Result<(), ExecutionError> {
-        let mut records = self.records.write().map_err(|_| ExecutionError::StoreUnavailable)?;
-        if records.remove(&key(tenant_id, execution_id)).is_some() { Ok(()) } else { Err(ExecutionError::NotFound) }
+        let mut records = self
+            .records
+            .write()
+            .map_err(|_| ExecutionError::StoreUnavailable)?;
+        if records.remove(&key(tenant_id, execution_id)).is_some() {
+            Ok(())
+        } else {
+            Err(ExecutionError::NotFound)
+        }
     }
 
-    async fn set_label(&self, tenant_id: &str, execution_id: &str, label: Option<String>) -> Result<(), ExecutionError> {
-        let mut records = self.records.write().map_err(|_| ExecutionError::StoreUnavailable)?;
-        let rec = records.get_mut(&key(tenant_id, execution_id)).ok_or(ExecutionError::NotFound)?;
+    async fn set_label(
+        &self,
+        tenant_id: &str,
+        execution_id: &str,
+        label: Option<String>,
+    ) -> Result<(), ExecutionError> {
+        let mut records = self
+            .records
+            .write()
+            .map_err(|_| ExecutionError::StoreUnavailable)?;
+        let rec = records
+            .get_mut(&key(tenant_id, execution_id))
+            .ok_or(ExecutionError::NotFound)?;
         rec.label = label;
         Ok(())
     }
 
-    async fn set_note(&self, tenant_id: &str, execution_id: &str, note: Option<String>) -> Result<(), ExecutionError> {
-        let mut records = self.records.write().map_err(|_| ExecutionError::StoreUnavailable)?;
-        let rec = records.get_mut(&key(tenant_id, execution_id)).ok_or(ExecutionError::NotFound)?;
+    async fn set_note(
+        &self,
+        tenant_id: &str,
+        execution_id: &str,
+        note: Option<String>,
+    ) -> Result<(), ExecutionError> {
+        let mut records = self
+            .records
+            .write()
+            .map_err(|_| ExecutionError::StoreUnavailable)?;
+        let rec = records
+            .get_mut(&key(tenant_id, execution_id))
+            .ok_or(ExecutionError::NotFound)?;
         rec.note = note;
         Ok(())
     }
 
-    async fn set_starred(&self, tenant_id: &str, execution_id: &str, starred: bool) -> Result<(), ExecutionError> {
-        let mut records = self.records.write().map_err(|_| ExecutionError::StoreUnavailable)?;
-        let rec = records.get_mut(&key(tenant_id, execution_id)).ok_or(ExecutionError::NotFound)?;
+    async fn set_starred(
+        &self,
+        tenant_id: &str,
+        execution_id: &str,
+        starred: bool,
+    ) -> Result<(), ExecutionError> {
+        let mut records = self
+            .records
+            .write()
+            .map_err(|_| ExecutionError::StoreUnavailable)?;
+        let rec = records
+            .get_mut(&key(tenant_id, execution_id))
+            .ok_or(ExecutionError::NotFound)?;
         rec.starred = starred;
         Ok(())
     }
 
     async fn count_running_by_tenant(&self, tenant_id: &str) -> Result<u64, ExecutionError> {
-        let records = self.records.read().map_err(|_| ExecutionError::StoreUnavailable)?;
-        let count = records.values().filter(|r| {
-            r.tenant_id == tenant_id
-                && matches!(r.status, ExecutionStatus::Running | ExecutionStatus::WaitingApproval)
-        }).count() as u64;
+        let records = self
+            .records
+            .read()
+            .map_err(|_| ExecutionError::StoreUnavailable)?;
+        let count = records
+            .values()
+            .filter(|r| {
+                r.tenant_id == tenant_id
+                    && matches!(
+                        r.status,
+                        ExecutionStatus::Running | ExecutionStatus::WaitingApproval
+                    )
+            })
+            .count() as u64;
         Ok(count)
     }
 
     async fn count_all_running(&self) -> Result<u64, ExecutionError> {
-        let records = self.records.read().map_err(|_| ExecutionError::StoreUnavailable)?;
-        let count = records.values().filter(|r| {
-            matches!(r.status, ExecutionStatus::Running | ExecutionStatus::WaitingApproval)
-        }).count() as u64;
+        let records = self
+            .records
+            .read()
+            .map_err(|_| ExecutionError::StoreUnavailable)?;
+        let count = records
+            .values()
+            .filter(|r| {
+                matches!(
+                    r.status,
+                    ExecutionStatus::Running | ExecutionStatus::WaitingApproval
+                )
+            })
+            .count() as u64;
         Ok(count)
     }
 
-    async fn count_running_by_workflow(&self, tenant_id: &str, workflow_id: &str) -> Result<u64, ExecutionError> {
-        let records = self.records.read().map_err(|_| ExecutionError::StoreUnavailable)?;
-        let count = records.values().filter(|r| {
-            r.tenant_id == tenant_id
-                && r.workflow_id == workflow_id
-                && matches!(r.status, ExecutionStatus::Running | ExecutionStatus::WaitingApproval)
-        }).count() as u64;
+    async fn count_running_by_workflow(
+        &self,
+        tenant_id: &str,
+        workflow_id: &str,
+    ) -> Result<u64, ExecutionError> {
+        let records = self
+            .records
+            .read()
+            .map_err(|_| ExecutionError::StoreUnavailable)?;
+        let count = records
+            .values()
+            .filter(|r| {
+                r.tenant_id == tenant_id
+                    && r.workflow_id == workflow_id
+                    && matches!(
+                        r.status,
+                        ExecutionStatus::Running | ExecutionStatus::WaitingApproval
+                    )
+            })
+            .count() as u64;
         Ok(count)
     }
 }
@@ -688,8 +807,16 @@ impl ExecutionStore for PlatformExecutionStore {
         node_result: NodeExecutionRecord,
     ) -> Result<(), ExecutionError> {
         match self {
-            Self::Memory(store) => store.append_node_result(tenant_id, execution_id, node_result).await,
-            Self::Postgres(store) => store.append_node_result(tenant_id, execution_id, node_result).await,
+            Self::Memory(store) => {
+                store
+                    .append_node_result(tenant_id, execution_id, node_result)
+                    .await
+            }
+            Self::Postgres(store) => {
+                store
+                    .append_node_result(tenant_id, execution_id, node_result)
+                    .await
+            }
         }
     }
 
@@ -711,21 +838,36 @@ impl ExecutionStore for PlatformExecutionStore {
         }
     }
 
-    async fn set_label(&self, tenant_id: &str, execution_id: &str, label: Option<String>) -> Result<(), ExecutionError> {
+    async fn set_label(
+        &self,
+        tenant_id: &str,
+        execution_id: &str,
+        label: Option<String>,
+    ) -> Result<(), ExecutionError> {
         match self {
             Self::Memory(store) => store.set_label(tenant_id, execution_id, label).await,
             Self::Postgres(store) => store.set_label(tenant_id, execution_id, label).await,
         }
     }
 
-    async fn set_note(&self, tenant_id: &str, execution_id: &str, note: Option<String>) -> Result<(), ExecutionError> {
+    async fn set_note(
+        &self,
+        tenant_id: &str,
+        execution_id: &str,
+        note: Option<String>,
+    ) -> Result<(), ExecutionError> {
         match self {
             Self::Memory(store) => store.set_note(tenant_id, execution_id, note).await,
             Self::Postgres(store) => store.set_note(tenant_id, execution_id, note).await,
         }
     }
 
-    async fn set_starred(&self, tenant_id: &str, execution_id: &str, starred: bool) -> Result<(), ExecutionError> {
+    async fn set_starred(
+        &self,
+        tenant_id: &str,
+        execution_id: &str,
+        starred: bool,
+    ) -> Result<(), ExecutionError> {
         match self {
             Self::Memory(store) => store.set_starred(tenant_id, execution_id, starred).await,
             Self::Postgres(store) => store.set_starred(tenant_id, execution_id, starred).await,
@@ -746,10 +888,22 @@ impl ExecutionStore for PlatformExecutionStore {
         }
     }
 
-    async fn count_running_by_workflow(&self, tenant_id: &str, workflow_id: &str) -> Result<u64, ExecutionError> {
+    async fn count_running_by_workflow(
+        &self,
+        tenant_id: &str,
+        workflow_id: &str,
+    ) -> Result<u64, ExecutionError> {
         match self {
-            Self::Memory(store) => store.count_running_by_workflow(tenant_id, workflow_id).await,
-            Self::Postgres(store) => store.count_running_by_workflow(tenant_id, workflow_id).await,
+            Self::Memory(store) => {
+                store
+                    .count_running_by_workflow(tenant_id, workflow_id)
+                    .await
+            }
+            Self::Postgres(store) => {
+                store
+                    .count_running_by_workflow(tenant_id, workflow_id)
+                    .await
+            }
         }
     }
 }
@@ -775,10 +929,17 @@ where
     S: ExecutionStore,
 {
     pub fn new(store: S, approval_gate: std::sync::Arc<ApprovalGate>) -> Self {
-        Self { store, approval_gate, token_usage_store: None }
+        Self {
+            store,
+            approval_gate,
+            token_usage_store: None,
+        }
     }
 
-    pub fn with_token_usage(mut self, store: std::sync::Arc<crate::token_usage::PlatformTokenUsageStore>) -> Self {
+    pub fn with_token_usage(
+        mut self,
+        store: std::sync::Arc<crate::token_usage::PlatformTokenUsageStore>,
+    ) -> Self {
         self.token_usage_store = Some(store);
         self
     }
@@ -798,7 +959,8 @@ impl<S: ExecutionStore + Clone + 'static> NodeProgressCallback for StoreProgress
         let store = self.store.clone();
         let tenant_id = self.tenant_id.clone();
         let execution_id = self.execution_id.clone();
-        let node_type = self.nodes_by_id
+        let node_type = self
+            .nodes_by_id
             .get(&report.node_id)
             .cloned()
             .unwrap_or_else(|| "unknown".to_string());
@@ -813,7 +975,9 @@ impl<S: ExecutionStore + Clone + 'static> NodeProgressCallback for StoreProgress
             retry_count: report.retry_count,
         };
         tokio::spawn(async move {
-            let _ = store.append_node_result(&tenant_id, &execution_id, node_result).await;
+            let _ = store
+                .append_node_result(&tenant_id, &execution_id, node_result)
+                .await;
         });
     }
 }
@@ -825,11 +989,13 @@ where
     async fn start(&self, record: &ExecutionRecord) -> Result<(), ExecutionError> {
         let gate = std::sync::Arc::clone(&self.approval_gate);
         let ai_url = std::env::var("AI_RUNTIME_BASE_URL").ok();
-        let node_executor =
-            trigix_executor::executor::DispatchingNodeExecutor::new(ai_url)
-                .with_approval_gate(gate);
+        let node_executor = trigix_executor::executor::DispatchingNodeExecutor::new(ai_url)
+            .with_approval_gate(gate);
 
-        let nodes_by_id: HashMap<String, String> = record.graph.nodes.iter()
+        let nodes_by_id: HashMap<String, String> = record
+            .graph
+            .nodes
+            .iter()
             .map(|n| (n.id.clone(), node_type_to_str(&n.node_type).to_string()))
             .collect();
         let progress = StoreProgressCallback {
@@ -850,18 +1016,22 @@ where
         .await
         .map_err(|_| ExecutionError::ExecutorUnavailable)?;
 
-        let completed = self.store
+        let completed = self
+            .store
             .complete(&record.tenant_id, &record.id, report)
             .await?;
         // Decrement running counter regardless of final status.
         crate::http::METRIC_EXEC_RUNNING.fetch_sub(1, AtomicOrdering::Relaxed);
         match completed.status {
-            ExecutionStatus::Succeeded =>
-                crate::http::METRIC_EXEC_SUCCEEDED.fetch_add(1, AtomicOrdering::Relaxed),
-            ExecutionStatus::Failed =>
-                crate::http::METRIC_EXEC_FAILED.fetch_add(1, AtomicOrdering::Relaxed),
-            ExecutionStatus::Cancelled =>
-                crate::http::METRIC_EXEC_CANCELLED.fetch_add(1, AtomicOrdering::Relaxed),
+            ExecutionStatus::Succeeded => {
+                crate::http::METRIC_EXEC_SUCCEEDED.fetch_add(1, AtomicOrdering::Relaxed)
+            }
+            ExecutionStatus::Failed => {
+                crate::http::METRIC_EXEC_FAILED.fetch_add(1, AtomicOrdering::Relaxed)
+            }
+            ExecutionStatus::Cancelled => {
+                crate::http::METRIC_EXEC_CANCELLED.fetch_add(1, AtomicOrdering::Relaxed)
+            }
             _ => 0,
         };
         fire_callback_if_set(&completed);
@@ -876,7 +1046,9 @@ where
             );
             for rec in usage_records {
                 let store = std::sync::Arc::clone(usage_store);
-                tokio::spawn(async move { store.record(rec).await; });
+                tokio::spawn(async move {
+                    store.record(rec).await;
+                });
             }
         }
         Ok(())
@@ -934,7 +1106,8 @@ where
             .await
             .map_err(|_| ExecutionError::ExecutorUnavailable)?;
 
-        let completed = self.store
+        let completed = self
+            .store
             .complete(&record.tenant_id, &record.id, report)
             .await?;
         fire_callback_if_set(&completed);
@@ -952,16 +1125,19 @@ pub struct QueueExecutorClient {
 
 impl QueueExecutorClient {
     pub fn new(cache: crate::cache::CacheClient) -> Self {
-        Self { cache: std::sync::Arc::new(cache) }
+        Self {
+            cache: std::sync::Arc::new(cache),
+        }
     }
 }
 
 impl ExecutorClient for QueueExecutorClient {
     async fn start(&self, record: &ExecutionRecord) -> Result<(), ExecutionError> {
-        let job = serde_json::to_string(record)
-            .map_err(|_| ExecutionError::ExecutorUnavailable)?;
+        let job = serde_json::to_string(record).map_err(|_| ExecutionError::ExecutorUnavailable)?;
         let stream = crate::cache::keys::exec_queue_stream();
-        self.cache.xadd(stream, &[("job", &job)]).await
+        self.cache
+            .xadd(stream, &[("job", &job)])
+            .await
             .ok_or(ExecutionError::ExecutorUnavailable)?;
         Ok(())
     }
@@ -1044,8 +1220,8 @@ impl ExecutionStore for PostgresExecutionStore {
     ) -> Result<ExecutionRecord, ExecutionError> {
         let input_json: serde_json::Value =
             serde_json::from_str(&request.input_json).map_err(|_| ExecutionError::InvalidInput)?;
-        let graph_json = serde_json::to_value(&request.graph)
-            .map_err(|_| ExecutionError::InvalidGraph)?;
+        let graph_json =
+            serde_json::to_value(&request.graph).map_err(|_| ExecutionError::InvalidGraph)?;
         let id = next_id();
         let now = unix_now();
 
@@ -1320,54 +1496,80 @@ impl ExecutionStore for PostgresExecutionStore {
     }
 
     async fn delete(&self, tenant_id: &str, execution_id: &str) -> Result<(), ExecutionError> {
-        let result = sqlx::query(
-            "DELETE FROM af_executions WHERE tenant_id = $1 AND id = $2"
-        )
-        .bind(tenant_id)
-        .bind(execution_id)
-        .execute(&self.pool)
-        .await
-        .map_err(|_| ExecutionError::StoreUnavailable)?;
-        if result.rows_affected() == 0 { Err(ExecutionError::NotFound) } else { Ok(()) }
+        let result = sqlx::query("DELETE FROM af_executions WHERE tenant_id = $1 AND id = $2")
+            .bind(tenant_id)
+            .bind(execution_id)
+            .execute(&self.pool)
+            .await
+            .map_err(|_| ExecutionError::StoreUnavailable)?;
+        if result.rows_affected() == 0 {
+            Err(ExecutionError::NotFound)
+        } else {
+            Ok(())
+        }
     }
 
-    async fn set_label(&self, tenant_id: &str, execution_id: &str, label: Option<String>) -> Result<(), ExecutionError> {
-        let result = sqlx::query(
-            "UPDATE af_executions SET label = $1 WHERE tenant_id = $2 AND id = $3"
-        )
-        .bind(label)
-        .bind(tenant_id)
-        .bind(execution_id)
-        .execute(&self.pool)
-        .await
-        .map_err(|_| ExecutionError::StoreUnavailable)?;
-        if result.rows_affected() == 0 { Err(ExecutionError::NotFound) } else { Ok(()) }
+    async fn set_label(
+        &self,
+        tenant_id: &str,
+        execution_id: &str,
+        label: Option<String>,
+    ) -> Result<(), ExecutionError> {
+        let result =
+            sqlx::query("UPDATE af_executions SET label = $1 WHERE tenant_id = $2 AND id = $3")
+                .bind(label)
+                .bind(tenant_id)
+                .bind(execution_id)
+                .execute(&self.pool)
+                .await
+                .map_err(|_| ExecutionError::StoreUnavailable)?;
+        if result.rows_affected() == 0 {
+            Err(ExecutionError::NotFound)
+        } else {
+            Ok(())
+        }
     }
 
-    async fn set_note(&self, tenant_id: &str, execution_id: &str, note: Option<String>) -> Result<(), ExecutionError> {
-        let result = sqlx::query(
-            "UPDATE af_executions SET note = $1 WHERE tenant_id = $2 AND id = $3"
-        )
-        .bind(note)
-        .bind(tenant_id)
-        .bind(execution_id)
-        .execute(&self.pool)
-        .await
-        .map_err(|_| ExecutionError::StoreUnavailable)?;
-        if result.rows_affected() == 0 { Err(ExecutionError::NotFound) } else { Ok(()) }
+    async fn set_note(
+        &self,
+        tenant_id: &str,
+        execution_id: &str,
+        note: Option<String>,
+    ) -> Result<(), ExecutionError> {
+        let result =
+            sqlx::query("UPDATE af_executions SET note = $1 WHERE tenant_id = $2 AND id = $3")
+                .bind(note)
+                .bind(tenant_id)
+                .bind(execution_id)
+                .execute(&self.pool)
+                .await
+                .map_err(|_| ExecutionError::StoreUnavailable)?;
+        if result.rows_affected() == 0 {
+            Err(ExecutionError::NotFound)
+        } else {
+            Ok(())
+        }
     }
 
-    async fn set_starred(&self, tenant_id: &str, execution_id: &str, starred: bool) -> Result<(), ExecutionError> {
-        let result = sqlx::query(
-            "UPDATE af_executions SET starred = $1 WHERE tenant_id = $2 AND id = $3"
-        )
-        .bind(starred)
-        .bind(tenant_id)
-        .bind(execution_id)
-        .execute(&self.pool)
-        .await
-        .map_err(|_| ExecutionError::StoreUnavailable)?;
-        if result.rows_affected() == 0 { Err(ExecutionError::NotFound) } else { Ok(()) }
+    async fn set_starred(
+        &self,
+        tenant_id: &str,
+        execution_id: &str,
+        starred: bool,
+    ) -> Result<(), ExecutionError> {
+        let result =
+            sqlx::query("UPDATE af_executions SET starred = $1 WHERE tenant_id = $2 AND id = $3")
+                .bind(starred)
+                .bind(tenant_id)
+                .bind(execution_id)
+                .execute(&self.pool)
+                .await
+                .map_err(|_| ExecutionError::StoreUnavailable)?;
+        if result.rows_affected() == 0 {
+            Err(ExecutionError::NotFound)
+        } else {
+            Ok(())
+        }
     }
 
     async fn count_running_by_tenant(&self, tenant_id: &str) -> Result<u64, ExecutionError> {
@@ -1383,7 +1585,7 @@ impl ExecutionStore for PostgresExecutionStore {
 
     async fn count_all_running(&self) -> Result<u64, ExecutionError> {
         let row: (i64,) = sqlx::query_as(
-            "SELECT COUNT(*) FROM af_executions WHERE status IN ('running', 'waiting_approval')"
+            "SELECT COUNT(*) FROM af_executions WHERE status IN ('running', 'waiting_approval')",
         )
         .fetch_one(&self.pool)
         .await
@@ -1391,7 +1593,11 @@ impl ExecutionStore for PostgresExecutionStore {
         Ok(row.0 as u64)
     }
 
-    async fn count_running_by_workflow(&self, tenant_id: &str, workflow_id: &str) -> Result<u64, ExecutionError> {
+    async fn count_running_by_workflow(
+        &self,
+        tenant_id: &str,
+        workflow_id: &str,
+    ) -> Result<u64, ExecutionError> {
         let row: (i64,) = sqlx::query_as(
             "SELECT COUNT(*) FROM af_executions WHERE tenant_id = $1 AND workflow_id = $2 AND status IN ('running', 'waiting_approval')"
         )
@@ -1661,9 +1867,16 @@ fn execution_summary(record: &ExecutionRecord) -> ExecutionSummary {
         dry_run: record.dry_run,
         starred: record.starred,
         node_count: record.node_count,
-        completed_node_count: record.node_results.iter().filter(|nr| {
-            matches!(nr.status, NodeStatus::Succeeded | NodeStatus::Failed | NodeStatus::Skipped)
-        }).count() as u32,
+        completed_node_count: record
+            .node_results
+            .iter()
+            .filter(|nr| {
+                matches!(
+                    nr.status,
+                    NodeStatus::Succeeded | NodeStatus::Failed | NodeStatus::Skipped
+                )
+            })
+            .count() as u32,
         retried_from: record.retried_from.clone(),
     }
 }
@@ -1800,111 +2013,111 @@ fn node_type_to_str(node_type: &workflow_core::NodeType) -> &'static str {
         workflow_core::NodeType::Join => "join",
         workflow_core::NodeType::Switch => "switch",
         workflow_core::NodeType::Random => "random",
-        workflow_core::NodeType::Dedupe  => "dedupe",
-        workflow_core::NodeType::Regex   => "regex",
-        workflow_core::NodeType::Csv     => "csv",
-        workflow_core::NodeType::Rename  => "rename",
-        workflow_core::NodeType::Format  => "format",
-        workflow_core::NodeType::Github  => "github",
+        workflow_core::NodeType::Dedupe => "dedupe",
+        workflow_core::NodeType::Regex => "regex",
+        workflow_core::NodeType::Csv => "csv",
+        workflow_core::NodeType::Rename => "rename",
+        workflow_core::NodeType::Format => "format",
+        workflow_core::NodeType::Github => "github",
         workflow_core::NodeType::Webhook => "webhook",
-        workflow_core::NodeType::Jira     => "jira",
-        workflow_core::NodeType::Notion   => "notion",
-        workflow_core::NodeType::Linear   => "linear",
+        workflow_core::NodeType::Jira => "jira",
+        workflow_core::NodeType::Notion => "notion",
+        workflow_core::NodeType::Linear => "linear",
         workflow_core::NodeType::Airtable => "airtable",
-        workflow_core::NodeType::ForEach  => "for_each",
-        workflow_core::NodeType::Discord  => "discord",
-        workflow_core::NodeType::Teams    => "teams",
-        workflow_core::NodeType::Sheets   => "sheets",
-        workflow_core::NodeType::Xml      => "xml",
-        workflow_core::NodeType::Yaml     => "yaml",
-        workflow_core::NodeType::Twilio   => "twilio",
-        workflow_core::NodeType::Stripe   => "stripe",
-        workflow_core::NodeType::Crypto        => "crypto",
-        workflow_core::NodeType::Hubspot       => "hubspot",
-        workflow_core::NodeType::Date          => "date",
-        workflow_core::NodeType::Zendesk       => "zendesk",
-        workflow_core::NodeType::Redis         => "redis",
+        workflow_core::NodeType::ForEach => "for_each",
+        workflow_core::NodeType::Discord => "discord",
+        workflow_core::NodeType::Teams => "teams",
+        workflow_core::NodeType::Sheets => "sheets",
+        workflow_core::NodeType::Xml => "xml",
+        workflow_core::NodeType::Yaml => "yaml",
+        workflow_core::NodeType::Twilio => "twilio",
+        workflow_core::NodeType::Stripe => "stripe",
+        workflow_core::NodeType::Crypto => "crypto",
+        workflow_core::NodeType::Hubspot => "hubspot",
+        workflow_core::NodeType::Date => "date",
+        workflow_core::NodeType::Zendesk => "zendesk",
+        workflow_core::NodeType::Redis => "redis",
         workflow_core::NodeType::Elasticsearch => "elasticsearch",
-        workflow_core::NodeType::Pagerduty     => "pagerduty",
-        workflow_core::NodeType::Handlebars    => "handlebars",
-        workflow_core::NodeType::Math       => "math",
+        workflow_core::NodeType::Pagerduty => "pagerduty",
+        workflow_core::NodeType::Handlebars => "handlebars",
+        workflow_core::NodeType::Math => "math",
         workflow_core::NodeType::ArrayUtils => "array_utils",
-        workflow_core::NodeType::Shopify    => "shopify",
-        workflow_core::NodeType::Datadog    => "datadog",
+        workflow_core::NodeType::Shopify => "shopify",
+        workflow_core::NodeType::Datadog => "datadog",
         workflow_core::NodeType::Salesforce => "salesforce",
-        workflow_core::NodeType::Freshdesk  => "freshdesk",
-        workflow_core::NodeType::Mailgun    => "mailgun",
-        workflow_core::NodeType::Asana      => "asana",
-        workflow_core::NodeType::Servicenow  => "servicenow",
-        workflow_core::NodeType::Confluence  => "confluence",
-        workflow_core::NodeType::Bitbucket   => "bitbucket",
+        workflow_core::NodeType::Freshdesk => "freshdesk",
+        workflow_core::NodeType::Mailgun => "mailgun",
+        workflow_core::NodeType::Asana => "asana",
+        workflow_core::NodeType::Servicenow => "servicenow",
+        workflow_core::NodeType::Confluence => "confluence",
+        workflow_core::NodeType::Bitbucket => "bitbucket",
         workflow_core::NodeType::AzureDevops => "azure_devops",
-        workflow_core::NodeType::Twitch      => "twitch",
-        workflow_core::NodeType::Figma       => "figma",
-        workflow_core::NodeType::Dropbox     => "dropbox",
-        workflow_core::NodeType::Cloudflare  => "cloudflare",
-        workflow_core::NodeType::Box     => "box",
-        workflow_core::NodeType::Okta      => "okta",
-        workflow_core::NodeType::Zoom      => "zoom",
-        workflow_core::NodeType::Spotify   => "spotify",
-        workflow_core::NodeType::Typeform  => "typeform",
-        workflow_core::NodeType::Webflow   => "webflow",
-        workflow_core::NodeType::Intercom  => "intercom",
+        workflow_core::NodeType::Twitch => "twitch",
+        workflow_core::NodeType::Figma => "figma",
+        workflow_core::NodeType::Dropbox => "dropbox",
+        workflow_core::NodeType::Cloudflare => "cloudflare",
+        workflow_core::NodeType::Box => "box",
+        workflow_core::NodeType::Okta => "okta",
+        workflow_core::NodeType::Zoom => "zoom",
+        workflow_core::NodeType::Spotify => "spotify",
+        workflow_core::NodeType::Typeform => "typeform",
+        workflow_core::NodeType::Webflow => "webflow",
+        workflow_core::NodeType::Intercom => "intercom",
         workflow_core::NodeType::Pipedrive => "pipedrive",
-        workflow_core::NodeType::Trello    => "trello",
-        workflow_core::NodeType::Monday    => "monday",
-        workflow_core::NodeType::Clickup   => "clickup",
+        workflow_core::NodeType::Trello => "trello",
+        workflow_core::NodeType::Monday => "monday",
+        workflow_core::NodeType::Clickup => "clickup",
         workflow_core::NodeType::Amplitude => "amplitude",
-        workflow_core::NodeType::Mixpanel  => "mixpanel",
-        workflow_core::NodeType::Segment   => "segment",
-        workflow_core::NodeType::Sendgrid  => "sendgrid",
+        workflow_core::NodeType::Mixpanel => "mixpanel",
+        workflow_core::NodeType::Segment => "segment",
+        workflow_core::NodeType::Sendgrid => "sendgrid",
         workflow_core::NodeType::Braintree => "braintree",
-        workflow_core::NodeType::Paypal    => "paypal",
-        workflow_core::NodeType::Razorpay  => "razorpay",
-        workflow_core::NodeType::Firebase  => "firebase",
-        workflow_core::NodeType::Supabase       => "supabase",
-        workflow_core::NodeType::Mailchimp      => "mailchimp",
+        workflow_core::NodeType::Paypal => "paypal",
+        workflow_core::NodeType::Razorpay => "razorpay",
+        workflow_core::NodeType::Firebase => "firebase",
+        workflow_core::NodeType::Supabase => "supabase",
+        workflow_core::NodeType::Mailchimp => "mailchimp",
         workflow_core::NodeType::Activecampaign => "activecampaign",
-        workflow_core::NodeType::Klaviyo        => "klaviyo",
-        workflow_core::NodeType::Resend     => "resend",
+        workflow_core::NodeType::Klaviyo => "klaviyo",
+        workflow_core::NodeType::Resend => "resend",
         workflow_core::NodeType::Contentful => "contentful",
-        workflow_core::NodeType::Algolia    => "algolia",
-        workflow_core::NodeType::Postmark   => "postmark",
-        workflow_core::NodeType::Vonage     => "vonage",
-        workflow_core::NodeType::Telegram   => "telegram",
-        workflow_core::NodeType::Replicate  => "replicate",
-        workflow_core::NodeType::Mistral    => "mistral",
-        workflow_core::NodeType::Whatsapp   => "whatsapp",
-        workflow_core::NodeType::Googledocs  => "googledocs",
-        workflow_core::NodeType::Perplexity  => "perplexity",
-        workflow_core::NodeType::Cohere      => "cohere",
+        workflow_core::NodeType::Algolia => "algolia",
+        workflow_core::NodeType::Postmark => "postmark",
+        workflow_core::NodeType::Vonage => "vonage",
+        workflow_core::NodeType::Telegram => "telegram",
+        workflow_core::NodeType::Replicate => "replicate",
+        workflow_core::NodeType::Mistral => "mistral",
+        workflow_core::NodeType::Whatsapp => "whatsapp",
+        workflow_core::NodeType::Googledocs => "googledocs",
+        workflow_core::NodeType::Perplexity => "perplexity",
+        workflow_core::NodeType::Cohere => "cohere",
         workflow_core::NodeType::Googledrive => "googledrive",
-        workflow_core::NodeType::Woocommerce  => "woocommerce",
-        workflow_core::NodeType::Pinecone     => "pinecone",
-        workflow_core::NodeType::Togetherai   => "togetherai",
-        workflow_core::NodeType::Awss3        => "awss3",
-        workflow_core::NodeType::Huggingface  => "huggingface",
-        workflow_core::NodeType::Groq         => "groq",
-        workflow_core::NodeType::Openrouter   => "openrouter",
-        workflow_core::NodeType::Qdrant       => "qdrant",
-        workflow_core::NodeType::Cloudinary   => "cloudinary",
-        workflow_core::NodeType::Gcal         => "gcal",
-        workflow_core::NodeType::Docusign     => "docusign",
-        workflow_core::NodeType::Xero         => "xero",
-        workflow_core::NodeType::Calendly     => "calendly",
-        workflow_core::NodeType::Apify        => "apify",
-        workflow_core::NodeType::Ganalytics   => "ganalytics",
-        workflow_core::NodeType::Neon         => "neon",
-        workflow_core::NodeType::Copper       => "copper",
+        workflow_core::NodeType::Woocommerce => "woocommerce",
+        workflow_core::NodeType::Pinecone => "pinecone",
+        workflow_core::NodeType::Togetherai => "togetherai",
+        workflow_core::NodeType::Awss3 => "awss3",
+        workflow_core::NodeType::Huggingface => "huggingface",
+        workflow_core::NodeType::Groq => "groq",
+        workflow_core::NodeType::Openrouter => "openrouter",
+        workflow_core::NodeType::Qdrant => "qdrant",
+        workflow_core::NodeType::Cloudinary => "cloudinary",
+        workflow_core::NodeType::Gcal => "gcal",
+        workflow_core::NodeType::Docusign => "docusign",
+        workflow_core::NodeType::Xero => "xero",
+        workflow_core::NodeType::Calendly => "calendly",
+        workflow_core::NodeType::Apify => "apify",
+        workflow_core::NodeType::Ganalytics => "ganalytics",
+        workflow_core::NodeType::Neon => "neon",
+        workflow_core::NodeType::Copper => "copper",
         // 国内大模型
-        workflow_core::NodeType::Deepseek  => "deepseek",
-        workflow_core::NodeType::Qwen      => "qwen",
-        workflow_core::NodeType::Zhipu     => "zhipu",
-        workflow_core::NodeType::Moonshot  => "moonshot",
-        workflow_core::NodeType::Doubao    => "doubao",
-        workflow_core::NodeType::Minimax   => "minimax",
-        workflow_core::NodeType::Ernie     => "ernie",
-        workflow_core::NodeType::Hunyuan   => "hunyuan",
+        workflow_core::NodeType::Deepseek => "deepseek",
+        workflow_core::NodeType::Qwen => "qwen",
+        workflow_core::NodeType::Zhipu => "zhipu",
+        workflow_core::NodeType::Moonshot => "moonshot",
+        workflow_core::NodeType::Doubao => "doubao",
+        workflow_core::NodeType::Minimax => "minimax",
+        workflow_core::NodeType::Ernie => "ernie",
+        workflow_core::NodeType::Hunyuan => "hunyuan",
     }
 }
 
@@ -1949,7 +2162,9 @@ async fn fire_with_retry(url: String, body: String, event: &'static str, max_att
 /// Fire a non-blocking POST to `record.callback_url` (if set) with the completed record as JSON body.
 /// Retries up to 3 times with exponential backoff (2s, 8s, 32s capped at 60s).
 fn fire_callback_if_set(record: &ExecutionRecord) {
-    let Some(url) = record.callback_url.clone() else { return };
+    let Some(url) = record.callback_url.clone() else {
+        return;
+    };
     let body = serde_json::to_string(record).unwrap_or_default();
     tokio::spawn(async move {
         fire_with_retry(url, body, "execution.completed", 3).await;
@@ -1962,21 +2177,27 @@ fn fire_failure_alert_if_set(record: &ExecutionRecord) {
     if record.status != ExecutionStatus::Failed {
         return;
     }
-    let url = record.graph.nodes.iter()
+    let url = record
+        .graph
+        .nodes
+        .iter()
         .find(|n| n.node_type == workflow_core::NodeType::Trigger)
         .and_then(|n| n.config.as_ref())
         .and_then(|c| c.get("on_failure_url"))
         .and_then(|v| v.as_str())
         .map(|s| s.to_string());
     let Some(url) = url else { return };
-    if url.is_empty() { return; }
+    if url.is_empty() {
+        return;
+    }
     let body = serde_json::json!({
         "execution_id": record.id,
         "workflow_id": record.workflow_id,
         "status": "failed",
         "started_at": record.started_at,
         "finished_at": record.finished_at,
-    }).to_string();
+    })
+    .to_string();
     tokio::spawn(async move {
         fire_with_retry(url, body, "execution.failed", 3).await;
     });
@@ -2040,7 +2261,8 @@ mod tests {
     #[tokio::test]
     async fn inline_executor_completes_execution() {
         let store = MemoryExecutionStore::default();
-        let executor = InlineExecutorClient::new(store.clone(), std::sync::Arc::new(ApprovalGate::default()));
+        let executor =
+            InlineExecutorClient::new(store.clone(), std::sync::Arc::new(ApprovalGate::default()));
         let service = ExecutionService::new(store, executor);
 
         let record = service.start(valid_request()).await.unwrap();
@@ -2054,8 +2276,12 @@ mod tests {
         // Transform node receives {{input.lead_id}} and outputs the resolved value.
         assert_eq!(loaded.node_results[1].node_id, "xform");
         let out: serde_json::Value = serde_json::from_str(
-            loaded.node_results[1].output_json.as_deref().unwrap_or("{}"),
-        ).unwrap();
+            loaded.node_results[1]
+                .output_json
+                .as_deref()
+                .unwrap_or("{}"),
+        )
+        .unwrap();
         assert_eq!(out["lead"], "lead-1");
     }
 
@@ -2063,7 +2289,8 @@ mod tests {
     async fn node_output_template_resolves_across_nodes() {
         // Tests that {{node_id.field}} syntax works: trigger output feeds into transform.
         let store = MemoryExecutionStore::default();
-        let executor = InlineExecutorClient::new(store.clone(), std::sync::Arc::new(ApprovalGate::default()));
+        let executor =
+            InlineExecutorClient::new(store.clone(), std::sync::Arc::new(ApprovalGate::default()));
         let service = ExecutionService::new(store, executor);
 
         let request = StartExecutionRequest {
@@ -2073,7 +2300,11 @@ mod tests {
             graph: WorkflowGraph {
                 workflow_version_id: "ver-tmpl".to_string(),
                 nodes: vec![
-                    Node { id: "trigger".to_string(), node_type: NodeType::Trigger, config: None },
+                    Node {
+                        id: "trigger".to_string(),
+                        node_type: NodeType::Trigger,
+                        config: None,
+                    },
                     Node {
                         id: "step2".to_string(),
                         node_type: NodeType::Transform,
@@ -2083,7 +2314,11 @@ mod tests {
                         })),
                     },
                 ],
-                edges: vec![Edge { source: "trigger".to_string(), target: "step2".to_string(), condition_label: None }],
+                edges: vec![Edge {
+                    source: "trigger".to_string(),
+                    target: "step2".to_string(),
+                    condition_label: None,
+                }],
                 input_schema: vec![],
             },
             input_json: r#"{"customer":"Alice"}"#.to_string(),
@@ -2091,15 +2326,16 @@ mod tests {
             callback_url: None,
             trigger_type: None,
             dry_run: false,
+            retried_from: None,
         };
 
         let record = service.start(request).await.unwrap();
         let done = poll_until_done!(service, "tenant-1", &record.id);
         assert_eq!(done.status, ExecutionStatus::Succeeded);
 
-        let out: serde_json::Value = serde_json::from_str(
-            done.node_results[1].output_json.as_deref().unwrap_or("{}"),
-        ).unwrap();
+        let out: serde_json::Value =
+            serde_json::from_str(done.node_results[1].output_json.as_deref().unwrap_or("{}"))
+                .unwrap();
         assert_eq!(out["greeting"], "Hello Alice");
         // {{trigger}} resolves to the raw output_json of the trigger node (the input_json)
         assert!(out["echo"].as_str().unwrap().contains("Alice"));
@@ -2153,16 +2389,26 @@ mod tests {
     #[tokio::test]
     async fn execution_record_has_started_at_and_finished_at() {
         let store = MemoryExecutionStore::default();
-        let executor = InlineExecutorClient::new(store.clone(), std::sync::Arc::new(ApprovalGate::default()));
+        let executor =
+            InlineExecutorClient::new(store.clone(), std::sync::Arc::new(ApprovalGate::default()));
         let service = ExecutionService::new(store, executor);
 
         let record = service.start(valid_request()).await.unwrap();
-        assert!(record.started_at > 0, "started_at should be a unix timestamp");
-        assert!(record.finished_at.is_none(), "finished_at should be None when running");
+        assert!(
+            record.started_at > 0,
+            "started_at should be a unix timestamp"
+        );
+        assert!(
+            record.finished_at.is_none(),
+            "finished_at should be None when running"
+        );
 
         let done = poll_until_done!(service, "tenant-1", &record.id);
         assert_eq!(done.status, ExecutionStatus::Succeeded);
-        assert!(done.finished_at.is_some(), "finished_at should be set after completion");
+        assert!(
+            done.finished_at.is_some(),
+            "finished_at should be set after completion"
+        );
         assert!(done.finished_at.unwrap() >= record.started_at);
 
         let summaries = service.list("tenant-1").await.unwrap();
@@ -2223,7 +2469,9 @@ mod tests {
             default_value: None,
         }];
         let result = validate_input_against_schema(r#"{}"#, &schema);
-        assert!(matches!(result, Err(ExecutionError::InputSchemaViolation(msg)) if msg.contains("name")));
+        assert!(
+            matches!(result, Err(ExecutionError::InputSchemaViolation(msg)) if msg.contains("name"))
+        );
     }
 
     #[test]
@@ -2237,7 +2485,9 @@ mod tests {
             default_value: None,
         }];
         let result = validate_input_against_schema(r#"{"count":"not-a-number"}"#, &schema);
-        assert!(matches!(result, Err(ExecutionError::InputSchemaViolation(msg)) if msg.contains("count")));
+        assert!(
+            matches!(result, Err(ExecutionError::InputSchemaViolation(msg)) if msg.contains("count"))
+        );
     }
 
     #[test]
@@ -2287,6 +2537,7 @@ mod tests {
             callback_url: None,
             trigger_type: None,
             dry_run: false,
+            retried_from: None,
         }
     }
 
@@ -2295,11 +2546,21 @@ mod tests {
         let service = ExecutionService::new(MemoryExecutionStore::default(), NoopExecutorClient);
         let record = service.start(valid_request()).await.unwrap();
 
-        service.set_note("tenant-1", &record.id, Some("root cause: timeout".to_string())).await.unwrap();
+        service
+            .set_note(
+                "tenant-1",
+                &record.id,
+                Some("root cause: timeout".to_string()),
+            )
+            .await
+            .unwrap();
         let loaded = service.get("tenant-1", &record.id).await.unwrap();
         assert_eq!(loaded.note.as_deref(), Some("root cause: timeout"));
 
-        service.set_note("tenant-1", &record.id, None).await.unwrap();
+        service
+            .set_note("tenant-1", &record.id, None)
+            .await
+            .unwrap();
         let cleared = service.get("tenant-1", &record.id).await.unwrap();
         assert!(cleared.note.is_none());
     }
@@ -2307,7 +2568,10 @@ mod tests {
     #[tokio::test]
     async fn set_note_returns_not_found_for_missing() {
         let service = ExecutionService::new(MemoryExecutionStore::default(), NoopExecutorClient);
-        let err = service.set_note("tenant-1", "no-such-id", Some("x".to_string())).await.unwrap_err();
+        let err = service
+            .set_note("tenant-1", "no-such-id", Some("x".to_string()))
+            .await
+            .unwrap_err();
         assert_eq!(err, ExecutionError::NotFound);
     }
 
@@ -2316,7 +2580,10 @@ mod tests {
         let service = ExecutionService::new(MemoryExecutionStore::default(), NoopExecutorClient);
 
         // No executions yet
-        assert_eq!(service.count_running_by_tenant("tenant-1").await.unwrap(), 0);
+        assert_eq!(
+            service.count_running_by_tenant("tenant-1").await.unwrap(),
+            0
+        );
 
         // Start two executions for tenant-1 and one for tenant-2
         let _r1 = service.start(valid_request()).await.unwrap();
@@ -2330,9 +2597,18 @@ mod tests {
         req3.graph.workflow_version_id = "version-3".to_string();
         let _r3 = service.start(req3).await.unwrap();
 
-        assert_eq!(service.count_running_by_tenant("tenant-1").await.unwrap(), 2);
-        assert_eq!(service.count_running_by_tenant("tenant-2").await.unwrap(), 1);
-        assert_eq!(service.count_running_by_tenant("tenant-99").await.unwrap(), 0);
+        assert_eq!(
+            service.count_running_by_tenant("tenant-1").await.unwrap(),
+            2
+        );
+        assert_eq!(
+            service.count_running_by_tenant("tenant-2").await.unwrap(),
+            1
+        );
+        assert_eq!(
+            service.count_running_by_tenant("tenant-99").await.unwrap(),
+            0
+        );
     }
 
     #[tokio::test]
@@ -2348,6 +2624,9 @@ mod tests {
         assert_eq!(done.status, ExecutionStatus::Succeeded);
 
         // Completed execution should not count as running
-        assert_eq!(service.count_running_by_tenant("tenant-1").await.unwrap(), 0);
+        assert_eq!(
+            service.count_running_by_tenant("tenant-1").await.unwrap(),
+            0
+        );
     }
 }
