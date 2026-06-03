@@ -57,10 +57,10 @@ cargo test --workspace
 cd apps/web && npm ci && npm run build
 ```
 
-CI (`.github/workflows/ci.yml`) enforces formatting and the full Rust test
-suite as hard gates. Clippy and the web production build (`tsc -b`) run in
-advisory mode for now — both have a backlog being cleaned up. Please keep new
-code warning- and error-free so we can promote them to hard gates later.
+CI (`.github/workflows/ci.yml`) enforces formatting, the full Rust test suite,
+and the web production build (`tsc -b && vite build`) as hard gates. Clippy
+runs in advisory mode for now — please keep new code warning-free so we can
+promote it to a hard gate later.
 
 ## Commit and branch conventions
 

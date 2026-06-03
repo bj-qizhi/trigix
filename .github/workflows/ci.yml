@@ -62,11 +62,6 @@ jobs:
         run: npm ci
 
       - name: Build (tsc + vite)
-        # Advisory for now: the production typecheck (`tsc -b`) currently reports
-        # a backlog of errors (mostly unused locals + a few type mismatches).
-        # The Vite dev server runs fine. Tracked as cleanup; tighten to a hard
-        # gate once the backlog is cleared.
-        continue-on-error: true
         run: npm run build
 
   ai-runtime:
