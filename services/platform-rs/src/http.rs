@@ -17,6 +17,8 @@ pub static METRIC_EXEC_FAILED: AtomicU64 = AtomicU64::new(0);
 pub static METRIC_EXEC_CANCELLED: AtomicU64 = AtomicU64::new(0);
 /// Tracks number of currently-running inline executions.
 pub static METRIC_EXEC_RUNNING: AtomicU64 = AtomicU64::new(0);
+/// Jobs routed to the dead-letter stream (deserialize failure or execution error).
+pub static METRIC_DLQ_TOTAL: AtomicU64 = AtomicU64::new(0);
 
 /// Maximum concurrent inline executions. Reads `MAX_CONCURRENT_EXECUTIONS` env var (default 50).
 fn max_concurrent_executions() -> u64 {
@@ -358,7 +360,12 @@ fn spawn_queue_worker(state: AppState) {
                     .map(|(_, v)| v.clone())
                     .unwrap_or_default();
 
-                match serde_json::from_str::<crate::execution::ExecutionRecord>(&job_json) {
+                // On any terminal failure, route the job to the dead-letter stream
+                // instead of dropping it, so it can be inspected and re-driven.
+                let dead_reason: Option<String> = match serde_json::from_str::<
+                    crate::execution::ExecutionRecord,
+                >(&job_json)
+                {
                     Ok(record) => {
                         let inline = crate::execution::InlineExecutorClient::new(
                             state.execution_service.store().clone(),
@@ -366,16 +373,41 @@ fn spawn_queue_worker(state: AppState) {
                         )
                         .with_token_usage(Arc::clone(&state.token_usage_store));
                         use crate::execution::ExecutorClient;
-                        let result = inline.start(&record).await;
-                        if let Err(e) = result {
-                            tracing::error!(execution_id = %record.id, error = ?e, "Queue worker: execution failed");
+                        match inline.start(&record).await {
+                            Ok(_) => None,
+                            Err(e) => {
+                                tracing::error!(execution_id = %record.id, error = ?e, "Queue worker: execution failed");
+                                Some(format!("execution failed: {e:?}"))
+                            }
                         }
                     }
                     Err(e) => {
                         tracing::error!(msg_id = %msg_id, error = %e, "Queue worker: failed to deserialize job");
+                        Some(format!("deserialize failed: {e}"))
                     }
+                };
+
+                if let Some(reason) = dead_reason {
+                    let dead_stream = crate::cache::keys::exec_queue_dead_stream();
+                    let failed_at = crate::execution::unix_now().to_string();
+                    state
+                        .cache
+                        .xadd(
+                            dead_stream,
+                            &[
+                                ("job", &job_json),
+                                ("error", &reason),
+                                ("failed_at", &failed_at),
+                                ("original_msg_id", &msg_id),
+                                ("worker_id", &worker_id),
+                            ],
+                        )
+                        .await;
+                    METRIC_DLQ_TOTAL.fetch_add(1, Ordering::Relaxed);
                 }
-                // Always ACK — even on error, don't retry indefinitely.
+
+                // ACK the original so it leaves the pending list; failures are now
+                // preserved in the dead-letter stream rather than silently lost.
                 state.cache.xack(stream, group, &msg_id).await;
             }
         }
@@ -696,6 +728,8 @@ pub(crate) fn build_router(state: AppState) -> Router {
         .route("/docs", get(openapi_docs))
         .route("/v1/system/info", get(system_info))
         .route("/v1/system/queue-depth", get(queue_depth_handler))
+        .route("/v1/admin/dlq", get(dlq_list_handler))
+        .route("/v1/admin/dlq/requeue", post(dlq_requeue_handler))
         .route("/v1/search", get(search_handler))
         .route("/metrics", get(metrics_handler))
         .route("/v1/executions", get(list_executions).post(start_execution))
@@ -1303,15 +1337,105 @@ async fn system_info() -> Json<SystemInfo> {
 struct QueueDepthResponse {
     queue_depth: Option<u64>,
     stream: &'static str,
+    dead_letter_depth: Option<u64>,
+    dead_letter_stream: &'static str,
 }
 
 async fn queue_depth_handler(State(state): State<AppState>) -> Json<QueueDepthResponse> {
     let stream = crate::cache::keys::exec_queue_stream();
+    let dead_stream = crate::cache::keys::exec_queue_dead_stream();
     let queue_depth = state.cache.xlen(stream).await;
+    let dead_letter_depth = state.cache.xlen(dead_stream).await;
     Json(QueueDepthResponse {
         queue_depth,
         stream,
+        dead_letter_depth,
+        dead_letter_stream: dead_stream,
     })
+}
+
+#[derive(serde::Serialize)]
+struct DlqEntry {
+    id: String,
+    error: Option<String>,
+    failed_at: Option<String>,
+    original_msg_id: Option<String>,
+    worker_id: Option<String>,
+    job: Option<String>,
+}
+
+#[derive(serde::Serialize)]
+struct DlqListResponse {
+    depth: Option<u64>,
+    entries: Vec<DlqEntry>,
+}
+
+/// GET /v1/admin/dlq — list recent dead-letter entries (admin only).
+async fn dlq_list_handler(
+    State(state): State<AppState>,
+    Extension(claims): Extension<Option<Claims>>,
+) -> Result<Json<DlqListResponse>, ApiError> {
+    require_admin(&claims)?;
+    let dead_stream = crate::cache::keys::exec_queue_dead_stream();
+    let depth = state.cache.xlen(dead_stream).await;
+    let raw = state.cache.xrange_last(dead_stream, 100).await;
+    let entries = raw
+        .into_iter()
+        .map(|(id, fields)| {
+            let get = |k: &str| {
+                fields
+                    .iter()
+                    .find(|(fk, _)| fk == k)
+                    .map(|(_, v)| v.clone())
+            };
+            DlqEntry {
+                id,
+                error: get("error"),
+                failed_at: get("failed_at"),
+                original_msg_id: get("original_msg_id"),
+                worker_id: get("worker_id"),
+                job: get("job"),
+            }
+        })
+        .collect();
+    Ok(Json(DlqListResponse { depth, entries }))
+}
+
+#[derive(serde::Serialize)]
+struct DlqRequeueResponse {
+    requeued: usize,
+}
+
+/// POST /v1/admin/dlq/requeue — re-drive all dead-letter jobs back onto the main
+/// execution queue, then remove them from the dead-letter stream (admin only).
+/// Note: re-running a job re-executes the whole workflow (at-least-once); only
+/// re-drive when side effects are safe to repeat.
+async fn dlq_requeue_handler(
+    State(state): State<AppState>,
+    Extension(claims): Extension<Option<Claims>>,
+) -> Result<Json<DlqRequeueResponse>, ApiError> {
+    require_admin(&claims)?;
+    let dead_stream = crate::cache::keys::exec_queue_dead_stream();
+    let main_stream = crate::cache::keys::exec_queue_stream();
+    let entries = state.cache.xrange_last(dead_stream, 1000).await;
+
+    let mut requeued = 0usize;
+    let mut delete_ids = Vec::new();
+    for (id, fields) in entries {
+        if let Some((_, job)) = fields.iter().find(|(k, _)| k == "job") {
+            if state
+                .cache
+                .xadd(main_stream, &[("job", job)])
+                .await
+                .is_some()
+            {
+                requeued += 1;
+            }
+        }
+        delete_ids.push(id);
+    }
+    state.cache.xdel(dead_stream, &delete_ids).await;
+    Ok(Json(DlqRequeueResponse { requeued }))
 }
 
 // ── Billing helpers ───────────────────────────────────────────────────────────
@@ -1922,6 +2046,12 @@ async fn metrics_handler() -> axum::response::Response {
     out.push_str("# HELP af_http_requests_total HTTP requests handled since server start\n");
     out.push_str("# TYPE af_http_requests_total counter\n");
     out.push_str(&format!("af_http_requests_total {requests}\n"));
+    let dlq = METRIC_DLQ_TOTAL.load(Ordering::Relaxed);
+    out.push_str(
+        "# HELP af_dlq_messages_total Jobs routed to the dead-letter stream since server start\n",
+    );
+    out.push_str("# TYPE af_dlq_messages_total counter\n");
+    out.push_str(&format!("af_dlq_messages_total {dlq}\n"));
 
     axum::response::Response::builder()
         .status(200)
