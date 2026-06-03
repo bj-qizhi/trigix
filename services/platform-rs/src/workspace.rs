@@ -56,7 +56,10 @@ impl MemoryWorkspaceStore {
             name: name.to_string(),
             description: description.map(|s| s.to_string()),
         };
-        self.workspaces.write().unwrap().insert(record.id.clone(), record.clone());
+        self.workspaces
+            .write()
+            .unwrap()
+            .insert(record.id.clone(), record.clone());
         record
     }
 
@@ -73,7 +76,11 @@ impl MemoryWorkspaceStore {
         out
     }
 
-    pub async fn get_workspace(&self, tenant_id: &str, workspace_id: &str) -> Option<WorkspaceRecord> {
+    pub async fn get_workspace(
+        &self,
+        tenant_id: &str,
+        workspace_id: &str,
+    ) -> Option<WorkspaceRecord> {
         self.workspaces
             .read()
             .unwrap()
@@ -84,7 +91,10 @@ impl MemoryWorkspaceStore {
 
     pub async fn delete_workspace(&self, tenant_id: &str, workspace_id: &str) -> bool {
         let mut map = self.workspaces.write().unwrap();
-        if map.get(workspace_id).map_or(false, |w| w.tenant_id == tenant_id) {
+        if map
+            .get(workspace_id)
+            .map_or(false, |w| w.tenant_id == tenant_id)
+        {
             map.remove(workspace_id);
             true
         } else {
@@ -109,7 +119,10 @@ impl MemoryWorkspaceStore {
             name: name.to_string(),
             description: description.map(|s| s.to_string()),
         };
-        self.projects.write().unwrap().insert(record.id.clone(), record.clone());
+        self.projects
+            .write()
+            .unwrap()
+            .insert(record.id.clone(), record.clone());
         Some(record)
     }
 
@@ -128,7 +141,10 @@ impl MemoryWorkspaceStore {
 
     pub async fn delete_project(&self, tenant_id: &str, project_id: &str) -> bool {
         let mut map = self.projects.write().unwrap();
-        if map.get(project_id).map_or(false, |p| p.tenant_id == tenant_id) {
+        if map
+            .get(project_id)
+            .map_or(false, |p| p.tenant_id == tenant_id)
+        {
             map.remove(project_id);
             true
         } else {
@@ -186,11 +202,20 @@ impl PostgresWorkspaceStore {
         .await
         .unwrap_or_default()
         .into_iter()
-        .map(|(id, tenant_id, name, description)| WorkspaceRecord { id, tenant_id, name, description })
+        .map(|(id, tenant_id, name, description)| WorkspaceRecord {
+            id,
+            tenant_id,
+            name,
+            description,
+        })
         .collect()
     }
 
-    pub async fn get_workspace(&self, tenant_id: &str, workspace_id: &str) -> Option<WorkspaceRecord> {
+    pub async fn get_workspace(
+        &self,
+        tenant_id: &str,
+        workspace_id: &str,
+    ) -> Option<WorkspaceRecord> {
         sqlx::query_as::<_, (String, String, String, Option<String>)>(
             r#"SELECT id, tenant_id, name, description FROM af_workspaces
                WHERE tenant_id = $1 AND id = $2"#,
@@ -201,19 +226,22 @@ impl PostgresWorkspaceStore {
         .await
         .ok()
         .flatten()
-        .map(|(id, tenant_id, name, description)| WorkspaceRecord { id, tenant_id, name, description })
+        .map(|(id, tenant_id, name, description)| WorkspaceRecord {
+            id,
+            tenant_id,
+            name,
+            description,
+        })
     }
 
     pub async fn delete_workspace(&self, tenant_id: &str, workspace_id: &str) -> bool {
-        sqlx::query(
-            r#"DELETE FROM af_workspaces WHERE tenant_id = $1 AND id = $2"#,
-        )
-        .bind(tenant_id)
-        .bind(workspace_id)
-        .execute(&self.pool)
-        .await
-        .map(|r| r.rows_affected() > 0)
-        .unwrap_or(false)
+        sqlx::query(r#"DELETE FROM af_workspaces WHERE tenant_id = $1 AND id = $2"#)
+            .bind(tenant_id)
+            .bind(workspace_id)
+            .execute(&self.pool)
+            .await
+            .map(|r| r.rows_affected() > 0)
+            .unwrap_or(false)
     }
 
     pub async fn create_project(
@@ -266,22 +294,26 @@ impl PostgresWorkspaceStore {
         .await
         .unwrap_or_default()
         .into_iter()
-        .map(|(id, tenant_id, workspace_id, name, description)| ProjectRecord {
-            id, tenant_id, workspace_id, name, description,
-        })
+        .map(
+            |(id, tenant_id, workspace_id, name, description)| ProjectRecord {
+                id,
+                tenant_id,
+                workspace_id,
+                name,
+                description,
+            },
+        )
         .collect()
     }
 
     pub async fn delete_project(&self, tenant_id: &str, project_id: &str) -> bool {
-        sqlx::query(
-            r#"DELETE FROM af_projects WHERE tenant_id = $1 AND id = $2"#,
-        )
-        .bind(tenant_id)
-        .bind(project_id)
-        .execute(&self.pool)
-        .await
-        .map(|r| r.rows_affected() > 0)
-        .unwrap_or(false)
+        sqlx::query(r#"DELETE FROM af_projects WHERE tenant_id = $1 AND id = $2"#)
+            .bind(tenant_id)
+            .bind(project_id)
+            .execute(&self.pool)
+            .await
+            .map(|r| r.rows_affected() > 0)
+            .unwrap_or(false)
     }
 }
 
@@ -327,7 +359,11 @@ impl PlatformWorkspaceStore {
         }
     }
 
-    pub async fn get_workspace(&self, tenant_id: &str, workspace_id: &str) -> Option<WorkspaceRecord> {
+    pub async fn get_workspace(
+        &self,
+        tenant_id: &str,
+        workspace_id: &str,
+    ) -> Option<WorkspaceRecord> {
         match self {
             Self::Memory(s) => s.get_workspace(tenant_id, workspace_id).await,
             Self::Postgres(s) => s.get_workspace(tenant_id, workspace_id).await,
@@ -349,8 +385,14 @@ impl PlatformWorkspaceStore {
         description: Option<&str>,
     ) -> Option<ProjectRecord> {
         match self {
-            Self::Memory(s) => s.create_project(tenant_id, workspace_id, name, description).await,
-            Self::Postgres(s) => s.create_project(tenant_id, workspace_id, name, description).await,
+            Self::Memory(s) => {
+                s.create_project(tenant_id, workspace_id, name, description)
+                    .await
+            }
+            Self::Postgres(s) => {
+                s.create_project(tenant_id, workspace_id, name, description)
+                    .await
+            }
         }
     }
 
@@ -376,8 +418,12 @@ mod tests {
     #[tokio::test]
     async fn create_and_list_workspaces() {
         let store = MemoryWorkspaceStore::default();
-        store.create_workspace("tenant-1", "Engineering", None).await;
-        store.create_workspace("tenant-1", "Marketing", Some("Marketing team")).await;
+        store
+            .create_workspace("tenant-1", "Engineering", None)
+            .await;
+        store
+            .create_workspace("tenant-1", "Marketing", Some("Marketing team"))
+            .await;
         store.create_workspace("tenant-2", "Other", None).await;
 
         let list = store.list_workspaces("tenant-1").await;
@@ -392,14 +438,25 @@ mod tests {
     #[tokio::test]
     async fn create_and_list_projects() {
         let store = MemoryWorkspaceStore::default();
-        let ws = store.create_workspace("tenant-1", "Engineering", None).await;
-        let p = store.create_project("tenant-1", &ws.id, "Backend", None).await.unwrap();
-        store.create_project("tenant-1", &ws.id, "Frontend", None).await.unwrap();
+        let ws = store
+            .create_workspace("tenant-1", "Engineering", None)
+            .await;
+        let p = store
+            .create_project("tenant-1", &ws.id, "Backend", None)
+            .await
+            .unwrap();
+        store
+            .create_project("tenant-1", &ws.id, "Frontend", None)
+            .await
+            .unwrap();
 
         let projects = store.list_projects("tenant-1", &ws.id).await;
         assert_eq!(projects.len(), 2);
 
-        assert!(store.create_project("tenant-1", "nonexistent", "X", None).await.is_none());
+        assert!(store
+            .create_project("tenant-1", "nonexistent", "X", None)
+            .await
+            .is_none());
 
         assert!(store.delete_project("tenant-1", &p.id).await);
         assert_eq!(store.list_projects("tenant-1", &ws.id).await.len(), 1);

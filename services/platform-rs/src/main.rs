@@ -3,11 +3,14 @@
 
 #[tokio::main]
 async fn main() {
-    let filter = tracing_subscriber::EnvFilter::try_from_default_env()
-        .unwrap_or_else(|_| "info".into());
+    let filter =
+        tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into());
     let log_format = std::env::var("LOG_FORMAT").unwrap_or_else(|_| "text".to_string());
     if log_format == "json" {
-        tracing_subscriber::fmt().json().with_env_filter(filter).init();
+        tracing_subscriber::fmt()
+            .json()
+            .with_env_filter(filter)
+            .init();
     } else {
         tracing_subscriber::fmt().with_env_filter(filter).init();
     }
@@ -20,7 +23,9 @@ async fn main() {
         .expect("bind platform HTTP listener");
 
     let db_max_conn: u32 = std::env::var("DATABASE_MAX_CONNECTIONS")
-        .ok().and_then(|s| s.parse().ok()).unwrap_or(5);
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(5);
 
     tracing::info!(
         addr = %addr,
@@ -67,19 +72,16 @@ async fn main() {
                     ),
                 }
             };
-            let execution_service = trigix_platform::execution::ExecutionService::new(
-                store,
-                executor,
-            );
+            let execution_service =
+                trigix_platform::execution::ExecutionService::new(store, executor);
             let workflow_service = trigix_platform::workflow::WorkflowService::new(
                 trigix_platform::workflow::PlatformWorkflowVersionStore::postgres(
                     trigix_platform::workflow::PostgresWorkflowVersionStore::new(pool.clone()),
                 ),
             );
-            let credential_store =
-                trigix_platform::credentials::PlatformCredentialStore::postgres(
-                    trigix_platform::credentials::PostgresCredentialStore::new(pool.clone()),
-                );
+            let credential_store = trigix_platform::credentials::PlatformCredentialStore::postgres(
+                trigix_platform::credentials::PostgresCredentialStore::new(pool.clone()),
+            );
             let env_store = trigix_platform::env_vars::PlatformEnvVarStore::postgres(
                 trigix_platform::env_vars::PostgresEnvVarStore::new(pool.clone()),
             );
@@ -89,7 +91,8 @@ async fn main() {
             let webhook_store = trigix_platform::webhook::PlatformWebhookStore::postgres(
                 trigix_platform::webhook::PostgresWebhookStore::new(pool.clone()),
             );
-            let schedule_store = trigix_platform::scheduler::PlatformScheduleStore::postgres(pool.clone());
+            let schedule_store =
+                trigix_platform::scheduler::PlatformScheduleStore::postgres(pool.clone());
             schedule_store.bootstrap_from_postgres().await;
             let workspace_store = trigix_platform::workspace::PlatformWorkspaceStore::postgres(
                 trigix_platform::workspace::PostgresWorkspaceStore::new(pool.clone()),
@@ -101,15 +104,28 @@ async fn main() {
                 trigix_platform::api_keys::PostgresApiKeyStore::new(pool.clone()),
             );
             let form_store = trigix_platform::form::PlatformFormStore::postgres(pool.clone());
-            let test_case_store = trigix_platform::test_cases::PlatformTestCaseStore::postgres(pool.clone());
-            let comment_store = trigix_platform::comments::PlatformCommentStore::postgres(pool.clone());
-            let subscription_store = trigix_platform::event_subscriptions::PlatformSubscriptionStore::postgres(pool.clone());
+            let test_case_store =
+                trigix_platform::test_cases::PlatformTestCaseStore::postgres(pool.clone());
+            let comment_store =
+                trigix_platform::comments::PlatformCommentStore::postgres(pool.clone());
+            let subscription_store =
+                trigix_platform::event_subscriptions::PlatformSubscriptionStore::postgres(
+                    pool.clone(),
+                );
             let user_store = trigix_platform::users::PlatformUserStore::postgres(pool.clone());
             let org_store = trigix_platform::orgs::PlatformOrgStore::postgres(pool.clone());
-            let invite_store = trigix_platform::invitations::PlatformInviteStore::postgres(pool.clone());
-            let reset_store = trigix_platform::password_reset::PlatformPasswordResetStore::postgres(pool.clone());
-            let verification_store = trigix_platform::email_verification::PlatformEmailVerificationStore::postgres(pool.clone());
-            let notification_prefs_store = trigix_platform::notification_prefs::PlatformNotificationPrefsStore::postgres(pool.clone());
+            let invite_store =
+                trigix_platform::invitations::PlatformInviteStore::postgres(pool.clone());
+            let reset_store =
+                trigix_platform::password_reset::PlatformPasswordResetStore::postgres(pool.clone());
+            let verification_store =
+                trigix_platform::email_verification::PlatformEmailVerificationStore::postgres(
+                    pool.clone(),
+                );
+            let notification_prefs_store =
+                trigix_platform::notification_prefs::PlatformNotificationPrefsStore::postgres(
+                    pool.clone(),
+                );
             let billing_store = trigix_platform::billing::PlatformBillingStore::postgres(pool);
             let email_client = trigix_platform::email::EmailClient::from_env();
             trigix_platform::http::router_with_all_stores(
@@ -124,8 +140,7 @@ async fn main() {
                 workspace_store,
                 variable_store,
                 api_key_store,
-                std::sync::Arc::try_unwrap(token_usage_store)
-                    .unwrap_or_else(|arc| (*arc).clone()),
+                std::sync::Arc::try_unwrap(token_usage_store).unwrap_or_else(|arc| (*arc).clone()),
                 form_store,
                 test_case_store,
                 comment_store,
@@ -148,9 +163,7 @@ async fn main() {
                     base_url,
                     store.clone(),
                 ),
-                Err(_) => trigix_platform::execution::PlatformExecutorClient::inline(
-                    store.clone(),
-                ),
+                Err(_) => trigix_platform::execution::PlatformExecutorClient::inline(store.clone()),
             };
             trigix_platform::http::router_with_store_and_executor(
                 store,

@@ -69,8 +69,12 @@ impl EmailVerificationStore for MemoryEmailVerificationStore {
     fn mark_used(&self, token: &str) -> Result<EmailVerification, VerificationError> {
         let mut map = self.records.write().unwrap();
         let rec = map.get_mut(token).ok_or(VerificationError::NotFound)?;
-        if rec.used_at.is_some() { return Err(VerificationError::AlreadyUsed); }
-        if unix_now() > rec.expires_at { return Err(VerificationError::Expired); }
+        if rec.used_at.is_some() {
+            return Err(VerificationError::AlreadyUsed);
+        }
+        if unix_now() > rec.expires_at {
+            return Err(VerificationError::Expired);
+        }
         rec.used_at = Some(unix_now());
         Ok(rec.clone())
     }
@@ -94,7 +98,9 @@ pub struct PostgresEmailVerificationStore {
 }
 
 impl PostgresEmailVerificationStore {
-    pub fn new(pool: sqlx::PgPool) -> Self { Self { pool } }
+    pub fn new(pool: sqlx::PgPool) -> Self {
+        Self { pool }
+    }
 }
 
 #[derive(sqlx::FromRow)]
@@ -111,8 +117,13 @@ struct VerificationRow {
 impl From<VerificationRow> for EmailVerification {
     fn from(r: VerificationRow) -> Self {
         Self {
-            id: r.id, user_id: r.user_id, email: r.email, token: r.token,
-            created_at: r.created_at, expires_at: r.expires_at, used_at: r.used_at,
+            id: r.id,
+            user_id: r.user_id,
+            email: r.email,
+            token: r.token,
+            created_at: r.created_at,
+            expires_at: r.expires_at,
+            used_at: r.used_at,
         }
     }
 }
@@ -151,23 +162,38 @@ impl EmailVerificationStore for PostgresEmailVerificationStore {
             tokio::runtime::Handle::current().block_on(async move {
                 sqlx::query_as::<_, VerificationRow>(
                     "SELECT id, user_id, email, token, created_at, expires_at, used_at \
-                     FROM af_email_verifications WHERE token = $1"
-                ).bind(&token).fetch_optional(&pool).await.ok().flatten().map(EmailVerification::from)
+                     FROM af_email_verifications WHERE token = $1",
+                )
+                .bind(&token)
+                .fetch_optional(&pool)
+                .await
+                .ok()
+                .flatten()
+                .map(EmailVerification::from)
             })
         })
     }
 
     fn mark_used(&self, token: &str) -> Result<EmailVerification, VerificationError> {
-        let rec = self.find_by_token(token).ok_or(VerificationError::NotFound)?;
-        if rec.used_at.is_some() { return Err(VerificationError::AlreadyUsed); }
-        if unix_now() > rec.expires_at { return Err(VerificationError::Expired); }
+        let rec = self
+            .find_by_token(token)
+            .ok_or(VerificationError::NotFound)?;
+        if rec.used_at.is_some() {
+            return Err(VerificationError::AlreadyUsed);
+        }
+        if unix_now() > rec.expires_at {
+            return Err(VerificationError::Expired);
+        }
         let now = unix_now();
         let pool = self.pool.clone();
         let tok = token.to_owned();
         tokio::task::block_in_place(|| {
             tokio::runtime::Handle::current().block_on(async move {
                 sqlx::query("UPDATE af_email_verifications SET used_at = $1 WHERE token = $2")
-                    .bind(now).bind(&tok).execute(&pool).await
+                    .bind(now)
+                    .bind(&tok)
+                    .execute(&pool)
+                    .await
                     .map_err(|_| VerificationError::StoreUnavailable)
             })
         })?;
@@ -180,7 +206,9 @@ impl EmailVerificationStore for PostgresEmailVerificationStore {
         tokio::task::block_in_place(|| {
             tokio::runtime::Handle::current().block_on(async move {
                 let _ = sqlx::query("DELETE FROM af_email_verifications WHERE user_id = $1")
-                    .bind(&uid).execute(&pool).await;
+                    .bind(&uid)
+                    .execute(&pool)
+                    .await;
             })
         })
     }
@@ -194,21 +222,37 @@ pub enum PlatformEmailVerificationStore {
 }
 
 impl PlatformEmailVerificationStore {
-    pub fn memory() -> Self { Self::Memory(Arc::new(MemoryEmailVerificationStore::default())) }
-    pub fn postgres(pool: sqlx::PgPool) -> Self { Self::Postgres(PostgresEmailVerificationStore::new(pool)) }
+    pub fn memory() -> Self {
+        Self::Memory(Arc::new(MemoryEmailVerificationStore::default()))
+    }
+    pub fn postgres(pool: sqlx::PgPool) -> Self {
+        Self::Postgres(PostgresEmailVerificationStore::new(pool))
+    }
 }
 
 impl EmailVerificationStore for PlatformEmailVerificationStore {
     fn create(&self, user_id: &str, email: &str, expires_hours: i64) -> EmailVerification {
-        match self { Self::Memory(s) => s.create(user_id, email, expires_hours), Self::Postgres(s) => s.create(user_id, email, expires_hours) }
+        match self {
+            Self::Memory(s) => s.create(user_id, email, expires_hours),
+            Self::Postgres(s) => s.create(user_id, email, expires_hours),
+        }
     }
     fn find_by_token(&self, token: &str) -> Option<EmailVerification> {
-        match self { Self::Memory(s) => s.find_by_token(token), Self::Postgres(s) => s.find_by_token(token) }
+        match self {
+            Self::Memory(s) => s.find_by_token(token),
+            Self::Postgres(s) => s.find_by_token(token),
+        }
     }
     fn mark_used(&self, token: &str) -> Result<EmailVerification, VerificationError> {
-        match self { Self::Memory(s) => s.mark_used(token), Self::Postgres(s) => s.mark_used(token) }
+        match self {
+            Self::Memory(s) => s.mark_used(token),
+            Self::Postgres(s) => s.mark_used(token),
+        }
     }
     fn delete_for_user(&self, user_id: &str) {
-        match self { Self::Memory(s) => s.delete_for_user(user_id), Self::Postgres(s) => s.delete_for_user(user_id) }
+        match self {
+            Self::Memory(s) => s.delete_for_user(user_id),
+            Self::Postgres(s) => s.delete_for_user(user_id),
+        }
     }
 }

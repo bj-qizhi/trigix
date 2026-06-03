@@ -4,14 +4,14 @@
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
+use hmac::Mac as _;
 use lru::LruCache;
-use serde::{Deserialize, Serialize};
-use workflow_core::{Node, NodeType};
 use rhai;
+use serde::{Deserialize, Serialize};
+use sha2::Digest as _;
 use sqlx::Column as _;
 use sqlx::Row as _;
-use sha2::Digest as _;
-use hmac::Mac as _;
+use workflow_core::{Node, NodeType};
 
 use crate::approval::ApprovalGate;
 use crate::runtime::{ExecutionContext, NodeExecutionResult, NodeExecutor};
@@ -21,14 +21,23 @@ static NODE_CACHE: OnceLock<Arc<Mutex<LruCache<String, (Instant, String)>>>> = O
 
 fn node_cache() -> &'static Arc<Mutex<LruCache<String, (Instant, String)>>> {
     NODE_CACHE.get_or_init(|| {
-        Arc::new(Mutex::new(LruCache::new(std::num::NonZeroUsize::new(1024).unwrap())))
+        Arc::new(Mutex::new(LruCache::new(
+            std::num::NonZeroUsize::new(1024).unwrap(),
+        )))
     })
 }
 
 fn node_cache_key(node: &Node, context: &ExecutionContext) -> String {
     // Cache key includes node type + node id + config hash + execution input
-    let config_str = node.config.as_ref().map(|c| c.to_string()).unwrap_or_default();
-    let raw = format!("{:?}:{}:{}:{}", node.node_type, node.id, config_str, context.input_json);
+    let config_str = node
+        .config
+        .as_ref()
+        .map(|c| c.to_string())
+        .unwrap_or_default();
+    let raw = format!(
+        "{:?}:{}:{}:{}",
+        node.node_type, node.id, config_str, context.input_json
+    );
     let hash = sha2::Sha256::digest(raw.as_bytes());
     hex::encode(hash)
 }
@@ -68,7 +77,7 @@ fn resolve_expr(expr: &str, context: &ExecutionContext) -> String {
     // ctx.* variables expose execution metadata.
     if root == "ctx" {
         return match path {
-            Some("execution_id")      => context.execution_id.clone(),
+            Some("execution_id") => context.execution_id.clone(),
             Some("workflow_version_id") => context.workflow_version_id.clone(),
             _ => String::new(),
         };
@@ -81,7 +90,8 @@ fn resolve_expr(expr: &str, context: &ExecutionContext) -> String {
         (None, _) => String::new(),
         (Some(raw), None) => raw.to_string(),
         (Some(raw), Some(path)) => {
-            let val: serde_json::Value = serde_json::from_str(raw).unwrap_or(serde_json::Value::Null);
+            let val: serde_json::Value =
+                serde_json::from_str(raw).unwrap_or(serde_json::Value::Null);
             json_path(&val, path)
                 .map(json_to_string)
                 .unwrap_or_default()
@@ -109,7 +119,10 @@ fn json_to_string(val: &serde_json::Value) -> String {
     }
 }
 
-fn resolve_config_strings(config: &serde_json::Value, context: &ExecutionContext) -> serde_json::Value {
+fn resolve_config_strings(
+    config: &serde_json::Value,
+    context: &ExecutionContext,
+) -> serde_json::Value {
     match config {
         serde_json::Value::String(s) => serde_json::Value::String(resolve_template(s, context)),
         serde_json::Value::Object(map) => serde_json::Value::Object(
@@ -117,9 +130,11 @@ fn resolve_config_strings(config: &serde_json::Value, context: &ExecutionContext
                 .map(|(k, v)| (k.clone(), resolve_config_strings(v, context)))
                 .collect(),
         ),
-        serde_json::Value::Array(arr) => {
-            serde_json::Value::Array(arr.iter().map(|v| resolve_config_strings(v, context)).collect())
-        }
+        serde_json::Value::Array(arr) => serde_json::Value::Array(
+            arr.iter()
+                .map(|v| resolve_config_strings(v, context))
+                .collect(),
+        ),
         other => other.clone(),
     }
 }
@@ -190,7 +205,14 @@ impl NodeExecutor for DispatchingNodeExecutor {
 
             let mut last = NodeExecutionResult::failed("Execution not started");
             for attempt in 0..=max_retries {
-                last = dispatch_with_timeout(node, context, &http_client, ai_base.as_deref(), timeout_secs).await;
+                last = dispatch_with_timeout(
+                    node,
+                    context,
+                    &http_client,
+                    ai_base.as_deref(),
+                    timeout_secs,
+                )
+                .await;
                 if last.status == execution_core::NodeStatus::Succeeded {
                     last.retry_count = attempt;
                     // Store result in cache when cache_ttl_secs is configured.
@@ -205,7 +227,9 @@ impl NodeExecutor for DispatchingNodeExecutor {
                 }
                 if attempt < max_retries {
                     // Exponential backoff. Base is configurable via retry_delay_ms (default 200).
-                    let base = node_config_u64(node, "retry_delay_ms").unwrap_or(200).min(10_000);
+                    let base = node_config_u64(node, "retry_delay_ms")
+                        .unwrap_or(200)
+                        .min(10_000);
                     let ms = base * (1u64 << attempt.min(5));
                     tokio::time::sleep(std::time::Duration::from_millis(ms)).await;
                 }
@@ -229,30 +253,52 @@ async fn dispatch_with_timeout(
 ) -> NodeExecutionResult {
     let fut = dispatch(node, context, http_client, ai_runtime_base_url);
     match timeout_secs {
-        Some(secs) => {
-            match tokio::time::timeout(std::time::Duration::from_secs(secs), fut).await {
-                Ok(result) => result,
-                Err(_) => {
-                    NodeExecutionResult::failed(format!("Node timed out after {secs}s"))
-                }
-            }
-        }
+        Some(secs) => match tokio::time::timeout(std::time::Duration::from_secs(secs), fut).await {
+            Ok(result) => result,
+            Err(_) => NodeExecutionResult::failed(format!("Node timed out after {secs}s")),
+        },
         None => fut.await,
     }
 }
 
 fn is_external_node(nt: &NodeType) -> bool {
-    !matches!(nt,
-        NodeType::Trigger | NodeType::Condition | NodeType::Approval |
-        NodeType::Map | NodeType::Filter | NodeType::Aggregate | NodeType::Sort |
-        NodeType::Transform | NodeType::Assert | NodeType::Catch |
-        NodeType::FanOut | NodeType::FanIn | NodeType::Code | NodeType::Extract |
-        NodeType::Merge | NodeType::Loop | NodeType::Split | NodeType::Join |
-        NodeType::Switch | NodeType::Random | NodeType::Dedupe | NodeType::Regex |
-        NodeType::Csv | NodeType::Rename | NodeType::Format | NodeType::Date |
-        NodeType::Handlebars | NodeType::Math | NodeType::ArrayUtils |
-        NodeType::Xml | NodeType::Yaml | NodeType::Crypto | NodeType::Note |
-        NodeType::Validate | NodeType::Delay
+    !matches!(
+        nt,
+        NodeType::Trigger
+            | NodeType::Condition
+            | NodeType::Approval
+            | NodeType::Map
+            | NodeType::Filter
+            | NodeType::Aggregate
+            | NodeType::Sort
+            | NodeType::Transform
+            | NodeType::Assert
+            | NodeType::Catch
+            | NodeType::FanOut
+            | NodeType::FanIn
+            | NodeType::Code
+            | NodeType::Extract
+            | NodeType::Merge
+            | NodeType::Loop
+            | NodeType::Split
+            | NodeType::Join
+            | NodeType::Switch
+            | NodeType::Random
+            | NodeType::Dedupe
+            | NodeType::Regex
+            | NodeType::Csv
+            | NodeType::Rename
+            | NodeType::Format
+            | NodeType::Date
+            | NodeType::Handlebars
+            | NodeType::Math
+            | NodeType::ArrayUtils
+            | NodeType::Xml
+            | NodeType::Yaml
+            | NodeType::Crypto
+            | NodeType::Note
+            | NodeType::Validate
+            | NodeType::Delay
     )
 }
 
@@ -264,7 +310,8 @@ async fn dispatch(
 ) -> NodeExecutionResult {
     if context.dry_run && is_external_node(&node.node_type) {
         return NodeExecutionResult::succeeded(
-            serde_json::json!({"dry_run": true, "note": "external call skipped in dry-run mode"}).to_string()
+            serde_json::json!({"dry_run": true, "note": "external call skipped in dry-run mode"})
+                .to_string(),
         );
     }
     match node.node_type {
@@ -300,110 +347,110 @@ async fn dispatch(
         NodeType::Join => execute_join(node, context),
         NodeType::Switch => execute_switch(node, context),
         NodeType::Random => execute_random(node, context),
-        NodeType::Dedupe  => execute_dedupe(node, context),
-        NodeType::Regex   => execute_regex(node, context),
-        NodeType::Csv     => execute_csv(node, context),
-        NodeType::Rename  => execute_rename(node, context),
-        NodeType::Format  => execute_format(node, context),
-        NodeType::Github  => execute_github(node, context, http_client).await,
+        NodeType::Dedupe => execute_dedupe(node, context),
+        NodeType::Regex => execute_regex(node, context),
+        NodeType::Csv => execute_csv(node, context),
+        NodeType::Rename => execute_rename(node, context),
+        NodeType::Format => execute_format(node, context),
+        NodeType::Github => execute_github(node, context, http_client).await,
         NodeType::Webhook => execute_webhook_send(node, context, http_client).await,
-        NodeType::Jira     => execute_jira(node, context, http_client).await,
-        NodeType::Notion   => execute_notion(node, context, http_client).await,
-        NodeType::Linear   => execute_linear(node, context, http_client).await,
+        NodeType::Jira => execute_jira(node, context, http_client).await,
+        NodeType::Notion => execute_notion(node, context, http_client).await,
+        NodeType::Linear => execute_linear(node, context, http_client).await,
         NodeType::Airtable => execute_airtable(node, context, http_client).await,
-        NodeType::ForEach  => execute_for_each(node, context, ai_runtime_base_url).await,
-        NodeType::Discord  => execute_discord(node, context, http_client).await,
-        NodeType::Teams    => execute_teams(node, context, http_client).await,
-        NodeType::Sheets   => execute_sheets(node, context, http_client).await,
-        NodeType::Xml      => execute_xml(node, context),
-        NodeType::Yaml     => execute_yaml(node, context),
-        NodeType::Twilio   => execute_twilio(node, context, http_client).await,
-        NodeType::Stripe   => execute_stripe(node, context, http_client).await,
-        NodeType::Crypto        => execute_crypto(node, context),
-        NodeType::Hubspot       => execute_hubspot(node, context, http_client).await,
-        NodeType::Date          => execute_date(node, context),
-        NodeType::Zendesk       => execute_zendesk(node, context, http_client).await,
-        NodeType::Redis         => execute_redis(node, context).await,
+        NodeType::ForEach => execute_for_each(node, context, ai_runtime_base_url).await,
+        NodeType::Discord => execute_discord(node, context, http_client).await,
+        NodeType::Teams => execute_teams(node, context, http_client).await,
+        NodeType::Sheets => execute_sheets(node, context, http_client).await,
+        NodeType::Xml => execute_xml(node, context),
+        NodeType::Yaml => execute_yaml(node, context),
+        NodeType::Twilio => execute_twilio(node, context, http_client).await,
+        NodeType::Stripe => execute_stripe(node, context, http_client).await,
+        NodeType::Crypto => execute_crypto(node, context),
+        NodeType::Hubspot => execute_hubspot(node, context, http_client).await,
+        NodeType::Date => execute_date(node, context),
+        NodeType::Zendesk => execute_zendesk(node, context, http_client).await,
+        NodeType::Redis => execute_redis(node, context).await,
         NodeType::Elasticsearch => execute_elasticsearch(node, context, http_client).await,
-        NodeType::Pagerduty     => execute_pagerduty(node, context, http_client).await,
-        NodeType::Handlebars    => execute_handlebars(node, context),
-        NodeType::Math       => execute_math(node, context),
+        NodeType::Pagerduty => execute_pagerduty(node, context, http_client).await,
+        NodeType::Handlebars => execute_handlebars(node, context),
+        NodeType::Math => execute_math(node, context),
         NodeType::ArrayUtils => execute_array_utils(node, context),
-        NodeType::Shopify    => execute_shopify(node, context, http_client).await,
-        NodeType::Datadog    => execute_datadog(node, context, http_client).await,
+        NodeType::Shopify => execute_shopify(node, context, http_client).await,
+        NodeType::Datadog => execute_datadog(node, context, http_client).await,
         NodeType::Salesforce => execute_salesforce(node, context, http_client).await,
-        NodeType::Freshdesk  => execute_freshdesk(node, context, http_client).await,
-        NodeType::Mailgun    => execute_mailgun(node, context, http_client).await,
-        NodeType::Asana      => execute_asana(node, context, http_client).await,
-        NodeType::Servicenow  => execute_servicenow(node, context, http_client).await,
-        NodeType::Confluence  => execute_confluence(node, context, http_client).await,
-        NodeType::Bitbucket   => execute_bitbucket(node, context, http_client).await,
+        NodeType::Freshdesk => execute_freshdesk(node, context, http_client).await,
+        NodeType::Mailgun => execute_mailgun(node, context, http_client).await,
+        NodeType::Asana => execute_asana(node, context, http_client).await,
+        NodeType::Servicenow => execute_servicenow(node, context, http_client).await,
+        NodeType::Confluence => execute_confluence(node, context, http_client).await,
+        NodeType::Bitbucket => execute_bitbucket(node, context, http_client).await,
         NodeType::AzureDevops => execute_azure_devops(node, context, http_client).await,
-        NodeType::Twitch     => execute_twitch(node, context, http_client).await,
-        NodeType::Figma      => execute_figma(node, context, http_client).await,
-        NodeType::Dropbox    => execute_dropbox(node, context, http_client).await,
+        NodeType::Twitch => execute_twitch(node, context, http_client).await,
+        NodeType::Figma => execute_figma(node, context, http_client).await,
+        NodeType::Dropbox => execute_dropbox(node, context, http_client).await,
         NodeType::Cloudflare => execute_cloudflare(node, context, http_client).await,
-        NodeType::Box      => execute_box(node, context, http_client).await,
-        NodeType::Okta     => execute_okta(node, context, http_client).await,
-        NodeType::Zoom     => execute_zoom(node, context, http_client).await,
-        NodeType::Spotify  => execute_spotify(node, context, http_client).await,
-        NodeType::Typeform  => execute_typeform(node, context, http_client).await,
-        NodeType::Webflow   => execute_webflow(node, context, http_client).await,
-        NodeType::Intercom  => execute_intercom(node, context, http_client).await,
+        NodeType::Box => execute_box(node, context, http_client).await,
+        NodeType::Okta => execute_okta(node, context, http_client).await,
+        NodeType::Zoom => execute_zoom(node, context, http_client).await,
+        NodeType::Spotify => execute_spotify(node, context, http_client).await,
+        NodeType::Typeform => execute_typeform(node, context, http_client).await,
+        NodeType::Webflow => execute_webflow(node, context, http_client).await,
+        NodeType::Intercom => execute_intercom(node, context, http_client).await,
         NodeType::Pipedrive => execute_pipedrive(node, context, http_client).await,
-        NodeType::Trello    => execute_trello(node, context, http_client).await,
-        NodeType::Monday    => execute_monday(node, context, http_client).await,
-        NodeType::Clickup   => execute_clickup(node, context, http_client).await,
+        NodeType::Trello => execute_trello(node, context, http_client).await,
+        NodeType::Monday => execute_monday(node, context, http_client).await,
+        NodeType::Clickup => execute_clickup(node, context, http_client).await,
         NodeType::Amplitude => execute_amplitude(node, context, http_client).await,
-        NodeType::Mixpanel  => execute_mixpanel(node, context, http_client).await,
-        NodeType::Segment   => execute_segment(node, context, http_client).await,
-        NodeType::Sendgrid  => execute_sendgrid(node, context, http_client).await,
+        NodeType::Mixpanel => execute_mixpanel(node, context, http_client).await,
+        NodeType::Segment => execute_segment(node, context, http_client).await,
+        NodeType::Sendgrid => execute_sendgrid(node, context, http_client).await,
         NodeType::Braintree => execute_braintree(node, context, http_client).await,
-        NodeType::Paypal    => execute_paypal(node, context, http_client).await,
-        NodeType::Razorpay  => execute_razorpay(node, context, http_client).await,
-        NodeType::Firebase  => execute_firebase(node, context, http_client).await,
-        NodeType::Supabase       => execute_supabase(node, context, http_client).await,
-        NodeType::Mailchimp      => execute_mailchimp(node, context, http_client).await,
+        NodeType::Paypal => execute_paypal(node, context, http_client).await,
+        NodeType::Razorpay => execute_razorpay(node, context, http_client).await,
+        NodeType::Firebase => execute_firebase(node, context, http_client).await,
+        NodeType::Supabase => execute_supabase(node, context, http_client).await,
+        NodeType::Mailchimp => execute_mailchimp(node, context, http_client).await,
         NodeType::Activecampaign => execute_activecampaign(node, context, http_client).await,
-        NodeType::Klaviyo        => execute_klaviyo(node, context, http_client).await,
-        NodeType::Resend     => execute_resend(node, context, http_client).await,
+        NodeType::Klaviyo => execute_klaviyo(node, context, http_client).await,
+        NodeType::Resend => execute_resend(node, context, http_client).await,
         NodeType::Contentful => execute_contentful(node, context, http_client).await,
-        NodeType::Algolia    => execute_algolia(node, context, http_client).await,
-        NodeType::Postmark   => execute_postmark(node, context, http_client).await,
-        NodeType::Vonage     => execute_vonage(node, context, http_client).await,
-        NodeType::Telegram   => execute_telegram(node, context, http_client).await,
-        NodeType::Replicate  => execute_replicate(node, context, http_client).await,
-        NodeType::Mistral    => execute_mistral(node, context, http_client).await,
-        NodeType::Whatsapp    => execute_whatsapp(node, context, http_client).await,
-        NodeType::Googledocs  => execute_googledocs(node, context, http_client).await,
-        NodeType::Perplexity  => execute_perplexity(node, context, http_client).await,
-        NodeType::Cohere      => execute_cohere(node, context, http_client).await,
-        NodeType::Googledrive  => execute_googledrive(node, context, http_client).await,
-        NodeType::Woocommerce  => execute_woocommerce(node, context, http_client).await,
-        NodeType::Pinecone     => execute_pinecone(node, context, http_client).await,
-        NodeType::Togetherai   => execute_togetherai(node, context, http_client).await,
-        NodeType::Awss3        => execute_awss3(node, context, http_client).await,
-        NodeType::Huggingface  => execute_huggingface(node, context, http_client).await,
-        NodeType::Groq         => execute_groq(node, context, http_client).await,
-        NodeType::Openrouter   => execute_openrouter(node, context, http_client).await,
-        NodeType::Qdrant       => execute_qdrant(node, context, http_client).await,
-        NodeType::Cloudinary   => execute_cloudinary(node, context, http_client).await,
-        NodeType::Gcal         => execute_gcal(node, context, http_client).await,
-        NodeType::Docusign     => execute_docusign(node, context, http_client).await,
-        NodeType::Xero         => execute_xero(node, context, http_client).await,
-        NodeType::Calendly     => execute_calendly(node, context, http_client).await,
-        NodeType::Apify        => execute_apify(node, context, http_client).await,
-        NodeType::Ganalytics   => execute_ganalytics(node, context, http_client).await,
-        NodeType::Neon         => execute_neon(node, context, http_client).await,
-        NodeType::Copper       => execute_copper(node, context, http_client).await,
-        NodeType::Deepseek     => execute_deepseek(node, context, http_client).await,
-        NodeType::Qwen         => execute_qwen(node, context, http_client).await,
-        NodeType::Zhipu        => execute_zhipu(node, context, http_client).await,
-        NodeType::Moonshot     => execute_moonshot(node, context, http_client).await,
-        NodeType::Doubao       => execute_doubao(node, context, http_client).await,
-        NodeType::Minimax      => execute_minimax(node, context, http_client).await,
-        NodeType::Ernie        => execute_ernie(node, context, http_client).await,
-        NodeType::Hunyuan      => execute_hunyuan(node, context, http_client).await,
+        NodeType::Algolia => execute_algolia(node, context, http_client).await,
+        NodeType::Postmark => execute_postmark(node, context, http_client).await,
+        NodeType::Vonage => execute_vonage(node, context, http_client).await,
+        NodeType::Telegram => execute_telegram(node, context, http_client).await,
+        NodeType::Replicate => execute_replicate(node, context, http_client).await,
+        NodeType::Mistral => execute_mistral(node, context, http_client).await,
+        NodeType::Whatsapp => execute_whatsapp(node, context, http_client).await,
+        NodeType::Googledocs => execute_googledocs(node, context, http_client).await,
+        NodeType::Perplexity => execute_perplexity(node, context, http_client).await,
+        NodeType::Cohere => execute_cohere(node, context, http_client).await,
+        NodeType::Googledrive => execute_googledrive(node, context, http_client).await,
+        NodeType::Woocommerce => execute_woocommerce(node, context, http_client).await,
+        NodeType::Pinecone => execute_pinecone(node, context, http_client).await,
+        NodeType::Togetherai => execute_togetherai(node, context, http_client).await,
+        NodeType::Awss3 => execute_awss3(node, context, http_client).await,
+        NodeType::Huggingface => execute_huggingface(node, context, http_client).await,
+        NodeType::Groq => execute_groq(node, context, http_client).await,
+        NodeType::Openrouter => execute_openrouter(node, context, http_client).await,
+        NodeType::Qdrant => execute_qdrant(node, context, http_client).await,
+        NodeType::Cloudinary => execute_cloudinary(node, context, http_client).await,
+        NodeType::Gcal => execute_gcal(node, context, http_client).await,
+        NodeType::Docusign => execute_docusign(node, context, http_client).await,
+        NodeType::Xero => execute_xero(node, context, http_client).await,
+        NodeType::Calendly => execute_calendly(node, context, http_client).await,
+        NodeType::Apify => execute_apify(node, context, http_client).await,
+        NodeType::Ganalytics => execute_ganalytics(node, context, http_client).await,
+        NodeType::Neon => execute_neon(node, context, http_client).await,
+        NodeType::Copper => execute_copper(node, context, http_client).await,
+        NodeType::Deepseek => execute_deepseek(node, context, http_client).await,
+        NodeType::Qwen => execute_qwen(node, context, http_client).await,
+        NodeType::Zhipu => execute_zhipu(node, context, http_client).await,
+        NodeType::Moonshot => execute_moonshot(node, context, http_client).await,
+        NodeType::Doubao => execute_doubao(node, context, http_client).await,
+        NodeType::Minimax => execute_minimax(node, context, http_client).await,
+        NodeType::Ernie => execute_ernie(node, context, http_client).await,
+        NodeType::Hunyuan => execute_hunyuan(node, context, http_client).await,
         // Approval is handled before dispatch; reaching here means no gate was configured.
         NodeType::Approval => NodeExecutionResult::failed("Approval gate not configured"),
     }
@@ -430,9 +477,7 @@ async fn execute_http(
     let raw_config = match node.config.as_ref() {
         Some(c) => c,
         None => {
-            return NodeExecutionResult::failed(
-                "Http node requires config with 'url' and 'method'",
-            )
+            return NodeExecutionResult::failed("Http node requires config with 'url' and 'method'")
         }
     };
 
@@ -469,13 +514,22 @@ async fn execute_http(
             }
         }
         Some("oauth2") => {
-            let client_id = config.get("oauth2_client_id").and_then(|v| v.as_str()).unwrap_or("");
-            let client_secret = config.get("oauth2_client_secret").and_then(|v| v.as_str()).unwrap_or("");
+            let client_id = config
+                .get("oauth2_client_id")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+            let client_secret = config
+                .get("oauth2_client_secret")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
             let token_url = match config.get("oauth2_token_url").and_then(|v| v.as_str()) {
                 Some(u) if !u.is_empty() => u,
                 _ => return NodeExecutionResult::failed("OAuth2 node missing 'oauth2_token_url'"),
             };
-            let scope = config.get("oauth2_scope").and_then(|v| v.as_str()).unwrap_or("");
+            let scope = config
+                .get("oauth2_scope")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
 
             let mut params: Vec<(&str, &str)> = vec![
                 ("grant_type", "client_credentials"),
@@ -488,20 +542,28 @@ async fn execute_http(
 
             let token_resp = match client.post(token_url).form(&params).send().await {
                 Ok(r) => r,
-                Err(e) => return NodeExecutionResult::failed(format!("OAuth2 token request failed: {e}")),
+                Err(e) => {
+                    return NodeExecutionResult::failed(format!("OAuth2 token request failed: {e}"))
+                }
             };
             let token_status = token_resp.status();
             let token_body = token_resp.text().await.unwrap_or_default();
             if !token_status.is_success() {
-                return NodeExecutionResult::failed(format!("OAuth2 token endpoint {token_status}: {token_body}"));
+                return NodeExecutionResult::failed(format!(
+                    "OAuth2 token endpoint {token_status}: {token_body}"
+                ));
             }
             let token_json: serde_json::Value = match serde_json::from_str(&token_body) {
                 Ok(v) => v,
-                Err(e) => return NodeExecutionResult::failed(format!("OAuth2 token parse error: {e}")),
+                Err(e) => {
+                    return NodeExecutionResult::failed(format!("OAuth2 token parse error: {e}"))
+                }
             };
             match token_json.get("access_token").and_then(|v| v.as_str()) {
                 Some(token) => builder = builder.bearer_auth(token),
-                None => return NodeExecutionResult::failed("OAuth2 response missing 'access_token'"),
+                None => {
+                    return NodeExecutionResult::failed("OAuth2 response missing 'access_token'")
+                }
             }
         }
         _ => {}
@@ -526,7 +588,8 @@ async fn execute_http(
             .body(body.to_string());
     }
 
-    let fail_on_error = config.get("fail_on_error")
+    let fail_on_error = config
+        .get("fail_on_error")
         .and_then(|v| v.as_bool())
         .unwrap_or(true);
 
@@ -537,7 +600,12 @@ async fn execute_http(
             let headers_obj: serde_json::Map<String, serde_json::Value> = response
                 .headers()
                 .iter()
-                .map(|(k, v)| (k.as_str().to_string(), serde_json::json!(v.to_str().unwrap_or(""))))
+                .map(|(k, v)| {
+                    (
+                        k.as_str().to_string(),
+                        serde_json::json!(v.to_str().unwrap_or("")),
+                    )
+                })
                 .collect();
             match response.text().await {
                 Ok(body_text) => {
@@ -547,7 +615,8 @@ async fn execute_http(
                         "status": status_code,
                         "headers": headers_obj,
                         "body": body_val,
-                    }).to_string();
+                    })
+                    .to_string();
                     if status.is_success() || !fail_on_error {
                         NodeExecutionResult::succeeded(output)
                     } else {
@@ -645,9 +714,7 @@ fn execute_map(node: &Node, context: &ExecutionContext) -> NodeExecutionResult {
     let items_arr = match items_val.as_array() {
         Some(a) => a.clone(),
         None => {
-            return NodeExecutionResult::failed(
-                "Map node: 'items' must resolve to a JSON array",
-            )
+            return NodeExecutionResult::failed("Map node: 'items' must resolve to a JSON array")
         }
     };
 
@@ -658,7 +725,9 @@ fn execute_map(node: &Node, context: &ExecutionContext) -> NodeExecutionResult {
             Some(tmpl) => {
                 // Inject the current item into a child context so {{item}} / {{item.field}} works.
                 let mut child = context.clone();
-                child.node_outputs.insert("item".to_string(), item.to_string());
+                child
+                    .node_outputs
+                    .insert("item".to_string(), item.to_string());
                 resolve_config_strings(tmpl, &child)
             }
             None => item.clone(),
@@ -674,7 +743,11 @@ fn execute_map(node: &Node, context: &ExecutionContext) -> NodeExecutionResult {
 fn execute_filter(node: &Node, context: &ExecutionContext) -> NodeExecutionResult {
     let config = match node.config.as_ref() {
         Some(c) => c,
-        None => return NodeExecutionResult::failed("Filter node requires config with 'items' and 'field'"),
+        None => {
+            return NodeExecutionResult::failed(
+                "Filter node requires config with 'items' and 'field'",
+            )
+        }
     };
 
     let items_expr = match config.get("items").and_then(|v| v.as_str()) {
@@ -689,39 +762,54 @@ fn execute_filter(node: &Node, context: &ExecutionContext) -> NodeExecutionResul
     let resolved = resolve_template(items_expr, context);
     let items_val: serde_json::Value = match serde_json::from_str(&resolved) {
         Ok(v) => v,
-        Err(_) => return NodeExecutionResult::failed(
-            format!("Filter node: 'items' did not resolve to valid JSON: {resolved}")
-        ),
+        Err(_) => {
+            return NodeExecutionResult::failed(format!(
+                "Filter node: 'items' did not resolve to valid JSON: {resolved}"
+            ))
+        }
     };
     let items_arr = match items_val.as_array() {
         Some(a) => a.clone(),
-        None => return NodeExecutionResult::failed("Filter node: 'items' must resolve to a JSON array"),
+        None => {
+            return NodeExecutionResult::failed("Filter node: 'items' must resolve to a JSON array")
+        }
     };
 
-    let operator = config.get("operator").and_then(|v| v.as_str()).unwrap_or("exists");
+    let operator = config
+        .get("operator")
+        .and_then(|v| v.as_str())
+        .unwrap_or("exists");
     let expected = config.get("value").and_then(|v| v.as_str()).unwrap_or("");
 
-    let filtered: Vec<serde_json::Value> = items_arr.into_iter().filter(|item| {
-        let field_val = json_path(item, field);
-        match operator {
-            "exists"     => field_val.is_some(),
-            "not_exists" => field_val.is_none(),
-            "equals"     => field_val.map(json_to_string).as_deref() == Some(expected),
-            "not_equals" => field_val.map(json_to_string).as_deref() != Some(expected),
-            "contains"   => field_val.map(json_to_string).unwrap_or_default().contains(expected),
-            "gt" => {
-                let actual = field_val.and_then(|v| v.as_f64()).unwrap_or(f64::NEG_INFINITY);
-                let cmp = expected.parse::<f64>().unwrap_or(f64::INFINITY);
-                actual > cmp
+    let filtered: Vec<serde_json::Value> = items_arr
+        .into_iter()
+        .filter(|item| {
+            let field_val = json_path(item, field);
+            match operator {
+                "exists" => field_val.is_some(),
+                "not_exists" => field_val.is_none(),
+                "equals" => field_val.map(json_to_string).as_deref() == Some(expected),
+                "not_equals" => field_val.map(json_to_string).as_deref() != Some(expected),
+                "contains" => field_val
+                    .map(json_to_string)
+                    .unwrap_or_default()
+                    .contains(expected),
+                "gt" => {
+                    let actual = field_val
+                        .and_then(|v| v.as_f64())
+                        .unwrap_or(f64::NEG_INFINITY);
+                    let cmp = expected.parse::<f64>().unwrap_or(f64::INFINITY);
+                    actual > cmp
+                }
+                "lt" => {
+                    let actual = field_val.and_then(|v| v.as_f64()).unwrap_or(f64::INFINITY);
+                    let cmp = expected.parse::<f64>().unwrap_or(f64::NEG_INFINITY);
+                    actual < cmp
+                }
+                _ => false,
             }
-            "lt" => {
-                let actual = field_val.and_then(|v| v.as_f64()).unwrap_or(f64::INFINITY);
-                let cmp = expected.parse::<f64>().unwrap_or(f64::NEG_INFINITY);
-                actual < cmp
-            }
-            _ => false,
-        }
-    }).collect();
+        })
+        .collect();
 
     NodeExecutionResult::succeeded(
         serde_json::json!({ "count": filtered.len(), "items": filtered }).to_string(),
@@ -731,7 +819,11 @@ fn execute_filter(node: &Node, context: &ExecutionContext) -> NodeExecutionResul
 fn execute_aggregate(node: &Node, context: &ExecutionContext) -> NodeExecutionResult {
     let config = match node.config.as_ref() {
         Some(c) => c,
-        None => return NodeExecutionResult::failed("Aggregate node requires config with 'items' and 'operation'"),
+        None => {
+            return NodeExecutionResult::failed(
+                "Aggregate node requires config with 'items' and 'operation'",
+            )
+        }
     };
 
     let items_expr = match config.get("items").and_then(|v| v.as_str()) {
@@ -746,13 +838,19 @@ fn execute_aggregate(node: &Node, context: &ExecutionContext) -> NodeExecutionRe
     let resolved = resolve_template(items_expr, context);
     let items_val: serde_json::Value = match serde_json::from_str(&resolved) {
         Ok(v) => v,
-        Err(_) => return NodeExecutionResult::failed(
-            format!("Aggregate node: 'items' did not resolve to valid JSON: {resolved}")
-        ),
+        Err(_) => {
+            return NodeExecutionResult::failed(format!(
+                "Aggregate node: 'items' did not resolve to valid JSON: {resolved}"
+            ))
+        }
     };
     let items = match items_val.as_array() {
         Some(a) => a,
-        None => return NodeExecutionResult::failed("Aggregate node: 'items' must resolve to a JSON array"),
+        None => {
+            return NodeExecutionResult::failed(
+                "Aggregate node: 'items' must resolve to a JSON array",
+            )
+        }
     };
 
     let field = config.get("field").and_then(|v| v.as_str());
@@ -765,7 +863,8 @@ fn execute_aggregate(node: &Node, context: &ExecutionContext) -> NodeExecutionRe
                 Some(f) => f,
                 None => return NodeExecutionResult::failed("Aggregate 'sum' requires 'field'"),
             };
-            let total: f64 = items.iter()
+            let total: f64 = items
+                .iter()
                 .filter_map(|item| json_path(item, f))
                 .filter_map(|v| v.as_f64())
                 .sum();
@@ -777,7 +876,8 @@ fn execute_aggregate(node: &Node, context: &ExecutionContext) -> NodeExecutionRe
                 Some(f) => f,
                 None => return NodeExecutionResult::failed("Aggregate 'avg' requires 'field'"),
             };
-            let nums: Vec<f64> = items.iter()
+            let nums: Vec<f64> = items
+                .iter()
                 .filter_map(|item| json_path(item, f))
                 .filter_map(|v| v.as_f64())
                 .collect();
@@ -793,7 +893,8 @@ fn execute_aggregate(node: &Node, context: &ExecutionContext) -> NodeExecutionRe
                 Some(f) => f,
                 None => return NodeExecutionResult::failed("Aggregate 'min' requires 'field'"),
             };
-            items.iter()
+            items
+                .iter()
                 .filter_map(|item| json_path(item, f))
                 .filter_map(|v| v.as_f64())
                 .reduce(f64::min)
@@ -806,7 +907,8 @@ fn execute_aggregate(node: &Node, context: &ExecutionContext) -> NodeExecutionRe
                 Some(f) => f,
                 None => return NodeExecutionResult::failed("Aggregate 'max' requires 'field'"),
             };
-            items.iter()
+            items
+                .iter()
                 .filter_map(|item| json_path(item, f))
                 .filter_map(|v| v.as_f64())
                 .reduce(f64::max)
@@ -819,8 +921,12 @@ fn execute_aggregate(node: &Node, context: &ExecutionContext) -> NodeExecutionRe
                 Some(f) => f,
                 None => return NodeExecutionResult::failed("Aggregate 'join' requires 'field'"),
             };
-            let sep = config.get("separator").and_then(|v| v.as_str()).unwrap_or(", ");
-            let parts: Vec<String> = items.iter()
+            let sep = config
+                .get("separator")
+                .and_then(|v| v.as_str())
+                .unwrap_or(", ");
+            let parts: Vec<String> = items
+                .iter()
                 .filter_map(|item| json_path(item, f))
                 .map(json_to_string)
                 .collect();
@@ -830,7 +936,9 @@ fn execute_aggregate(node: &Node, context: &ExecutionContext) -> NodeExecutionRe
         "first" => {
             let first = items.first().cloned().unwrap_or(serde_json::Value::Null);
             match field {
-                Some(f) => json_path(&first, f).cloned().unwrap_or(serde_json::Value::Null),
+                Some(f) => json_path(&first, f)
+                    .cloned()
+                    .unwrap_or(serde_json::Value::Null),
                 None => first,
             }
         }
@@ -838,14 +946,18 @@ fn execute_aggregate(node: &Node, context: &ExecutionContext) -> NodeExecutionRe
         "last" => {
             let last = items.last().cloned().unwrap_or(serde_json::Value::Null);
             match field {
-                Some(f) => json_path(&last, f).cloned().unwrap_or(serde_json::Value::Null),
+                Some(f) => json_path(&last, f)
+                    .cloned()
+                    .unwrap_or(serde_json::Value::Null),
                 None => last,
             }
         }
 
-        op => return NodeExecutionResult::failed(format!(
+        op => {
+            return NodeExecutionResult::failed(format!(
             "Aggregate: unknown operation '{op}'. Use: count, sum, avg, min, max, join, first, last"
-        )),
+        ))
+        }
     };
 
     NodeExecutionResult::succeeded(serde_json::json!({ "result": result }).to_string())
@@ -854,7 +966,11 @@ fn execute_aggregate(node: &Node, context: &ExecutionContext) -> NodeExecutionRe
 fn execute_sort(node: &Node, context: &ExecutionContext) -> NodeExecutionResult {
     let config = match node.config.as_ref() {
         Some(c) => c,
-        None => return NodeExecutionResult::failed("Sort node requires config with 'items' and 'field'"),
+        None => {
+            return NodeExecutionResult::failed(
+                "Sort node requires config with 'items' and 'field'",
+            )
+        }
     };
 
     let items_expr = match config.get("items").and_then(|v| v.as_str()) {
@@ -869,13 +985,17 @@ fn execute_sort(node: &Node, context: &ExecutionContext) -> NodeExecutionResult 
     let resolved = resolve_template(items_expr, context);
     let items_val: serde_json::Value = match serde_json::from_str(&resolved) {
         Ok(v) => v,
-        Err(_) => return NodeExecutionResult::failed(
-            format!("Sort node: 'items' did not resolve to valid JSON: {resolved}")
-        ),
+        Err(_) => {
+            return NodeExecutionResult::failed(format!(
+                "Sort node: 'items' did not resolve to valid JSON: {resolved}"
+            ))
+        }
     };
     let mut items = match items_val.as_array() {
         Some(a) => a.clone(),
-        None => return NodeExecutionResult::failed("Sort node: 'items' must resolve to a JSON array"),
+        None => {
+            return NodeExecutionResult::failed("Sort node: 'items' must resolve to a JSON array")
+        }
     };
 
     let descending = config.get("order").and_then(|v| v.as_str()) == Some("desc");
@@ -893,7 +1013,11 @@ fn execute_sort(node: &Node, context: &ExecutionContext) -> NodeExecutionResult 
             let sb = vb.map(json_to_string).unwrap_or_default();
             sa.cmp(&sb)
         };
-        if descending { ord.reverse() } else { ord }
+        if descending {
+            ord.reverse()
+        } else {
+            ord
+        }
     });
 
     NodeExecutionResult::succeeded(
@@ -937,9 +1061,7 @@ async fn execute_delay(node: &Node) -> NodeExecutionResult {
     if seconds > 0 {
         tokio::time::sleep(std::time::Duration::from_secs(seconds)).await;
     }
-    NodeExecutionResult::succeeded(
-        serde_json::json!({ "waited_secs": seconds }).to_string(),
-    )
+    NodeExecutionResult::succeeded(serde_json::json!({ "waited_secs": seconds }).to_string())
 }
 
 async fn execute_sub_workflow(
@@ -949,15 +1071,25 @@ async fn execute_sub_workflow(
 ) -> NodeExecutionResult {
     let config = match node.config.as_ref() {
         Some(c) => c,
-        None => return NodeExecutionResult::failed("SubWorkflow node requires config with '_graph'"),
+        None => {
+            return NodeExecutionResult::failed("SubWorkflow node requires config with '_graph'")
+        }
     };
 
     let sub_graph: workflow_core::WorkflowGraph = match config.get("_graph") {
         Some(g) => match serde_json::from_value(g.clone()) {
             Ok(graph) => graph,
-            Err(e) => return NodeExecutionResult::failed(format!("SubWorkflow node: invalid '_graph': {e}")),
+            Err(e) => {
+                return NodeExecutionResult::failed(format!(
+                    "SubWorkflow node: invalid '_graph': {e}"
+                ))
+            }
         },
-        None => return NodeExecutionResult::failed("SubWorkflow node missing '_graph' — platform must inject it before execution"),
+        None => {
+            return NodeExecutionResult::failed(
+                "SubWorkflow node missing '_graph' — platform must inject it before execution",
+            )
+        }
     };
 
     // Resolve input for sub-execution: if 'input_template' is set, render it; otherwise pass through
@@ -969,13 +1101,26 @@ async fn execute_sub_workflow(
     let sub_execution_id = format!("{}:sub:{}", context.execution_id, node.id);
     let sub_executor = DispatchingNodeExecutor::new(ai_runtime_base_url.map(str::to_owned));
 
-    match crate::runtime::run_workflow(&sub_execution_id, &sub_graph, sub_input, &sub_executor, context.dry_run).await {
+    match crate::runtime::run_workflow(
+        &sub_execution_id,
+        &sub_graph,
+        sub_input,
+        &sub_executor,
+        context.dry_run,
+    )
+    .await
+    {
         Ok(report) => {
-            let last_output = report.node_results.iter().rev()
+            let last_output = report
+                .node_results
+                .iter()
+                .rev()
                 .find(|r| r.status == execution_core::NodeStatus::Succeeded)
                 .and_then(|r| r.output_json.as_deref());
             let output_val = match last_output {
-                Some(s) => serde_json::from_str(s).unwrap_or(serde_json::Value::String(s.to_owned())),
+                Some(s) => {
+                    serde_json::from_str(s).unwrap_or(serde_json::Value::String(s.to_owned()))
+                }
                 None => serde_json::Value::Null,
             };
             let result_json = serde_json::json!({
@@ -1016,11 +1161,15 @@ async fn execute_slack(
     let mut payload = serde_json::json!({ "text": text });
     if let Some(u) = config.get("username").and_then(|v| v.as_str()) {
         let r = resolve_template(u, context);
-        if !r.is_empty() { payload["username"] = serde_json::json!(r); }
+        if !r.is_empty() {
+            payload["username"] = serde_json::json!(r);
+        }
     }
     if let Some(c) = config.get("channel").and_then(|v| v.as_str()) {
         let r = resolve_template(c, context);
-        if !r.is_empty() { payload["channel"] = serde_json::json!(r); }
+        if !r.is_empty() {
+            payload["channel"] = serde_json::json!(r);
+        }
     }
     match http_client.post(&webhook_url).json(&payload).send().await {
         Ok(resp) if resp.status().is_success() => NodeExecutionResult::succeeded(
@@ -1172,7 +1321,10 @@ async fn execute_openai(
         .as_str()
         .unwrap_or("")
         .to_string();
-    let usage = parsed.get("usage").cloned().unwrap_or(serde_json::Value::Null);
+    let usage = parsed
+        .get("usage")
+        .cloned()
+        .unwrap_or(serde_json::Value::Null);
 
     NodeExecutionResult::succeeded(
         serde_json::json!({ "content": content, "model": model, "usage": usage }).to_string(),
@@ -1255,7 +1407,10 @@ async fn execute_gemini(
         .as_str()
         .unwrap_or("")
         .to_string();
-    let usage = parsed.get("usageMetadata").cloned().unwrap_or(serde_json::Value::Null);
+    let usage = parsed
+        .get("usageMetadata")
+        .cloned()
+        .unwrap_or(serde_json::Value::Null);
 
     NodeExecutionResult::succeeded(
         serde_json::json!({ "content": content, "model": model, "usage": usage }).to_string(),
@@ -1332,7 +1487,10 @@ async fn execute_claude(
         .as_str()
         .unwrap_or("")
         .to_string();
-    let usage = parsed.get("usage").cloned().unwrap_or(serde_json::Value::Null);
+    let usage = parsed
+        .get("usage")
+        .cloned()
+        .unwrap_or(serde_json::Value::Null);
 
     NodeExecutionResult::succeeded(
         serde_json::json!({ "content": content, "model": model, "usage": usage }).to_string(),
@@ -1378,8 +1536,12 @@ async fn execute_database(node: &Node, context: &ExecutionContext) -> NodeExecut
                                 .try_get::<i64, _>(i)
                                 .map(|v| serde_json::json!(v))
                                 .or_else(|_| row.try_get::<f64, _>(i).map(|v| serde_json::json!(v)))
-                                .or_else(|_| row.try_get::<bool, _>(i).map(|v| serde_json::json!(v)))
-                                .or_else(|_| row.try_get::<String, _>(i).map(|v| serde_json::json!(v)))
+                                .or_else(|_| {
+                                    row.try_get::<bool, _>(i).map(|v| serde_json::json!(v))
+                                })
+                                .or_else(|_| {
+                                    row.try_get::<String, _>(i).map(|v| serde_json::json!(v))
+                                })
                                 .unwrap_or(serde_json::Value::Null);
                             obj.insert(col.name().to_string(), val);
                         }
@@ -1530,7 +1692,10 @@ fn execute_assert(node: &Node, context: &ExecutionContext) -> NodeExecutionResul
         Some(s) => s,
         None => return NodeExecutionResult::failed("Assert node config missing 'condition'"),
     };
-    let message = config.get("message").and_then(|v| v.as_str()).unwrap_or("Assertion failed");
+    let message = config
+        .get("message")
+        .and_then(|v| v.as_str())
+        .unwrap_or("Assertion failed");
     let resolved = resolve_template(condition_expr, context);
     if is_truthy(&resolved) {
         NodeExecutionResult::succeeded(serde_json::json!({ "ok": true }).to_string())
@@ -1554,7 +1719,11 @@ fn execute_condition(node: &Node, context: &ExecutionContext) -> NodeExecutionRe
     // actual value to compare. Otherwise look the field up as a key in input_json.
     let check_value: Option<String> = if field_raw.contains("{{") {
         let resolved = resolve_template(field_raw, context);
-        if resolved.is_empty() { None } else { Some(resolved) }
+        if resolved.is_empty() {
+            None
+        } else {
+            Some(resolved)
+        }
     } else {
         let input: serde_json::Value = match serde_json::from_str(&context.input_json) {
             Ok(v) => v,
@@ -1588,13 +1757,17 @@ fn execute_extract(node: &Node, context: &ExecutionContext) -> NodeExecutionResu
         Some(c) => c,
         None => return NodeExecutionResult::failed("Extract node requires config"),
     };
-    let source_expr = config.get("source").and_then(|v| v.as_str()).unwrap_or("{{input}}");
+    let source_expr = config
+        .get("source")
+        .and_then(|v| v.as_str())
+        .unwrap_or("{{input}}");
     let path = match config.get("path").and_then(|v| v.as_str()) {
         Some(p) => p,
         None => return NodeExecutionResult::failed("Extract node missing 'path'"),
     };
     let source_json = resolve_template(source_expr, context);
-    let source: serde_json::Value = serde_json::from_str(&source_json).unwrap_or(serde_json::Value::Null);
+    let source: serde_json::Value =
+        serde_json::from_str(&source_json).unwrap_or(serde_json::Value::Null);
     match json_path(&source, path) {
         Some(val) => NodeExecutionResult::succeeded(
             serde_json::json!({ "value": val, "found": true }).to_string(),
@@ -1622,15 +1795,23 @@ fn execute_merge(node: &Node, context: &ExecutionContext) -> NodeExecutionResult
     };
     let mut merged = serde_json::Map::new();
     for field in fields {
-        let source_expr = field.get("source").and_then(|v| v.as_str()).unwrap_or("{{input}}");
+        let source_expr = field
+            .get("source")
+            .and_then(|v| v.as_str())
+            .unwrap_or("{{input}}");
         let key = field.get("key").and_then(|v| v.as_str());
         let raw = resolve_template(source_expr, context);
-        let val: serde_json::Value = serde_json::from_str(&raw).unwrap_or(serde_json::Value::String(raw));
+        let val: serde_json::Value =
+            serde_json::from_str(&raw).unwrap_or(serde_json::Value::String(raw));
         match key {
-            Some(k) => { merged.insert(k.to_string(), val); }
+            Some(k) => {
+                merged.insert(k.to_string(), val);
+            }
             None => {
                 if let serde_json::Value::Object(map) = val {
-                    for (k, v) in map { merged.insert(k, v); }
+                    for (k, v) in map {
+                        merged.insert(k, v);
+                    }
                 }
             }
         }
@@ -1649,14 +1830,21 @@ fn execute_loop(node: &Node, context: &ExecutionContext) -> NodeExecutionResult 
         Some(c) => c,
         None => return NodeExecutionResult::failed("Loop node requires config"),
     };
-    let items_expr = config.get("items").and_then(|v| v.as_str()).unwrap_or("{{input}}");
-    let max_iter = config.get("max_iterations")
-        .and_then(|v| v.as_u64()).unwrap_or(100).min(1000) as usize;
+    let items_expr = config
+        .get("items")
+        .and_then(|v| v.as_str())
+        .unwrap_or("{{input}}");
+    let max_iter = config
+        .get("max_iterations")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(100)
+        .min(1000) as usize;
     let until_path = config.get("until").and_then(|v| v.as_str());
     let template = config.get("template");
 
     let items_raw = resolve_template(items_expr, context);
-    let items: Vec<serde_json::Value> = match serde_json::from_str::<serde_json::Value>(&items_raw) {
+    let items: Vec<serde_json::Value> = match serde_json::from_str::<serde_json::Value>(&items_raw)
+    {
         Ok(serde_json::Value::Array(arr)) => arr,
         Ok(other) => vec![other],
         Err(_) => return NodeExecutionResult::failed("Loop 'items' did not resolve to an array"),
@@ -1668,14 +1856,18 @@ fn execute_loop(node: &Node, context: &ExecutionContext) -> NodeExecutionResult 
             let val_str = json_path(item, path)
                 .map(json_to_string)
                 .unwrap_or_default();
-            if !is_truthy(&val_str) { break; }
+            if !is_truthy(&val_str) {
+                break;
+            }
         }
         let result = match template {
             Some(tpl) => {
                 let tpl_str = resolve_config_strings(tpl, context);
                 let item_str = item.to_string();
                 // Replace {{item}} references in template
-                let rendered = tpl_str.to_string().replace("\"{{item}}\"", &item_str)
+                let rendered = tpl_str
+                    .to_string()
+                    .replace("\"{{item}}\"", &item_str)
                     .replace("{{item}}", &item.to_string());
                 serde_json::from_str(&rendered).unwrap_or(item.clone())
             }
@@ -1726,7 +1918,9 @@ async fn execute_graphql(
     // Auth
     if let Some(token) = config.get("bearer_token").and_then(|v| v.as_str()) {
         let t = resolve_template(token, context);
-        if !t.is_empty() { builder = builder.bearer_auth(t); }
+        if !t.is_empty() {
+            builder = builder.bearer_auth(t);
+        }
     }
 
     // Custom headers
@@ -1758,7 +1952,9 @@ async fn execute_graphql(
                         NodeExecutionResult::succeeded(json.to_string())
                     }
                 }
-                Err(e) => NodeExecutionResult::failed(format!("GraphQL response parse error ({status}): {e}")),
+                Err(e) => NodeExecutionResult::failed(format!(
+                    "GraphQL response parse error ({status}): {e}"
+                )),
             }
         }
         Err(e) => NodeExecutionResult::failed(format!("GraphQL request failed: {e}")),
@@ -1777,7 +1973,10 @@ fn execute_validate(node: &Node, context: &ExecutionContext) -> NodeExecutionRes
     };
 
     // Resolve the source value
-    let source_template = config.get("source").and_then(|v| v.as_str()).unwrap_or("{{trigger}}");
+    let source_template = config
+        .get("source")
+        .and_then(|v| v.as_str())
+        .unwrap_or("{{trigger}}");
     let source_str = resolve_template(source_template, context);
     let data: serde_json::Value = serde_json::from_str(&source_str)
         .unwrap_or_else(|_| serde_json::Value::String(source_str.clone()));
@@ -1789,14 +1988,18 @@ fn execute_validate(node: &Node, context: &ExecutionContext) -> NodeExecutionRes
         }
     };
 
-    let fail_on_invalid = config.get("fail_on_invalid")
+    let fail_on_invalid = config
+        .get("fail_on_invalid")
         .and_then(|v| v.as_bool())
         .unwrap_or(true);
 
     let mut errors: Vec<String> = Vec::new();
 
     for (field, rules) in schema {
-        let required = rules.get("required").and_then(|v| v.as_bool()).unwrap_or(false);
+        let required = rules
+            .get("required")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
         let expected_type = rules.get("type").and_then(|v| v.as_str()).unwrap_or("any");
 
         let value = data.get(field);
@@ -1808,16 +2011,19 @@ fn execute_validate(node: &Node, context: &ExecutionContext) -> NodeExecutionRes
 
         if let Some(v) = value {
             let type_ok = match expected_type {
-                "string"  => v.is_string(),
-                "number"  => v.is_number(),
+                "string" => v.is_string(),
+                "number" => v.is_number(),
                 "boolean" => v.is_boolean(),
-                "array"   => v.is_array(),
-                "object"  => v.is_object(),
-                "null"    => v.is_null(),
-                _         => true,
+                "array" => v.is_array(),
+                "object" => v.is_object(),
+                "null" => v.is_null(),
+                _ => true,
             };
             if !type_ok {
-                errors.push(format!("'{field}' expected {expected_type}, got {}", json_type_name(v)));
+                errors.push(format!(
+                    "'{field}' expected {expected_type}, got {}",
+                    json_type_name(v)
+                ));
             }
         }
     }
@@ -1835,14 +2041,14 @@ fn execute_validate(node: &Node, context: &ExecutionContext) -> NodeExecutionRes
 
 fn execute_split(node: &Node, context: &ExecutionContext) -> NodeExecutionResult {
     let cfg = node.config.as_ref().cloned().unwrap_or_default();
-    let source_tmpl = cfg.get("source").and_then(|v| v.as_str()).unwrap_or("{{input}}");
+    let source_tmpl = cfg
+        .get("source")
+        .and_then(|v| v.as_str())
+        .unwrap_or("{{input}}");
     let delimiter = cfg.get("delimiter").and_then(|v| v.as_str()).unwrap_or(",");
     let trim = cfg.get("trim").and_then(|v| v.as_bool()).unwrap_or(true);
 
-    let resolved = resolve_config_strings(
-        &serde_json::json!({ "source": source_tmpl }),
-        context,
-    );
+    let resolved = resolve_config_strings(&serde_json::json!({ "source": source_tmpl }), context);
     let source_val = resolved.get("source").cloned().unwrap_or_default();
     let source_str = match &source_val {
         serde_json::Value::String(s) => s.clone(),
@@ -1851,19 +2057,35 @@ fn execute_split(node: &Node, context: &ExecutionContext) -> NodeExecutionResult
 
     let parts: Vec<serde_json::Value> = source_str
         .split(delimiter)
-        .map(|s| serde_json::Value::String(if trim { s.trim().to_string() } else { s.to_string() }))
+        .map(|s| {
+            serde_json::Value::String(if trim {
+                s.trim().to_string()
+            } else {
+                s.to_string()
+            })
+        })
         .collect();
     let count = parts.len();
-    NodeExecutionResult::succeeded(serde_json::json!({ "parts": parts, "count": count }).to_string())
+    NodeExecutionResult::succeeded(
+        serde_json::json!({ "parts": parts, "count": count }).to_string(),
+    )
 }
 
 fn execute_join(node: &Node, context: &ExecutionContext) -> NodeExecutionResult {
     let cfg = node.config.as_ref().cloned().unwrap_or_default();
     let delimiter = cfg.get("delimiter").and_then(|v| v.as_str()).unwrap_or(",");
-    let field = cfg.get("field").and_then(|v| v.as_str()).unwrap_or("").to_string();
+    let field = cfg
+        .get("field")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
 
     // items may be a pre-baked array or a template string
-    let arr: Vec<serde_json::Value> = match cfg.get("items").cloned().unwrap_or(serde_json::Value::String("{{input}}".to_string())) {
+    let arr: Vec<serde_json::Value> = match cfg
+        .get("items")
+        .cloned()
+        .unwrap_or(serde_json::Value::String("{{input}}".to_string()))
+    {
         serde_json::Value::Array(a) => a,
         serde_json::Value::String(tmpl) => {
             let resolved = resolve_config_strings(&serde_json::json!({ "items": tmpl }), context);
@@ -1875,28 +2097,38 @@ fn execute_join(node: &Node, context: &ExecutionContext) -> NodeExecutionResult 
         other => vec![other],
     };
 
-    let parts: Vec<String> = arr.iter().map(|item| {
-        if field.is_empty() {
-            match item {
-                serde_json::Value::String(s) => s.clone(),
-                other => other.to_string(),
+    let parts: Vec<String> = arr
+        .iter()
+        .map(|item| {
+            if field.is_empty() {
+                match item {
+                    serde_json::Value::String(s) => s.clone(),
+                    other => other.to_string(),
+                }
+            } else {
+                let v = json_path(item, &field)
+                    .cloned()
+                    .unwrap_or(serde_json::Value::Null);
+                match v {
+                    serde_json::Value::String(s) => s,
+                    other => other.to_string(),
+                }
             }
-        } else {
-            let v = json_path(item, &field).cloned().unwrap_or(serde_json::Value::Null);
-            match v {
-                serde_json::Value::String(s) => s,
-                other => other.to_string(),
-            }
-        }
-    }).collect();
+        })
+        .collect();
     let result = parts.join(delimiter);
     let count = arr.len();
-    NodeExecutionResult::succeeded(serde_json::json!({ "result": result, "count": count }).to_string())
+    NodeExecutionResult::succeeded(
+        serde_json::json!({ "result": result, "count": count }).to_string(),
+    )
 }
 
 fn execute_switch(node: &Node, context: &ExecutionContext) -> NodeExecutionResult {
     let cfg = node.config.as_ref().cloned().unwrap_or_default();
-    let value_tmpl = cfg.get("value").and_then(|v| v.as_str()).unwrap_or("{{input}}");
+    let value_tmpl = cfg
+        .get("value")
+        .and_then(|v| v.as_str())
+        .unwrap_or("{{input}}");
     let resolved_value = resolve_template(value_tmpl, context);
 
     // cases: array of {match: "...", label: "..."}  or flat mapping as object
@@ -1905,7 +2137,12 @@ fn execute_switch(node: &Node, context: &ExecutionContext) -> NodeExecutionResul
         cases.iter().find_map(|case| {
             let match_val = case.get("match").and_then(|v| v.as_str())?;
             if match_val == resolved_value || match_val == "*" {
-                Some(case.get("label").and_then(|v| v.as_str()).unwrap_or(match_val).to_string())
+                Some(
+                    case.get("label")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or(match_val)
+                        .to_string(),
+                )
             } else {
                 None
             }
@@ -1915,9 +2152,12 @@ fn execute_switch(node: &Node, context: &ExecutionContext) -> NodeExecutionResul
     };
 
     let matched = matched_case.is_some();
-    let label = matched_case.clone().unwrap_or_else(|| "default".to_string());
+    let label = matched_case
+        .clone()
+        .unwrap_or_else(|| "default".to_string());
     NodeExecutionResult::succeeded(
-        serde_json::json!({ "value": resolved_value, "matched_case": label, "matched": matched }).to_string()
+        serde_json::json!({ "value": resolved_value, "matched_case": label, "matched": matched })
+            .to_string(),
     )
 }
 
@@ -1947,9 +2187,15 @@ fn execute_random(node: &Node, context: &ExecutionContext) -> NodeExecutionResul
             serde_json::Value::Bool(rng.gen())
         }
         "pick" => {
-            let items = cfg.get("items").and_then(|v| v.as_array()).cloned().unwrap_or_default();
+            let items = cfg
+                .get("items")
+                .and_then(|v| v.as_array())
+                .cloned()
+                .unwrap_or_default();
             if items.is_empty() {
-                return NodeExecutionResult::failed("Random 'pick' requires non-empty 'items' array");
+                return NodeExecutionResult::failed(
+                    "Random 'pick' requires non-empty 'items' array",
+                );
             }
             let mut rng = rand::thread_rng();
             let idx = rng.gen_range(0..items.len());
@@ -1959,12 +2205,17 @@ fn execute_random(node: &Node, context: &ExecutionContext) -> NodeExecutionResul
             // number (default)
             let min = cfg.get("min").and_then(|v| v.as_f64()).unwrap_or(0.0);
             let max = cfg.get("max").and_then(|v| v.as_f64()).unwrap_or(1.0);
-            let integer = cfg.get("integer").and_then(|v| v.as_bool()).unwrap_or(false);
+            let integer = cfg
+                .get("integer")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false);
             let mut rng = rand::thread_rng();
             if integer {
                 let lo = min.ceil() as i64;
                 let hi = max.floor() as i64;
-                if lo > hi { return NodeExecutionResult::failed("Random: min > max"); }
+                if lo > hi {
+                    return NodeExecutionResult::failed("Random: min > max");
+                }
                 serde_json::Value::Number(serde_json::Number::from(rng.gen_range(lo..=hi)))
             } else {
                 let val = min + rng.gen::<f64>() * (max - min);
@@ -1977,9 +2228,17 @@ fn execute_random(node: &Node, context: &ExecutionContext) -> NodeExecutionResul
 
 fn execute_dedupe(node: &Node, context: &ExecutionContext) -> NodeExecutionResult {
     let cfg = node.config.as_ref().cloned().unwrap_or_default();
-    let field = cfg.get("field").and_then(|v| v.as_str()).unwrap_or("").to_string();
+    let field = cfg
+        .get("field")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
 
-    let arr: Vec<serde_json::Value> = match cfg.get("items").cloned().unwrap_or(serde_json::Value::String("{{input}}".to_string())) {
+    let arr: Vec<serde_json::Value> = match cfg
+        .get("items")
+        .cloned()
+        .unwrap_or(serde_json::Value::String("{{input}}".to_string()))
+    {
         serde_json::Value::Array(a) => a,
         serde_json::Value::String(tmpl) => {
             let resolved = resolve_config_strings(&serde_json::json!({ "items": tmpl }), context);
@@ -2016,13 +2275,26 @@ fn execute_dedupe(node: &Node, context: &ExecutionContext) -> NodeExecutionResul
 
 fn execute_regex(node: &Node, context: &ExecutionContext) -> NodeExecutionResult {
     let cfg = node.config.as_ref().cloned().unwrap_or_default();
-    let source_tmpl = cfg.get("source").and_then(|v| v.as_str()).unwrap_or("{{input}}");
-    let pattern_raw = cfg.get("pattern").and_then(|v| v.as_str()).unwrap_or_else(|| "");
+    let source_tmpl = cfg
+        .get("source")
+        .and_then(|v| v.as_str())
+        .unwrap_or("{{input}}");
+    let pattern_raw = cfg
+        .get("pattern")
+        .and_then(|v| v.as_str())
+        .unwrap_or_else(|| "");
     if pattern_raw.is_empty() {
         return NodeExecutionResult::failed("Regex node requires 'pattern' config");
     }
-    let case_insensitive = cfg.get("flags").and_then(|v| v.as_str()).unwrap_or("").contains('i');
-    let extract_groups = cfg.get("extract_groups").and_then(|v| v.as_bool()).unwrap_or(false);
+    let case_insensitive = cfg
+        .get("flags")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .contains('i');
+    let extract_groups = cfg
+        .get("extract_groups")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
 
     let resolved = resolve_config_strings(&serde_json::json!({ "source": source_tmpl }), context);
     let source_str = match resolved.get("source").cloned().unwrap_or_default() {
@@ -2055,15 +2327,22 @@ fn execute_regex(node: &Node, context: &ExecutionContext) -> NodeExecutionResult
             "full_match": full_match,
             "groups": serde_json::Value::Array(vec![]),
             "source": source_str,
-        }).to_string()
+        })
+        .to_string(),
     )
 }
 
 fn execute_csv(node: &Node, context: &ExecutionContext) -> NodeExecutionResult {
     let cfg = node.config.as_ref().cloned().unwrap_or_default();
-    let source_tmpl = cfg.get("source").and_then(|v| v.as_str()).unwrap_or("{{input}}");
+    let source_tmpl = cfg
+        .get("source")
+        .and_then(|v| v.as_str())
+        .unwrap_or("{{input}}");
     let delimiter = cfg.get("delimiter").and_then(|v| v.as_str()).unwrap_or(",");
-    let has_header = cfg.get("has_header").and_then(|v| v.as_bool()).unwrap_or(true);
+    let has_header = cfg
+        .get("has_header")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(true);
     let trim = cfg.get("trim").and_then(|v| v.as_bool()).unwrap_or(true);
 
     let resolved = resolve_config_strings(&serde_json::json!({ "source": source_tmpl }), context);
@@ -2075,72 +2354,111 @@ fn execute_csv(node: &Node, context: &ExecutionContext) -> NodeExecutionResult {
     let lines: Vec<&str> = csv_str.lines().filter(|l| !l.trim().is_empty()).collect();
     if lines.is_empty() {
         return NodeExecutionResult::succeeded(
-            serde_json::json!({ "rows": [], "count": 0, "headers": [] }).to_string()
+            serde_json::json!({ "rows": [], "count": 0, "headers": [] }).to_string(),
         );
     }
 
     let parse_line = |line: &str| -> Vec<String> {
         line.split(delimiter)
-            .map(|cell| if trim { cell.trim().to_string() } else { cell.to_string() })
+            .map(|cell| {
+                if trim {
+                    cell.trim().to_string()
+                } else {
+                    cell.to_string()
+                }
+            })
             .collect()
     };
 
     if has_header {
         let headers = parse_line(lines[0]);
-        let rows: Vec<serde_json::Value> = lines[1..].iter().map(|line| {
-            let cells = parse_line(line);
-            let obj: serde_json::Map<String, serde_json::Value> = headers.iter().enumerate()
-                .map(|(i, h)| (h.clone(), serde_json::Value::String(cells.get(i).cloned().unwrap_or_default())))
-                .collect();
-            serde_json::Value::Object(obj)
-        }).collect();
-        let count = rows.len();
-        NodeExecutionResult::succeeded(
-            serde_json::json!({ "rows": rows, "count": count, "headers": headers }).to_string()
-        )
-    } else {
-        let rows: Vec<serde_json::Value> = lines.iter()
-            .map(|line| serde_json::Value::Array(
-                parse_line(line).into_iter().map(serde_json::Value::String).collect()
-            ))
+        let rows: Vec<serde_json::Value> = lines[1..]
+            .iter()
+            .map(|line| {
+                let cells = parse_line(line);
+                let obj: serde_json::Map<String, serde_json::Value> = headers
+                    .iter()
+                    .enumerate()
+                    .map(|(i, h)| {
+                        (
+                            h.clone(),
+                            serde_json::Value::String(cells.get(i).cloned().unwrap_or_default()),
+                        )
+                    })
+                    .collect();
+                serde_json::Value::Object(obj)
+            })
             .collect();
         let count = rows.len();
         NodeExecutionResult::succeeded(
-            serde_json::json!({ "rows": rows, "count": count, "headers": serde_json::Value::Null }).to_string()
+            serde_json::json!({ "rows": rows, "count": count, "headers": headers }).to_string(),
+        )
+    } else {
+        let rows: Vec<serde_json::Value> = lines
+            .iter()
+            .map(|line| {
+                serde_json::Value::Array(
+                    parse_line(line)
+                        .into_iter()
+                        .map(serde_json::Value::String)
+                        .collect(),
+                )
+            })
+            .collect();
+        let count = rows.len();
+        NodeExecutionResult::succeeded(
+            serde_json::json!({ "rows": rows, "count": count, "headers": serde_json::Value::Null })
+                .to_string(),
         )
     }
 }
 
 fn execute_rename(node: &Node, context: &ExecutionContext) -> NodeExecutionResult {
     let cfg = node.config.as_ref().cloned().unwrap_or_default();
-    let obj = match cfg.get("source").cloned().unwrap_or(serde_json::Value::String("{{input}}".to_string())) {
+    let obj = match cfg
+        .get("source")
+        .cloned()
+        .unwrap_or(serde_json::Value::String("{{input}}".to_string()))
+    {
         serde_json::Value::Object(m) => m,
         serde_json::Value::String(tmpl) => {
             let resolved = resolve_config_strings(&serde_json::json!({ "source": tmpl }), context);
             match resolved.get("source").cloned().unwrap_or_default() {
                 serde_json::Value::Object(m) => m,
-                other => return NodeExecutionResult::failed(
-                    format!("Rename source must be an object, got {}", json_type_name(&other))
-                ),
+                other => {
+                    return NodeExecutionResult::failed(format!(
+                        "Rename source must be an object, got {}",
+                        json_type_name(&other)
+                    ))
+                }
             }
         }
-        other => return NodeExecutionResult::failed(
-            format!("Rename source must be an object, got {}", json_type_name(&other))
-        ),
+        other => {
+            return NodeExecutionResult::failed(format!(
+                "Rename source must be an object, got {}",
+                json_type_name(&other)
+            ))
+        }
     };
 
     // mappings: [{from: "old_key", to: "new_key"}, ...]
-    let mappings: Vec<(String, String)> = if let Some(serde_json::Value::Array(arr)) = cfg.get("mappings") {
-        arr.iter().filter_map(|m| {
-            let from = m.get("from").and_then(|v| v.as_str())?.to_string();
-            let to   = m.get("to").and_then(|v| v.as_str())?.to_string();
-            Some((from, to))
-        }).collect()
-    } else { vec![] };
+    let mappings: Vec<(String, String)> =
+        if let Some(serde_json::Value::Array(arr)) = cfg.get("mappings") {
+            arr.iter()
+                .filter_map(|m| {
+                    let from = m.get("from").and_then(|v| v.as_str())?.to_string();
+                    let to = m.get("to").and_then(|v| v.as_str())?.to_string();
+                    Some((from, to))
+                })
+                .collect()
+        } else {
+            vec![]
+        };
 
     let mut out = serde_json::Map::new();
     for (k, v) in obj {
-        let new_key = mappings.iter()
+        let new_key = mappings
+            .iter()
             .find(|(from, _)| from == &k)
             .map(|(_, to)| to.clone())
             .unwrap_or(k);
@@ -2151,8 +2469,14 @@ fn execute_rename(node: &Node, context: &ExecutionContext) -> NodeExecutionResul
 
 fn execute_format(node: &Node, context: &ExecutionContext) -> NodeExecutionResult {
     let cfg = node.config.as_ref().cloned().unwrap_or_default();
-    let source_tmpl = cfg.get("source").and_then(|v| v.as_str()).unwrap_or("{{input}}");
-    let operation = cfg.get("operation").and_then(|v| v.as_str()).unwrap_or("to_string");
+    let source_tmpl = cfg
+        .get("source")
+        .and_then(|v| v.as_str())
+        .unwrap_or("{{input}}");
+    let operation = cfg
+        .get("operation")
+        .and_then(|v| v.as_str())
+        .unwrap_or("to_string");
 
     let resolved = resolve_config_strings(&serde_json::json!({ "source": source_tmpl }), context);
     let source_val = resolved.get("source").cloned().unwrap_or_default();
@@ -2162,32 +2486,51 @@ fn execute_format(node: &Node, context: &ExecutionContext) -> NodeExecutionResul
     };
 
     let result: serde_json::Value = match operation {
-        "uppercase"  => serde_json::Value::String(source_str.to_uppercase()),
-        "lowercase"  => serde_json::Value::String(source_str.to_lowercase()),
-        "trim"       => serde_json::Value::String(source_str.trim().to_string()),
+        "uppercase" => serde_json::Value::String(source_str.to_uppercase()),
+        "lowercase" => serde_json::Value::String(source_str.to_lowercase()),
+        "trim" => serde_json::Value::String(source_str.trim().to_string()),
         "trim_start" => serde_json::Value::String(source_str.trim_start().to_string()),
-        "trim_end"   => serde_json::Value::String(source_str.trim_end().to_string()),
-        "reverse"    => serde_json::Value::String(source_str.chars().rev().collect()),
-        "length"     => serde_json::json!(source_str.chars().count()),
+        "trim_end" => serde_json::Value::String(source_str.trim_end().to_string()),
+        "reverse" => serde_json::Value::String(source_str.chars().rev().collect()),
+        "length" => serde_json::json!(source_str.chars().count()),
         "word_count" => serde_json::json!(source_str.split_whitespace().count()),
-        "to_number"  => source_str.parse::<f64>()
+        "to_number" => source_str
+            .parse::<f64>()
             .map(|n| serde_json::json!(n))
             .unwrap_or_else(|_| serde_json::Value::Null),
-        "to_bool"    => serde_json::json!(matches!(source_str.to_lowercase().as_str(), "true" | "1" | "yes")),
-        "replace"    => {
+        "to_bool" => serde_json::json!(matches!(
+            source_str.to_lowercase().as_str(),
+            "true" | "1" | "yes"
+        )),
+        "replace" => {
             let from = cfg.get("from").and_then(|v| v.as_str()).unwrap_or("");
-            let to   = cfg.get("to_value").and_then(|v| v.as_str()).unwrap_or("");
+            let to = cfg.get("to_value").and_then(|v| v.as_str()).unwrap_or("");
             serde_json::Value::String(source_str.replace(from, to))
         }
-        "pad_start"  => {
+        "pad_start" => {
             let width = cfg.get("width").and_then(|v| v.as_u64()).unwrap_or(10) as usize;
-            let pad_char = cfg.get("pad_char").and_then(|v| v.as_str()).unwrap_or(" ").chars().next().unwrap_or(' ');
-            let padded = format!("{}{}", pad_char.to_string().repeat(width.saturating_sub(source_str.len())), source_str);
+            let pad_char = cfg
+                .get("pad_char")
+                .and_then(|v| v.as_str())
+                .unwrap_or(" ")
+                .chars()
+                .next()
+                .unwrap_or(' ');
+            let padded = format!(
+                "{}{}",
+                pad_char
+                    .to_string()
+                    .repeat(width.saturating_sub(source_str.len())),
+                source_str
+            );
             serde_json::Value::String(padded)
         }
-        "truncate"   => {
-            let max_len = cfg.get("max_length").and_then(|v| v.as_u64()).unwrap_or(100) as usize;
-            let suffix  = cfg.get("suffix").and_then(|v| v.as_str()).unwrap_or("…");
+        "truncate" => {
+            let max_len = cfg
+                .get("max_length")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(100) as usize;
+            let suffix = cfg.get("suffix").and_then(|v| v.as_str()).unwrap_or("…");
             if source_str.chars().count() > max_len {
                 let truncated: String = source_str.chars().take(max_len).collect();
                 serde_json::Value::String(format!("{}{}", truncated, suffix))
@@ -2198,16 +2541,18 @@ fn execute_format(node: &Node, context: &ExecutionContext) -> NodeExecutionResul
         _ => serde_json::Value::String(source_str), // to_string default
     };
 
-    NodeExecutionResult::succeeded(serde_json::json!({ "result": result, "operation": operation }).to_string())
+    NodeExecutionResult::succeeded(
+        serde_json::json!({ "result": result, "operation": operation }).to_string(),
+    )
 }
 
 fn json_type_name(v: &serde_json::Value) -> &'static str {
     match v {
-        serde_json::Value::Null    => "null",
+        serde_json::Value::Null => "null",
         serde_json::Value::Bool(_) => "boolean",
         serde_json::Value::Number(_) => "number",
         serde_json::Value::String(_) => "string",
-        serde_json::Value::Array(_)  => "array",
+        serde_json::Value::Array(_) => "array",
         serde_json::Value::Object(_) => "object",
     }
 }
@@ -2233,16 +2578,23 @@ async fn execute_github(
         Some(e) => resolve_template(e, context),
         None => return NodeExecutionResult::failed("GitHub node missing 'endpoint'"),
     };
-    let method = cfg.get("method").and_then(|v| v.as_str()).unwrap_or("GET").to_uppercase();
-    let base_url = cfg.get("base_url").and_then(|v| v.as_str()).unwrap_or("https://api.github.com");
+    let method = cfg
+        .get("method")
+        .and_then(|v| v.as_str())
+        .unwrap_or("GET")
+        .to_uppercase();
+    let base_url = cfg
+        .get("base_url")
+        .and_then(|v| v.as_str())
+        .unwrap_or("https://api.github.com");
     let url = format!("{}{}", base_url.trim_end_matches('/'), endpoint);
 
     let mut req = match method.as_str() {
-        "POST"   => http_client.post(&url),
-        "PATCH"  => http_client.patch(&url),
-        "PUT"    => http_client.put(&url),
+        "POST" => http_client.post(&url),
+        "PATCH" => http_client.patch(&url),
+        "PUT" => http_client.put(&url),
         "DELETE" => http_client.delete(&url),
-        _        => http_client.get(&url),
+        _ => http_client.get(&url),
     }
     .header("Authorization", format!("Bearer {token}"))
     .header("Accept", "application/vnd.github+json")
@@ -2265,7 +2617,7 @@ async fn execute_github(
                 .unwrap_or(serde_json::Value::String(body_text.clone()));
             if ok || (200..=299).contains(&status) {
                 NodeExecutionResult::succeeded(
-                    serde_json::json!({ "status": status, "body": body_json }).to_string()
+                    serde_json::json!({ "status": status, "body": body_json }).to_string(),
                 )
             } else {
                 NodeExecutionResult::failed(format!("GitHub API {status}: {body_text}"))
@@ -2319,7 +2671,7 @@ async fn execute_webhook_send(
             let body_text = resp.text().await.unwrap_or_default();
             if ok {
                 NodeExecutionResult::succeeded(
-                    serde_json::json!({ "status": status, "ok": true }).to_string()
+                    serde_json::json!({ "status": status, "ok": true }).to_string(),
                 )
             } else {
                 NodeExecutionResult::failed(format!("Webhook POST {status}: {body_text}"))
@@ -2358,21 +2710,24 @@ async fn execute_jira(
         Some(e) => resolve_template(e, context),
         None => return NodeExecutionResult::failed("Jira node missing 'endpoint'"),
     };
-    let method = cfg.get("method").and_then(|v| v.as_str()).unwrap_or("GET").to_uppercase();
+    let method = cfg
+        .get("method")
+        .and_then(|v| v.as_str())
+        .unwrap_or("GET")
+        .to_uppercase();
     let url = format!("{}{}", base_url.trim_end_matches('/'), endpoint);
 
     // Jira uses HTTP Basic auth: base64(email:token)
     use base64::Engine as _;
-    let credentials = base64::engine::general_purpose::STANDARD
-        .encode(format!("{email}:{token}"));
+    let credentials = base64::engine::general_purpose::STANDARD.encode(format!("{email}:{token}"));
     let auth_header = format!("Basic {credentials}");
 
     let mut req = match method.as_str() {
-        "POST"   => http_client.post(&url),
-        "PUT"    => http_client.put(&url),
+        "POST" => http_client.post(&url),
+        "PUT" => http_client.put(&url),
         "DELETE" => http_client.delete(&url),
-        "PATCH"  => http_client.patch(&url),
-        _        => http_client.get(&url),
+        "PATCH" => http_client.patch(&url),
+        _ => http_client.get(&url),
     }
     .header("Authorization", auth_header)
     .header("Accept", "application/json")
@@ -2395,7 +2750,7 @@ async fn execute_jira(
                 .unwrap_or(serde_json::Value::String(body_text.clone()));
             if ok {
                 NodeExecutionResult::succeeded(
-                    serde_json::json!({ "status": status, "body": body_json }).to_string()
+                    serde_json::json!({ "status": status, "body": body_json }).to_string(),
                 )
             } else {
                 NodeExecutionResult::failed(format!("Jira API {status}: {body_text}"))
@@ -2425,15 +2780,19 @@ async fn execute_notion(
         Some(e) => resolve_template(e, context),
         None => return NodeExecutionResult::failed("Notion node missing 'endpoint'"),
     };
-    let method = cfg.get("method").and_then(|v| v.as_str()).unwrap_or("GET").to_uppercase();
+    let method = cfg
+        .get("method")
+        .and_then(|v| v.as_str())
+        .unwrap_or("GET")
+        .to_uppercase();
     let base_url = "https://api.notion.com";
     let url = format!("{}{}", base_url, endpoint);
 
     let mut req = match method.as_str() {
-        "POST"   => http_client.post(&url),
-        "PATCH"  => http_client.patch(&url),
+        "POST" => http_client.post(&url),
+        "PATCH" => http_client.patch(&url),
         "DELETE" => http_client.delete(&url),
-        _        => http_client.get(&url),
+        _ => http_client.get(&url),
     }
     .header("Authorization", format!("Bearer {token}"))
     .header("Notion-Version", "2022-06-28")
@@ -2456,7 +2815,7 @@ async fn execute_notion(
                 .unwrap_or(serde_json::Value::String(body_text.clone()));
             if ok {
                 NodeExecutionResult::succeeded(
-                    serde_json::json!({ "status": status, "body": body_json }).to_string()
+                    serde_json::json!({ "status": status, "body": body_json }).to_string(),
                 )
             } else {
                 NodeExecutionResult::failed(format!("Notion API {status}: {body_text}"))
@@ -2512,9 +2871,9 @@ async fn execute_linear(
                 // Check for GraphQL errors
                 if let Some(errs) = body_json.get("errors") {
                     if !errs.is_null() && errs.as_array().map(|a| !a.is_empty()).unwrap_or(false) {
-                        return NodeExecutionResult::failed(
-                            format!("Linear GraphQL errors: {errs}")
-                        );
+                        return NodeExecutionResult::failed(format!(
+                            "Linear GraphQL errors: {errs}"
+                        ));
                     }
                 }
                 NodeExecutionResult::succeeded(
@@ -2553,8 +2912,14 @@ async fn execute_airtable(
         Some(t) => resolve_template(t, context),
         None => return NodeExecutionResult::failed("Airtable node missing 'table'"),
     };
-    let method = cfg.get("method").and_then(|v| v.as_str()).unwrap_or("GET").to_uppercase();
-    let record_id = cfg.get("record_id").and_then(|v| v.as_str())
+    let method = cfg
+        .get("method")
+        .and_then(|v| v.as_str())
+        .unwrap_or("GET")
+        .to_uppercase();
+    let record_id = cfg
+        .get("record_id")
+        .and_then(|v| v.as_str())
         .map(|r| resolve_template(r, context));
 
     // Build URL: https://api.airtable.com/v0/{baseId}/{tableId}[/{recordId}]
@@ -2569,11 +2934,11 @@ async fn execute_airtable(
     };
 
     let mut req = match method.as_str() {
-        "POST"   => http_client.post(&url),
-        "PATCH"  => http_client.patch(&url),
-        "PUT"    => http_client.put(&url),
+        "POST" => http_client.post(&url),
+        "PATCH" => http_client.patch(&url),
+        "PUT" => http_client.put(&url),
         "DELETE" => http_client.delete(&url),
-        _        => {
+        _ => {
             // GET with optional filterByFormula
             let mut get_req = http_client.get(&url);
             if let Some(formula) = cfg.get("filter_formula").and_then(|v| v.as_str()) {
@@ -2592,7 +2957,8 @@ async fn execute_airtable(
 
     if method != "GET" && method != "DELETE" {
         if let Some(body_tmpl) = cfg.get("body").and_then(|v| v.as_str()) {
-            let resolved = resolve_config_strings(&serde_json::json!({ "body": body_tmpl }), context);
+            let resolved =
+                resolve_config_strings(&serde_json::json!({ "body": body_tmpl }), context);
             if let Some(body_val) = resolved.get("body") {
                 req = req.json(body_val);
             }
@@ -2608,7 +2974,7 @@ async fn execute_airtable(
                 .unwrap_or(serde_json::Value::String(body_text.clone()));
             if ok {
                 NodeExecutionResult::succeeded(
-                    serde_json::json!({ "status": status, "body": body_json }).to_string()
+                    serde_json::json!({ "status": status, "body": body_json }).to_string(),
                 )
             } else {
                 NodeExecutionResult::failed(format!("Airtable API {status}: {body_text}"))
@@ -2635,79 +3001,113 @@ async fn execute_for_each(
     };
 
     // Resolve the items array
-    let items_tmpl = cfg.get("items").and_then(|v| v.as_str()).unwrap_or("{{input}}");
+    let items_tmpl = cfg
+        .get("items")
+        .and_then(|v| v.as_str())
+        .unwrap_or("{{input}}");
     let items_str = resolve_template(items_tmpl, context);
     let items: Vec<serde_json::Value> = match serde_json::from_str(&items_str) {
         Ok(serde_json::Value::Array(arr)) => arr,
-        _ => return NodeExecutionResult::failed(
-            format!("ForEach 'items' must resolve to a JSON array, got: {items_str}")
-        ),
+        _ => {
+            return NodeExecutionResult::failed(format!(
+                "ForEach 'items' must resolve to a JSON array, got: {items_str}"
+            ))
+        }
     };
 
     if items.is_empty() {
         return NodeExecutionResult::succeeded(
-            serde_json::json!({ "results": [], "succeeded": 0, "failed": 0, "total": 0 }).to_string()
+            serde_json::json!({ "results": [], "succeeded": 0, "failed": 0, "total": 0 })
+                .to_string(),
         );
     }
 
     // Get the sub-graph (injected by platform, same as SubWorkflow)
-    let sub_graph: workflow_core::WorkflowGraph = match cfg.get("_graph") {
-        Some(g) => match serde_json::from_value(g.clone()) {
-            Ok(graph) => graph,
-            Err(e) => return NodeExecutionResult::failed(format!("ForEach: invalid '_graph': {e}")),
-        },
-        None => return NodeExecutionResult::failed(
-            "ForEach node missing '_graph' — set 'workflow_id' and the platform will inject it"
-        ),
-    };
+    let sub_graph: workflow_core::WorkflowGraph =
+        match cfg.get("_graph") {
+            Some(g) => match serde_json::from_value(g.clone()) {
+                Ok(graph) => graph,
+                Err(e) => {
+                    return NodeExecutionResult::failed(format!("ForEach: invalid '_graph': {e}"))
+                }
+            },
+            None => return NodeExecutionResult::failed(
+                "ForEach node missing '_graph' — set 'workflow_id' and the platform will inject it",
+            ),
+        };
 
-    let input_key = cfg.get("input_key").and_then(|v| v.as_str()).unwrap_or("item");
-    let max_concurrency = cfg.get("max_concurrency").and_then(|v| v.as_u64()).unwrap_or(10) as usize;
+    let input_key = cfg
+        .get("input_key")
+        .and_then(|v| v.as_str())
+        .unwrap_or("item");
+    let max_concurrency = cfg
+        .get("max_concurrency")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(10) as usize;
     let total = items.len();
     let ai_base = ai_runtime_base_url.map(str::to_owned);
 
     // Process items in batches of max_concurrency
     let mut all_results: Vec<serde_json::Value> = Vec::with_capacity(total);
     for chunk in items.chunks(max_concurrency) {
-        let tasks: Vec<_> = chunk.iter().enumerate().map(|(i, item)| {
-            let sub_graph = sub_graph.clone();
-            let item = item.clone();
-            let ai_base = ai_base.clone();
-            let exec_id = format!("{}:foreach:{}:{i}", context.execution_id, node.id);
-            let input_key = input_key.to_owned();
-            async move {
-                let item_input = serde_json::json!({ input_key: item }).to_string();
-                let executor = DispatchingNodeExecutor::new(ai_base);
-                match crate::runtime::run_workflow(&exec_id, &sub_graph, item_input, &executor, context.dry_run).await {
-                    Ok(report) => {
-                        let last_output = report.node_results.iter().rev()
-                            .find(|r| r.status == execution_core::NodeStatus::Succeeded)
-                            .and_then(|r| r.output_json.as_deref());
-                        let output = match last_output {
-                            Some(s) => serde_json::from_str(s).unwrap_or(serde_json::Value::String(s.to_owned())),
-                            None => serde_json::Value::Null,
-                        };
-                        let ok = report.status == execution_core::ExecutionStatus::Succeeded;
-                        serde_json::json!({
-                            "status": if ok { "succeeded" } else { "failed" },
-                            "output": output,
+        let tasks: Vec<_> = chunk
+            .iter()
+            .enumerate()
+            .map(|(i, item)| {
+                let sub_graph = sub_graph.clone();
+                let item = item.clone();
+                let ai_base = ai_base.clone();
+                let exec_id = format!("{}:foreach:{}:{i}", context.execution_id, node.id);
+                let input_key = input_key.to_owned();
+                async move {
+                    let item_input = serde_json::json!({ input_key: item }).to_string();
+                    let executor = DispatchingNodeExecutor::new(ai_base);
+                    match crate::runtime::run_workflow(
+                        &exec_id,
+                        &sub_graph,
+                        item_input,
+                        &executor,
+                        context.dry_run,
+                    )
+                    .await
+                    {
+                        Ok(report) => {
+                            let last_output = report
+                                .node_results
+                                .iter()
+                                .rev()
+                                .find(|r| r.status == execution_core::NodeStatus::Succeeded)
+                                .and_then(|r| r.output_json.as_deref());
+                            let output = match last_output {
+                                Some(s) => serde_json::from_str(s)
+                                    .unwrap_or(serde_json::Value::String(s.to_owned())),
+                                None => serde_json::Value::Null,
+                            };
+                            let ok = report.status == execution_core::ExecutionStatus::Succeeded;
+                            serde_json::json!({
+                                "status": if ok { "succeeded" } else { "failed" },
+                                "output": output,
+                                "item": item,
+                            })
+                        }
+                        Err(e) => serde_json::json!({
+                            "status": "failed",
+                            "error": format!("{e:?}"),
                             "item": item,
-                        })
+                        }),
                     }
-                    Err(e) => serde_json::json!({
-                        "status": "failed",
-                        "error": format!("{e:?}"),
-                        "item": item,
-                    }),
                 }
-            }
-        }).collect();
+            })
+            .collect();
 
         let batch: Vec<serde_json::Value> = futures::future::join_all(tasks).await;
         all_results.extend(batch);
     }
 
-    let succeeded = all_results.iter().filter(|r| r["status"] == "succeeded").count();
+    let succeeded = all_results
+        .iter()
+        .filter(|r| r["status"] == "succeeded")
+        .count();
     let failed = total - succeeded;
 
     NodeExecutionResult::succeeded(
@@ -2716,7 +3116,8 @@ async fn execute_for_each(
             "succeeded": succeeded,
             "failed": failed,
             "total": total,
-        }).to_string()
+        })
+        .to_string(),
     )
 }
 
@@ -2744,17 +3145,21 @@ async fn execute_discord(
     let mut payload = serde_json::json!({ "content": content });
     if let Some(u) = cfg.get("username").and_then(|v| v.as_str()) {
         let r = resolve_template(u, context);
-        if !r.is_empty() { payload["username"] = serde_json::json!(r); }
+        if !r.is_empty() {
+            payload["username"] = serde_json::json!(r);
+        }
     }
     if let Some(a) = cfg.get("avatar_url").and_then(|v| v.as_str()) {
         let r = resolve_template(a, context);
-        if !r.is_empty() { payload["avatar_url"] = serde_json::json!(r); }
+        if !r.is_empty() {
+            payload["avatar_url"] = serde_json::json!(r);
+        }
     }
 
     match http_client.post(&webhook_url).json(&payload).send().await {
         Ok(resp) if resp.status().is_success() || resp.status().as_u16() == 204 => {
             NodeExecutionResult::succeeded(
-                serde_json::json!({ "ok": true, "content": content }).to_string()
+                serde_json::json!({ "ok": true, "content": content }).to_string(),
             )
         }
         Ok(resp) => {
@@ -2786,10 +3191,15 @@ async fn execute_teams(
         Some(t) => resolve_template(t, context),
         None => return NodeExecutionResult::failed("Teams node missing 'text'"),
     };
-    let title = cfg.get("title").and_then(|v| v.as_str())
+    let title = cfg
+        .get("title")
+        .and_then(|v| v.as_str())
         .map(|t| resolve_template(t, context))
         .unwrap_or_default();
-    let color = cfg.get("color").and_then(|v| v.as_str()).unwrap_or("0078D4");
+    let color = cfg
+        .get("color")
+        .and_then(|v| v.as_str())
+        .unwrap_or("0078D4");
     let color = color.trim_start_matches('#');
 
     // MessageCard format (works with all Teams webhook URLs including Power Automate connectors)
@@ -2805,11 +3215,9 @@ async fn execute_teams(
     });
 
     match http_client.post(&webhook_url).json(&payload).send().await {
-        Ok(resp) if resp.status().is_success() => {
-            NodeExecutionResult::succeeded(
-                serde_json::json!({ "ok": true, "text": text }).to_string()
-            )
-        }
+        Ok(resp) if resp.status().is_success() => NodeExecutionResult::succeeded(
+            serde_json::json!({ "ok": true, "text": text }).to_string(),
+        ),
         Ok(resp) => {
             let status = resp.status().as_u16();
             let body = resp.text().await.unwrap_or_default();
@@ -2847,8 +3255,15 @@ async fn execute_sheets(
         Some(r) => resolve_template(r, context),
         None => return NodeExecutionResult::failed("Sheets node missing 'range'"),
     };
-    let method = cfg.get("method").and_then(|v| v.as_str()).unwrap_or("GET").to_uppercase();
-    let value_input = cfg.get("value_input_option").and_then(|v| v.as_str()).unwrap_or("USER_ENTERED");
+    let method = cfg
+        .get("method")
+        .and_then(|v| v.as_str())
+        .unwrap_or("GET")
+        .to_uppercase();
+    let value_input = cfg
+        .get("value_input_option")
+        .and_then(|v| v.as_str())
+        .unwrap_or("USER_ENTERED");
 
     let encoded_range = urlencoding::encode(&range);
     let base = format!(
@@ -2862,31 +3277,43 @@ async fn execute_sheets(
             let resolved = resolve_config_strings(&serde_json::json!({ "v": values_raw }), context);
             let values = resolved.get("v").cloned().unwrap_or(serde_json::json!([]));
             let body = serde_json::json!({ "values": values });
-            http_client.post(&url)
+            http_client
+                .post(&url)
                 .header("Authorization", format!("Bearer {token}"))
-                .json(&body).send().await
+                .json(&body)
+                .send()
+                .await
         }
         "UPDATE" => {
             let url = format!("{base}?valueInputOption={value_input}");
             let values_raw = cfg.get("values").and_then(|v| v.as_str()).unwrap_or("[]");
             let resolved = resolve_config_strings(&serde_json::json!({ "v": values_raw }), context);
             let values = resolved.get("v").cloned().unwrap_or(serde_json::json!([]));
-            let body = serde_json::json!({ "range": range, "majorDimension": "ROWS", "values": values });
-            http_client.put(&url)
+            let body =
+                serde_json::json!({ "range": range, "majorDimension": "ROWS", "values": values });
+            http_client
+                .put(&url)
                 .header("Authorization", format!("Bearer {token}"))
-                .json(&body).send().await
+                .json(&body)
+                .send()
+                .await
         }
         "CLEAR" => {
             let url = format!("{base}:clear");
-            http_client.post(&url)
+            http_client
+                .post(&url)
                 .header("Authorization", format!("Bearer {token}"))
-                .json(&serde_json::json!({})).send().await
+                .json(&serde_json::json!({}))
+                .send()
+                .await
         }
         _ => {
             // GET — read values
-            http_client.get(&base)
+            http_client
+                .get(&base)
                 .header("Authorization", format!("Bearer {token}"))
-                .send().await
+                .send()
+                .await
         }
     };
 
@@ -2921,8 +3348,7 @@ fn redis_value_to_json(val: redis::Value) -> serde_json::Value {
         redis::Value::Boolean(b) => serde_json::json!(b),
         redis::Value::BulkString(bytes) => {
             let s = String::from_utf8_lossy(&bytes).into_owned();
-            serde_json::from_str::<serde_json::Value>(&s)
-                .unwrap_or(serde_json::Value::String(s))
+            serde_json::from_str::<serde_json::Value>(&s).unwrap_or(serde_json::Value::String(s))
         }
         redis::Value::Array(vals) | redis::Value::Set(vals) => {
             serde_json::Value::Array(vals.into_iter().map(redis_value_to_json).collect())
@@ -2955,7 +3381,10 @@ async fn execute_redis(node: &Node, context: &ExecutionContext) -> NodeExecution
         None => return NodeExecutionResult::failed("Redis node missing 'url'"),
     };
     let url = resolve_template(url_raw, context);
-    let operation = cfg.get("operation").and_then(|v| v.as_str()).unwrap_or("get");
+    let operation = cfg
+        .get("operation")
+        .and_then(|v| v.as_str())
+        .unwrap_or("get");
 
     let client = match redis::Client::open(url.as_str()) {
         Ok(c) => c,
@@ -2966,44 +3395,95 @@ async fn execute_redis(node: &Node, context: &ExecutionContext) -> NodeExecution
         Err(e) => return NodeExecutionResult::failed(format!("Redis connect failed: {e}")),
     };
 
-    let key = cfg.get("key").and_then(|v| v.as_str())
+    let key = cfg
+        .get("key")
+        .and_then(|v| v.as_str())
         .map(|k| resolve_template(k, context))
         .unwrap_or_default();
-    let value_resolved = cfg.get("value").and_then(|v| v.as_str())
+    let value_resolved = cfg
+        .get("value")
+        .and_then(|v| v.as_str())
         .map(|v| resolve_template(v, context))
         .unwrap_or_default();
-    let field = cfg.get("field").and_then(|v| v.as_str())
+    let field = cfg
+        .get("field")
+        .and_then(|v| v.as_str())
         .map(|f| resolve_template(f, context))
         .unwrap_or_default();
     let ttl = cfg.get("ttl_secs").and_then(|v| v.as_i64()).unwrap_or(0);
     let amount = cfg.get("amount").and_then(|v| v.as_i64()).unwrap_or(1);
 
     let raw: Result<redis::Value, redis::RedisError> = match operation {
-        "get"    => redis::cmd("GET").arg(&key).query_async(&mut con).await,
-        "set"    => {
+        "get" => redis::cmd("GET").arg(&key).query_async(&mut con).await,
+        "set" => {
             let mut cmd = redis::cmd("SET");
             cmd.arg(&key).arg(&value_resolved);
-            if ttl > 0 { cmd.arg("EX").arg(ttl); }
+            if ttl > 0 {
+                cmd.arg("EX").arg(ttl);
+            }
             cmd.query_async(&mut con).await
         }
-        "del"    => redis::cmd("DEL").arg(&key).query_async(&mut con).await,
+        "del" => redis::cmd("DEL").arg(&key).query_async(&mut con).await,
         "exists" => redis::cmd("EXISTS").arg(&key).query_async(&mut con).await,
-        "incr"   => redis::cmd("INCR").arg(&key).query_async(&mut con).await,
-        "decr"   => redis::cmd("DECR").arg(&key).query_async(&mut con).await,
-        "incrby" => redis::cmd("INCRBY").arg(&key).arg(amount).query_async(&mut con).await,
-        "expire" => redis::cmd("EXPIRE").arg(&key).arg(ttl).query_async(&mut con).await,
-        "ttl"    => redis::cmd("TTL").arg(&key).query_async(&mut con).await,
-        "hget"   => redis::cmd("HGET").arg(&key).arg(&field).query_async(&mut con).await,
-        "hset"   => redis::cmd("HSET").arg(&key).arg(&field).arg(&value_resolved).query_async(&mut con).await,
-        "hdel"   => redis::cmd("HDEL").arg(&key).arg(&field).query_async(&mut con).await,
-        "hgetall"=> redis::cmd("HGETALL").arg(&key).query_async(&mut con).await,
-        "lpush"  => redis::cmd("LPUSH").arg(&key).arg(&value_resolved).query_async(&mut con).await,
-        "lpop"   => redis::cmd("LPOP").arg(&key).query_async(&mut con).await,
-        "rpush"  => redis::cmd("RPUSH").arg(&key).arg(&value_resolved).query_async(&mut con).await,
-        "rpop"   => redis::cmd("RPOP").arg(&key).query_async(&mut con).await,
-        "llen"   => redis::cmd("LLEN").arg(&key).query_async(&mut con).await,
-        "ping"   => redis::cmd("PING").query_async(&mut con).await,
-        "keys"   => redis::cmd("KEYS").arg(&key).query_async(&mut con).await,
+        "incr" => redis::cmd("INCR").arg(&key).query_async(&mut con).await,
+        "decr" => redis::cmd("DECR").arg(&key).query_async(&mut con).await,
+        "incrby" => {
+            redis::cmd("INCRBY")
+                .arg(&key)
+                .arg(amount)
+                .query_async(&mut con)
+                .await
+        }
+        "expire" => {
+            redis::cmd("EXPIRE")
+                .arg(&key)
+                .arg(ttl)
+                .query_async(&mut con)
+                .await
+        }
+        "ttl" => redis::cmd("TTL").arg(&key).query_async(&mut con).await,
+        "hget" => {
+            redis::cmd("HGET")
+                .arg(&key)
+                .arg(&field)
+                .query_async(&mut con)
+                .await
+        }
+        "hset" => {
+            redis::cmd("HSET")
+                .arg(&key)
+                .arg(&field)
+                .arg(&value_resolved)
+                .query_async(&mut con)
+                .await
+        }
+        "hdel" => {
+            redis::cmd("HDEL")
+                .arg(&key)
+                .arg(&field)
+                .query_async(&mut con)
+                .await
+        }
+        "hgetall" => redis::cmd("HGETALL").arg(&key).query_async(&mut con).await,
+        "lpush" => {
+            redis::cmd("LPUSH")
+                .arg(&key)
+                .arg(&value_resolved)
+                .query_async(&mut con)
+                .await
+        }
+        "lpop" => redis::cmd("LPOP").arg(&key).query_async(&mut con).await,
+        "rpush" => {
+            redis::cmd("RPUSH")
+                .arg(&key)
+                .arg(&value_resolved)
+                .query_async(&mut con)
+                .await
+        }
+        "rpop" => redis::cmd("RPOP").arg(&key).query_async(&mut con).await,
+        "llen" => redis::cmd("LLEN").arg(&key).query_async(&mut con).await,
+        "ping" => redis::cmd("PING").query_async(&mut con).await,
+        "keys" => redis::cmd("KEYS").arg(&key).query_async(&mut con).await,
         op => return NodeExecutionResult::failed(format!("Unknown Redis operation: {op}")),
     };
 
@@ -3013,7 +3493,8 @@ async fn execute_redis(node: &Node, context: &ExecutionContext) -> NodeExecution
             // with RESP3 it returns a Map. redis_value_to_json handles both.
             let json_val = redis_value_to_json(val);
             NodeExecutionResult::succeeded(
-                serde_json::json!({ "value": json_val, "operation": operation, "key": key }).to_string()
+                serde_json::json!({ "value": json_val, "operation": operation, "key": key })
+                    .to_string(),
             )
         }
         Err(e) => NodeExecutionResult::failed(format!("Redis {operation} error: {e}")),
@@ -3033,20 +3514,25 @@ async fn execute_elasticsearch(
         Some(u) => u,
         None => return NodeExecutionResult::failed("Elasticsearch node missing 'url'"),
     };
-    let base_url = resolve_template(base_url_raw, context).trim_end_matches('/').to_string();
-    let endpoint = cfg.get("endpoint").and_then(|v| v.as_str())
+    let base_url = resolve_template(base_url_raw, context)
+        .trim_end_matches('/')
+        .to_string();
+    let endpoint = cfg
+        .get("endpoint")
+        .and_then(|v| v.as_str())
         .map(|e| resolve_template(e, context))
         .unwrap_or_else(|| "/_search".to_string());
-    let method = cfg.get("method").and_then(|v| v.as_str()).unwrap_or("GET").to_uppercase();
+    let method = cfg
+        .get("method")
+        .and_then(|v| v.as_str())
+        .unwrap_or("GET")
+        .to_uppercase();
     let url = format!("{base_url}{endpoint}");
 
-    let body_val = cfg.get("body")
-        .and_then(|v| v.as_str())
-        .map(|s| {
-            let resolved = resolve_template(s, context);
-            serde_json::from_str::<serde_json::Value>(&resolved)
-                .unwrap_or(serde_json::Value::Null)
-        });
+    let body_val = cfg.get("body").and_then(|v| v.as_str()).map(|s| {
+        let resolved = resolve_template(s, context);
+        serde_json::from_str::<serde_json::Value>(&resolved).unwrap_or(serde_json::Value::Null)
+    });
 
     let mut builder = http_client
         .request(
@@ -3079,11 +3565,12 @@ async fn execute_elasticsearch(
             let status = r.status().as_u16();
             let ok = r.status().is_success();
             let text = r.text().await.unwrap_or_default();
-            let json: serde_json::Value = serde_json::from_str(&text)
-                .unwrap_or(serde_json::Value::String(text.clone()));
+            let json: serde_json::Value =
+                serde_json::from_str(&text).unwrap_or(serde_json::Value::String(text.clone()));
             if ok {
                 let took = json.get("took").cloned().unwrap_or(serde_json::Value::Null);
-                let hits_total = json.pointer("/hits/total/value")
+                let hits_total = json
+                    .pointer("/hits/total/value")
                     .or_else(|| json.pointer("/hits/total"))
                     .cloned()
                     .unwrap_or(serde_json::Value::Null);
@@ -3115,12 +3602,22 @@ async fn execute_pagerduty(
         Some(s) => resolve_template(s, context),
         None => return NodeExecutionResult::failed("PagerDuty node missing 'summary'"),
     };
-    let event_action = cfg.get("event_action").and_then(|v| v.as_str()).unwrap_or("trigger");
-    let severity = cfg.get("severity").and_then(|v| v.as_str()).unwrap_or("error");
-    let source = cfg.get("source").and_then(|v| v.as_str())
+    let event_action = cfg
+        .get("event_action")
+        .and_then(|v| v.as_str())
+        .unwrap_or("trigger");
+    let severity = cfg
+        .get("severity")
+        .and_then(|v| v.as_str())
+        .unwrap_or("error");
+    let source = cfg
+        .get("source")
+        .and_then(|v| v.as_str())
         .map(|s| resolve_template(s, context))
         .unwrap_or_else(|| "trigix".to_string());
-    let dedup_key = cfg.get("dedup_key").and_then(|v| v.as_str())
+    let dedup_key = cfg
+        .get("dedup_key")
+        .and_then(|v| v.as_str())
         .map(|k| resolve_template(k, context));
 
     let mut body = serde_json::json!({
@@ -3154,13 +3651,22 @@ async fn execute_pagerduty(
             let status = r.status().as_u16();
             let ok = r.status().is_success();
             let text = r.text().await.unwrap_or_default();
-            let json: serde_json::Value = serde_json::from_str(&text)
-                .unwrap_or(serde_json::Value::String(text.clone()));
+            let json: serde_json::Value =
+                serde_json::from_str(&text).unwrap_or(serde_json::Value::String(text.clone()));
             if ok {
-                let msg = json.get("message").and_then(|v| v.as_str()).unwrap_or("").to_string();
-                let dk = json.get("dedup_key").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                let msg = json
+                    .get("message")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                let dk = json
+                    .get("dedup_key")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
                 NodeExecutionResult::succeeded(
-                    serde_json::json!({ "status": status, "message": msg, "dedup_key": dk }).to_string()
+                    serde_json::json!({ "status": status, "message": msg, "dedup_key": dk })
+                        .to_string(),
                 )
             } else {
                 NodeExecutionResult::failed(format!("PagerDuty API {status}: {text}"))
@@ -3193,9 +3699,9 @@ fn execute_handlebars(node: &Node, context: &ExecutionContext) -> NodeExecutionR
     reg.set_strict_mode(false);
 
     match reg.render_template(template, &data_val) {
-        Ok(result) => NodeExecutionResult::succeeded(
-            serde_json::json!({ "result": result }).to_string()
-        ),
+        Ok(result) => {
+            NodeExecutionResult::succeeded(serde_json::json!({ "result": result }).to_string())
+        }
         Err(e) => NodeExecutionResult::failed(format!("Handlebars render error: {e}")),
     }
 }
@@ -3205,7 +3711,10 @@ fn execute_crypto(node: &Node, context: &ExecutionContext) -> NodeExecutionResul
         Some(c) => c,
         None => return NodeExecutionResult::failed("Crypto node requires config"),
     };
-    let operation = cfg.get("operation").and_then(|v| v.as_str()).unwrap_or("sha256");
+    let operation = cfg
+        .get("operation")
+        .and_then(|v| v.as_str())
+        .unwrap_or("sha256");
     let source_raw = cfg.get("source").and_then(|v| v.as_str()).unwrap_or("");
     let source = resolve_template(source_raw, context);
 
@@ -3241,21 +3750,21 @@ fn execute_crypto(node: &Node, context: &ExecutionContext) -> NodeExecutionResul
             match base64::engine::general_purpose::STANDARD.decode(source.trim()) {
                 Ok(bytes) => match String::from_utf8(bytes) {
                     Ok(s) => s,
-                    Err(e) => return NodeExecutionResult::failed(format!("Base64 decode UTF-8: {e}")),
+                    Err(e) => {
+                        return NodeExecutionResult::failed(format!("Base64 decode UTF-8: {e}"))
+                    }
                 },
                 Err(e) => return NodeExecutionResult::failed(format!("Base64 decode: {e}")),
             }
         }
         "hex_encode" => hex::encode(source.as_bytes()),
-        "hex_decode" => {
-            match hex::decode(source.trim()) {
-                Ok(bytes) => match String::from_utf8(bytes) {
-                    Ok(s) => s,
-                    Err(e) => return NodeExecutionResult::failed(format!("Hex decode UTF-8: {e}")),
-                },
-                Err(e) => return NodeExecutionResult::failed(format!("Hex decode: {e}")),
-            }
-        }
+        "hex_decode" => match hex::decode(source.trim()) {
+            Ok(bytes) => match String::from_utf8(bytes) {
+                Ok(s) => s,
+                Err(e) => return NodeExecutionResult::failed(format!("Hex decode UTF-8: {e}")),
+            },
+            Err(e) => return NodeExecutionResult::failed(format!("Hex decode: {e}")),
+        },
         "random_hex" => {
             use rand::RngCore;
             let length = cfg.get("length").and_then(|v| v.as_u64()).unwrap_or(32) as usize;
@@ -3265,8 +3774,8 @@ fn execute_crypto(node: &Node, context: &ExecutionContext) -> NodeExecutionResul
             hex::encode(bytes)
         }
         "random_base64" => {
-            use rand::RngCore;
             use base64::Engine as _;
+            use rand::RngCore;
             let length = cfg.get("length").and_then(|v| v.as_u64()).unwrap_or(32) as usize;
             let length = length.min(256);
             let mut bytes = vec![0u8; length];
@@ -3277,57 +3786,68 @@ fn execute_crypto(node: &Node, context: &ExecutionContext) -> NodeExecutionResul
     };
 
     NodeExecutionResult::succeeded(
-        serde_json::json!({ "result": result, "operation": operation }).to_string()
+        serde_json::json!({ "result": result, "operation": operation }).to_string(),
     )
 }
 
 fn execute_date(node: &Node, context: &ExecutionContext) -> NodeExecutionResult {
-    use chrono::{DateTime, Duration as ChronoDuration, TimeZone, Utc, NaiveDateTime};
+    use chrono::{DateTime, Duration as ChronoDuration, NaiveDateTime, TimeZone, Utc};
 
     let cfg = match node.config.as_ref() {
         Some(c) => c,
         None => return NodeExecutionResult::failed("Date node requires config"),
     };
-    let operation = cfg.get("operation").and_then(|v| v.as_str()).unwrap_or("now");
+    let operation = cfg
+        .get("operation")
+        .and_then(|v| v.as_str())
+        .unwrap_or("now");
 
-    let parse_source = |cfg: &serde_json::Value, context: &ExecutionContext| -> Result<DateTime<Utc>, String> {
-        let raw = cfg.get("source").and_then(|v| v.as_str()).unwrap_or("");
-        let s = resolve_template(raw, context);
-        // Try unix timestamp first
-        if let Ok(n) = s.parse::<i64>() {
-            return Utc.timestamp_opt(n, 0)
-                .single()
-                .ok_or_else(|| "Invalid unix timestamp".to_string());
-        }
-        // Try ISO 8601
-        if let Ok(dt) = DateTime::parse_from_rfc3339(&s) {
-            return Ok(dt.with_timezone(&Utc));
-        }
-        // Try format_in if provided
-        if let Some(fmt) = cfg.get("format_in").and_then(|v| v.as_str()) {
-            let fmt = resolve_template(fmt, context);
-            if let Ok(ndt) = NaiveDateTime::parse_from_str(&s, &fmt) {
-                return Ok(DateTime::<Utc>::from_naive_utc_and_offset(ndt, Utc));
+    let parse_source =
+        |cfg: &serde_json::Value, context: &ExecutionContext| -> Result<DateTime<Utc>, String> {
+            let raw = cfg.get("source").and_then(|v| v.as_str()).unwrap_or("");
+            let s = resolve_template(raw, context);
+            // Try unix timestamp first
+            if let Ok(n) = s.parse::<i64>() {
+                return Utc
+                    .timestamp_opt(n, 0)
+                    .single()
+                    .ok_or_else(|| "Invalid unix timestamp".to_string());
             }
-        }
-        Err(format!("Cannot parse date: {s}"))
-    };
+            // Try ISO 8601
+            if let Ok(dt) = DateTime::parse_from_rfc3339(&s) {
+                return Ok(dt.with_timezone(&Utc));
+            }
+            // Try format_in if provided
+            if let Some(fmt) = cfg.get("format_in").and_then(|v| v.as_str()) {
+                let fmt = resolve_template(fmt, context);
+                if let Ok(ndt) = NaiveDateTime::parse_from_str(&s, &fmt) {
+                    return Ok(DateTime::<Utc>::from_naive_utc_and_offset(ndt, Utc));
+                }
+            }
+            Err(format!("Cannot parse date: {s}"))
+        };
 
     let amount_duration = |cfg: &serde_json::Value, context: &ExecutionContext| -> ChronoDuration {
         let amount = cfg.get("amount").and_then(|v| v.as_i64()).unwrap_or(0);
-        let unit_raw = cfg.get("unit").and_then(|v| v.as_str()).unwrap_or("seconds");
+        let unit_raw = cfg
+            .get("unit")
+            .and_then(|v| v.as_str())
+            .unwrap_or("seconds");
         let unit = resolve_template(unit_raw, context);
         match unit.as_str() {
             "minutes" => ChronoDuration::minutes(amount),
-            "hours"   => ChronoDuration::hours(amount),
-            "days"    => ChronoDuration::days(amount),
-            "weeks"   => ChronoDuration::weeks(amount),
-            _         => ChronoDuration::seconds(amount),
+            "hours" => ChronoDuration::hours(amount),
+            "days" => ChronoDuration::days(amount),
+            "weeks" => ChronoDuration::weeks(amount),
+            _ => ChronoDuration::seconds(amount),
         }
     };
 
     let fmt_dt = |dt: &DateTime<Utc>, cfg: &serde_json::Value, ctx: &ExecutionContext| -> String {
-        let fmt_raw = cfg.get("format").and_then(|v| v.as_str()).unwrap_or("%Y-%m-%dT%H:%M:%SZ");
+        let fmt_raw = cfg
+            .get("format")
+            .and_then(|v| v.as_str())
+            .unwrap_or("%Y-%m-%dT%H:%M:%SZ");
         let fmt = resolve_template(fmt_raw, ctx);
         dt.format(&fmt).to_string()
     };
@@ -3341,58 +3861,56 @@ fn execute_date(node: &Node, context: &ExecutionContext) -> NodeExecutionResult 
                     "unix": now.timestamp(),
                     "iso": now.to_rfc3339(),
                     "formatted": formatted,
-                }).to_string()
+                })
+                .to_string(),
             )
         }
-        "parse" | "unix_to_iso" | "iso_to_unix" => {
-            match parse_source(cfg, context) {
-                Ok(dt) => {
-                    let formatted = fmt_dt(&dt, cfg, context);
-                    NodeExecutionResult::succeeded(
-                        serde_json::json!({
-                            "unix": dt.timestamp(),
-                            "iso": dt.to_rfc3339(),
-                            "formatted": formatted,
-                        }).to_string()
-                    )
-                }
-                Err(e) => NodeExecutionResult::failed(e),
+        "parse" | "unix_to_iso" | "iso_to_unix" => match parse_source(cfg, context) {
+            Ok(dt) => {
+                let formatted = fmt_dt(&dt, cfg, context);
+                NodeExecutionResult::succeeded(
+                    serde_json::json!({
+                        "unix": dt.timestamp(),
+                        "iso": dt.to_rfc3339(),
+                        "formatted": formatted,
+                    })
+                    .to_string(),
+                )
             }
-        }
-        "add" => {
-            match parse_source(cfg, context) {
-                Ok(dt) => {
-                    let dur = amount_duration(cfg, context);
-                    let result = dt + dur;
-                    let formatted = fmt_dt(&result, cfg, context);
-                    NodeExecutionResult::succeeded(
-                        serde_json::json!({
-                            "unix": result.timestamp(),
-                            "iso": result.to_rfc3339(),
-                            "formatted": formatted,
-                        }).to_string()
-                    )
-                }
-                Err(e) => NodeExecutionResult::failed(e),
+            Err(e) => NodeExecutionResult::failed(e),
+        },
+        "add" => match parse_source(cfg, context) {
+            Ok(dt) => {
+                let dur = amount_duration(cfg, context);
+                let result = dt + dur;
+                let formatted = fmt_dt(&result, cfg, context);
+                NodeExecutionResult::succeeded(
+                    serde_json::json!({
+                        "unix": result.timestamp(),
+                        "iso": result.to_rfc3339(),
+                        "formatted": formatted,
+                    })
+                    .to_string(),
+                )
             }
-        }
-        "subtract" => {
-            match parse_source(cfg, context) {
-                Ok(dt) => {
-                    let dur = amount_duration(cfg, context);
-                    let result = dt - dur;
-                    let formatted = fmt_dt(&result, cfg, context);
-                    NodeExecutionResult::succeeded(
-                        serde_json::json!({
-                            "unix": result.timestamp(),
-                            "iso": result.to_rfc3339(),
-                            "formatted": formatted,
-                        }).to_string()
-                    )
-                }
-                Err(e) => NodeExecutionResult::failed(e),
+            Err(e) => NodeExecutionResult::failed(e),
+        },
+        "subtract" => match parse_source(cfg, context) {
+            Ok(dt) => {
+                let dur = amount_duration(cfg, context);
+                let result = dt - dur;
+                let formatted = fmt_dt(&result, cfg, context);
+                NodeExecutionResult::succeeded(
+                    serde_json::json!({
+                        "unix": result.timestamp(),
+                        "iso": result.to_rfc3339(),
+                        "formatted": formatted,
+                    })
+                    .to_string(),
+                )
             }
-        }
+            Err(e) => NodeExecutionResult::failed(e),
+        },
         "diff" => {
             let dt1 = match parse_source(cfg, context) {
                 Ok(d) => d,
@@ -3401,7 +3919,8 @@ fn execute_date(node: &Node, context: &ExecutionContext) -> NodeExecutionResult 
             let raw2 = cfg.get("source2").and_then(|v| v.as_str()).unwrap_or("");
             let s2 = resolve_template(raw2, context);
             let dt2 = if let Ok(n) = s2.parse::<i64>() {
-                Utc.timestamp_opt(n, 0).single()
+                Utc.timestamp_opt(n, 0)
+                    .single()
                     .ok_or_else(|| "Invalid source2 timestamp".to_string())
             } else {
                 DateTime::parse_from_rfc3339(&s2)
@@ -3418,23 +3937,22 @@ fn execute_date(node: &Node, context: &ExecutionContext) -> NodeExecutionResult 
                             "hours": diff.num_hours(),
                             "days": diff.num_days(),
                             "abs_seconds": diff.num_seconds().abs(),
-                        }).to_string()
+                        })
+                        .to_string(),
                     )
                 }
                 Err(e) => NodeExecutionResult::failed(format!("Cannot parse source2: {e}")),
             }
         }
-        "format" => {
-            match parse_source(cfg, context) {
-                Ok(dt) => {
-                    let formatted = fmt_dt(&dt, cfg, context);
-                    NodeExecutionResult::succeeded(
+        "format" => match parse_source(cfg, context) {
+            Ok(dt) => {
+                let formatted = fmt_dt(&dt, cfg, context);
+                NodeExecutionResult::succeeded(
                         serde_json::json!({ "formatted": formatted, "unix": dt.timestamp(), "iso": dt.to_rfc3339() }).to_string()
                     )
-                }
-                Err(e) => NodeExecutionResult::failed(e),
             }
-        }
+            Err(e) => NodeExecutionResult::failed(e),
+        },
         op => NodeExecutionResult::failed(format!("Unknown date operation: {op}")),
     }
 }
@@ -3456,16 +3974,17 @@ async fn execute_hubspot(
         Some(e) => resolve_template(e, context),
         None => return NodeExecutionResult::failed("HubSpot node missing 'endpoint'"),
     };
-    let method = cfg.get("method").and_then(|v| v.as_str()).unwrap_or("GET").to_uppercase();
+    let method = cfg
+        .get("method")
+        .and_then(|v| v.as_str())
+        .unwrap_or("GET")
+        .to_uppercase();
     let url = format!("https://api.hubapi.com{endpoint}");
 
-    let body_val = cfg.get("body")
-        .and_then(|v| v.as_str())
-        .map(|s| {
-            let resolved = resolve_template(s, context);
-            serde_json::from_str::<serde_json::Value>(&resolved)
-                .unwrap_or(serde_json::Value::Null)
-        });
+    let body_val = cfg.get("body").and_then(|v| v.as_str()).map(|s| {
+        let resolved = resolve_template(s, context);
+        serde_json::from_str::<serde_json::Value>(&resolved).unwrap_or(serde_json::Value::Null)
+    });
 
     let builder = http_client
         .request(
@@ -3485,11 +4004,11 @@ async fn execute_hubspot(
             let status = r.status().as_u16();
             let ok = r.status().is_success();
             let text = r.text().await.unwrap_or_default();
-            let json: serde_json::Value = serde_json::from_str(&text)
-                .unwrap_or(serde_json::Value::String(text.clone()));
+            let json: serde_json::Value =
+                serde_json::from_str(&text).unwrap_or(serde_json::Value::String(text.clone()));
             if ok {
                 NodeExecutionResult::succeeded(
-                    serde_json::json!({ "status": status, "body": json }).to_string()
+                    serde_json::json!({ "status": status, "body": json }).to_string(),
                 )
             } else {
                 NodeExecutionResult::failed(format!("HubSpot API {status}: {text}"))
@@ -3520,16 +4039,17 @@ async fn execute_zendesk(
         Some(e) => resolve_template(e, context),
         None => return NodeExecutionResult::failed("Zendesk node missing 'endpoint'"),
     };
-    let method = cfg.get("method").and_then(|v| v.as_str()).unwrap_or("GET").to_uppercase();
+    let method = cfg
+        .get("method")
+        .and_then(|v| v.as_str())
+        .unwrap_or("GET")
+        .to_uppercase();
     let url = format!("https://{subdomain}.zendesk.com/api/v2{endpoint}");
 
-    let body_val = cfg.get("body")
-        .and_then(|v| v.as_str())
-        .map(|s| {
-            let resolved = resolve_template(s, context);
-            serde_json::from_str::<serde_json::Value>(&resolved)
-                .unwrap_or(serde_json::Value::Null)
-        });
+    let body_val = cfg.get("body").and_then(|v| v.as_str()).map(|s| {
+        let resolved = resolve_template(s, context);
+        serde_json::from_str::<serde_json::Value>(&resolved).unwrap_or(serde_json::Value::Null)
+    });
 
     let builder = http_client
         .request(
@@ -3549,11 +4069,11 @@ async fn execute_zendesk(
             let status = r.status().as_u16();
             let ok = r.status().is_success();
             let text = r.text().await.unwrap_or_default();
-            let json: serde_json::Value = serde_json::from_str(&text)
-                .unwrap_or(serde_json::Value::String(text.clone()));
+            let json: serde_json::Value =
+                serde_json::from_str(&text).unwrap_or(serde_json::Value::String(text.clone()));
             if ok {
                 NodeExecutionResult::succeeded(
-                    serde_json::json!({ "status": status, "body": json }).to_string()
+                    serde_json::json!({ "status": status, "body": json }).to_string(),
                 )
             } else {
                 NodeExecutionResult::failed(format!("Zendesk API {status}: {text}"))
@@ -3575,9 +4095,9 @@ fn execute_xml(node: &Node, context: &ExecutionContext) -> NodeExecutionResult {
     let xml_str = resolve_template(source_raw, context);
 
     match quick_xml::de::from_str::<serde_json::Value>(&xml_str) {
-        Ok(parsed) => NodeExecutionResult::succeeded(
-            serde_json::json!({ "data": parsed }).to_string()
-        ),
+        Ok(parsed) => {
+            NodeExecutionResult::succeeded(serde_json::json!({ "data": parsed }).to_string())
+        }
         Err(e) => NodeExecutionResult::failed(format!("XML parse error: {e}")),
     }
 }
@@ -3596,11 +4116,11 @@ fn execute_yaml(node: &Node, context: &ExecutionContext) -> NodeExecutionResult 
                 None => return NodeExecutionResult::failed("YAML serialize node missing 'source'"),
             };
             let resolved = resolve_template(source_raw, context);
-            let json_val: serde_json::Value = serde_json::from_str(&resolved)
-                .unwrap_or(serde_json::Value::String(resolved));
+            let json_val: serde_json::Value =
+                serde_json::from_str(&resolved).unwrap_or(serde_json::Value::String(resolved));
             match serde_yaml::to_string(&json_val) {
                 Ok(yaml_str) => NodeExecutionResult::succeeded(
-                    serde_json::json!({ "yaml": yaml_str }).to_string()
+                    serde_json::json!({ "yaml": yaml_str }).to_string(),
                 ),
                 Err(e) => NodeExecutionResult::failed(format!("YAML serialize error: {e}")),
             }
@@ -3614,7 +4134,7 @@ fn execute_yaml(node: &Node, context: &ExecutionContext) -> NodeExecutionResult 
             let yaml_str = resolve_template(source_raw, context);
             match serde_yaml::from_str::<serde_json::Value>(&yaml_str) {
                 Ok(parsed) => NodeExecutionResult::succeeded(
-                    serde_json::json!({ "data": parsed }).to_string()
+                    serde_json::json!({ "data": parsed }).to_string(),
                 ),
                 Err(e) => NodeExecutionResult::failed(format!("YAML parse error: {e}")),
             }
@@ -3652,10 +4172,12 @@ async fn execute_twilio(
         None => return NodeExecutionResult::failed("Twilio node missing 'body'"),
     };
 
-    let url = format!(
-        "https://api.twilio.com/2010-04-01/Accounts/{account_sid}/Messages.json"
-    );
-    let params = [("To", to.as_str()), ("From", from.as_str()), ("Body", body.as_str())];
+    let url = format!("https://api.twilio.com/2010-04-01/Accounts/{account_sid}/Messages.json");
+    let params = [
+        ("To", to.as_str()),
+        ("From", from.as_str()),
+        ("Body", body.as_str()),
+    ];
 
     let resp = http_client
         .post(&url)
@@ -3669,11 +4191,19 @@ async fn execute_twilio(
             let status = r.status().as_u16();
             let ok = r.status().is_success();
             let text = r.text().await.unwrap_or_default();
-            let json: serde_json::Value = serde_json::from_str(&text)
-                .unwrap_or(serde_json::Value::String(text.clone()));
+            let json: serde_json::Value =
+                serde_json::from_str(&text).unwrap_or(serde_json::Value::String(text.clone()));
             if ok {
-                let sid = json.get("sid").and_then(|v| v.as_str()).unwrap_or("").to_string();
-                let msg_status = json.get("status").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                let sid = json
+                    .get("sid")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                let msg_status = json
+                    .get("status")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
                 NodeExecutionResult::succeeded(
                     serde_json::json!({ "sid": sid, "status": msg_status, "to": to, "from": from, "body": json }).to_string()
                 )
@@ -3702,15 +4232,19 @@ async fn execute_stripe(
         Some(e) => resolve_template(e, context),
         None => return NodeExecutionResult::failed("Stripe node missing 'endpoint'"),
     };
-    let method = cfg.get("method").and_then(|v| v.as_str()).unwrap_or("GET").to_uppercase();
+    let method = cfg
+        .get("method")
+        .and_then(|v| v.as_str())
+        .unwrap_or("GET")
+        .to_uppercase();
     let url = format!("https://api.stripe.com/v1{}", endpoint);
 
-    let body_val = cfg.get("body")
+    let body_val = cfg
+        .get("body")
         .and_then(|v| v.as_str())
         .map(|s| {
             let resolved = resolve_template(s, context);
-            serde_json::from_str::<serde_json::Value>(&resolved)
-                .unwrap_or(serde_json::Value::Null)
+            serde_json::from_str::<serde_json::Value>(&resolved).unwrap_or(serde_json::Value::Null)
         })
         .unwrap_or(serde_json::Value::Null);
 
@@ -3729,7 +4263,10 @@ async fn execute_stripe(
             .unwrap()
             .iter()
             .map(|(k, v)| {
-                let val = v.as_str().map(|s| s.to_string()).unwrap_or_else(|| v.to_string());
+                let val = v
+                    .as_str()
+                    .map(|s| s.to_string())
+                    .unwrap_or_else(|| v.to_string());
                 (k.clone(), val)
             })
             .collect();
@@ -3740,7 +4277,10 @@ async fn execute_stripe(
             .unwrap()
             .iter()
             .map(|(k, v)| {
-                let val = v.as_str().map(|s| s.to_string()).unwrap_or_else(|| v.to_string());
+                let val = v
+                    .as_str()
+                    .map(|s| s.to_string())
+                    .unwrap_or_else(|| v.to_string());
                 (k.clone(), val)
             })
             .collect();
@@ -3754,13 +4294,22 @@ async fn execute_stripe(
             let status = r.status().as_u16();
             let ok = r.status().is_success();
             let text = r.text().await.unwrap_or_default();
-            let json: serde_json::Value = serde_json::from_str(&text)
-                .unwrap_or(serde_json::Value::String(text.clone()));
+            let json: serde_json::Value =
+                serde_json::from_str(&text).unwrap_or(serde_json::Value::String(text.clone()));
             if ok {
-                let id = json.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string();
-                let obj = json.get("object").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                let id = json
+                    .get("id")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                let obj = json
+                    .get("object")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
                 NodeExecutionResult::succeeded(
-                    serde_json::json!({ "status": status, "id": id, "object": obj, "body": json }).to_string()
+                    serde_json::json!({ "status": status, "id": id, "object": obj, "body": json })
+                        .to_string(),
                 )
             } else {
                 NodeExecutionResult::failed(format!("Stripe API {status}: {text}"))
@@ -3798,7 +4347,10 @@ mod tests {
         let result = executor.execute(&node, &context).await;
 
         assert_eq!(result.status, execution_core::NodeStatus::Succeeded);
-        assert_eq!(result.output_json.as_deref(), Some(r#"{"lead_id":"lead-1"}"#));
+        assert_eq!(
+            result.output_json.as_deref(),
+            Some(r#"{"lead_id":"lead-1"}"#)
+        );
     }
 
     #[tokio::test]
@@ -3829,7 +4381,11 @@ mod tests {
         let result = executor.execute(&node, &context).await;
 
         assert_eq!(result.status, execution_core::NodeStatus::Failed);
-        assert!(result.error.as_deref().unwrap_or("").contains("AI_RUNTIME_BASE_URL"));
+        assert!(result
+            .error
+            .as_deref()
+            .unwrap_or("")
+            .contains("AI_RUNTIME_BASE_URL"));
     }
 
     #[tokio::test]
@@ -3886,7 +4442,11 @@ mod tests {
         let result = executor.execute(&node, &make_context("{}")).await;
         assert_eq!(result.status, execution_core::NodeStatus::Failed);
         // Error should be from the node, not from the retry wrapper
-        assert!(result.error.as_deref().unwrap_or("").contains("AI_RUNTIME_BASE_URL"));
+        assert!(result
+            .error
+            .as_deref()
+            .unwrap_or("")
+            .contains("AI_RUNTIME_BASE_URL"));
     }
 
     #[tokio::test]
@@ -3904,9 +4464,18 @@ mod tests {
     #[test]
     fn template_resolver_replaces_input_field() {
         let context = make_context(r#"{"lead_id":"lead-42","status":"active"}"#);
-        assert_eq!(resolve_template("id={{input.lead_id}}", &context), "id=lead-42");
-        assert_eq!(resolve_template("{{input}}", &context), r#"{"lead_id":"lead-42","status":"active"}"#);
-        assert_eq!(resolve_template("no template here", &context), "no template here");
+        assert_eq!(
+            resolve_template("id={{input.lead_id}}", &context),
+            "id=lead-42"
+        );
+        assert_eq!(
+            resolve_template("{{input}}", &context),
+            r#"{"lead_id":"lead-42","status":"active"}"#
+        );
+        assert_eq!(
+            resolve_template("no template here", &context),
+            "no template here"
+        );
     }
 
     #[test]
@@ -3916,7 +4485,10 @@ mod tests {
             "trigger".to_string(),
             r#"{"lead_id":"lead-99","name":"Alice"}"#.to_string(),
         );
-        assert_eq!(resolve_template("Hello {{trigger.name}}", &context), "Hello Alice");
+        assert_eq!(
+            resolve_template("Hello {{trigger.name}}", &context),
+            "Hello Alice"
+        );
         assert_eq!(resolve_template("{{trigger.lead_id}}", &context), "lead-99");
     }
 
@@ -3931,7 +4503,9 @@ mod tests {
     async fn http_node_resolves_url_template() {
         let executor = DispatchingNodeExecutor::new(None);
         let mut context = make_context(r#"{"endpoint":"https://example.com/api"}"#);
-        context.node_outputs.insert("trigger".to_string(), r#"{"id":"42"}"#.to_string());
+        context
+            .node_outputs
+            .insert("trigger".to_string(), r#"{"id":"42"}"#.to_string());
         let node = Node {
             id: "http".to_string(),
             node_type: NodeType::Http,
@@ -3952,10 +4526,9 @@ mod tests {
     async fn condition_node_uses_template_in_field() {
         let executor = DispatchingNodeExecutor::new(None);
         let mut context = make_context("{}");
-        context.node_outputs.insert(
-            "trigger".to_string(),
-            r#"{"status":"active"}"#.to_string(),
-        );
+        context
+            .node_outputs
+            .insert("trigger".to_string(), r#"{"status":"active"}"#.to_string());
         let node = Node {
             id: "condition".to_string(),
             node_type: NodeType::Condition,
@@ -4005,10 +4578,9 @@ mod tests {
     async fn transform_node_renders_template() {
         let executor = DispatchingNodeExecutor::new(None);
         let mut context = make_context(r#"{"user":"Alice"}"#);
-        context.node_outputs.insert(
-            "trigger".to_string(),
-            r#"{"score":42}"#.to_string(),
-        );
+        context
+            .node_outputs
+            .insert("trigger".to_string(), r#"{"score":42}"#.to_string());
         let node = Node {
             id: "transform".to_string(),
             node_type: NodeType::Transform,
@@ -4055,9 +4627,7 @@ mod tests {
     #[tokio::test]
     async fn sort_node_ascending_string() {
         let executor = DispatchingNodeExecutor::new(None);
-        let context = make_context(
-            r#"{"words":[{"v":"banana"},{"v":"apple"},{"v":"cherry"}]}"#,
-        );
+        let context = make_context(r#"{"words":[{"v":"banana"},{"v":"apple"},{"v":"cherry"}]}"#);
         let node = Node {
             id: "sort".to_string(),
             node_type: NodeType::Sort,
@@ -4080,9 +4650,7 @@ mod tests {
     #[tokio::test]
     async fn sort_node_descending_numeric() {
         let executor = DispatchingNodeExecutor::new(None);
-        let context = make_context(
-            r#"{"scores":[{"s":3},{"s":1},{"s":4},{"s":1},{"s":5}]}"#,
-        );
+        let context = make_context(r#"{"scores":[{"s":3},{"s":1},{"s":4},{"s":1},{"s":5}]}"#);
         let node = Node {
             id: "sort".to_string(),
             node_type: NodeType::Sort,
@@ -4130,7 +4698,8 @@ mod tests {
         };
         let result = executor.execute(&node, &context).await;
         assert_eq!(result.status, execution_core::NodeStatus::Succeeded);
-        let output: serde_json::Value = serde_json::from_str(result.output_json.as_deref().unwrap()).unwrap();
+        let output: serde_json::Value =
+            serde_json::from_str(result.output_json.as_deref().unwrap()).unwrap();
         assert_eq!(output["result"], 5);
     }
 
@@ -4148,7 +4717,8 @@ mod tests {
         };
         let sum_result = executor.execute(&sum_node, &context).await;
         assert_eq!(sum_result.status, execution_core::NodeStatus::Succeeded);
-        let sum_out: serde_json::Value = serde_json::from_str(sum_result.output_json.as_deref().unwrap()).unwrap();
+        let sum_out: serde_json::Value =
+            serde_json::from_str(sum_result.output_json.as_deref().unwrap()).unwrap();
         assert_eq!(sum_out["result"], 60);
 
         // avg
@@ -4160,7 +4730,8 @@ mod tests {
             })),
         };
         let avg_result = executor.execute(&avg_node, &context).await;
-        let avg_out: serde_json::Value = serde_json::from_str(avg_result.output_json.as_deref().unwrap()).unwrap();
+        let avg_out: serde_json::Value =
+            serde_json::from_str(avg_result.output_json.as_deref().unwrap()).unwrap();
         assert_eq!(avg_out["result"], 20);
     }
 
@@ -4180,7 +4751,8 @@ mod tests {
         };
         let result = executor.execute(&node, &context).await;
         assert_eq!(result.status, execution_core::NodeStatus::Succeeded);
-        let output: serde_json::Value = serde_json::from_str(result.output_json.as_deref().unwrap()).unwrap();
+        let output: serde_json::Value =
+            serde_json::from_str(result.output_json.as_deref().unwrap()).unwrap();
         assert_eq!(output["result"], "rust | wasm | axum");
     }
 
@@ -4417,13 +4989,17 @@ mod tests {
         let node = Node {
             id: "assert".to_string(),
             node_type: NodeType::Assert,
-            config: Some(serde_json::json!({ "condition": "{{filter.count}}", "message": "Expected count" })),
+            config: Some(
+                serde_json::json!({ "condition": "{{filter.count}}", "message": "Expected count" }),
+            ),
         };
         let mut ctx = make_context(r#"{}"#);
-        ctx.node_outputs.insert("filter".to_string(), r#"{"count": 5}"#.to_string());
+        ctx.node_outputs
+            .insert("filter".to_string(), r#"{"count": 5}"#.to_string());
         let result = executor.execute(&node, &ctx).await;
         assert_eq!(result.status, execution_core::NodeStatus::Succeeded);
-        let out: serde_json::Value = serde_json::from_str(result.output_json.as_deref().unwrap()).unwrap();
+        let out: serde_json::Value =
+            serde_json::from_str(result.output_json.as_deref().unwrap()).unwrap();
         assert_eq!(out["ok"], true);
     }
 
@@ -4433,10 +5009,13 @@ mod tests {
         let node = Node {
             id: "assert".to_string(),
             node_type: NodeType::Assert,
-            config: Some(serde_json::json!({ "condition": "{{filter.count}}", "message": "Count must be non-zero" })),
+            config: Some(
+                serde_json::json!({ "condition": "{{filter.count}}", "message": "Count must be non-zero" }),
+            ),
         };
         let mut ctx = make_context(r#"{}"#);
-        ctx.node_outputs.insert("filter".to_string(), r#"{"count": 0}"#.to_string());
+        ctx.node_outputs
+            .insert("filter".to_string(), r#"{"count": 0}"#.to_string());
         let result = executor.execute(&node, &ctx).await;
         assert_eq!(result.status, execution_core::NodeStatus::Failed);
         assert_eq!(result.error.as_deref(), Some("Count must be non-zero"));
@@ -4470,7 +5049,8 @@ mod tests {
             })),
         };
         let mut ctx = make_context(r#"{"count": 5}"#);
-        ctx.node_outputs.insert("prev".to_string(), r#"{"value": 1}"#.to_string());
+        ctx.node_outputs
+            .insert("prev".to_string(), r#"{"value": 1}"#.to_string());
         let result = executor.execute(&node, &ctx).await;
         assert_eq!(result.status, execution_core::NodeStatus::Succeeded);
         let out: serde_json::Value =
@@ -4510,7 +5090,11 @@ mod tests {
         let ctx = make_context(r#"{}"#);
         let result = executor.execute(&node, &ctx).await;
         assert_eq!(result.status, execution_core::NodeStatus::Failed);
-        assert!(result.error.as_deref().unwrap_or("").starts_with("Code error:"));
+        assert!(result
+            .error
+            .as_deref()
+            .unwrap_or("")
+            .starts_with("Code error:"));
     }
 
     #[tokio::test]
@@ -4536,7 +5120,11 @@ mod tests {
         };
         let result = executor.execute(&node, &make_context("{}")).await;
         assert_eq!(result.status, execution_core::NodeStatus::Failed);
-        assert!(result.error.as_deref().unwrap_or("").contains("webhook_url"));
+        assert!(result
+            .error
+            .as_deref()
+            .unwrap_or("")
+            .contains("webhook_url"));
     }
 
     #[tokio::test]
@@ -4581,11 +5169,16 @@ mod tests {
     #[tokio::test]
     async fn fan_out_passes_input_through() {
         let executor = DispatchingNodeExecutor::new(None);
-        let node = Node { id: "fan_out".to_string(), node_type: NodeType::FanOut, config: None };
+        let node = Node {
+            id: "fan_out".to_string(),
+            node_type: NodeType::FanOut,
+            config: None,
+        };
         let ctx = make_context(r#"{"user":"alice"}"#);
         let result = executor.execute(&node, &ctx).await;
         assert_eq!(result.status, execution_core::NodeStatus::Succeeded);
-        let out: serde_json::Value = serde_json::from_str(result.output_json.as_deref().unwrap()).unwrap();
+        let out: serde_json::Value =
+            serde_json::from_str(result.output_json.as_deref().unwrap()).unwrap();
         assert_eq!(out["ok"], true);
         assert_eq!(out["input"]["user"], "alice");
     }
@@ -4599,11 +5192,14 @@ mod tests {
             config: Some(serde_json::json!({ "_sources": ["branch_a", "branch_b"] })),
         };
         let mut ctx = make_context(r#"{}"#);
-        ctx.node_outputs.insert("branch_a".to_string(), r#"{"value": 1}"#.to_string());
-        ctx.node_outputs.insert("branch_b".to_string(), r#"{"value": 2}"#.to_string());
+        ctx.node_outputs
+            .insert("branch_a".to_string(), r#"{"value": 1}"#.to_string());
+        ctx.node_outputs
+            .insert("branch_b".to_string(), r#"{"value": 2}"#.to_string());
         let result = executor.execute(&node, &ctx).await;
         assert_eq!(result.status, execution_core::NodeStatus::Succeeded);
-        let out: serde_json::Value = serde_json::from_str(result.output_json.as_deref().unwrap()).unwrap();
+        let out: serde_json::Value =
+            serde_json::from_str(result.output_json.as_deref().unwrap()).unwrap();
         assert_eq!(out["count"], 2);
         assert_eq!(out["results"].as_array().unwrap().len(), 2);
     }
@@ -4619,7 +5215,8 @@ mod tests {
         let ctx = make_context(r#"{"user":{"email":"alice@example.com"}}"#);
         let result = executor.execute(&node, &ctx).await;
         assert_eq!(result.status, execution_core::NodeStatus::Succeeded);
-        let out: serde_json::Value = serde_json::from_str(result.output_json.as_deref().unwrap()).unwrap();
+        let out: serde_json::Value =
+            serde_json::from_str(result.output_json.as_deref().unwrap()).unwrap();
         assert_eq!(out["value"], "alice@example.com");
         assert_eq!(out["found"], true);
     }
@@ -4635,7 +5232,8 @@ mod tests {
         let ctx = make_context(r#"{"name":"Bob"}"#);
         let result = executor.execute(&node, &ctx).await;
         assert_eq!(result.status, execution_core::NodeStatus::Succeeded);
-        let out: serde_json::Value = serde_json::from_str(result.output_json.as_deref().unwrap()).unwrap();
+        let out: serde_json::Value =
+            serde_json::from_str(result.output_json.as_deref().unwrap()).unwrap();
         assert_eq!(out["found"], false);
         assert_eq!(out["value"], serde_json::Value::Null);
     }
@@ -4656,7 +5254,8 @@ mod tests {
         let ctx = make_context(r#"{"name":"Alice"}"#);
         let result = executor.execute(&node, &ctx).await;
         assert_eq!(result.status, execution_core::NodeStatus::Succeeded);
-        let out: serde_json::Value = serde_json::from_str(result.output_json.as_deref().unwrap()).unwrap();
+        let out: serde_json::Value =
+            serde_json::from_str(result.output_json.as_deref().unwrap()).unwrap();
         assert_eq!(out["from_input"]["name"], "Alice");
         assert_eq!(out["extra_obj"]["extra"], 42);
     }
@@ -4672,7 +5271,8 @@ mod tests {
         let ctx = make_context(r#"[1,2,3]"#);
         let result = executor.execute(&node, &ctx).await;
         assert_eq!(result.status, execution_core::NodeStatus::Succeeded);
-        let out: serde_json::Value = serde_json::from_str(result.output_json.as_deref().unwrap()).unwrap();
+        let out: serde_json::Value =
+            serde_json::from_str(result.output_json.as_deref().unwrap()).unwrap();
         assert_eq!(out["count"], 3);
         assert_eq!(out["results"][0], 1);
     }
@@ -4689,7 +5289,8 @@ mod tests {
         let ctx = make_context(r#"[10,20,30,40,50]"#);
         let result = executor.execute(&node, &ctx).await;
         assert_eq!(result.status, execution_core::NodeStatus::Succeeded);
-        let out: serde_json::Value = serde_json::from_str(result.output_json.as_deref().unwrap()).unwrap();
+        let out: serde_json::Value =
+            serde_json::from_str(result.output_json.as_deref().unwrap()).unwrap();
         assert_eq!(out["count"], 2);
     }
 
@@ -4704,7 +5305,8 @@ mod tests {
         let ctx = make_context(r#"{"user":{"name":"Alice","age":30}}"#);
         let result = executor.execute(&node, &ctx).await;
         assert_eq!(result.status, execution_core::NodeStatus::Succeeded);
-        let out: serde_json::Value = serde_json::from_str(result.output_json.as_deref().unwrap()).unwrap();
+        let out: serde_json::Value =
+            serde_json::from_str(result.output_json.as_deref().unwrap()).unwrap();
         assert_eq!(out["value"], "Alice");
         assert_eq!(out["found"], true);
     }
@@ -4720,7 +5322,8 @@ mod tests {
         let ctx = make_context(r#"{"foo": 1}"#);
         let result = executor.execute(&node, &ctx).await;
         assert_eq!(result.status, execution_core::NodeStatus::Succeeded);
-        let out: serde_json::Value = serde_json::from_str(result.output_json.as_deref().unwrap()).unwrap();
+        let out: serde_json::Value =
+            serde_json::from_str(result.output_json.as_deref().unwrap()).unwrap();
         assert_eq!(out["found"], false);
     }
 
@@ -4763,7 +5366,11 @@ mod tests {
         let ctx = make_context("{}");
         let result = executor.execute(&node, &ctx).await;
         assert_eq!(result.status, execution_core::NodeStatus::Failed);
-        assert!(result.error.as_deref().unwrap_or("").contains("prompt_template"));
+        assert!(result
+            .error
+            .as_deref()
+            .unwrap_or("")
+            .contains("prompt_template"));
     }
 
     #[test]
@@ -4776,7 +5383,8 @@ mod tests {
         let ctx = make_context("{}");
         let result = execute_split(&node, &ctx);
         assert_eq!(result.status, execution_core::NodeStatus::Succeeded);
-        let out: serde_json::Value = serde_json::from_str(result.output_json.as_deref().unwrap()).unwrap();
+        let out: serde_json::Value =
+            serde_json::from_str(result.output_json.as_deref().unwrap()).unwrap();
         assert_eq!(out["count"], 3);
         assert_eq!(out["parts"][0], "a");
         assert_eq!(out["parts"][1], "b");
@@ -4792,7 +5400,8 @@ mod tests {
         };
         let ctx = make_context("{}");
         let result = execute_split(&node, &ctx);
-        let out: serde_json::Value = serde_json::from_str(result.output_json.as_deref().unwrap()).unwrap();
+        let out: serde_json::Value =
+            serde_json::from_str(result.output_json.as_deref().unwrap()).unwrap();
         // trim=false preserves leading/trailing whitespace
         assert_eq!(out["parts"][0], "a ");
         assert_eq!(out["parts"][1], " b");
@@ -4812,7 +5421,8 @@ mod tests {
         let ctx = make_context("{}");
         let result = execute_rename(&node, &ctx);
         assert_eq!(result.status, execution_core::NodeStatus::Succeeded);
-        let out: serde_json::Value = serde_json::from_str(result.output_json.as_deref().unwrap()).unwrap();
+        let out: serde_json::Value =
+            serde_json::from_str(result.output_json.as_deref().unwrap()).unwrap();
         assert_eq!(out["name"], "Alice");
         assert_eq!(out["surname"], "Smith");
         assert!(out.get("first_name").is_none());
@@ -4827,7 +5437,8 @@ mod tests {
         };
         let ctx = make_context("{}");
         let result = execute_format(&node, &ctx);
-        let out: serde_json::Value = serde_json::from_str(result.output_json.as_deref().unwrap()).unwrap();
+        let out: serde_json::Value =
+            serde_json::from_str(result.output_json.as_deref().unwrap()).unwrap();
         assert_eq!(out["result"], "HELLO WORLD");
     }
 
@@ -4836,11 +5447,14 @@ mod tests {
         let node = Node {
             id: "fmt2".to_string(),
             node_type: NodeType::Format,
-            config: Some(serde_json::json!({ "source": "Hello World", "operation": "truncate", "max_length": 5, "suffix": "..." })),
+            config: Some(
+                serde_json::json!({ "source": "Hello World", "operation": "truncate", "max_length": 5, "suffix": "..." }),
+            ),
         };
         let ctx = make_context("{}");
         let result = execute_format(&node, &ctx);
-        let out: serde_json::Value = serde_json::from_str(result.output_json.as_deref().unwrap()).unwrap();
+        let out: serde_json::Value =
+            serde_json::from_str(result.output_json.as_deref().unwrap()).unwrap();
         assert_eq!(out["result"], "Hello...");
     }
 
@@ -4865,7 +5479,8 @@ mod tests {
         let ctx2 = make_context("{}");
         let result = execute_dedupe(&node2, &ctx2);
         assert_eq!(result.status, execution_core::NodeStatus::Succeeded);
-        let out: serde_json::Value = serde_json::from_str(result.output_json.as_deref().unwrap()).unwrap();
+        let out: serde_json::Value =
+            serde_json::from_str(result.output_json.as_deref().unwrap()).unwrap();
         assert_eq!(out["count"], 2);
         assert_eq!(out["removed_count"], 1);
     }
@@ -4880,7 +5495,8 @@ mod tests {
         let ctx = make_context("{}");
         let result = execute_csv(&node, &ctx);
         assert_eq!(result.status, execution_core::NodeStatus::Succeeded);
-        let out: serde_json::Value = serde_json::from_str(result.output_json.as_deref().unwrap()).unwrap();
+        let out: serde_json::Value =
+            serde_json::from_str(result.output_json.as_deref().unwrap()).unwrap();
         assert_eq!(out["count"], 2);
         assert_eq!(out["rows"][0]["name"], "Alice");
         assert_eq!(out["rows"][1]["age"], "25");
@@ -4897,7 +5513,8 @@ mod tests {
         let ctx = make_context("{}");
         let result = execute_regex(&node, &ctx);
         assert_eq!(result.status, execution_core::NodeStatus::Succeeded);
-        let out: serde_json::Value = serde_json::from_str(result.output_json.as_deref().unwrap()).unwrap();
+        let out: serde_json::Value =
+            serde_json::from_str(result.output_json.as_deref().unwrap()).unwrap();
         assert_eq!(out["matched"], true);
         assert_eq!(out["full_match"], "world");
     }
@@ -4911,7 +5528,8 @@ mod tests {
         };
         let ctx = make_context("{}");
         let result = execute_regex(&node, &ctx);
-        let out: serde_json::Value = serde_json::from_str(result.output_json.as_deref().unwrap()).unwrap();
+        let out: serde_json::Value =
+            serde_json::from_str(result.output_json.as_deref().unwrap()).unwrap();
         assert_eq!(out["matched"], false);
     }
 
@@ -4926,7 +5544,8 @@ mod tests {
         for _ in 0..20 {
             let result = execute_random(&node, &ctx);
             assert_eq!(result.status, execution_core::NodeStatus::Succeeded);
-            let out: serde_json::Value = serde_json::from_str(result.output_json.as_deref().unwrap()).unwrap();
+            let out: serde_json::Value =
+                serde_json::from_str(result.output_json.as_deref().unwrap()).unwrap();
             let v = out["value"].as_f64().unwrap();
             assert!(v >= 10.0 && v <= 20.0, "value {v} out of range");
         }
@@ -4942,7 +5561,8 @@ mod tests {
         let ctx = make_context("{}");
         for _ in 0..10 {
             let result = execute_random(&node, &ctx);
-            let out: serde_json::Value = serde_json::from_str(result.output_json.as_deref().unwrap()).unwrap();
+            let out: serde_json::Value =
+                serde_json::from_str(result.output_json.as_deref().unwrap()).unwrap();
             let v = out["value"].as_str().unwrap();
             assert!(["x", "y", "z"].contains(&v));
         }
@@ -4965,7 +5585,8 @@ mod tests {
         let ctx = make_context("{}");
         let result = execute_switch(&node, &ctx);
         assert_eq!(result.status, execution_core::NodeStatus::Succeeded);
-        let out: serde_json::Value = serde_json::from_str(result.output_json.as_deref().unwrap()).unwrap();
+        let out: serde_json::Value =
+            serde_json::from_str(result.output_json.as_deref().unwrap()).unwrap();
         assert_eq!(out["matched_case"], "approve");
         assert_eq!(out["matched"], true);
         assert_eq!(out["value"], "approved");
@@ -4986,7 +5607,8 @@ mod tests {
         };
         let ctx = make_context("{}");
         let result = execute_switch(&node, &ctx);
-        let out: serde_json::Value = serde_json::from_str(result.output_json.as_deref().unwrap()).unwrap();
+        let out: serde_json::Value =
+            serde_json::from_str(result.output_json.as_deref().unwrap()).unwrap();
         assert_eq!(out["matched_case"], "default");
         assert_eq!(out["matched"], true);
     }
@@ -4999,7 +5621,10 @@ mod tests {
             config: Some(serde_json::json!({ "delimiter": "-" })),
         };
         let mut ctx = make_context("{}");
-        ctx.node_outputs.insert("upstream".to_string(), r#"{"parts":["x","y","z"]}"#.to_string());
+        ctx.node_outputs.insert(
+            "upstream".to_string(),
+            r#"{"parts":["x","y","z"]}"#.to_string(),
+        );
         // Use explicit items template referencing the input parts
         let node2 = Node {
             id: "join2".to_string(),
@@ -5008,14 +5633,19 @@ mod tests {
         };
         let result = execute_join(&node2, &ctx);
         assert_eq!(result.status, execution_core::NodeStatus::Succeeded);
-        let out: serde_json::Value = serde_json::from_str(result.output_json.as_deref().unwrap()).unwrap();
+        let out: serde_json::Value =
+            serde_json::from_str(result.output_json.as_deref().unwrap()).unwrap();
         assert_eq!(out["result"], "hello world");
         assert_eq!(out["count"], 2);
     }
 
     #[tokio::test]
     async fn github_node_fails_without_config() {
-        let node = Node { id: "gh1".to_string(), node_type: NodeType::Github, config: None };
+        let node = Node {
+            id: "gh1".to_string(),
+            node_type: NodeType::Github,
+            config: None,
+        };
         let ctx = make_context("{}");
         let client = reqwest::Client::new();
         let result = execute_github(&node, &ctx, &client).await;
@@ -5099,16 +5729,21 @@ mod tests {
         };
         let result = execute_transform(&node, &ctx);
         assert_eq!(result.status, execution_core::NodeStatus::Succeeded);
-        let out: serde_json::Value = serde_json::from_str(result.output_json.as_deref().unwrap()).unwrap();
+        let out: serde_json::Value =
+            serde_json::from_str(result.output_json.as_deref().unwrap()).unwrap();
         assert_eq!(out["exec"], "exec-abc123");
-        assert_eq!(out["ver"],  "ver-xyz789");
+        assert_eq!(out["ver"], "ver-xyz789");
     }
 
     #[tokio::test]
     async fn jira_node_fails_without_config() {
         let client = reqwest::Client::new();
         let ctx = make_context("{}");
-        let node = Node { id: "j1".to_string(), node_type: NodeType::Jira, config: None };
+        let node = Node {
+            id: "j1".to_string(),
+            node_type: NodeType::Jira,
+            config: None,
+        };
         let result = execute_jira(&node, &ctx, &client).await;
         assert_eq!(result.status, execution_core::NodeStatus::Failed);
     }
@@ -5120,7 +5755,9 @@ mod tests {
         let node = Node {
             id: "j1".to_string(),
             node_type: NodeType::Jira,
-            config: Some(serde_json::json!({ "email": "a@b.com", "token": "t", "endpoint": "/rest/api/3/issue" })),
+            config: Some(
+                serde_json::json!({ "email": "a@b.com", "token": "t", "endpoint": "/rest/api/3/issue" }),
+            ),
         };
         let result = execute_jira(&node, &ctx, &client).await;
         assert!(result.error.as_deref().unwrap_or("").contains("base_url"));
@@ -5133,7 +5770,9 @@ mod tests {
         let node = Node {
             id: "j1".to_string(),
             node_type: NodeType::Jira,
-            config: Some(serde_json::json!({ "base_url": "https://x.atlassian.net", "email": "a@b.com", "endpoint": "/rest/api/3/issue" })),
+            config: Some(
+                serde_json::json!({ "base_url": "https://x.atlassian.net", "email": "a@b.com", "endpoint": "/rest/api/3/issue" }),
+            ),
         };
         let result = execute_jira(&node, &ctx, &client).await;
         assert!(result.error.as_deref().unwrap_or("").contains("token"));
@@ -5143,7 +5782,11 @@ mod tests {
     async fn notion_node_fails_without_config() {
         let client = reqwest::Client::new();
         let ctx = make_context("{}");
-        let node = Node { id: "n1".to_string(), node_type: NodeType::Notion, config: None };
+        let node = Node {
+            id: "n1".to_string(),
+            node_type: NodeType::Notion,
+            config: None,
+        };
         let result = execute_notion(&node, &ctx, &client).await;
         assert_eq!(result.status, execution_core::NodeStatus::Failed);
     }
@@ -5165,7 +5808,11 @@ mod tests {
     async fn linear_node_fails_without_config() {
         let client = reqwest::Client::new();
         let ctx = make_context("{}");
-        let node = Node { id: "lin1".to_string(), node_type: NodeType::Linear, config: None };
+        let node = Node {
+            id: "lin1".to_string(),
+            node_type: NodeType::Linear,
+            config: None,
+        };
         let result = execute_linear(&node, &ctx, &client).await;
         assert_eq!(result.status, execution_core::NodeStatus::Failed);
     }
@@ -5231,7 +5878,8 @@ mod tests {
         };
         let result = execute_for_each(&node, &ctx, None).await;
         assert_eq!(result.status, execution_core::NodeStatus::Succeeded);
-        let out: serde_json::Value = serde_json::from_str(result.output_json.as_deref().unwrap()).unwrap();
+        let out: serde_json::Value =
+            serde_json::from_str(result.output_json.as_deref().unwrap()).unwrap();
         assert_eq!(out["total"], 0);
         assert_eq!(out["results"].as_array().unwrap().len(), 0);
     }
@@ -5258,7 +5906,11 @@ mod tests {
             config: Some(serde_json::json!({ "content": "hello" })),
         };
         let result = execute_discord(&node, &ctx, &client).await;
-        assert!(result.error.as_deref().unwrap_or("").contains("webhook_url"));
+        assert!(result
+            .error
+            .as_deref()
+            .unwrap_or("")
+            .contains("webhook_url"));
     }
 
     #[tokio::test]
@@ -5268,7 +5920,9 @@ mod tests {
         let node = Node {
             id: "d1".to_string(),
             node_type: NodeType::Discord,
-            config: Some(serde_json::json!({ "webhook_url": "https://discord.com/api/webhooks/x/y" })),
+            config: Some(
+                serde_json::json!({ "webhook_url": "https://discord.com/api/webhooks/x/y" }),
+            ),
         };
         let result = execute_discord(&node, &ctx, &client).await;
         assert!(result.error.as_deref().unwrap_or("").contains("content"));
@@ -5281,7 +5935,9 @@ mod tests {
         let node = Node {
             id: "t1".to_string(),
             node_type: NodeType::Teams,
-            config: Some(serde_json::json!({ "webhook_url": "https://outlook.office.com/webhook/xxx" })),
+            config: Some(
+                serde_json::json!({ "webhook_url": "https://outlook.office.com/webhook/xxx" }),
+            ),
         };
         let result = execute_teams(&node, &ctx, &client).await;
         assert!(result.error.as_deref().unwrap_or("").contains("text"));
@@ -5297,7 +5953,11 @@ mod tests {
             config: Some(serde_json::json!({ "token": "tok", "range": "Sheet1!A1:B10" })),
         };
         let result = execute_sheets(&node, &ctx, &client).await;
-        assert!(result.error.as_deref().unwrap_or("").contains("spreadsheet_id"));
+        assert!(result
+            .error
+            .as_deref()
+            .unwrap_or("")
+            .contains("spreadsheet_id"));
     }
 
     #[tokio::test]
@@ -5307,7 +5967,9 @@ mod tests {
         let node = Node {
             id: "s1".to_string(),
             node_type: NodeType::Sheets,
-            config: Some(serde_json::json!({ "spreadsheet_id": "1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgVE2upms", "range": "Sheet1!A1:B10" })),
+            config: Some(
+                serde_json::json!({ "spreadsheet_id": "1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgVE2upms", "range": "Sheet1!A1:B10" }),
+            ),
         };
         let result = execute_sheets(&node, &ctx, &client).await;
         assert!(result.error.as_deref().unwrap_or("").contains("token"));
@@ -5323,7 +5985,8 @@ mod tests {
         };
         let result = execute_yaml(&node, &ctx);
         assert!(result.output_json.is_some());
-        let out: serde_json::Value = serde_json::from_str(result.output_json.as_deref().unwrap()).unwrap();
+        let out: serde_json::Value =
+            serde_json::from_str(result.output_json.as_deref().unwrap()).unwrap();
         assert_eq!(out["data"]["name"], "Alice");
         assert_eq!(out["data"]["age"], 30);
     }
@@ -5338,7 +6001,8 @@ mod tests {
         };
         let result = execute_yaml(&node, &ctx);
         assert!(result.output_json.is_some());
-        let out: serde_json::Value = serde_json::from_str(result.output_json.as_deref().unwrap()).unwrap();
+        let out: serde_json::Value =
+            serde_json::from_str(result.output_json.as_deref().unwrap()).unwrap();
         assert!(out["yaml"].as_str().unwrap_or("").contains("hello"));
     }
 
@@ -5373,10 +6037,16 @@ mod tests {
         let node = Node {
             id: "tw1".to_string(),
             node_type: NodeType::Twilio,
-            config: Some(serde_json::json!({ "auth_token": "tok", "to": "+1555", "from": "+1666", "body": "hi" })),
+            config: Some(
+                serde_json::json!({ "auth_token": "tok", "to": "+1555", "from": "+1666", "body": "hi" }),
+            ),
         };
         let result = execute_twilio(&node, &ctx, &client).await;
-        assert!(result.error.as_deref().unwrap_or("").contains("account_sid"));
+        assert!(result
+            .error
+            .as_deref()
+            .unwrap_or("")
+            .contains("account_sid"));
     }
 
     #[tokio::test]
@@ -5415,9 +6085,13 @@ mod tests {
         };
         let result = execute_crypto(&node, &ctx);
         assert!(result.output_json.is_some());
-        let out: serde_json::Value = serde_json::from_str(result.output_json.as_deref().unwrap()).unwrap();
+        let out: serde_json::Value =
+            serde_json::from_str(result.output_json.as_deref().unwrap()).unwrap();
         // SHA256("hello") = 2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824
-        assert_eq!(out["result"], "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824");
+        assert_eq!(
+            out["result"],
+            "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824"
+        );
     }
 
     #[test]
@@ -5426,18 +6100,25 @@ mod tests {
         let node_enc = Node {
             id: "c2".to_string(),
             node_type: NodeType::Crypto,
-            config: Some(serde_json::json!({ "operation": "base64_encode", "source": "hello world" })),
+            config: Some(
+                serde_json::json!({ "operation": "base64_encode", "source": "hello world" }),
+            ),
         };
         let enc = execute_crypto(&node_enc, &ctx);
-        let encoded = serde_json::from_str::<serde_json::Value>(enc.output_json.as_deref().unwrap())
-            .unwrap()["result"].as_str().unwrap().to_string();
+        let encoded =
+            serde_json::from_str::<serde_json::Value>(enc.output_json.as_deref().unwrap()).unwrap()
+                ["result"]
+                .as_str()
+                .unwrap()
+                .to_string();
         let node_dec = Node {
             id: "c3".to_string(),
             node_type: NodeType::Crypto,
             config: Some(serde_json::json!({ "operation": "base64_decode", "source": encoded })),
         };
         let dec = execute_crypto(&node_dec, &ctx);
-        let out: serde_json::Value = serde_json::from_str(dec.output_json.as_deref().unwrap()).unwrap();
+        let out: serde_json::Value =
+            serde_json::from_str(dec.output_json.as_deref().unwrap()).unwrap();
         assert_eq!(out["result"], "hello world");
     }
 
@@ -5450,7 +6131,8 @@ mod tests {
             config: Some(serde_json::json!({ "operation": "random_hex", "length": 16 })),
         };
         let result = execute_crypto(&node, &ctx);
-        let out: serde_json::Value = serde_json::from_str(result.output_json.as_deref().unwrap()).unwrap();
+        let out: serde_json::Value =
+            serde_json::from_str(result.output_json.as_deref().unwrap()).unwrap();
         let hex_str = out["result"].as_str().unwrap();
         assert_eq!(hex_str.len(), 32); // 16 bytes = 32 hex chars
         assert!(hex_str.chars().all(|c| c.is_ascii_hexdigit()));
@@ -5466,7 +6148,8 @@ mod tests {
         };
         let result = execute_date(&node, &ctx);
         assert!(result.output_json.is_some());
-        let out: serde_json::Value = serde_json::from_str(result.output_json.as_deref().unwrap()).unwrap();
+        let out: serde_json::Value =
+            serde_json::from_str(result.output_json.as_deref().unwrap()).unwrap();
         assert!(out["unix"].as_i64().unwrap_or(0) > 0);
         assert!(out["iso"].as_str().unwrap_or("").contains("T"));
     }
@@ -5485,7 +6168,8 @@ mod tests {
             })),
         };
         let result = execute_date(&node, &ctx);
-        let out: serde_json::Value = serde_json::from_str(result.output_json.as_deref().unwrap()).unwrap();
+        let out: serde_json::Value =
+            serde_json::from_str(result.output_json.as_deref().unwrap()).unwrap();
         // 1704067200 + 7200 = 1704074400
         assert_eq!(out["unix"].as_i64().unwrap(), 1704074400);
     }
@@ -5523,7 +6207,9 @@ mod tests {
         let node = Node {
             id: "z2".to_string(),
             node_type: NodeType::Zendesk,
-            config: Some(serde_json::json!({ "subdomain": "mycompany", "endpoint": "/tickets.json" })),
+            config: Some(
+                serde_json::json!({ "subdomain": "mycompany", "endpoint": "/tickets.json" }),
+            ),
         };
         let result = execute_zendesk(&node, &ctx, &client).await;
         assert!(result.error.as_deref().unwrap_or("").contains("token"));
@@ -5580,7 +6266,11 @@ mod tests {
             config: Some(serde_json::json!({ "summary": "Test alert" })),
         };
         let result = execute_pagerduty(&node, &ctx, &client).await;
-        assert!(result.error.as_deref().unwrap_or("").contains("routing_key"));
+        assert!(result
+            .error
+            .as_deref()
+            .unwrap_or("")
+            .contains("routing_key"));
     }
 
     #[test]
@@ -5596,7 +6286,8 @@ mod tests {
         };
         let result = execute_handlebars(&node, &ctx);
         assert!(result.output_json.is_some());
-        let out: serde_json::Value = serde_json::from_str(result.output_json.as_deref().unwrap()).unwrap();
+        let out: serde_json::Value =
+            serde_json::from_str(result.output_json.as_deref().unwrap()).unwrap();
         assert_eq!(out["result"], "Hello, Alice! You have 3 items.");
     }
 
@@ -5612,7 +6303,8 @@ mod tests {
             })),
         };
         let result = execute_handlebars(&node, &ctx);
-        let out: serde_json::Value = serde_json::from_str(result.output_json.as_deref().unwrap()).unwrap();
+        let out: serde_json::Value =
+            serde_json::from_str(result.output_json.as_deref().unwrap()).unwrap();
         assert_eq!(out["result"], "a,b,c,");
     }
 
@@ -5637,7 +6329,10 @@ fn execute_math(node: &Node, context: &ExecutionContext) -> NodeExecutionResult 
         None => return NodeExecutionResult::failed("Math node requires config"),
     };
     let config = resolve_config_strings(cfg, context);
-    let operation = config.get("operation").and_then(|v| v.as_str()).unwrap_or("add");
+    let operation = config
+        .get("operation")
+        .and_then(|v| v.as_str())
+        .unwrap_or("add");
 
     let get_f64 = |key: &str| -> Option<f64> {
         config.get(key).and_then(|v| match v {
@@ -5648,13 +6343,29 @@ fn execute_math(node: &Node, context: &ExecutionContext) -> NodeExecutionResult 
     };
 
     let result: f64 = match operation {
-        "abs"   => { let a = get_f64("a").unwrap_or(0.0); a.abs() }
-        "round" => { let a = get_f64("a").unwrap_or(0.0); let p = get_f64("precision").unwrap_or(0.0) as i32; let f = 10f64.powi(p); (a * f).round() / f }
-        "ceil"  => { let a = get_f64("a").unwrap_or(0.0); a.ceil() }
-        "floor" => { let a = get_f64("a").unwrap_or(0.0); a.floor() }
-        "sqrt"  => {
+        "abs" => {
             let a = get_f64("a").unwrap_or(0.0);
-            if a < 0.0 { return NodeExecutionResult::failed("sqrt of negative"); }
+            a.abs()
+        }
+        "round" => {
+            let a = get_f64("a").unwrap_or(0.0);
+            let p = get_f64("precision").unwrap_or(0.0) as i32;
+            let f = 10f64.powi(p);
+            (a * f).round() / f
+        }
+        "ceil" => {
+            let a = get_f64("a").unwrap_or(0.0);
+            a.ceil()
+        }
+        "floor" => {
+            let a = get_f64("a").unwrap_or(0.0);
+            a.floor()
+        }
+        "sqrt" => {
+            let a = get_f64("a").unwrap_or(0.0);
+            if a < 0.0 {
+                return NodeExecutionResult::failed("sqrt of negative");
+            }
             a.sqrt()
         }
         "pow" => {
@@ -5665,61 +6376,75 @@ fn execute_math(node: &Node, context: &ExecutionContext) -> NodeExecutionResult 
         "mod" => {
             let a = get_f64("a").unwrap_or(0.0);
             let b = get_f64("b").unwrap_or(1.0);
-            if b == 0.0 { return NodeExecutionResult::failed("modulo by zero"); }
+            if b == 0.0 {
+                return NodeExecutionResult::failed("modulo by zero");
+            }
             a % b
         }
         "min" | "max" | "sum" | "avg" => {
             let items: Vec<f64> = match config.get("items") {
-                Some(serde_json::Value::Array(arr)) => {
-                    arr.iter().filter_map(|v| match v {
+                Some(serde_json::Value::Array(arr)) => arr
+                    .iter()
+                    .filter_map(|v| match v {
                         serde_json::Value::Number(n) => n.as_f64(),
                         serde_json::Value::String(s) => s.parse().ok(),
                         _ => None,
-                    }).collect()
-                }
-                _ => vec![
-                    get_f64("a").unwrap_or(0.0),
-                    get_f64("b").unwrap_or(0.0),
-                ],
+                    })
+                    .collect(),
+                _ => vec![get_f64("a").unwrap_or(0.0), get_f64("b").unwrap_or(0.0)],
             };
-            if items.is_empty() { return NodeExecutionResult::failed("items array is empty"); }
+            if items.is_empty() {
+                return NodeExecutionResult::failed("items array is empty");
+            }
             match operation {
                 "min" => items.iter().cloned().fold(f64::INFINITY, f64::min),
                 "max" => items.iter().cloned().fold(f64::NEG_INFINITY, f64::max),
                 "sum" => items.iter().sum(),
                 "avg" => items.iter().sum::<f64>() / items.len() as f64,
-                _     => unreachable!(),
+                _ => unreachable!(),
             }
         }
         "clamp" => {
-            let a   = get_f64("a").unwrap_or(0.0);
+            let a = get_f64("a").unwrap_or(0.0);
             let min = get_f64("min").unwrap_or(f64::NEG_INFINITY);
             let max = get_f64("max").unwrap_or(f64::INFINITY);
             a.clamp(min, max)
         }
         "log" => {
-            let a    = get_f64("a").unwrap_or(0.0);
+            let a = get_f64("a").unwrap_or(0.0);
             let base = get_f64("b").unwrap_or(std::f64::consts::E);
-            if a <= 0.0 { return NodeExecutionResult::failed("log of non-positive"); }
+            if a <= 0.0 {
+                return NodeExecutionResult::failed("log of non-positive");
+            }
             a.ln() / base.ln()
         }
         "pct_change" => {
             let a = get_f64("a").unwrap_or(0.0);
             let b = get_f64("b").unwrap_or(0.0);
-            if a == 0.0 { return NodeExecutionResult::failed("pct_change: base is zero"); }
+            if a == 0.0 {
+                return NodeExecutionResult::failed("pct_change: base is zero");
+            }
             (b - a) / a * 100.0
         }
         "eval" => {
-            let expr_raw = config.get("expression").and_then(|v| v.as_str()).unwrap_or("");
+            let expr_raw = config
+                .get("expression")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
             let mut engine = rhai::Engine::new();
             engine.set_max_operations(10_000);
             match engine.eval::<rhai::Dynamic>(expr_raw) {
                 Ok(v) => {
-                    if let Some(n) = v.as_float().ok().or_else(|| v.as_int().ok().map(|i| i as f64)) {
+                    if let Some(n) = v
+                        .as_float()
+                        .ok()
+                        .or_else(|| v.as_int().ok().map(|i| i as f64))
+                    {
                         n
                     } else {
                         return NodeExecutionResult::succeeded(
-                            serde_json::json!({ "result": v.to_string(), "operation": "eval" }).to_string()
+                            serde_json::json!({ "result": v.to_string(), "operation": "eval" })
+                                .to_string(),
                         );
                     }
                 }
@@ -5738,7 +6463,7 @@ fn execute_math(node: &Node, context: &ExecutionContext) -> NodeExecutionResult 
     let rounded = (result * factor).round() / factor;
 
     NodeExecutionResult::succeeded(
-        serde_json::json!({ "result": rounded, "operation": operation }).to_string()
+        serde_json::json!({ "result": rounded, "operation": operation }).to_string(),
     )
 }
 
@@ -5750,16 +6475,17 @@ fn execute_array_utils(node: &Node, context: &ExecutionContext) -> NodeExecution
         None => return NodeExecutionResult::failed("ArrayUtils node requires config"),
     };
     let config = resolve_config_strings(cfg, context);
-    let operation = config.get("operation").and_then(|v| v.as_str()).unwrap_or("chunk");
+    let operation = config
+        .get("operation")
+        .and_then(|v| v.as_str())
+        .unwrap_or("chunk");
 
     let parse_source = |v: &serde_json::Value| -> Result<Vec<serde_json::Value>, &'static str> {
         match v {
-            serde_json::Value::String(s) => {
-                match serde_json::from_str::<serde_json::Value>(s) {
-                    Ok(serde_json::Value::Array(a)) => Ok(a),
-                    _ => Err("source is not a JSON array"),
-                }
-            }
+            serde_json::Value::String(s) => match serde_json::from_str::<serde_json::Value>(s) {
+                Ok(serde_json::Value::Array(a)) => Ok(a),
+                _ => Err("source is not a JSON array"),
+            },
             serde_json::Value::Array(a) => Ok(a.clone()),
             _ => Err("source must be a JSON array"),
         }
@@ -5780,7 +6506,8 @@ fn execute_array_utils(node: &Node, context: &ExecutionContext) -> NodeExecution
     };
 
     let get_usize = |key: &str, default: usize| -> usize {
-        config.get(key)
+        config
+            .get(key)
             .and_then(|v| match v {
                 serde_json::Value::Number(n) => n.as_u64().map(|n| n as usize),
                 serde_json::Value::String(s) => s.parse().ok(),
@@ -5789,7 +6516,8 @@ fn execute_array_utils(node: &Node, context: &ExecutionContext) -> NodeExecution
             .unwrap_or(default)
     };
     let get_i64 = |key: &str, default: i64| -> i64 {
-        config.get(key)
+        config
+            .get(key)
             .and_then(|v| match v {
                 serde_json::Value::Number(n) => n.as_i64(),
                 serde_json::Value::String(s) => s.parse().ok(),
@@ -5801,23 +6529,26 @@ fn execute_array_utils(node: &Node, context: &ExecutionContext) -> NodeExecution
     let items: Vec<serde_json::Value> = match operation {
         "chunk" => {
             let size = get_usize("size", 2).max(1);
-            source_arr.chunks(size)
+            source_arr
+                .chunks(size)
                 .map(|c| serde_json::Value::Array(c.to_vec()))
                 .collect()
         }
-        "flatten" => {
-            source_arr.into_iter().flat_map(|v| match v {
+        "flatten" => source_arr
+            .into_iter()
+            .flat_map(|v| match v {
                 serde_json::Value::Array(inner) => inner,
                 other => vec![other],
-            }).collect()
-        }
-        "compact" => {
-            source_arr.into_iter().filter(|v| {
+            })
+            .collect(),
+        "compact" => source_arr
+            .into_iter()
+            .filter(|v| {
                 !matches!(v, serde_json::Value::Null)
                     && v.as_str() != Some("")
                     && v.as_bool() != Some(false)
-            }).collect()
-        }
+            })
+            .collect(),
         "zip" => {
             let source2_arr = match config.get("source2") {
                 Some(serde_json::Value::String(s)) => {
@@ -5829,7 +6560,9 @@ fn execute_array_utils(node: &Node, context: &ExecutionContext) -> NodeExecution
                 Some(serde_json::Value::Array(a)) => a.clone(),
                 _ => return NodeExecutionResult::failed("zip requires 'source2' array"),
             };
-            source_arr.into_iter().zip(source2_arr.into_iter())
+            source_arr
+                .into_iter()
+                .zip(source2_arr.into_iter())
                 .map(|(a, b)| serde_json::json!([a, b]))
                 .collect()
         }
@@ -5857,9 +6590,11 @@ fn execute_array_utils(node: &Node, context: &ExecutionContext) -> NodeExecution
         }
         "range" => {
             let start = get_i64("start", 0);
-            let end   = get_i64("end", 10);
-            let step  = get_i64("step", 1);
-            if step == 0 { return NodeExecutionResult::failed("range step cannot be zero"); }
+            let end = get_i64("end", 10);
+            let step = get_i64("step", 1);
+            if step == 0 {
+                return NodeExecutionResult::failed("range step cannot be zero");
+            }
             let mut v = Vec::new();
             let mut i = start;
             while (step > 0 && i < end) || (step < 0 && i > end) {
@@ -5873,9 +6608,10 @@ fn execute_array_utils(node: &Node, context: &ExecutionContext) -> NodeExecution
                 Some(f) => f.to_string(),
                 None => return NodeExecutionResult::failed("pluck requires 'field'"),
             };
-            source_arr.into_iter().filter_map(|v| {
-                json_path(&v, &field).cloned()
-            }).collect()
+            source_arr
+                .into_iter()
+                .filter_map(|v| json_path(&v, &field).cloned())
+                .collect()
         }
         "first_n" => {
             let n = get_usize("n", 1);
@@ -5891,7 +6627,7 @@ fn execute_array_utils(node: &Node, context: &ExecutionContext) -> NodeExecution
 
     let count = items.len();
     NodeExecutionResult::succeeded(
-        serde_json::json!({ "items": items, "count": count }).to_string()
+        serde_json::json!({ "items": items, "count": count }).to_string(),
     )
 }
 
@@ -5916,9 +6652,19 @@ async fn execute_shopify(
         Some(t) if !t.is_empty() => t.to_string(),
         _ => return NodeExecutionResult::failed("Shopify node missing 'token'"),
     };
-    let endpoint = cfg.get("endpoint").and_then(|v| v.as_str()).unwrap_or("/products.json");
-    let method = cfg.get("method").and_then(|v| v.as_str()).unwrap_or("GET").to_uppercase();
-    let api_version = cfg.get("api_version").and_then(|v| v.as_str()).unwrap_or("2024-01");
+    let endpoint = cfg
+        .get("endpoint")
+        .and_then(|v| v.as_str())
+        .unwrap_or("/products.json");
+    let method = cfg
+        .get("method")
+        .and_then(|v| v.as_str())
+        .unwrap_or("GET")
+        .to_uppercase();
+    let api_version = cfg
+        .get("api_version")
+        .and_then(|v| v.as_str())
+        .unwrap_or("2024-01");
 
     let url = format!("https://{shop}.myshopify.com/admin/api/{api_version}{endpoint}");
 
@@ -5941,7 +6687,7 @@ async fn execute_shopify(
             let status = resp.status().as_u16();
             let body: serde_json::Value = resp.json().await.unwrap_or(serde_json::Value::Null);
             NodeExecutionResult::succeeded(
-                serde_json::json!({ "status": status, "body": body }).to_string()
+                serde_json::json!({ "status": status, "body": body }).to_string(),
             )
         }
         Err(e) => NodeExecutionResult::failed(format!("Shopify request error: {e}")),
@@ -5969,9 +6715,20 @@ async fn execute_datadog(
         Some(e) if !e.is_empty() => e.to_string(),
         _ => return NodeExecutionResult::failed("Datadog node missing 'endpoint'"),
     };
-    let site    = cfg.get("site").and_then(|v| v.as_str()).unwrap_or("datadoghq.com");
-    let method  = cfg.get("method").and_then(|v| v.as_str()).unwrap_or("GET").to_uppercase();
-    let app_key = cfg.get("app_key").and_then(|v| v.as_str()).unwrap_or("").to_string();
+    let site = cfg
+        .get("site")
+        .and_then(|v| v.as_str())
+        .unwrap_or("datadoghq.com");
+    let method = cfg
+        .get("method")
+        .and_then(|v| v.as_str())
+        .unwrap_or("GET")
+        .to_uppercase();
+    let app_key = cfg
+        .get("app_key")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
 
     let url = format!("https://api.{site}{endpoint}");
 
@@ -5998,7 +6755,7 @@ async fn execute_datadog(
             let status = resp.status().as_u16();
             let body: serde_json::Value = resp.json().await.unwrap_or(serde_json::Value::Null);
             NodeExecutionResult::succeeded(
-                serde_json::json!({ "status": status, "body": body }).to_string()
+                serde_json::json!({ "status": status, "body": body }).to_string(),
             )
         }
         Err(e) => NodeExecutionResult::failed(format!("Datadog request error: {e}")),
@@ -6024,34 +6781,50 @@ mod tests_262_265 {
 
     #[test]
     fn math_add() {
-        let node = Node { id: "m1".into(), node_type: NodeType::Math,
-            config: Some(serde_json::json!({ "operation": "add", "a": 3, "b": 4 })) };
+        let node = Node {
+            id: "m1".into(),
+            node_type: NodeType::Math,
+            config: Some(serde_json::json!({ "operation": "add", "a": 3, "b": 4 })),
+        };
         let r = execute_math(&node, &ctx());
-        let out: serde_json::Value = serde_json::from_str(r.output_json.as_deref().unwrap()).unwrap();
+        let out: serde_json::Value =
+            serde_json::from_str(r.output_json.as_deref().unwrap()).unwrap();
         assert_eq!(out["result"], 7.0);
     }
 
     #[test]
     fn math_round_precision() {
-        let node = Node { id: "m2".into(), node_type: NodeType::Math,
-            config: Some(serde_json::json!({ "operation": "round", "a": 3.14159, "precision": 2 })) };
+        let node = Node {
+            id: "m2".into(),
+            node_type: NodeType::Math,
+            config: Some(serde_json::json!({ "operation": "round", "a": 3.14159, "precision": 2 })),
+        };
         let r = execute_math(&node, &ctx());
-        let out: serde_json::Value = serde_json::from_str(r.output_json.as_deref().unwrap()).unwrap();
+        let out: serde_json::Value =
+            serde_json::from_str(r.output_json.as_deref().unwrap()).unwrap();
         assert_eq!(out["result"], 3.14);
     }
 
     #[test]
     fn math_sum_array() {
-        let node = Node { id: "m3".into(), node_type: NodeType::Math,
-            config: Some(serde_json::json!({ "operation": "sum", "items": [1, 2, 3, 4] })) };
+        let node = Node {
+            id: "m3".into(),
+            node_type: NodeType::Math,
+            config: Some(serde_json::json!({ "operation": "sum", "items": [1, 2, 3, 4] })),
+        };
         let r = execute_math(&node, &ctx());
-        let out: serde_json::Value = serde_json::from_str(r.output_json.as_deref().unwrap()).unwrap();
+        let out: serde_json::Value =
+            serde_json::from_str(r.output_json.as_deref().unwrap()).unwrap();
         assert_eq!(out["result"], 10.0);
     }
 
     #[test]
     fn math_fails_without_config() {
-        let node = Node { id: "m4".into(), node_type: NodeType::Math, config: None };
+        let node = Node {
+            id: "m4".into(),
+            node_type: NodeType::Math,
+            config: None,
+        };
         let r = execute_math(&node, &ctx());
         assert!(r.error.is_some());
     }
@@ -6060,38 +6833,58 @@ mod tests_262_265 {
 
     #[test]
     fn array_utils_chunk() {
-        let node = Node { id: "a1".into(), node_type: NodeType::ArrayUtils,
-            config: Some(serde_json::json!({ "operation": "chunk", "source": [1,2,3,4,5], "size": 2 })) };
+        let node = Node {
+            id: "a1".into(),
+            node_type: NodeType::ArrayUtils,
+            config: Some(
+                serde_json::json!({ "operation": "chunk", "source": [1,2,3,4,5], "size": 2 }),
+            ),
+        };
         let r = execute_array_utils(&node, &ctx());
-        let out: serde_json::Value = serde_json::from_str(r.output_json.as_deref().unwrap()).unwrap();
+        let out: serde_json::Value =
+            serde_json::from_str(r.output_json.as_deref().unwrap()).unwrap();
         assert_eq!(out["count"], 3);
     }
 
     #[test]
     fn array_utils_pluck() {
-        let node = Node { id: "a2".into(), node_type: NodeType::ArrayUtils,
+        let node = Node {
+            id: "a2".into(),
+            node_type: NodeType::ArrayUtils,
             config: Some(serde_json::json!({
                 "operation": "pluck",
                 "source": [{"name":"a"},{"name":"b"}],
                 "field": "name"
-            })) };
+            })),
+        };
         let r = execute_array_utils(&node, &ctx());
-        let out: serde_json::Value = serde_json::from_str(r.output_json.as_deref().unwrap()).unwrap();
+        let out: serde_json::Value =
+            serde_json::from_str(r.output_json.as_deref().unwrap()).unwrap();
         assert_eq!(out["items"], serde_json::json!(["a", "b"]));
     }
 
     #[test]
     fn array_utils_range() {
-        let node = Node { id: "a3".into(), node_type: NodeType::ArrayUtils,
-            config: Some(serde_json::json!({ "operation": "range", "start": 0, "end": 5, "step": 1 })) };
+        let node = Node {
+            id: "a3".into(),
+            node_type: NodeType::ArrayUtils,
+            config: Some(
+                serde_json::json!({ "operation": "range", "start": 0, "end": 5, "step": 1 }),
+            ),
+        };
         let r = execute_array_utils(&node, &ctx());
-        let out: serde_json::Value = serde_json::from_str(r.output_json.as_deref().unwrap()).unwrap();
+        let out: serde_json::Value =
+            serde_json::from_str(r.output_json.as_deref().unwrap()).unwrap();
         assert_eq!(out["count"], 5);
     }
 
     #[test]
     fn array_utils_fails_without_config() {
-        let node = Node { id: "a4".into(), node_type: NodeType::ArrayUtils, config: None };
+        let node = Node {
+            id: "a4".into(),
+            node_type: NodeType::ArrayUtils,
+            config: None,
+        };
         let r = execute_array_utils(&node, &ctx());
         assert!(r.error.is_some());
     }
@@ -6101,8 +6894,11 @@ mod tests_262_265 {
     #[tokio::test]
     async fn shopify_fails_without_shop() {
         let client = reqwest::Client::new();
-        let node = Node { id: "s1".into(), node_type: NodeType::Shopify,
-            config: Some(serde_json::json!({ "token": "tok" })) };
+        let node = Node {
+            id: "s1".into(),
+            node_type: NodeType::Shopify,
+            config: Some(serde_json::json!({ "token": "tok" })),
+        };
         let r = execute_shopify(&node, &ctx(), &client).await;
         assert!(r.error.as_deref().unwrap_or("").contains("shop"));
     }
@@ -6110,8 +6906,11 @@ mod tests_262_265 {
     #[tokio::test]
     async fn shopify_fails_without_token() {
         let client = reqwest::Client::new();
-        let node = Node { id: "s2".into(), node_type: NodeType::Shopify,
-            config: Some(serde_json::json!({ "shop": "mystore" })) };
+        let node = Node {
+            id: "s2".into(),
+            node_type: NodeType::Shopify,
+            config: Some(serde_json::json!({ "shop": "mystore" })),
+        };
         let r = execute_shopify(&node, &ctx(), &client).await;
         assert!(r.error.as_deref().unwrap_or("").contains("token"));
     }
@@ -6121,8 +6920,11 @@ mod tests_262_265 {
     #[tokio::test]
     async fn datadog_fails_without_api_key() {
         let client = reqwest::Client::new();
-        let node = Node { id: "d1".into(), node_type: NodeType::Datadog,
-            config: Some(serde_json::json!({ "endpoint": "/api/v1/validate" })) };
+        let node = Node {
+            id: "d1".into(),
+            node_type: NodeType::Datadog,
+            config: Some(serde_json::json!({ "endpoint": "/api/v1/validate" })),
+        };
         let r = execute_datadog(&node, &ctx(), &client).await;
         assert!(r.error.as_deref().unwrap_or("").contains("api_key"));
     }
@@ -6130,8 +6932,11 @@ mod tests_262_265 {
     #[tokio::test]
     async fn datadog_fails_without_endpoint() {
         let client = reqwest::Client::new();
-        let node = Node { id: "d2".into(), node_type: NodeType::Datadog,
-            config: Some(serde_json::json!({ "api_key": "abc123" })) };
+        let node = Node {
+            id: "d2".into(),
+            node_type: NodeType::Datadog,
+            config: Some(serde_json::json!({ "api_key": "abc123" })),
+        };
         let r = execute_datadog(&node, &ctx(), &client).await;
         assert!(r.error.as_deref().unwrap_or("").contains("endpoint"));
     }
@@ -6152,14 +6957,25 @@ async fn execute_salesforce(
 
     let token = match cfg.get("token").and_then(|v| v.as_str()) {
         Some(t) if !t.is_empty() => t.to_string(),
-        _ => return NodeExecutionResult::failed("Salesforce node missing 'token' (OAuth access token)"),
+        _ => {
+            return NodeExecutionResult::failed(
+                "Salesforce node missing 'token' (OAuth access token)",
+            )
+        }
     };
     let instance_url = match cfg.get("instance_url").and_then(|v| v.as_str()) {
         Some(u) if !u.is_empty() => u.trim_end_matches('/').to_string(),
         _ => return NodeExecutionResult::failed("Salesforce node missing 'instance_url'"),
     };
-    let endpoint = cfg.get("endpoint").and_then(|v| v.as_str()).unwrap_or("/services/data/v59.0/sobjects");
-    let method  = cfg.get("method").and_then(|v| v.as_str()).unwrap_or("GET").to_uppercase();
+    let endpoint = cfg
+        .get("endpoint")
+        .and_then(|v| v.as_str())
+        .unwrap_or("/services/data/v59.0/sobjects");
+    let method = cfg
+        .get("method")
+        .and_then(|v| v.as_str())
+        .unwrap_or("GET")
+        .to_uppercase();
 
     let url = format!("{instance_url}{endpoint}");
 
@@ -6182,7 +6998,7 @@ async fn execute_salesforce(
             let status = resp.status().as_u16();
             let body: serde_json::Value = resp.json().await.unwrap_or(serde_json::Value::Null);
             NodeExecutionResult::succeeded(
-                serde_json::json!({ "status": status, "body": body }).to_string()
+                serde_json::json!({ "status": status, "body": body }).to_string(),
             )
         }
         Err(e) => NodeExecutionResult::failed(format!("Salesforce request error: {e}")),
@@ -6208,18 +7024,26 @@ async fn execute_freshdesk(
     };
     let domain = match cfg.get("domain").and_then(|v| v.as_str()) {
         Some(d) if !d.is_empty() => d.trim_end_matches('/').to_string(),
-        _ => return NodeExecutionResult::failed("Freshdesk node missing 'domain' (e.g. yourcompany.freshdesk.com)"),
+        _ => {
+            return NodeExecutionResult::failed(
+                "Freshdesk node missing 'domain' (e.g. yourcompany.freshdesk.com)",
+            )
+        }
     };
     let endpoint = match cfg.get("endpoint").and_then(|v| v.as_str()) {
         Some(e) if !e.is_empty() => e.to_string(),
         _ => return NodeExecutionResult::failed("Freshdesk node missing 'endpoint'"),
     };
-    let method = cfg.get("method").and_then(|v| v.as_str()).unwrap_or("GET").to_uppercase();
+    let method = cfg
+        .get("method")
+        .and_then(|v| v.as_str())
+        .unwrap_or("GET")
+        .to_uppercase();
 
     // Freshdesk uses HTTP Basic auth: api_key as username, "X" as password
     use base64::Engine as _;
-    let credentials = base64::engine::general_purpose::STANDARD
-        .encode(format!("{api_key}:X").as_bytes());
+    let credentials =
+        base64::engine::general_purpose::STANDARD.encode(format!("{api_key}:X").as_bytes());
 
     let url = format!("https://{domain}{endpoint}");
 
@@ -6242,7 +7066,7 @@ async fn execute_freshdesk(
             let status = resp.status().as_u16();
             let body: serde_json::Value = resp.json().await.unwrap_or(serde_json::Value::Null);
             NodeExecutionResult::succeeded(
-                serde_json::json!({ "status": status, "body": body }).to_string()
+                serde_json::json!({ "status": status, "body": body }).to_string(),
             )
         }
         Err(e) => NodeExecutionResult::failed(format!("Freshdesk request error: {e}")),
@@ -6274,18 +7098,30 @@ async fn execute_mailgun(
         Some(t) if !t.is_empty() => t.to_string(),
         _ => return NodeExecutionResult::failed("Mailgun node missing 'to' address"),
     };
-    let from    = cfg.get("from").and_then(|v| v.as_str()).unwrap_or("noreply@example.com").to_string();
-    let subject = cfg.get("subject").and_then(|v| v.as_str()).unwrap_or("(no subject)").to_string();
+    let from = cfg
+        .get("from")
+        .and_then(|v| v.as_str())
+        .unwrap_or("noreply@example.com")
+        .to_string();
+    let subject = cfg
+        .get("subject")
+        .and_then(|v| v.as_str())
+        .unwrap_or("(no subject)")
+        .to_string();
 
     // Support html or text content
-    let html    = cfg.get("html").and_then(|v| v.as_str()).map(str::to_string);
-    let text    = cfg.get("text").and_then(|v| v.as_str()).map(str::to_string);
-    let region  = cfg.get("region").and_then(|v| v.as_str()).unwrap_or("us");
-    let base    = if region == "eu" { "api.eu.mailgun.net" } else { "api.mailgun.net" };
+    let html = cfg.get("html").and_then(|v| v.as_str()).map(str::to_string);
+    let text = cfg.get("text").and_then(|v| v.as_str()).map(str::to_string);
+    let region = cfg.get("region").and_then(|v| v.as_str()).unwrap_or("us");
+    let base = if region == "eu" {
+        "api.eu.mailgun.net"
+    } else {
+        "api.mailgun.net"
+    };
 
     use base64::Engine as _;
-    let credentials = base64::engine::general_purpose::STANDARD
-        .encode(format!("api:{api_key}").as_bytes());
+    let credentials =
+        base64::engine::general_purpose::STANDARD.encode(format!("api:{api_key}").as_bytes());
 
     let url = format!("https://{base}/v3/{domain}/messages");
 
@@ -6294,8 +7130,12 @@ async fn execute_mailgun(
         ("to".to_string(), to),
         ("subject".to_string(), subject),
     ];
-    if let Some(h) = html  { params.push(("html".to_string(), h)); }
-    if let Some(t) = text  { params.push(("text".to_string(), t)); }
+    if let Some(h) = html {
+        params.push(("html".to_string(), h));
+    }
+    if let Some(t) = text {
+        params.push(("text".to_string(), t));
+    }
 
     match client
         .post(&url)
@@ -6308,7 +7148,7 @@ async fn execute_mailgun(
             let status = resp.status().as_u16();
             let body: serde_json::Value = resp.json().await.unwrap_or(serde_json::Value::Null);
             NodeExecutionResult::succeeded(
-                serde_json::json!({ "status": status, "body": body }).to_string()
+                serde_json::json!({ "status": status, "body": body }).to_string(),
             )
         }
         Err(e) => NodeExecutionResult::failed(format!("Mailgun request error: {e}")),
@@ -6330,13 +7170,21 @@ async fn execute_asana(
 
     let token = match cfg.get("token").and_then(|v| v.as_str()) {
         Some(t) if !t.is_empty() => t.to_string(),
-        _ => return NodeExecutionResult::failed("Asana node missing 'token' (Personal Access Token)"),
+        _ => {
+            return NodeExecutionResult::failed(
+                "Asana node missing 'token' (Personal Access Token)",
+            )
+        }
     };
     let endpoint = match cfg.get("endpoint").and_then(|v| v.as_str()) {
         Some(e) if !e.is_empty() => e.to_string(),
         _ => return NodeExecutionResult::failed("Asana node missing 'endpoint' (e.g. /tasks)"),
     };
-    let method = cfg.get("method").and_then(|v| v.as_str()).unwrap_or("GET").to_uppercase();
+    let method = cfg
+        .get("method")
+        .and_then(|v| v.as_str())
+        .unwrap_or("GET")
+        .to_uppercase();
 
     let url = format!("https://app.asana.com/api/1.0{endpoint}");
 
@@ -6360,7 +7208,7 @@ async fn execute_asana(
             let status = resp.status().as_u16();
             let body: serde_json::Value = resp.json().await.unwrap_or(serde_json::Value::Null);
             NodeExecutionResult::succeeded(
-                serde_json::json!({ "status": status, "body": body }).to_string()
+                serde_json::json!({ "status": status, "body": body }).to_string(),
             )
         }
         Err(e) => NodeExecutionResult::failed(format!("Asana request error: {e}")),
@@ -6387,8 +7235,11 @@ mod tests_266_269 {
     #[tokio::test]
     async fn salesforce_fails_without_token() {
         let client = reqwest::Client::new();
-        let node = Node { id: "sf1".into(), node_type: NodeType::Salesforce,
-            config: Some(serde_json::json!({ "instance_url": "https://myorg.salesforce.com" })) };
+        let node = Node {
+            id: "sf1".into(),
+            node_type: NodeType::Salesforce,
+            config: Some(serde_json::json!({ "instance_url": "https://myorg.salesforce.com" })),
+        };
         let r = execute_salesforce(&node, &ctx(), &client).await;
         assert!(r.error.as_deref().unwrap_or("").contains("token"));
     }
@@ -6396,8 +7247,11 @@ mod tests_266_269 {
     #[tokio::test]
     async fn salesforce_fails_without_instance_url() {
         let client = reqwest::Client::new();
-        let node = Node { id: "sf2".into(), node_type: NodeType::Salesforce,
-            config: Some(serde_json::json!({ "token": "Bearer abc" })) };
+        let node = Node {
+            id: "sf2".into(),
+            node_type: NodeType::Salesforce,
+            config: Some(serde_json::json!({ "token": "Bearer abc" })),
+        };
         let r = execute_salesforce(&node, &ctx(), &client).await;
         assert!(r.error.as_deref().unwrap_or("").contains("instance_url"));
     }
@@ -6407,8 +7261,13 @@ mod tests_266_269 {
     #[tokio::test]
     async fn freshdesk_fails_without_api_key() {
         let client = reqwest::Client::new();
-        let node = Node { id: "fd1".into(), node_type: NodeType::Freshdesk,
-            config: Some(serde_json::json!({ "domain": "co.freshdesk.com", "endpoint": "/tickets" })) };
+        let node = Node {
+            id: "fd1".into(),
+            node_type: NodeType::Freshdesk,
+            config: Some(
+                serde_json::json!({ "domain": "co.freshdesk.com", "endpoint": "/tickets" }),
+            ),
+        };
         let r = execute_freshdesk(&node, &ctx(), &client).await;
         assert!(r.error.as_deref().unwrap_or("").contains("api_key"));
     }
@@ -6416,8 +7275,11 @@ mod tests_266_269 {
     #[tokio::test]
     async fn freshdesk_fails_without_domain() {
         let client = reqwest::Client::new();
-        let node = Node { id: "fd2".into(), node_type: NodeType::Freshdesk,
-            config: Some(serde_json::json!({ "api_key": "abc", "endpoint": "/tickets" })) };
+        let node = Node {
+            id: "fd2".into(),
+            node_type: NodeType::Freshdesk,
+            config: Some(serde_json::json!({ "api_key": "abc", "endpoint": "/tickets" })),
+        };
         let r = execute_freshdesk(&node, &ctx(), &client).await;
         assert!(r.error.as_deref().unwrap_or("").contains("domain"));
     }
@@ -6427,8 +7289,11 @@ mod tests_266_269 {
     #[tokio::test]
     async fn mailgun_fails_without_api_key() {
         let client = reqwest::Client::new();
-        let node = Node { id: "mg1".into(), node_type: NodeType::Mailgun,
-            config: Some(serde_json::json!({ "domain": "mg.example.com", "to": "a@b.com" })) };
+        let node = Node {
+            id: "mg1".into(),
+            node_type: NodeType::Mailgun,
+            config: Some(serde_json::json!({ "domain": "mg.example.com", "to": "a@b.com" })),
+        };
         let r = execute_mailgun(&node, &ctx(), &client).await;
         assert!(r.error.as_deref().unwrap_or("").contains("api_key"));
     }
@@ -6436,8 +7301,11 @@ mod tests_266_269 {
     #[tokio::test]
     async fn mailgun_fails_without_to() {
         let client = reqwest::Client::new();
-        let node = Node { id: "mg2".into(), node_type: NodeType::Mailgun,
-            config: Some(serde_json::json!({ "api_key": "key-abc", "domain": "mg.example.com" })) };
+        let node = Node {
+            id: "mg2".into(),
+            node_type: NodeType::Mailgun,
+            config: Some(serde_json::json!({ "api_key": "key-abc", "domain": "mg.example.com" })),
+        };
         let r = execute_mailgun(&node, &ctx(), &client).await;
         assert!(r.error.as_deref().unwrap_or("").contains("to"));
     }
@@ -6447,8 +7315,11 @@ mod tests_266_269 {
     #[tokio::test]
     async fn asana_fails_without_token() {
         let client = reqwest::Client::new();
-        let node = Node { id: "as1".into(), node_type: NodeType::Asana,
-            config: Some(serde_json::json!({ "endpoint": "/tasks" })) };
+        let node = Node {
+            id: "as1".into(),
+            node_type: NodeType::Asana,
+            config: Some(serde_json::json!({ "endpoint": "/tasks" })),
+        };
         let r = execute_asana(&node, &ctx(), &client).await;
         assert!(r.error.as_deref().unwrap_or("").contains("token"));
     }
@@ -6456,8 +7327,11 @@ mod tests_266_269 {
     #[tokio::test]
     async fn asana_fails_without_endpoint() {
         let client = reqwest::Client::new();
-        let node = Node { id: "as2".into(), node_type: NodeType::Asana,
-            config: Some(serde_json::json!({ "token": "1/abc" })) };
+        let node = Node {
+            id: "as2".into(),
+            node_type: NodeType::Asana,
+            config: Some(serde_json::json!({ "token": "1/abc" })),
+        };
         let r = execute_asana(&node, &ctx(), &client).await;
         assert!(r.error.as_deref().unwrap_or("").contains("endpoint"));
     }
@@ -6478,7 +7352,11 @@ async fn execute_servicenow(
 
     let instance = match cfg.get("instance").and_then(|v| v.as_str()) {
         Some(i) if !i.is_empty() => i.trim_end_matches('/').to_string(),
-        _ => return NodeExecutionResult::failed("ServiceNow node missing 'instance' (e.g. myco.service-now.com)"),
+        _ => {
+            return NodeExecutionResult::failed(
+                "ServiceNow node missing 'instance' (e.g. myco.service-now.com)",
+            )
+        }
     };
     let username = match cfg.get("username").and_then(|v| v.as_str()) {
         Some(u) if !u.is_empty() => u.to_string(),
@@ -6488,9 +7366,15 @@ async fn execute_servicenow(
         Some(p) if !p.is_empty() => p.to_string(),
         _ => return NodeExecutionResult::failed("ServiceNow node missing 'password'"),
     };
-    let endpoint = cfg.get("endpoint").and_then(|v| v.as_str())
+    let endpoint = cfg
+        .get("endpoint")
+        .and_then(|v| v.as_str())
         .unwrap_or("/api/now/table/incident");
-    let method = cfg.get("method").and_then(|v| v.as_str()).unwrap_or("GET").to_uppercase();
+    let method = cfg
+        .get("method")
+        .and_then(|v| v.as_str())
+        .unwrap_or("GET")
+        .to_uppercase();
 
     use base64::Engine as _;
     let credentials = base64::engine::general_purpose::STANDARD
@@ -6518,7 +7402,7 @@ async fn execute_servicenow(
             let status = resp.status().as_u16();
             let body: serde_json::Value = resp.json().await.unwrap_or(serde_json::Value::Null);
             NodeExecutionResult::succeeded(
-                serde_json::json!({ "status": status, "body": body }).to_string()
+                serde_json::json!({ "status": status, "body": body }).to_string(),
             )
         }
         Err(e) => NodeExecutionResult::failed(format!("ServiceNow request error: {e}")),
@@ -6540,22 +7424,36 @@ async fn execute_confluence(
 
     let base_url = match cfg.get("base_url").and_then(|v| v.as_str()) {
         Some(u) if !u.is_empty() => u.trim_end_matches('/').to_string(),
-        _ => return NodeExecutionResult::failed("Confluence node missing 'base_url' (e.g. https://myco.atlassian.net/wiki)"),
+        _ => {
+            return NodeExecutionResult::failed(
+                "Confluence node missing 'base_url' (e.g. https://myco.atlassian.net/wiki)",
+            )
+        }
     };
     let endpoint = match cfg.get("endpoint").and_then(|v| v.as_str()) {
         Some(e) if !e.is_empty() => e.to_string(),
         _ => return NodeExecutionResult::failed("Confluence node missing 'endpoint'"),
     };
-    let method = cfg.get("method").and_then(|v| v.as_str()).unwrap_or("GET").to_uppercase();
+    let method = cfg
+        .get("method")
+        .and_then(|v| v.as_str())
+        .unwrap_or("GET")
+        .to_uppercase();
 
     // Support either Bearer token or Basic auth (email + api_token)
-    let auth_header = if let Some(token) = cfg.get("token").and_then(|v| v.as_str()).filter(|s| !s.is_empty()) {
+    let auth_header = if let Some(token) = cfg
+        .get("token")
+        .and_then(|v| v.as_str())
+        .filter(|s| !s.is_empty())
+    {
         format!("Bearer {token}")
     } else {
         let email = cfg.get("email").and_then(|v| v.as_str()).unwrap_or("");
         let api_token = cfg.get("api_token").and_then(|v| v.as_str()).unwrap_or("");
         if email.is_empty() || api_token.is_empty() {
-            return NodeExecutionResult::failed("Confluence node requires either 'token' or both 'email' and 'api_token'");
+            return NodeExecutionResult::failed(
+                "Confluence node requires either 'token' or both 'email' and 'api_token'",
+            );
         }
         use base64::Engine as _;
         let creds = base64::engine::general_purpose::STANDARD
@@ -6585,7 +7483,7 @@ async fn execute_confluence(
             let status = resp.status().as_u16();
             let body: serde_json::Value = resp.json().await.unwrap_or(serde_json::Value::Null);
             NodeExecutionResult::succeeded(
-                serde_json::json!({ "status": status, "body": body }).to_string()
+                serde_json::json!({ "status": status, "body": body }).to_string(),
             )
         }
         Err(e) => NodeExecutionResult::failed(format!("Confluence request error: {e}")),
@@ -6615,9 +7513,17 @@ async fn execute_bitbucket(
     };
     let endpoint = match cfg.get("endpoint").and_then(|v| v.as_str()) {
         Some(e) if !e.is_empty() => e.to_string(),
-        _ => return NodeExecutionResult::failed("Bitbucket node missing 'endpoint' (e.g. /repositories/workspace/slug)"),
+        _ => {
+            return NodeExecutionResult::failed(
+                "Bitbucket node missing 'endpoint' (e.g. /repositories/workspace/slug)",
+            )
+        }
     };
-    let method = cfg.get("method").and_then(|v| v.as_str()).unwrap_or("GET").to_uppercase();
+    let method = cfg
+        .get("method")
+        .and_then(|v| v.as_str())
+        .unwrap_or("GET")
+        .to_uppercase();
 
     use base64::Engine as _;
     let credentials = base64::engine::general_purpose::STANDARD
@@ -6645,7 +7551,7 @@ async fn execute_bitbucket(
             let status = resp.status().as_u16();
             let body: serde_json::Value = resp.json().await.unwrap_or(serde_json::Value::Null);
             NodeExecutionResult::succeeded(
-                serde_json::json!({ "status": status, "body": body }).to_string()
+                serde_json::json!({ "status": status, "body": body }).to_string(),
             )
         }
         Err(e) => NodeExecutionResult::failed(format!("Bitbucket request error: {e}")),
@@ -6667,7 +7573,11 @@ async fn execute_azure_devops(
 
     let pat = match cfg.get("pat").and_then(|v| v.as_str()) {
         Some(p) if !p.is_empty() => p.to_string(),
-        _ => return NodeExecutionResult::failed("Azure DevOps node missing 'pat' (Personal Access Token)"),
+        _ => {
+            return NodeExecutionResult::failed(
+                "Azure DevOps node missing 'pat' (Personal Access Token)",
+            )
+        }
     };
     let organization = match cfg.get("organization").and_then(|v| v.as_str()) {
         Some(o) if !o.is_empty() => o.to_string(),
@@ -6677,14 +7587,25 @@ async fn execute_azure_devops(
         Some(e) if !e.is_empty() => e.to_string(),
         _ => return NodeExecutionResult::failed("Azure DevOps node missing 'endpoint'"),
     };
-    let project = cfg.get("project").and_then(|v| v.as_str()).unwrap_or("").to_string();
-    let method  = cfg.get("method").and_then(|v| v.as_str()).unwrap_or("GET").to_uppercase();
-    let api_ver = cfg.get("api_version").and_then(|v| v.as_str()).unwrap_or("7.1");
+    let project = cfg
+        .get("project")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+    let method = cfg
+        .get("method")
+        .and_then(|v| v.as_str())
+        .unwrap_or("GET")
+        .to_uppercase();
+    let api_ver = cfg
+        .get("api_version")
+        .and_then(|v| v.as_str())
+        .unwrap_or("7.1");
 
     // ADO uses Basic auth with empty username and PAT as password
     use base64::Engine as _;
-    let credentials = base64::engine::general_purpose::STANDARD
-        .encode(format!(":{pat}").as_bytes());
+    let credentials =
+        base64::engine::general_purpose::STANDARD.encode(format!(":{pat}").as_bytes());
 
     // Build base URL: https://dev.azure.com/{org}/{project}/_apis{endpoint}
     let base = if project.is_empty() {
@@ -6718,7 +7639,7 @@ async fn execute_azure_devops(
             let status = resp.status().as_u16();
             let body: serde_json::Value = resp.json().await.unwrap_or(serde_json::Value::Null);
             NodeExecutionResult::succeeded(
-                serde_json::json!({ "status": status, "body": body }).to_string()
+                serde_json::json!({ "status": status, "body": body }).to_string(),
             )
         }
         Err(e) => NodeExecutionResult::failed(format!("Azure DevOps request error: {e}")),
@@ -6745,8 +7666,11 @@ mod tests_270_273 {
     #[tokio::test]
     async fn servicenow_fails_without_instance() {
         let c = reqwest::Client::new();
-        let n = Node { id: "sn1".into(), node_type: NodeType::Servicenow,
-            config: Some(serde_json::json!({ "username": "admin", "password": "pwd" })) };
+        let n = Node {
+            id: "sn1".into(),
+            node_type: NodeType::Servicenow,
+            config: Some(serde_json::json!({ "username": "admin", "password": "pwd" })),
+        };
         let r = execute_servicenow(&n, &ctx(), &c).await;
         assert!(r.error.as_deref().unwrap_or("").contains("instance"));
     }
@@ -6754,8 +7678,11 @@ mod tests_270_273 {
     #[tokio::test]
     async fn servicenow_fails_without_credentials() {
         let c = reqwest::Client::new();
-        let n = Node { id: "sn2".into(), node_type: NodeType::Servicenow,
-            config: Some(serde_json::json!({ "instance": "myco.service-now.com" })) };
+        let n = Node {
+            id: "sn2".into(),
+            node_type: NodeType::Servicenow,
+            config: Some(serde_json::json!({ "instance": "myco.service-now.com" })),
+        };
         let r = execute_servicenow(&n, &ctx(), &c).await;
         assert!(r.error.is_some());
     }
@@ -6765,8 +7692,11 @@ mod tests_270_273 {
     #[tokio::test]
     async fn confluence_fails_without_base_url() {
         let c = reqwest::Client::new();
-        let n = Node { id: "cf1".into(), node_type: NodeType::Confluence,
-            config: Some(serde_json::json!({ "token": "tok", "endpoint": "/rest/api/content" })) };
+        let n = Node {
+            id: "cf1".into(),
+            node_type: NodeType::Confluence,
+            config: Some(serde_json::json!({ "token": "tok", "endpoint": "/rest/api/content" })),
+        };
         let r = execute_confluence(&n, &ctx(), &c).await;
         assert!(r.error.as_deref().unwrap_or("").contains("base_url"));
     }
@@ -6774,11 +7704,14 @@ mod tests_270_273 {
     #[tokio::test]
     async fn confluence_fails_without_auth() {
         let c = reqwest::Client::new();
-        let n = Node { id: "cf2".into(), node_type: NodeType::Confluence,
+        let n = Node {
+            id: "cf2".into(),
+            node_type: NodeType::Confluence,
             config: Some(serde_json::json!({
                 "base_url": "https://myco.atlassian.net/wiki",
                 "endpoint": "/rest/api/content"
-            })) };
+            })),
+        };
         let r = execute_confluence(&n, &ctx(), &c).await;
         assert!(r.error.is_some());
     }
@@ -6788,8 +7721,13 @@ mod tests_270_273 {
     #[tokio::test]
     async fn bitbucket_fails_without_username() {
         let c = reqwest::Client::new();
-        let n = Node { id: "bb1".into(), node_type: NodeType::Bitbucket,
-            config: Some(serde_json::json!({ "app_password": "pwd", "endpoint": "/repositories/ws/repo" })) };
+        let n = Node {
+            id: "bb1".into(),
+            node_type: NodeType::Bitbucket,
+            config: Some(
+                serde_json::json!({ "app_password": "pwd", "endpoint": "/repositories/ws/repo" }),
+            ),
+        };
         let r = execute_bitbucket(&n, &ctx(), &c).await;
         assert!(r.error.as_deref().unwrap_or("").contains("username"));
     }
@@ -6797,8 +7735,11 @@ mod tests_270_273 {
     #[tokio::test]
     async fn bitbucket_fails_without_endpoint() {
         let c = reqwest::Client::new();
-        let n = Node { id: "bb2".into(), node_type: NodeType::Bitbucket,
-            config: Some(serde_json::json!({ "username": "user", "app_password": "pwd" })) };
+        let n = Node {
+            id: "bb2".into(),
+            node_type: NodeType::Bitbucket,
+            config: Some(serde_json::json!({ "username": "user", "app_password": "pwd" })),
+        };
         let r = execute_bitbucket(&n, &ctx(), &c).await;
         assert!(r.error.as_deref().unwrap_or("").contains("endpoint"));
     }
@@ -6808,8 +7749,13 @@ mod tests_270_273 {
     #[tokio::test]
     async fn azure_devops_fails_without_pat() {
         let c = reqwest::Client::new();
-        let n = Node { id: "az1".into(), node_type: NodeType::AzureDevops,
-            config: Some(serde_json::json!({ "organization": "myorg", "endpoint": "/build/builds" })) };
+        let n = Node {
+            id: "az1".into(),
+            node_type: NodeType::AzureDevops,
+            config: Some(
+                serde_json::json!({ "organization": "myorg", "endpoint": "/build/builds" }),
+            ),
+        };
         let r = execute_azure_devops(&n, &ctx(), &c).await;
         assert!(r.error.as_deref().unwrap_or("").contains("pat"));
     }
@@ -6817,13 +7763,15 @@ mod tests_270_273 {
     #[tokio::test]
     async fn azure_devops_fails_without_organization() {
         let c = reqwest::Client::new();
-        let n = Node { id: "az2".into(), node_type: NodeType::AzureDevops,
-            config: Some(serde_json::json!({ "pat": "abc123", "endpoint": "/build/builds" })) };
+        let n = Node {
+            id: "az2".into(),
+            node_type: NodeType::AzureDevops,
+            config: Some(serde_json::json!({ "pat": "abc123", "endpoint": "/build/builds" })),
+        };
         let r = execute_azure_devops(&n, &ctx(), &c).await;
         assert!(r.error.as_deref().unwrap_or("").contains("organization"));
     }
 }
-
 
 // ── 国内大模型通用 OpenAI-compatible helper ──────────────────────────────
 async fn openai_compat_chat(
@@ -6859,7 +7807,11 @@ async fn openai_compat_chat(
     let body = resp.text().await.unwrap_or_default();
 
     if !status.is_success() {
-        return NodeExecutionResult::failed(format!("{node_name} API {}: {}", status.as_u16(), body));
+        return NodeExecutionResult::failed(format!(
+            "{node_name} API {}: {}",
+            status.as_u16(),
+            body
+        ));
     }
 
     let parsed: serde_json::Value = match serde_json::from_str(&body) {
@@ -6871,7 +7823,10 @@ async fn openai_compat_chat(
         .as_str()
         .unwrap_or("")
         .to_string();
-    let usage = parsed.get("usage").cloned().unwrap_or(serde_json::Value::Null);
+    let usage = parsed
+        .get("usage")
+        .cloned()
+        .unwrap_or(serde_json::Value::Null);
 
     NodeExecutionResult::succeeded(
         serde_json::json!({ "content": content, "model": model, "usage": usage }).to_string(),
@@ -6886,7 +7841,11 @@ fn extract_chat_fields(
 ) -> Result<(String, String, serde_json::Value, u64, f64), NodeExecutionResult> {
     let api_key = match config.get("api_key").and_then(|v| v.as_str()) {
         Some(k) => resolve_template(k, context),
-        None => return Err(NodeExecutionResult::failed(format!("{node_name} missing 'api_key'"))),
+        None => {
+            return Err(NodeExecutionResult::failed(format!(
+                "{node_name} missing 'api_key'"
+            )))
+        }
     };
     let model = config
         .get("model")
@@ -6895,15 +7854,25 @@ fn extract_chat_fields(
         .to_string();
     let prompt = match config.get("prompt_template").and_then(|v| v.as_str()) {
         Some(t) => resolve_template(t, context),
-        None => return Err(NodeExecutionResult::failed(format!("{node_name} missing 'prompt_template'"))),
+        None => {
+            return Err(NodeExecutionResult::failed(format!(
+                "{node_name} missing 'prompt_template'"
+            )))
+        }
     };
     let system_prompt = config
         .get("system_prompt")
         .and_then(|v| v.as_str())
         .map(|s| resolve_template(s, context))
         .unwrap_or_default();
-    let max_tokens: u64 = config.get("max_tokens").and_then(|v| v.as_u64()).unwrap_or(1024);
-    let temperature: f64 = config.get("temperature").and_then(|v| v.as_f64()).unwrap_or(0.7);
+    let max_tokens: u64 = config
+        .get("max_tokens")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(1024);
+    let temperature: f64 = config
+        .get("temperature")
+        .and_then(|v| v.as_f64())
+        .unwrap_or(0.7);
 
     let mut messages = Vec::new();
     if !system_prompt.is_empty() {
@@ -6911,7 +7880,13 @@ fn extract_chat_fields(
     }
     messages.push(serde_json::json!({ "role": "user", "content": prompt }));
 
-    Ok((api_key, model, serde_json::Value::Array(messages), max_tokens, temperature))
+    Ok((
+        api_key,
+        model,
+        serde_json::Value::Array(messages),
+        max_tokens,
+        temperature,
+    ))
 }
 
 // ── DeepSeek ─────────────────────────────────────────────────────────────────
@@ -7054,8 +8029,14 @@ async fn execute_doubao(
         .and_then(|v| v.as_str())
         .map(|s| resolve_template(s, context))
         .unwrap_or_default();
-    let max_tokens: u64 = config.get("max_tokens").and_then(|v| v.as_u64()).unwrap_or(1024);
-    let temperature: f64 = config.get("temperature").and_then(|v| v.as_f64()).unwrap_or(0.7);
+    let max_tokens: u64 = config
+        .get("max_tokens")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(1024);
+    let temperature: f64 = config
+        .get("temperature")
+        .and_then(|v| v.as_f64())
+        .unwrap_or(0.7);
 
     let mut messages = Vec::new();
     if !system_prompt.is_empty() {
@@ -7108,8 +8089,14 @@ async fn execute_minimax(
         .and_then(|v| v.as_str())
         .map(|s| resolve_template(s, context))
         .unwrap_or_default();
-    let max_tokens: u64 = config.get("max_tokens").and_then(|v| v.as_u64()).unwrap_or(1024);
-    let temperature: f64 = config.get("temperature").and_then(|v| v.as_f64()).unwrap_or(0.7);
+    let max_tokens: u64 = config
+        .get("max_tokens")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(1024);
+    let temperature: f64 = config
+        .get("temperature")
+        .and_then(|v| v.as_f64())
+        .unwrap_or(0.7);
 
     let mut messages = Vec::new();
     if !system_prompt.is_empty() {
@@ -7153,7 +8140,10 @@ async fn execute_minimax(
         .as_str()
         .unwrap_or("")
         .to_string();
-    let usage = parsed.get("usage").cloned().unwrap_or(serde_json::Value::Null);
+    let usage = parsed
+        .get("usage")
+        .cloned()
+        .unwrap_or(serde_json::Value::Null);
 
     NodeExecutionResult::succeeded(
         serde_json::json!({ "content": content, "model": model, "usage": usage }).to_string(),
@@ -7192,8 +8182,14 @@ async fn execute_ernie(
         .and_then(|v| v.as_str())
         .map(|s| resolve_template(s, context))
         .unwrap_or_default();
-    let max_tokens: u64 = config.get("max_tokens").and_then(|v| v.as_u64()).unwrap_or(1024);
-    let temperature: f64 = config.get("temperature").and_then(|v| v.as_f64()).unwrap_or(0.7);
+    let max_tokens: u64 = config
+        .get("max_tokens")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(1024);
+    let temperature: f64 = config
+        .get("temperature")
+        .and_then(|v| v.as_f64())
+        .unwrap_or(0.7);
 
     // Step 1: exchange client credentials for access_token
     let token_url = format!(
@@ -7211,7 +8207,10 @@ async fn execute_ernie(
     let access_token = match token_json.get("access_token").and_then(|v| v.as_str()) {
         Some(t) => t.to_string(),
         None => {
-            let err = token_json.get("error_description").and_then(|v| v.as_str()).unwrap_or("unknown");
+            let err = token_json
+                .get("error_description")
+                .and_then(|v| v.as_str())
+                .unwrap_or("unknown");
             return NodeExecutionResult::failed(format!("Ernie token error: {err}"));
         }
     };
@@ -7261,7 +8260,10 @@ async fn execute_ernie(
     }
 
     let content = parsed["result"].as_str().unwrap_or("").to_string();
-    let usage = parsed.get("usage").cloned().unwrap_or(serde_json::Value::Null);
+    let usage = parsed
+        .get("usage")
+        .cloned()
+        .unwrap_or(serde_json::Value::Null);
 
     NodeExecutionResult::succeeded(
         serde_json::json!({ "content": content, "model": model, "usage": usage }).to_string(),
@@ -7301,7 +8303,11 @@ mod cn_llm_tests {
     use super::*;
 
     fn make_node(node_type: NodeType, config: serde_json::Value) -> Node {
-        Node { id: "n1".into(), node_type, config: Some(config) }
+        Node {
+            id: "n1".into(),
+            node_type,
+            config: Some(config),
+        }
     }
 
     fn ctx() -> ExecutionContext {
@@ -7317,7 +8323,10 @@ mod cn_llm_tests {
     #[tokio::test]
     async fn deepseek_fails_without_api_key() {
         let c = reqwest::Client::new();
-        let n = make_node(NodeType::Deepseek, serde_json::json!({ "prompt_template": "hi" }));
+        let n = make_node(
+            NodeType::Deepseek,
+            serde_json::json!({ "prompt_template": "hi" }),
+        );
         let r = execute_deepseek(&n, &ctx(), &c).await;
         assert!(r.error.as_deref().unwrap_or("").contains("api_key"));
     }
@@ -7333,7 +8342,10 @@ mod cn_llm_tests {
     #[tokio::test]
     async fn qwen_fails_without_api_key() {
         let c = reqwest::Client::new();
-        let n = make_node(NodeType::Qwen, serde_json::json!({ "prompt_template": "hi" }));
+        let n = make_node(
+            NodeType::Qwen,
+            serde_json::json!({ "prompt_template": "hi" }),
+        );
         let r = execute_qwen(&n, &ctx(), &c).await;
         assert!(r.error.as_deref().unwrap_or("").contains("api_key"));
     }
@@ -7349,7 +8361,10 @@ mod cn_llm_tests {
     #[tokio::test]
     async fn moonshot_fails_without_api_key() {
         let c = reqwest::Client::new();
-        let n = make_node(NodeType::Moonshot, serde_json::json!({ "prompt_template": "hi" }));
+        let n = make_node(
+            NodeType::Moonshot,
+            serde_json::json!({ "prompt_template": "hi" }),
+        );
         let r = execute_moonshot(&n, &ctx(), &c).await;
         assert!(r.error.as_deref().unwrap_or("").contains("api_key"));
     }
@@ -7390,7 +8405,10 @@ mod cn_llm_tests {
     #[tokio::test]
     async fn hunyuan_fails_without_api_key() {
         let c = reqwest::Client::new();
-        let n = make_node(NodeType::Hunyuan, serde_json::json!({ "prompt_template": "hi" }));
+        let n = make_node(
+            NodeType::Hunyuan,
+            serde_json::json!({ "prompt_template": "hi" }),
+        );
         let r = execute_hunyuan(&n, &ctx(), &c).await;
         assert!(r.error.as_deref().unwrap_or("").contains("api_key"));
     }
@@ -7398,7 +8416,11 @@ mod cn_llm_tests {
     #[tokio::test]
     async fn deepseek_no_config_returns_error() {
         let c = reqwest::Client::new();
-        let n = Node { id: "n1".into(), node_type: NodeType::Deepseek, config: None };
+        let n = Node {
+            id: "n1".into(),
+            node_type: NodeType::Deepseek,
+            config: None,
+        };
         let r = execute_deepseek(&n, &ctx(), &c).await;
         assert!(r.error.is_some());
     }

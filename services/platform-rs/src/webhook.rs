@@ -46,7 +46,11 @@ pub struct WebhookRecord {
 /// Evaluate a simple condition expression against a JSON payload.
 /// Syntax: `a.b.c == "str"` | `a.b.c != "str"` | `a.b.c > 5` | `a.b.c < 5`
 pub fn eval_condition(expr: &str, payload: &serde_json::Value) -> bool {
-    let eq_idx = expr.find(" == ").or_else(|| expr.find(" != ")).or_else(|| expr.find(" > ")).or_else(|| expr.find(" < "));
+    let eq_idx = expr
+        .find(" == ")
+        .or_else(|| expr.find(" != "))
+        .or_else(|| expr.find(" > "))
+        .or_else(|| expr.find(" < "));
     let (path_str, op, rhs_str) = if let Some(idx) = expr.find(" == ") {
         (&expr[..idx], "==", expr[idx + 4..].trim())
     } else if let Some(idx) = expr.find(" != ") {
@@ -70,21 +74,38 @@ pub fn eval_condition(expr: &str, payload: &serde_json::Value) -> bool {
     let rhs_unquoted = rhs_str.trim_matches('"').trim_matches('\'');
     match op {
         "==" => {
-            if let Some(s) = current.as_str() { s == rhs_unquoted }
-            else if let (Some(n), Ok(r)) = (current.as_f64(), rhs_unquoted.parse::<f64>()) { (n - r).abs() < 1e-9 }
-            else if let (Some(b), Ok(r)) = (current.as_bool(), rhs_unquoted.parse::<bool>()) { b == r }
-            else { false }
+            if let Some(s) = current.as_str() {
+                s == rhs_unquoted
+            } else if let (Some(n), Ok(r)) = (current.as_f64(), rhs_unquoted.parse::<f64>()) {
+                (n - r).abs() < 1e-9
+            } else if let (Some(b), Ok(r)) = (current.as_bool(), rhs_unquoted.parse::<bool>()) {
+                b == r
+            } else {
+                false
+            }
         }
         "!=" => {
-            if let Some(s) = current.as_str() { s != rhs_unquoted }
-            else if let (Some(n), Ok(r)) = (current.as_f64(), rhs_unquoted.parse::<f64>()) { (n - r).abs() >= 1e-9 }
-            else { true }
+            if let Some(s) = current.as_str() {
+                s != rhs_unquoted
+            } else if let (Some(n), Ok(r)) = (current.as_f64(), rhs_unquoted.parse::<f64>()) {
+                (n - r).abs() >= 1e-9
+            } else {
+                true
+            }
         }
         ">" => {
-            if let (Some(n), Ok(r)) = (current.as_f64(), rhs_unquoted.parse::<f64>()) { n > r } else { false }
+            if let (Some(n), Ok(r)) = (current.as_f64(), rhs_unquoted.parse::<f64>()) {
+                n > r
+            } else {
+                false
+            }
         }
         "<" => {
-            if let (Some(n), Ok(r)) = (current.as_f64(), rhs_unquoted.parse::<f64>()) { n < r } else { false }
+            if let (Some(n), Ok(r)) = (current.as_f64(), rhs_unquoted.parse::<f64>()) {
+                n < r
+            } else {
+                false
+            }
         }
         _ => true,
     }
@@ -119,8 +140,11 @@ fn json_to_dynamic(val: &serde_json::Value) -> rhai::Dynamic {
         serde_json::Value::Null => rhai::Dynamic::UNIT,
         serde_json::Value::Bool(b) => rhai::Dynamic::from(*b),
         serde_json::Value::Number(n) => {
-            if let Some(i) = n.as_i64() { rhai::Dynamic::from(i) }
-            else { rhai::Dynamic::from(n.as_f64().unwrap_or(0.0)) }
+            if let Some(i) = n.as_i64() {
+                rhai::Dynamic::from(i)
+            } else {
+                rhai::Dynamic::from(n.as_f64().unwrap_or(0.0))
+            }
         }
         serde_json::Value::String(s) => rhai::Dynamic::from(s.clone()),
         serde_json::Value::Array(arr) => {
@@ -138,16 +162,29 @@ fn json_to_dynamic(val: &serde_json::Value) -> rhai::Dynamic {
 }
 
 fn dynamic_to_json(val: &rhai::Dynamic) -> serde_json::Value {
-    if val.is_unit() { return serde_json::Value::Null; }
-    if let Some(b) = val.as_bool().ok() { return serde_json::Value::Bool(b); }
-    if let Some(i) = val.as_int().ok() { return serde_json::json!(i); }
-    if let Some(f) = val.as_float().ok() { return serde_json::json!(f); }
-    if let Some(s) = val.clone().try_cast::<String>() { return serde_json::Value::String(s); }
+    if val.is_unit() {
+        return serde_json::Value::Null;
+    }
+    if let Some(b) = val.as_bool().ok() {
+        return serde_json::Value::Bool(b);
+    }
+    if let Some(i) = val.as_int().ok() {
+        return serde_json::json!(i);
+    }
+    if let Some(f) = val.as_float().ok() {
+        return serde_json::json!(f);
+    }
+    if let Some(s) = val.clone().try_cast::<String>() {
+        return serde_json::Value::String(s);
+    }
     if let Some(arr) = val.clone().try_cast::<rhai::Array>() {
         return serde_json::Value::Array(arr.iter().map(dynamic_to_json).collect());
     }
     if let Some(map) = val.clone().try_cast::<rhai::Map>() {
-        let obj: serde_json::Map<_, _> = map.iter().map(|(k, v)| (k.to_string(), dynamic_to_json(v))).collect();
+        let obj: serde_json::Map<_, _> = map
+            .iter()
+            .map(|(k, v)| (k.to_string(), dynamic_to_json(v)))
+            .collect();
         return serde_json::Value::Object(obj);
     }
     serde_json::Value::Null
@@ -181,10 +218,7 @@ pub trait WebhookStore: Clone + Send + Sync + 'static {
         tenant_id: &str,
         token: &str,
     ) -> impl Future<Output = Result<(), WebhookError>> + Send;
-    fn record_delivery(
-        &self,
-        delivery: WebhookDelivery,
-    ) -> impl Future<Output = ()> + Send;
+    fn record_delivery(&self, delivery: WebhookDelivery) -> impl Future<Output = ()> + Send;
     fn list_deliveries(
         &self,
         webhook_token: &str,
@@ -293,7 +327,10 @@ impl WebhookStore for MemoryWebhookStore {
         let by_token = self.by_token.clone();
         let tenant_id = tenant_id.to_string();
         async move {
-            let mut records: Vec<WebhookRecord> = by_token.lock().await.values()
+            let mut records: Vec<WebhookRecord> = by_token
+                .lock()
+                .await
+                .values()
                 .filter(|r| r.tenant_id == tenant_id)
                 .cloned()
                 .collect();
@@ -324,10 +361,7 @@ impl WebhookStore for MemoryWebhookStore {
         }
     }
 
-    fn record_delivery(
-        &self,
-        delivery: WebhookDelivery,
-    ) -> impl Future<Output = ()> + Send {
+    fn record_delivery(&self, delivery: WebhookDelivery) -> impl Future<Output = ()> + Send {
         let deliveries = self.deliveries.clone();
         async move {
             deliveries.lock().await.push(delivery);
@@ -343,7 +377,8 @@ impl WebhookStore for MemoryWebhookStore {
         let token = webhook_token.to_string();
         async move {
             let all = deliveries.lock().await;
-            let mut result: Vec<WebhookDelivery> = all.iter()
+            let mut result: Vec<WebhookDelivery> = all
+                .iter()
                 .filter(|d| d.webhook_token == token)
                 .cloned()
                 .collect();
@@ -364,7 +399,9 @@ impl WebhookStore for MemoryWebhookStore {
         let token = token.to_string();
         async move {
             let mut map = by_token.lock().await;
-            let record = map.get_mut(&token).filter(|r| r.tenant_id == tenant_id)
+            let record = map
+                .get_mut(&token)
+                .filter(|r| r.tenant_id == tenant_id)
                 .ok_or(WebhookError::NotFound)?;
             record.condition_expr = condition_expr;
             Ok(record.clone())
@@ -382,7 +419,9 @@ impl WebhookStore for MemoryWebhookStore {
         let token = token.to_string();
         async move {
             let mut map = by_token.lock().await;
-            let record = map.get_mut(&token).filter(|r| r.tenant_id == tenant_id)
+            let record = map
+                .get_mut(&token)
+                .filter(|r| r.tenant_id == tenant_id)
                 .ok_or(WebhookError::NotFound)?;
             record.max_calls_per_minute = max_calls_per_minute;
             Ok(record.clone())
@@ -400,7 +439,9 @@ impl WebhookStore for MemoryWebhookStore {
         let token = token.to_string();
         async move {
             let mut map = by_token.lock().await;
-            let record = map.get_mut(&token).filter(|r| r.tenant_id == tenant_id)
+            let record = map
+                .get_mut(&token)
+                .filter(|r| r.tenant_id == tenant_id)
                 .ok_or(WebhookError::NotFound)?;
             record.paused = paused;
             Ok(record.clone())
@@ -418,7 +459,9 @@ impl WebhookStore for MemoryWebhookStore {
         let token = token.to_string();
         async move {
             let mut map = by_token.lock().await;
-            let record = map.get_mut(&token).filter(|r| r.tenant_id == tenant_id)
+            let record = map
+                .get_mut(&token)
+                .filter(|r| r.tenant_id == tenant_id)
                 .ok_or(WebhookError::NotFound)?;
             record.secret = Some(new_secret);
             Ok(record.clone())
@@ -436,7 +479,9 @@ impl WebhookStore for MemoryWebhookStore {
         let token = token.to_string();
         async move {
             let mut map = by_token.lock().await;
-            let record = map.get_mut(&token).filter(|r| r.tenant_id == tenant_id)
+            let record = map
+                .get_mut(&token)
+                .filter(|r| r.tenant_id == tenant_id)
                 .ok_or(WebhookError::NotFound)?;
             record.payload_transform_script = script;
             Ok(record.clone())
@@ -454,8 +499,8 @@ pub fn verify_signature(secret: &str, body: &[u8], header: &str) -> bool {
     let Ok(expected_bytes) = hex::decode(expected_hex) else {
         return false;
     };
-    let mut mac = Hmac::<Sha256>::new_from_slice(secret.as_bytes())
-        .expect("HMAC accepts any key length");
+    let mut mac =
+        Hmac::<Sha256>::new_from_slice(secret.as_bytes()).expect("HMAC accepts any key length");
     mac.update(body);
     let result = mac.finalize().into_bytes();
     // Constant-time comparison
@@ -568,22 +613,21 @@ impl WebhookStore for PostgresWebhookStore {
         let tenant_id = tenant_id.to_string();
         let token = token.to_string();
         async move {
-            let rows = sqlx::query(
-                "DELETE FROM af_webhooks WHERE token = $1 AND tenant_id = $2",
-            )
-            .bind(&token)
-            .bind(&tenant_id)
-            .execute(&pool)
-            .await
-            .map_err(|_| WebhookError::StoreUnavailable)?;
-            if rows.rows_affected() == 0 { Err(WebhookError::NotFound) } else { Ok(()) }
+            let rows = sqlx::query("DELETE FROM af_webhooks WHERE token = $1 AND tenant_id = $2")
+                .bind(&token)
+                .bind(&tenant_id)
+                .execute(&pool)
+                .await
+                .map_err(|_| WebhookError::StoreUnavailable)?;
+            if rows.rows_affected() == 0 {
+                Err(WebhookError::NotFound)
+            } else {
+                Ok(())
+            }
         }
     }
 
-    fn record_delivery(
-        &self,
-        delivery: WebhookDelivery,
-    ) -> impl Future<Output = ()> + Send {
+    fn record_delivery(&self, delivery: WebhookDelivery) -> impl Future<Output = ()> + Send {
         let pool = self.pool.clone();
         async move {
             let _ = sqlx::query(
@@ -650,7 +694,10 @@ impl WebhookStore for PostgresWebhookStore {
             .bind(&token)
             .bind(&tenant_id)
             .fetch_all(&pool).await.map_err(|_| WebhookError::StoreUnavailable)?;
-            rows.into_iter().next().map(WebhookRow::into_record).ok_or(WebhookError::NotFound)
+            rows.into_iter()
+                .next()
+                .map(WebhookRow::into_record)
+                .ok_or(WebhookError::NotFound)
         }
     }
 
@@ -672,7 +719,10 @@ impl WebhookStore for PostgresWebhookStore {
             .bind(&token)
             .bind(&tenant_id)
             .fetch_all(&pool).await.map_err(|_| WebhookError::StoreUnavailable)?;
-            rows.into_iter().next().map(WebhookRow::into_record).ok_or(WebhookError::NotFound)
+            rows.into_iter()
+                .next()
+                .map(WebhookRow::into_record)
+                .ok_or(WebhookError::NotFound)
         }
     }
 
@@ -694,7 +744,10 @@ impl WebhookStore for PostgresWebhookStore {
             .bind(&token)
             .bind(&tenant_id)
             .fetch_all(&pool).await.map_err(|_| WebhookError::StoreUnavailable)?;
-            rows.into_iter().next().map(WebhookRow::into_record).ok_or(WebhookError::NotFound)
+            rows.into_iter()
+                .next()
+                .map(WebhookRow::into_record)
+                .ok_or(WebhookError::NotFound)
         }
     }
 
@@ -716,7 +769,10 @@ impl WebhookStore for PostgresWebhookStore {
             .bind(&token)
             .bind(&tenant_id)
             .fetch_all(&pool).await.map_err(|_| WebhookError::StoreUnavailable)?;
-            rows.into_iter().next().map(WebhookRow::into_record).ok_or(WebhookError::NotFound)
+            rows.into_iter()
+                .next()
+                .map(WebhookRow::into_record)
+                .ok_or(WebhookError::NotFound)
         }
     }
 
@@ -738,7 +794,10 @@ impl WebhookStore for PostgresWebhookStore {
             .bind(&token)
             .bind(&tenant_id)
             .fetch_all(&pool).await.map_err(|_| WebhookError::StoreUnavailable)?;
-            rows.into_iter().next().map(WebhookRow::into_record).ok_or(WebhookError::NotFound)
+            rows.into_iter()
+                .next()
+                .map(WebhookRow::into_record)
+                .ok_or(WebhookError::NotFound)
         }
     }
 }
@@ -895,10 +954,7 @@ impl WebhookStore for PlatformWebhookStore {
         }
     }
 
-    fn record_delivery(
-        &self,
-        delivery: WebhookDelivery,
-    ) -> impl Future<Output = ()> + Send {
+    fn record_delivery(&self, delivery: WebhookDelivery) -> impl Future<Output = ()> + Send {
         let this = self.clone();
         async move {
             match this {
@@ -951,8 +1007,14 @@ impl WebhookStore for PlatformWebhookStore {
         let token = token.to_string();
         async move {
             match this {
-                Self::Memory(s) => s.set_rate_limit(&tenant_id, &token, max_calls_per_minute).await,
-                Self::Postgres(s) => s.set_rate_limit(&tenant_id, &token, max_calls_per_minute).await,
+                Self::Memory(s) => {
+                    s.set_rate_limit(&tenant_id, &token, max_calls_per_minute)
+                        .await
+                }
+                Self::Postgres(s) => {
+                    s.set_rate_limit(&tenant_id, &token, max_calls_per_minute)
+                        .await
+                }
             }
         }
     }

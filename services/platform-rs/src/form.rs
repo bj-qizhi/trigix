@@ -11,7 +11,10 @@ use crate::execution::unix_now;
 
 fn next_token() -> String {
     use std::time::{SystemTime, UNIX_EPOCH};
-    let ts = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_nanos();
+    let ts = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
     format!("form_{:x}", ts)
 }
 
@@ -58,7 +61,10 @@ pub struct MemoryFormStore {
 
 impl MemoryFormStore {
     pub async fn publish(&self, token: FormToken) -> Result<(), FormError> {
-        let mut m = self.inner.write().map_err(|_| FormError::StoreUnavailable)?;
+        let mut m = self
+            .inner
+            .write()
+            .map_err(|_| FormError::StoreUnavailable)?;
         m.insert(token.token.clone(), token);
         Ok(())
     }
@@ -70,7 +76,8 @@ impl MemoryFormStore {
 
     pub async fn list_by_workflow(&self, tenant_id: &str, workflow_id: &str) -> Vec<FormToken> {
         let m = self.inner.read().unwrap_or_else(|e| e.into_inner());
-        let mut forms: Vec<_> = m.values()
+        let mut forms: Vec<_> = m
+            .values()
             .filter(|t| t.tenant_id == tenant_id && t.workflow_id == workflow_id)
             .cloned()
             .collect();
@@ -79,7 +86,10 @@ impl MemoryFormStore {
     }
 
     pub async fn delete(&self, token: &str) -> Result<(), FormError> {
-        let mut m = self.inner.write().map_err(|_| FormError::StoreUnavailable)?;
+        let mut m = self
+            .inner
+            .write()
+            .map_err(|_| FormError::StoreUnavailable)?;
         m.remove(token).map(|_| ()).ok_or(FormError::NotFound)
     }
 }
@@ -164,15 +174,17 @@ impl PostgresFormStore {
         .fetch_all(&self.pool)
         .await
         .unwrap_or_default();
-        rows.into_iter().map(|r| FormToken {
-            token: r.token,
-            tenant_id: r.tenant_id,
-            workflow_id: r.workflow_id,
-            title: r.title,
-            description: r.description,
-            input_schema: r.input_schema,
-            created_at: r.created_at as u64,
-        }).collect()
+        rows.into_iter()
+            .map(|r| FormToken {
+                token: r.token,
+                tenant_id: r.tenant_id,
+                workflow_id: r.workflow_id,
+                title: r.title,
+                description: r.description,
+                input_schema: r.input_schema,
+                created_at: r.created_at as u64,
+            })
+            .collect()
     }
 
     pub async fn delete(&self, token: &str) -> Result<(), FormError> {

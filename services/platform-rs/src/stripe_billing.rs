@@ -20,8 +20,13 @@ pub struct StripeClient {
 impl StripeClient {
     pub fn from_env() -> Option<Self> {
         let key = std::env::var("STRIPE_SECRET_KEY").unwrap_or_default();
-        if key.is_empty() { return None; }
-        Some(Self { secret_key: key, http: reqwest::Client::new() })
+        if key.is_empty() {
+            return None;
+        }
+        Some(Self {
+            secret_key: key,
+            http: reqwest::Client::new(),
+        })
     }
 
     async fn stripe_post(
@@ -29,12 +34,14 @@ impl StripeClient {
         path: &str,
         params: &[(&str, &str)],
     ) -> Result<serde_json::Value, String> {
-        let body = params.iter()
+        let body = params
+            .iter()
             .map(|(k, v)| format!("{}={}", k, percent_encode(v)))
             .collect::<Vec<_>>()
             .join("&");
 
-        let res = self.http
+        let res = self
+            .http
             .post(format!("https://api.stripe.com{path}"))
             .bearer_auth(&self.secret_key)
             .header("Content-Type", "application/x-www-form-urlencoded")
@@ -63,14 +70,14 @@ impl StripeClient {
         cancel_url: &str,
     ) -> Result<String, String> {
         let mut params: Vec<(&str, &str)> = vec![
-            ("mode",                      "subscription"),
-            ("line_items[0][price]",       price_id),
-            ("line_items[0][quantity]",    "1"),
-            ("success_url",                success_url),
-            ("cancel_url",                 cancel_url),
-            ("metadata[tenant_id]",        tenant_id),
-            ("metadata[tier]",             tier),
-            ("allow_promotion_codes",      "true"),
+            ("mode", "subscription"),
+            ("line_items[0][price]", price_id),
+            ("line_items[0][quantity]", "1"),
+            ("success_url", success_url),
+            ("cancel_url", cancel_url),
+            ("metadata[tenant_id]", tenant_id),
+            ("metadata[tier]", tier),
+            ("allow_promotion_codes", "true"),
             ("billing_address_collection", "auto"),
         ];
         // Prefer existing Stripe customer; fall back to pre-filling email
@@ -81,7 +88,8 @@ impl StripeClient {
         }
 
         let val = self.stripe_post("/v1/checkout/sessions", &params).await?;
-        val["url"].as_str()
+        val["url"]
+            .as_str()
             .map(|s| s.to_string())
             .ok_or_else(|| "Stripe checkout session missing url field".to_string())
     }
@@ -92,12 +100,12 @@ impl StripeClient {
         customer_id: &str,
         return_url: &str,
     ) -> Result<String, String> {
-        let params = [
-            ("customer",   customer_id),
-            ("return_url", return_url),
-        ];
-        let val = self.stripe_post("/v1/billing/portal/sessions", &params).await?;
-        val["url"].as_str()
+        let params = [("customer", customer_id), ("return_url", return_url)];
+        let val = self
+            .stripe_post("/v1/billing/portal/sessions", &params)
+            .await?;
+        val["url"]
+            .as_str()
             .map(|s| s.to_string())
             .ok_or_else(|| "Stripe portal session missing url field".to_string())
     }
@@ -109,20 +117,29 @@ impl StripeClient {
         let mut ts: &str = "";
         let mut v1_sigs: Vec<&str> = vec![];
         for part in sig_header.split(',') {
-            if let Some(v) = part.strip_prefix("t=") { ts = v; }
-            else if let Some(v) = part.strip_prefix("v1=") { v1_sigs.push(v); }
+            if let Some(v) = part.strip_prefix("t=") {
+                ts = v;
+            } else if let Some(v) = part.strip_prefix("v1=") {
+                v1_sigs.push(v);
+            }
         }
-        if ts.is_empty() || v1_sigs.is_empty() { return false; }
+        if ts.is_empty() || v1_sigs.is_empty() {
+            return false;
+        }
 
         // signed_payload = "<timestamp>.<raw_body>"
         let mut signed: Vec<u8> = ts.as_bytes().to_vec();
         signed.push(b'.');
         signed.extend_from_slice(payload);
 
-        let Ok(mut mac) = HmacSha256::new_from_slice(secret.as_bytes()) else { return false; };
+        let Ok(mut mac) = HmacSha256::new_from_slice(secret.as_bytes()) else {
+            return false;
+        };
         mac.update(&signed);
         let computed = hex::encode(mac.finalize().into_bytes());
-        v1_sigs.iter().any(|s| constant_time_eq(s.as_bytes(), computed.as_bytes()))
+        v1_sigs
+            .iter()
+            .any(|s| constant_time_eq(s.as_bytes(), computed.as_bytes()))
     }
 }
 
@@ -130,12 +147,14 @@ impl StripeClient {
 /// Reads `STRIPE_PRICE_PRO`, `STRIPE_PRICE_BUSINESS`, `STRIPE_PRICE_ENTERPRISE`.
 pub fn price_id_to_tier(price_id: &str) -> Option<String> {
     for (env_var, tier) in [
-        ("STRIPE_PRICE_PRO",        "pro"),
-        ("STRIPE_PRICE_BUSINESS",   "business"),
+        ("STRIPE_PRICE_PRO", "pro"),
+        ("STRIPE_PRICE_BUSINESS", "business"),
         ("STRIPE_PRICE_ENTERPRISE", "enterprise"),
     ] {
         if let Ok(v) = std::env::var(env_var) {
-            if !v.is_empty() && price_id == v { return Some(tier.to_string()); }
+            if !v.is_empty() && price_id == v {
+                return Some(tier.to_string());
+            }
         }
     }
     None
@@ -144,13 +163,17 @@ pub fn price_id_to_tier(price_id: &str) -> Option<String> {
 /// Maps a tier name → Stripe Price ID from env vars.
 pub fn tier_to_price_id(tier: &str) -> Option<String> {
     let env_var = match tier {
-        "pro"        => "STRIPE_PRICE_PRO",
-        "business"   => "STRIPE_PRICE_BUSINESS",
+        "pro" => "STRIPE_PRICE_PRO",
+        "business" => "STRIPE_PRICE_BUSINESS",
         "enterprise" => "STRIPE_PRICE_ENTERPRISE",
-        _            => return None,
+        _ => return None,
     };
     let v = std::env::var(env_var).unwrap_or_default();
-    if v.is_empty() { None } else { Some(v) }
+    if v.is_empty() {
+        None
+    } else {
+        Some(v)
+    }
 }
 
 /// Percent-encodes a string for use as an `application/x-www-form-urlencoded` value.
@@ -159,10 +182,14 @@ fn percent_encode(s: &str) -> String {
     let mut out = String::with_capacity(s.len() * 2);
     for b in s.bytes() {
         match b {
-            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9'
-            | b'-' | b'_' | b'.' | b'~' => out.push(b as char),
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                out.push(b as char)
+            }
             b' ' => out.push('+'),
-            _ => { out.push('%'); out.push_str(&format!("{:02X}", b)); }
+            _ => {
+                out.push('%');
+                out.push_str(&format!("{:02X}", b));
+            }
         }
     }
     out
@@ -170,8 +197,13 @@ fn percent_encode(s: &str) -> String {
 
 /// Constant-time byte-slice comparison to prevent timing attacks on HMAC comparison.
 fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
-    if a.len() != b.len() { return false; }
-    a.iter().zip(b.iter()).fold(0u8, |acc, (x, y)| acc | (x ^ y)) == 0
+    if a.len() != b.len() {
+        return false;
+    }
+    a.iter()
+        .zip(b.iter())
+        .fold(0u8, |acc, (x, y)| acc | (x ^ y))
+        == 0
 }
 
 #[cfg(test)]
@@ -182,7 +214,11 @@ mod tests {
     fn verify_webhook_bad_secret_returns_false() {
         let payload = b"test payload";
         let sig = "t=1234,v1=badhash";
-        assert!(!StripeClient::verify_webhook_signature(payload, sig, "wrong_secret"));
+        assert!(!StripeClient::verify_webhook_signature(
+            payload,
+            sig,
+            "wrong_secret"
+        ));
     }
 
     #[test]
@@ -203,7 +239,9 @@ mod tests {
         let sig_hex = hex::encode(mac.finalize().into_bytes());
         let header = format!("t={ts},v1={sig_hex}");
 
-        assert!(StripeClient::verify_webhook_signature(payload, &header, secret));
+        assert!(StripeClient::verify_webhook_signature(
+            payload, &header, secret
+        ));
     }
 
     #[test]

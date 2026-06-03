@@ -1,7 +1,7 @@
 // Copyright © 2026 北京祺智科技有限公司. All rights reserved.
 // https://www.qzso.com/ · managecode@gmail.com
 
-use jsonwebtoken::{DecodingKey, EncodingKey, Header, Validation, decode, encode};
+use jsonwebtoken::{decode, encode, DecodingKey, EncodingKey, Header, Validation};
 use serde::{Deserialize, Serialize};
 
 /// User role within a tenant. Defaults to `Editor` when not present in JWT.
@@ -18,7 +18,7 @@ impl Role {
         match self {
             Role::Viewer => "viewer",
             Role::Editor => "editor",
-            Role::Admin  => "admin",
+            Role::Admin => "admin",
         }
     }
 }
@@ -27,16 +27,18 @@ impl std::str::FromStr for Role {
     type Err = ();
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
-            "admin"  => Ok(Role::Admin),
+            "admin" => Ok(Role::Admin),
             "editor" => Ok(Role::Editor),
             "viewer" => Ok(Role::Viewer),
-            _        => Err(()),
+            _ => Err(()),
         }
     }
 }
 
 impl Default for Role {
-    fn default() -> Self { Role::Editor }
+    fn default() -> Self {
+        Role::Editor
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -57,9 +59,15 @@ pub struct Claims {
 }
 
 impl Claims {
-    pub fn is_admin(&self) -> bool  { self.role >= Role::Admin }
-    pub fn can_write(&self) -> bool { self.role >= Role::Editor }
-    pub fn can_read(&self) -> bool  { true }
+    pub fn is_admin(&self) -> bool {
+        self.role >= Role::Admin
+    }
+    pub fn can_write(&self) -> bool {
+        self.role >= Role::Editor
+    }
+    pub fn can_read(&self) -> bool {
+        true
+    }
 }
 
 impl Default for Claims {
@@ -89,7 +97,11 @@ fn jwt_secret() -> Vec<u8> {
 }
 
 pub fn sign_token(claims: &Claims) -> Result<String, jsonwebtoken::errors::Error> {
-    encode(&Header::default(), claims, &EncodingKey::from_secret(&jwt_secret()))
+    encode(
+        &Header::default(),
+        claims,
+        &EncodingKey::from_secret(&jwt_secret()),
+    )
 }
 
 pub fn verify_token(token: &str) -> Option<Claims> {
@@ -158,7 +170,8 @@ mod tests {
     #[test]
     fn token_without_role_defaults_to_editor() {
         // Simulate old token (no role field) by using serde default
-        let json = r#"{"sub":"u","tenant_id":"t","workspace_id":"w","project_id":"p","exp":9999999999}"#;
+        let json =
+            r#"{"sub":"u","tenant_id":"t","workspace_id":"w","project_id":"p","exp":9999999999}"#;
         let claims: Claims = serde_json::from_str(json).unwrap();
         assert_eq!(claims.role, Role::Editor);
     }

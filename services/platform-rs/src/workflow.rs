@@ -47,7 +47,9 @@ pub struct WorkflowRecord {
     pub budget_usd: Option<f64>,
 }
 
-fn default_tenant_visibility() -> String { "tenant".to_string() }
+fn default_tenant_visibility() -> String {
+    "tenant".to_string()
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 pub struct CreateWorkflowRequest {
@@ -452,8 +454,12 @@ where
         tenant_id: &str,
         workflow_id: &str,
     ) -> Result<WorkflowRecord, WorkflowError> {
-        if tenant_id.is_empty() { return Err(WorkflowError::MissingTenant); }
-        if workflow_id.is_empty() { return Err(WorkflowError::MissingWorkflow); }
+        if tenant_id.is_empty() {
+            return Err(WorkflowError::MissingTenant);
+        }
+        if workflow_id.is_empty() {
+            return Err(WorkflowError::MissingWorkflow);
+        }
         self.store.lock_workflow(tenant_id, workflow_id).await
     }
 
@@ -462,8 +468,12 @@ where
         tenant_id: &str,
         workflow_id: &str,
     ) -> Result<WorkflowRecord, WorkflowError> {
-        if tenant_id.is_empty() { return Err(WorkflowError::MissingTenant); }
-        if workflow_id.is_empty() { return Err(WorkflowError::MissingWorkflow); }
+        if tenant_id.is_empty() {
+            return Err(WorkflowError::MissingTenant);
+        }
+        if workflow_id.is_empty() {
+            return Err(WorkflowError::MissingWorkflow);
+        }
         self.store.unlock_workflow(tenant_id, workflow_id).await
     }
 
@@ -473,12 +483,18 @@ where
         workflow_id: &str,
         visibility: &str,
     ) -> Result<WorkflowRecord, WorkflowError> {
-        if tenant_id.is_empty() { return Err(WorkflowError::MissingTenant); }
-        if workflow_id.is_empty() { return Err(WorkflowError::MissingWorkflow); }
+        if tenant_id.is_empty() {
+            return Err(WorkflowError::MissingTenant);
+        }
+        if workflow_id.is_empty() {
+            return Err(WorkflowError::MissingWorkflow);
+        }
         if visibility != "tenant" && visibility != "private" {
             return Err(WorkflowError::InvalidStatus);
         }
-        self.store.set_workflow_visibility(tenant_id, workflow_id, visibility).await
+        self.store
+            .set_workflow_visibility(tenant_id, workflow_id, visibility)
+            .await
     }
 }
 
@@ -865,23 +881,51 @@ impl WorkflowVersionStore for MemoryWorkflowVersionStore {
         Ok(record.clone())
     }
 
-    async fn lock_workflow(&self, tenant_id: &str, workflow_id: &str) -> Result<WorkflowRecord, WorkflowError> {
-        let mut workflows = self.workflows.write().map_err(|_| WorkflowError::StoreUnavailable)?;
-        let record = workflows.get_mut(&key(tenant_id, workflow_id)).ok_or(WorkflowError::NotFound)?;
+    async fn lock_workflow(
+        &self,
+        tenant_id: &str,
+        workflow_id: &str,
+    ) -> Result<WorkflowRecord, WorkflowError> {
+        let mut workflows = self
+            .workflows
+            .write()
+            .map_err(|_| WorkflowError::StoreUnavailable)?;
+        let record = workflows
+            .get_mut(&key(tenant_id, workflow_id))
+            .ok_or(WorkflowError::NotFound)?;
         record.locked = true;
         Ok(record.clone())
     }
 
-    async fn unlock_workflow(&self, tenant_id: &str, workflow_id: &str) -> Result<WorkflowRecord, WorkflowError> {
-        let mut workflows = self.workflows.write().map_err(|_| WorkflowError::StoreUnavailable)?;
-        let record = workflows.get_mut(&key(tenant_id, workflow_id)).ok_or(WorkflowError::NotFound)?;
+    async fn unlock_workflow(
+        &self,
+        tenant_id: &str,
+        workflow_id: &str,
+    ) -> Result<WorkflowRecord, WorkflowError> {
+        let mut workflows = self
+            .workflows
+            .write()
+            .map_err(|_| WorkflowError::StoreUnavailable)?;
+        let record = workflows
+            .get_mut(&key(tenant_id, workflow_id))
+            .ok_or(WorkflowError::NotFound)?;
         record.locked = false;
         Ok(record.clone())
     }
 
-    async fn set_workflow_visibility(&self, tenant_id: &str, workflow_id: &str, visibility: &str) -> Result<WorkflowRecord, WorkflowError> {
-        let mut workflows = self.workflows.write().map_err(|_| WorkflowError::StoreUnavailable)?;
-        let record = workflows.get_mut(&key(tenant_id, workflow_id)).ok_or(WorkflowError::NotFound)?;
+    async fn set_workflow_visibility(
+        &self,
+        tenant_id: &str,
+        workflow_id: &str,
+        visibility: &str,
+    ) -> Result<WorkflowRecord, WorkflowError> {
+        let mut workflows = self
+            .workflows
+            .write()
+            .map_err(|_| WorkflowError::StoreUnavailable)?;
+        let record = workflows
+            .get_mut(&key(tenant_id, workflow_id))
+            .ok_or(WorkflowError::NotFound)?;
         record.visibility = visibility.to_string();
         Ok(record.clone())
     }
@@ -1033,38 +1077,65 @@ impl WorkflowVersionStore for PlatformWorkflowVersionStore {
         }
     }
 
-    async fn pin_workflow(&self, tenant_id: &str, workflow_id: &str) -> Result<WorkflowRecord, WorkflowError> {
+    async fn pin_workflow(
+        &self,
+        tenant_id: &str,
+        workflow_id: &str,
+    ) -> Result<WorkflowRecord, WorkflowError> {
         match self {
             Self::Memory(s) => s.pin_workflow(tenant_id, workflow_id).await,
             Self::Postgres(s) => s.pin_workflow(tenant_id, workflow_id).await,
         }
     }
 
-    async fn unpin_workflow(&self, tenant_id: &str, workflow_id: &str) -> Result<WorkflowRecord, WorkflowError> {
+    async fn unpin_workflow(
+        &self,
+        tenant_id: &str,
+        workflow_id: &str,
+    ) -> Result<WorkflowRecord, WorkflowError> {
         match self {
             Self::Memory(s) => s.unpin_workflow(tenant_id, workflow_id).await,
             Self::Postgres(s) => s.unpin_workflow(tenant_id, workflow_id).await,
         }
     }
 
-    async fn lock_workflow(&self, tenant_id: &str, workflow_id: &str) -> Result<WorkflowRecord, WorkflowError> {
+    async fn lock_workflow(
+        &self,
+        tenant_id: &str,
+        workflow_id: &str,
+    ) -> Result<WorkflowRecord, WorkflowError> {
         match self {
             Self::Memory(s) => s.lock_workflow(tenant_id, workflow_id).await,
             Self::Postgres(s) => s.lock_workflow(tenant_id, workflow_id).await,
         }
     }
 
-    async fn unlock_workflow(&self, tenant_id: &str, workflow_id: &str) -> Result<WorkflowRecord, WorkflowError> {
+    async fn unlock_workflow(
+        &self,
+        tenant_id: &str,
+        workflow_id: &str,
+    ) -> Result<WorkflowRecord, WorkflowError> {
         match self {
             Self::Memory(s) => s.unlock_workflow(tenant_id, workflow_id).await,
             Self::Postgres(s) => s.unlock_workflow(tenant_id, workflow_id).await,
         }
     }
 
-    async fn set_workflow_visibility(&self, tenant_id: &str, workflow_id: &str, visibility: &str) -> Result<WorkflowRecord, WorkflowError> {
+    async fn set_workflow_visibility(
+        &self,
+        tenant_id: &str,
+        workflow_id: &str,
+        visibility: &str,
+    ) -> Result<WorkflowRecord, WorkflowError> {
         match self {
-            Self::Memory(s) => s.set_workflow_visibility(tenant_id, workflow_id, visibility).await,
-            Self::Postgres(s) => s.set_workflow_visibility(tenant_id, workflow_id, visibility).await,
+            Self::Memory(s) => {
+                s.set_workflow_visibility(tenant_id, workflow_id, visibility)
+                    .await
+            }
+            Self::Postgres(s) => {
+                s.set_workflow_visibility(tenant_id, workflow_id, visibility)
+                    .await
+            }
         }
     }
 }
@@ -1485,7 +1556,11 @@ impl WorkflowVersionStore for PostgresWorkflowVersionStore {
         Ok(row.into_record())
     }
 
-    async fn lock_workflow(&self, tenant_id: &str, workflow_id: &str) -> Result<WorkflowRecord, WorkflowError> {
+    async fn lock_workflow(
+        &self,
+        tenant_id: &str,
+        workflow_id: &str,
+    ) -> Result<WorkflowRecord, WorkflowError> {
         let row = sqlx::query_as::<_, PostgresWorkflowRow>(
             r#"UPDATE af_workflows SET locked = TRUE, updated_at = now()
                WHERE tenant_id = $1 AND id = $2
@@ -1497,7 +1572,11 @@ impl WorkflowVersionStore for PostgresWorkflowVersionStore {
         Ok(row.into_record())
     }
 
-    async fn unlock_workflow(&self, tenant_id: &str, workflow_id: &str) -> Result<WorkflowRecord, WorkflowError> {
+    async fn unlock_workflow(
+        &self,
+        tenant_id: &str,
+        workflow_id: &str,
+    ) -> Result<WorkflowRecord, WorkflowError> {
         let row = sqlx::query_as::<_, PostgresWorkflowRow>(
             r#"UPDATE af_workflows SET locked = FALSE, updated_at = now()
                WHERE tenant_id = $1 AND id = $2
@@ -1509,7 +1588,12 @@ impl WorkflowVersionStore for PostgresWorkflowVersionStore {
         Ok(row.into_record())
     }
 
-    async fn set_workflow_visibility(&self, tenant_id: &str, workflow_id: &str, visibility: &str) -> Result<WorkflowRecord, WorkflowError> {
+    async fn set_workflow_visibility(
+        &self,
+        tenant_id: &str,
+        workflow_id: &str,
+        visibility: &str,
+    ) -> Result<WorkflowRecord, WorkflowError> {
         let row = sqlx::query_as::<_, PostgresWorkflowRow>(
             r#"UPDATE af_workflows SET visibility = $3, updated_at = now()
                WHERE tenant_id = $1 AND id = $2
@@ -1580,7 +1664,11 @@ impl PostgresWorkflowRow {
             folder: self.folder,
             locked: self.locked,
             created_by: self.created_by,
-            visibility: if self.visibility.is_empty() { "tenant".to_string() } else { self.visibility },
+            visibility: if self.visibility.is_empty() {
+                "tenant".to_string()
+            } else {
+                self.visibility
+            },
             sla_seconds: self.sla_seconds.map(|s| s as u64),
             max_runs_per_hour: self.max_runs_per_hour.map(|v| v as u32),
             max_concurrent_runs: self.max_concurrent_runs.map(|v| v as u32),
@@ -1764,9 +1852,9 @@ mod tests {
                     readme: None,
                     folder: None,
                     sla_seconds: None,
-            max_runs_per_hour: None,
-            max_concurrent_runs: None,
-            budget_usd: None,
+                    max_runs_per_hour: None,
+                    max_concurrent_runs: None,
+                    budget_usd: None,
                 },
             )
             .await
@@ -2026,24 +2114,36 @@ mod tests {
                     readme: Some("# My Workflow\n\nDocumentation goes here.".to_string()),
                     folder: None,
                     sla_seconds: None,
-            max_runs_per_hour: None,
-            max_concurrent_runs: None,
-            budget_usd: None,
+                    max_runs_per_hour: None,
+                    max_concurrent_runs: None,
+                    budget_usd: None,
                 },
             )
             .await
             .unwrap();
 
-        assert_eq!(record.readme.as_deref(), Some("# My Workflow\n\nDocumentation goes here."));
+        assert_eq!(
+            record.readme.as_deref(),
+            Some("# My Workflow\n\nDocumentation goes here.")
+        );
 
-        let loaded = service.get_workflow("tenant-1", "workflow-1").await.unwrap();
-        assert_eq!(loaded.readme.as_deref(), Some("# My Workflow\n\nDocumentation goes here."));
+        let loaded = service
+            .get_workflow("tenant-1", "workflow-1")
+            .await
+            .unwrap();
+        assert_eq!(
+            loaded.readme.as_deref(),
+            Some("# My Workflow\n\nDocumentation goes here.")
+        );
     }
 
     #[tokio::test]
     async fn readme_is_none_by_default() {
         let service = WorkflowService::new(MemoryWorkflowVersionStore::with_dev_seed());
-        let record = service.get_workflow("tenant-1", "workflow-1").await.unwrap();
+        let record = service
+            .get_workflow("tenant-1", "workflow-1")
+            .await
+            .unwrap();
         assert!(record.readme.is_none());
     }
 }

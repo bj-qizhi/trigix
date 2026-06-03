@@ -115,7 +115,12 @@ pub struct MemoryEnvVarStore {
 }
 
 impl EnvVarStore for MemoryEnvVarStore {
-    async fn set(&self, tenant_id: &str, key: &str, value: &str) -> Result<EnvVarRecord, EnvVarError> {
+    async fn set(
+        &self,
+        tenant_id: &str,
+        key: &str,
+        value: &str,
+    ) -> Result<EnvVarRecord, EnvVarError> {
         self.set_in(tenant_id, DEFAULT_SET, key, value).await
     }
 
@@ -131,16 +136,35 @@ impl EnvVarStore for MemoryEnvVarStore {
         self.delete_in(tenant_id, DEFAULT_SET, key).await
     }
 
-    async fn set_in(&self, tenant_id: &str, set_name: &str, key: &str, value: &str) -> Result<EnvVarRecord, EnvVarError> {
-        let mut records = self.records.write().map_err(|_| EnvVarError::StoreUnavailable)?;
-        let record = EnvVarRecord { key: key.to_string(), value: value.to_string() };
+    async fn set_in(
+        &self,
+        tenant_id: &str,
+        set_name: &str,
+        key: &str,
+        value: &str,
+    ) -> Result<EnvVarRecord, EnvVarError> {
+        let mut records = self
+            .records
+            .write()
+            .map_err(|_| EnvVarError::StoreUnavailable)?;
+        let record = EnvVarRecord {
+            key: key.to_string(),
+            value: value.to_string(),
+        };
         records.insert(store_key(tenant_id, set_name, key), record.clone());
         Ok(record)
     }
 
-    async fn list_in(&self, tenant_id: &str, set_name: &str) -> Result<Vec<EnvVarRecord>, EnvVarError> {
+    async fn list_in(
+        &self,
+        tenant_id: &str,
+        set_name: &str,
+    ) -> Result<Vec<EnvVarRecord>, EnvVarError> {
         let prefix = set_prefix(tenant_id, set_name);
-        let records = self.records.read().map_err(|_| EnvVarError::StoreUnavailable)?;
+        let records = self
+            .records
+            .read()
+            .map_err(|_| EnvVarError::StoreUnavailable)?;
         let mut out: Vec<EnvVarRecord> = records
             .iter()
             .filter(|(k, _)| k.starts_with(&prefix))
@@ -150,20 +174,43 @@ impl EnvVarStore for MemoryEnvVarStore {
         Ok(out)
     }
 
-    async fn get_in(&self, tenant_id: &str, set_name: &str, key: &str) -> Result<Option<String>, EnvVarError> {
-        let records = self.records.read().map_err(|_| EnvVarError::StoreUnavailable)?;
-        Ok(records.get(&store_key(tenant_id, set_name, key)).map(|r| r.value.clone()))
+    async fn get_in(
+        &self,
+        tenant_id: &str,
+        set_name: &str,
+        key: &str,
+    ) -> Result<Option<String>, EnvVarError> {
+        let records = self
+            .records
+            .read()
+            .map_err(|_| EnvVarError::StoreUnavailable)?;
+        Ok(records
+            .get(&store_key(tenant_id, set_name, key))
+            .map(|r| r.value.clone()))
     }
 
-    async fn delete_in(&self, tenant_id: &str, set_name: &str, key: &str) -> Result<(), EnvVarError> {
-        let mut records = self.records.write().map_err(|_| EnvVarError::StoreUnavailable)?;
-        records.remove(&store_key(tenant_id, set_name, key)).ok_or(EnvVarError::NotFound)?;
+    async fn delete_in(
+        &self,
+        tenant_id: &str,
+        set_name: &str,
+        key: &str,
+    ) -> Result<(), EnvVarError> {
+        let mut records = self
+            .records
+            .write()
+            .map_err(|_| EnvVarError::StoreUnavailable)?;
+        records
+            .remove(&store_key(tenant_id, set_name, key))
+            .ok_or(EnvVarError::NotFound)?;
         Ok(())
     }
 
     async fn list_sets(&self, tenant_id: &str) -> Result<Vec<EnvSetSummary>, EnvVarError> {
         let prefix = tenant_prefix(tenant_id);
-        let records = self.records.read().map_err(|_| EnvVarError::StoreUnavailable)?;
+        let records = self
+            .records
+            .read()
+            .map_err(|_| EnvVarError::StoreUnavailable)?;
         let mut set_counts: HashMap<String, usize> = HashMap::new();
         for key in records.keys() {
             if let Some(rest) = key.strip_prefix(&prefix) {
@@ -184,7 +231,10 @@ impl EnvVarStore for MemoryEnvVarStore {
 
     async fn delete_set(&self, tenant_id: &str, set_name: &str) -> Result<(), EnvVarError> {
         let prefix = set_prefix(tenant_id, set_name);
-        let mut records = self.records.write().map_err(|_| EnvVarError::StoreUnavailable)?;
+        let mut records = self
+            .records
+            .write()
+            .map_err(|_| EnvVarError::StoreUnavailable)?;
         let keys_to_remove: HashSet<String> = records
             .keys()
             .filter(|k| k.starts_with(&prefix))
@@ -212,7 +262,12 @@ impl PostgresEnvVarStore {
 }
 
 impl EnvVarStore for PostgresEnvVarStore {
-    async fn set(&self, tenant_id: &str, key: &str, value: &str) -> Result<EnvVarRecord, EnvVarError> {
+    async fn set(
+        &self,
+        tenant_id: &str,
+        key: &str,
+        value: &str,
+    ) -> Result<EnvVarRecord, EnvVarError> {
         self.set_in(tenant_id, DEFAULT_SET, key, value).await
     }
 
@@ -249,7 +304,10 @@ impl EnvVarStore for PostgresEnvVarStore {
         .await
         .map_err(|_| EnvVarError::StoreUnavailable)?;
 
-        Ok(EnvVarRecord { key: key.to_string(), value: value.to_string() })
+        Ok(EnvVarRecord {
+            key: key.to_string(),
+            value: value.to_string(),
+        })
     }
 
     async fn list_in(
@@ -325,14 +383,12 @@ impl EnvVarStore for PostgresEnvVarStore {
     }
 
     async fn delete_set(&self, tenant_id: &str, set_name: &str) -> Result<(), EnvVarError> {
-        let res = sqlx::query(
-            "DELETE FROM af_env_vars WHERE tenant_id = $1 AND env_set = $2",
-        )
-        .bind(tenant_id)
-        .bind(set_name)
-        .execute(&self.pool)
-        .await
-        .map_err(|_| EnvVarError::StoreUnavailable)?;
+        let res = sqlx::query("DELETE FROM af_env_vars WHERE tenant_id = $1 AND env_set = $2")
+            .bind(tenant_id)
+            .bind(set_name)
+            .execute(&self.pool)
+            .await
+            .map_err(|_| EnvVarError::StoreUnavailable)?;
 
         if res.rows_affected() == 0 {
             Err(EnvVarError::NotFound)
@@ -365,7 +421,12 @@ impl PlatformEnvVarStore {
 }
 
 impl EnvVarStore for PlatformEnvVarStore {
-    async fn set(&self, tenant_id: &str, key: &str, value: &str) -> Result<EnvVarRecord, EnvVarError> {
+    async fn set(
+        &self,
+        tenant_id: &str,
+        key: &str,
+        value: &str,
+    ) -> Result<EnvVarRecord, EnvVarError> {
         match self {
             Self::Memory(s) => s.set(tenant_id, key, value).await,
             Self::Postgres(s) => s.set(tenant_id, key, value).await,
@@ -479,7 +540,10 @@ async fn resolve_value(
         serde_json::Value::Object(map) => {
             let mut out = serde_json::Map::new();
             for (k, v) in map {
-                out.insert(k.clone(), Box::pin(resolve_value(v, store, tenant_id, set_name)).await);
+                out.insert(
+                    k.clone(),
+                    Box::pin(resolve_value(v, store, tenant_id, set_name)).await,
+                );
             }
             serde_json::Value::Object(out)
         }
@@ -494,7 +558,12 @@ async fn resolve_value(
     }
 }
 
-async fn resolve_string(s: &str, store: &impl EnvVarStore, tenant_id: &str, set_name: &str) -> String {
+async fn resolve_string(
+    s: &str,
+    store: &impl EnvVarStore,
+    tenant_id: &str,
+    set_name: &str,
+) -> String {
     let mut output = String::new();
     let mut search = s;
 
@@ -527,7 +596,10 @@ mod tests {
     #[tokio::test]
     async fn set_and_list() {
         let store = MemoryEnvVarStore::default();
-        store.set("t1", "API_URL", "https://example.com").await.unwrap();
+        store
+            .set("t1", "API_URL", "https://example.com")
+            .await
+            .unwrap();
         store.set("t1", "TIMEOUT", "30").await.unwrap();
         let list = store.list("t1").await.unwrap();
         assert_eq!(list.len(), 2);
@@ -539,7 +611,10 @@ mod tests {
     async fn get_returns_value() {
         let store = MemoryEnvVarStore::default();
         store.set("t1", "KEY", "value123").await.unwrap();
-        assert_eq!(store.get("t1", "KEY").await.unwrap(), Some("value123".to_string()));
+        assert_eq!(
+            store.get("t1", "KEY").await.unwrap(),
+            Some("value123".to_string())
+        );
         assert_eq!(store.get("t1", "MISSING").await.unwrap(), None);
     }
 
@@ -564,9 +639,18 @@ mod tests {
     #[tokio::test]
     async fn named_sets_are_isolated() {
         let store = MemoryEnvVarStore::default();
-        store.set_in("t1", "production", "API_URL", "https://prod.example.com").await.unwrap();
-        store.set_in("t1", "staging", "API_URL", "https://staging.example.com").await.unwrap();
-        store.set_in("t1", "production", "TIMEOUT", "60").await.unwrap();
+        store
+            .set_in("t1", "production", "API_URL", "https://prod.example.com")
+            .await
+            .unwrap();
+        store
+            .set_in("t1", "staging", "API_URL", "https://staging.example.com")
+            .await
+            .unwrap();
+        store
+            .set_in("t1", "production", "TIMEOUT", "60")
+            .await
+            .unwrap();
 
         let prod = store.list_in("t1", "production").await.unwrap();
         assert_eq!(prod.len(), 2);
@@ -575,7 +659,9 @@ mod tests {
 
         let sets = store.list_sets("t1").await.unwrap();
         assert_eq!(sets.len(), 2);
-        assert!(sets.iter().any(|s| s.name == "production" && s.var_count == 2));
+        assert!(sets
+            .iter()
+            .any(|s| s.name == "production" && s.var_count == 2));
         assert!(sets.iter().any(|s| s.name == "staging" && s.var_count == 1));
     }
 
@@ -592,7 +678,10 @@ mod tests {
     #[tokio::test]
     async fn resolve_env_in_json_replaces_patterns() {
         let store = MemoryEnvVarStore::default();
-        store.set("t1", "BASE_URL", "https://api.example.com").await.unwrap();
+        store
+            .set("t1", "BASE_URL", "https://api.example.com")
+            .await
+            .unwrap();
 
         let input = serde_json::json!({ "url": "{{env.BASE_URL}}/path" });
         let resolved = resolve_env_in_json(&input, &store, "t1", DEFAULT_SET).await;
@@ -602,8 +691,14 @@ mod tests {
     #[tokio::test]
     async fn resolve_uses_named_set() {
         let store = MemoryEnvVarStore::default();
-        store.set_in("t1", "production", "HOST", "prod.example.com").await.unwrap();
-        store.set_in("t1", "staging", "HOST", "staging.example.com").await.unwrap();
+        store
+            .set_in("t1", "production", "HOST", "prod.example.com")
+            .await
+            .unwrap();
+        store
+            .set_in("t1", "staging", "HOST", "staging.example.com")
+            .await
+            .unwrap();
 
         let input = serde_json::json!({ "url": "https://{{env.HOST}}" });
         let prod = resolve_env_in_json(&input, &store, "t1", "production").await;

@@ -126,7 +126,10 @@ impl CredentialStore for MemoryCredentialStore {
         name: &str,
         value: &str,
     ) -> Result<CredentialSummary, CredentialError> {
-        let mut records = self.records.write().map_err(|_| CredentialError::StoreUnavailable)?;
+        let mut records = self
+            .records
+            .write()
+            .map_err(|_| CredentialError::StoreUnavailable)?;
         let prefix = format!("{}/", tenant_id);
         let already_taken = records
             .iter()
@@ -152,7 +155,10 @@ impl CredentialStore for MemoryCredentialStore {
 
     async fn list(&self, tenant_id: &str) -> Result<Vec<CredentialSummary>, CredentialError> {
         let prefix = format!("{}/", tenant_id);
-        let records = self.records.read().map_err(|_| CredentialError::StoreUnavailable)?;
+        let records = self
+            .records
+            .read()
+            .map_err(|_| CredentialError::StoreUnavailable)?;
         let mut out: Vec<CredentialSummary> = records
             .iter()
             .filter(|(k, _)| k.starts_with(&prefix))
@@ -168,7 +174,10 @@ impl CredentialStore for MemoryCredentialStore {
         name: &str,
     ) -> Result<Option<String>, CredentialError> {
         let prefix = format!("{}/", tenant_id);
-        let records = self.records.read().map_err(|_| CredentialError::StoreUnavailable)?;
+        let records = self
+            .records
+            .read()
+            .map_err(|_| CredentialError::StoreUnavailable)?;
         let value = records
             .iter()
             .filter(|(k, _)| k.starts_with(&prefix))
@@ -178,8 +187,13 @@ impl CredentialStore for MemoryCredentialStore {
     }
 
     async fn delete(&self, tenant_id: &str, id: &str) -> Result<(), CredentialError> {
-        let mut records = self.records.write().map_err(|_| CredentialError::StoreUnavailable)?;
-        records.remove(&key(tenant_id, id)).ok_or(CredentialError::NotFound)?;
+        let mut records = self
+            .records
+            .write()
+            .map_err(|_| CredentialError::StoreUnavailable)?;
+        records
+            .remove(&key(tenant_id, id))
+            .ok_or(CredentialError::NotFound)?;
         Ok(())
     }
 
@@ -191,11 +205,22 @@ impl CredentialStore for MemoryCredentialStore {
         description: Option<Option<&str>>,
         expires_at: Option<Option<u64>>,
     ) -> Result<CredentialSummary, CredentialError> {
-        let mut records = self.records.write().map_err(|_| CredentialError::StoreUnavailable)?;
-        let rec = records.get_mut(&key(tenant_id, id)).ok_or(CredentialError::NotFound)?;
-        if let Some(v) = new_value { rec.value = v.to_string(); }
-        if let Some(d) = description { rec.description = d.map(str::to_string); }
-        if let Some(e) = expires_at { rec.expires_at = e; }
+        let mut records = self
+            .records
+            .write()
+            .map_err(|_| CredentialError::StoreUnavailable)?;
+        let rec = records
+            .get_mut(&key(tenant_id, id))
+            .ok_or(CredentialError::NotFound)?;
+        if let Some(v) = new_value {
+            rec.value = v.to_string();
+        }
+        if let Some(d) = description {
+            rec.description = d.map(str::to_string);
+        }
+        if let Some(e) = expires_at {
+            rec.expires_at = e;
+        }
         rec.updated_at = unix_now();
         Ok(CredentialSummary::from(rec as &CredentialRecord))
     }
@@ -206,7 +231,10 @@ impl CredentialStore for MemoryCredentialStore {
         before_unix: u64,
     ) -> Result<Vec<CredentialSummary>, CredentialError> {
         let prefix = format!("{}/", tenant_id);
-        let records = self.records.read().map_err(|_| CredentialError::StoreUnavailable)?;
+        let records = self
+            .records
+            .read()
+            .map_err(|_| CredentialError::StoreUnavailable)?;
         let mut out: Vec<CredentialSummary> = records
             .iter()
             .filter(|(k, _)| k.starts_with(&prefix))
@@ -219,9 +247,7 @@ impl CredentialStore for MemoryCredentialStore {
 }
 
 fn is_unique_violation(e: &sqlx::Error) -> bool {
-    e.as_database_error()
-        .and_then(|e| e.code())
-        .as_deref() == Some("23505")
+    e.as_database_error().and_then(|e| e.code()).as_deref() == Some("23505")
 }
 
 #[derive(Clone)]
@@ -256,7 +282,14 @@ impl CredentialStore for PostgresCredentialStore {
         .await;
 
         match result {
-            Ok(_) => Ok(CredentialSummary { id, name: name.to_string(), description: None, expires_at: None, created_at: now as u64, updated_at: now as u64 }),
+            Ok(_) => Ok(CredentialSummary {
+                id,
+                name: name.to_string(),
+                description: None,
+                expires_at: None,
+                created_at: now as u64,
+                updated_at: now as u64,
+            }),
             Err(e) if is_unique_violation(&e) => Err(CredentialError::NameTaken),
             Err(_) => Err(CredentialError::StoreUnavailable),
         }
@@ -295,14 +328,12 @@ impl CredentialStore for PostgresCredentialStore {
     }
 
     async fn delete(&self, tenant_id: &str, id: &str) -> Result<(), CredentialError> {
-        let res = sqlx::query(
-            "DELETE FROM af_credentials WHERE tenant_id = $1 AND id = $2",
-        )
-        .bind(tenant_id)
-        .bind(id)
-        .execute(&self.pool)
-        .await
-        .map_err(|_| CredentialError::StoreUnavailable)?;
+        let res = sqlx::query("DELETE FROM af_credentials WHERE tenant_id = $1 AND id = $2")
+            .bind(tenant_id)
+            .bind(id)
+            .execute(&self.pool)
+            .await
+            .map_err(|_| CredentialError::StoreUnavailable)?;
 
         if res.rows_affected() == 0 {
             Err(CredentialError::NotFound)
@@ -343,7 +374,9 @@ impl CredentialStore for PostgresCredentialStore {
         .bind(tenant_id).bind(id).fetch_optional(&self.pool).await.map_err(|_| CredentialError::StoreUnavailable)?
         .ok_or(CredentialError::NotFound)?;
         Ok(CredentialSummary {
-            id: row.0, name: row.1, description: row.2,
+            id: row.0,
+            name: row.1,
+            description: row.2,
             expires_at: row.3.map(|e| e as u64),
             created_at: row.4 as u64,
             updated_at: row.5 as u64,
@@ -414,7 +447,10 @@ async fn resolve_json_value<S: CredentialStore>(
 ) -> serde_json::Value {
     match value {
         serde_json::Value::String(s) => {
-            if let Some(rest) = s.strip_prefix("{{credential.").and_then(|r| r.strip_suffix("}}")) {
+            if let Some(rest) = s
+                .strip_prefix("{{credential.")
+                .and_then(|r| r.strip_suffix("}}"))
+            {
                 if let Ok(Some(v)) = store.get_by_name(tenant_id, rest).await {
                     *any = true;
                     return serde_json::Value::String(v);
@@ -425,7 +461,10 @@ async fn resolve_json_value<S: CredentialStore>(
         serde_json::Value::Object(map) => {
             let mut out = serde_json::Map::new();
             for (k, v) in map {
-                out.insert(k.clone(), Box::pin(resolve_json_value(v, store, tenant_id, any)).await);
+                out.insert(
+                    k.clone(),
+                    Box::pin(resolve_json_value(v, store, tenant_id, any)).await,
+                );
             }
             serde_json::Value::Object(out)
         }
@@ -487,8 +526,14 @@ impl CredentialStore for PlatformCredentialStore {
         expires_at: Option<Option<u64>>,
     ) -> Result<CredentialSummary, CredentialError> {
         match self {
-            Self::Memory(s) => s.update(tenant_id, id, new_value, description, expires_at).await,
-            Self::Postgres(s) => s.update(tenant_id, id, new_value, description, expires_at).await,
+            Self::Memory(s) => {
+                s.update(tenant_id, id, new_value, description, expires_at)
+                    .await
+            }
+            Self::Postgres(s) => {
+                s.update(tenant_id, id, new_value, description, expires_at)
+                    .await
+            }
         }
     }
 

@@ -1,10 +1,10 @@
 // Copyright © 2026 北京祺智科技有限公司. All rights reserved.
 // https://www.qzso.com/ · managecode@gmail.com
 
-use std::collections::HashMap;
-use std::sync::{Arc, RwLock};
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
+use std::collections::HashMap;
+use std::sync::{Arc, RwLock};
 
 fn unix_now() -> u64 {
     std::time::SystemTime::now()
@@ -31,7 +31,14 @@ pub struct Notification {
 }
 
 pub trait NotificationStore: Send + Sync {
-    fn create(&self, tenant_id: &str, user_id: Option<&str>, title: &str, body: &str, level: &str) -> Notification;
+    fn create(
+        &self,
+        tenant_id: &str,
+        user_id: Option<&str>,
+        title: &str,
+        body: &str,
+        level: &str,
+    ) -> Notification;
     fn list(&self, tenant_id: &str, user_id: Option<&str>, limit: usize) -> Vec<Notification>;
     fn mark_read(&self, id: &str, tenant_id: &str) -> bool;
     fn mark_all_read(&self, tenant_id: &str, user_id: Option<&str>);
@@ -47,7 +54,14 @@ pub struct MemoryNotificationStore {
 }
 
 impl NotificationStore for MemoryNotificationStore {
-    fn create(&self, tenant_id: &str, user_id: Option<&str>, title: &str, body: &str, level: &str) -> Notification {
+    fn create(
+        &self,
+        tenant_id: &str,
+        user_id: Option<&str>,
+        title: &str,
+        body: &str,
+        level: &str,
+    ) -> Notification {
         let n = Notification {
             id: new_id(),
             tenant_id: tenant_id.to_owned(),
@@ -63,9 +77,17 @@ impl NotificationStore for MemoryNotificationStore {
     }
 
     fn list(&self, tenant_id: &str, user_id: Option<&str>, limit: usize) -> Vec<Notification> {
-        let mut items: Vec<_> = self.data.read().unwrap()
+        let mut items: Vec<_> = self
+            .data
+            .read()
+            .unwrap()
             .values()
-            .filter(|n| n.tenant_id == tenant_id && user_id.map_or(true, |uid| n.user_id.as_deref() == Some(uid) || n.user_id.is_none()))
+            .filter(|n| {
+                n.tenant_id == tenant_id
+                    && user_id.map_or(true, |uid| {
+                        n.user_id.as_deref() == Some(uid) || n.user_id.is_none()
+                    })
+            })
             .cloned()
             .collect();
         items.sort_by(|a, b| b.created_at.cmp(&a.created_at));
@@ -87,7 +109,11 @@ impl NotificationStore for MemoryNotificationStore {
     fn mark_all_read(&self, tenant_id: &str, user_id: Option<&str>) {
         let mut data = self.data.write().unwrap();
         for n in data.values_mut() {
-            if (tenant_id.is_empty() || n.tenant_id == tenant_id) && user_id.map_or(true, |uid| n.user_id.as_deref() == Some(uid) || n.user_id.is_none()) {
+            if (tenant_id.is_empty() || n.tenant_id == tenant_id)
+                && user_id.map_or(true, |uid| {
+                    n.user_id.as_deref() == Some(uid) || n.user_id.is_none()
+                })
+            {
                 n.read = true;
             }
         }
@@ -95,7 +121,11 @@ impl NotificationStore for MemoryNotificationStore {
 
     fn delete(&self, id: &str, tenant_id: &str) -> bool {
         let mut data = self.data.write().unwrap();
-        if data.get(id).map(|n| tenant_id.is_empty() || n.tenant_id == tenant_id).unwrap_or(false) {
+        if data
+            .get(id)
+            .map(|n| tenant_id.is_empty() || n.tenant_id == tenant_id)
+            .unwrap_or(false)
+        {
             data.remove(id);
             return true;
         }
@@ -103,9 +133,17 @@ impl NotificationStore for MemoryNotificationStore {
     }
 
     fn unread_count(&self, tenant_id: &str, user_id: Option<&str>) -> u64 {
-        self.data.read().unwrap()
+        self.data
+            .read()
+            .unwrap()
             .values()
-            .filter(|n| !n.read && n.tenant_id == tenant_id && user_id.map_or(true, |uid| n.user_id.as_deref() == Some(uid) || n.user_id.is_none()))
+            .filter(|n| {
+                !n.read
+                    && n.tenant_id == tenant_id
+                    && user_id.map_or(true, |uid| {
+                        n.user_id.as_deref() == Some(uid) || n.user_id.is_none()
+                    })
+            })
             .count() as u64
     }
 }
@@ -146,11 +184,20 @@ pub struct PostgresNotificationStore {
 }
 
 impl PostgresNotificationStore {
-    pub fn new(pool: PgPool) -> Self { Self { pool } }
+    pub fn new(pool: PgPool) -> Self {
+        Self { pool }
+    }
 }
 
 impl NotificationStore for PostgresNotificationStore {
-    fn create(&self, tenant_id: &str, user_id: Option<&str>, title: &str, body: &str, level: &str) -> Notification {
+    fn create(
+        &self,
+        tenant_id: &str,
+        user_id: Option<&str>,
+        title: &str,
+        body: &str,
+        level: &str,
+    ) -> Notification {
         let n = Notification {
             id: new_id(),
             tenant_id: tenant_id.to_owned(),
@@ -200,8 +247,12 @@ impl NotificationStore for PostgresNotificationStore {
         tokio::task::block_in_place(|| {
             tokio::runtime::Handle::current().block_on(async move {
                 sqlx::query("UPDATE af_notifications SET read=true WHERE id=$1 AND tenant_id=$2")
-                .bind(&id).bind(&tenant_id)
-                .execute(&pool).await.map(|r| r.rows_affected() > 0).unwrap_or(false)
+                    .bind(&id)
+                    .bind(&tenant_id)
+                    .execute(&pool)
+                    .await
+                    .map(|r| r.rows_affected() > 0)
+                    .unwrap_or(false)
             })
         })
     }
@@ -216,9 +267,10 @@ impl NotificationStore for PostgresNotificationStore {
                     "UPDATE af_notifications SET read=true WHERE tenant_id=$1 AND (user_id=$2 OR user_id IS NULL)"
                 ).bind(&tenant_id).bind(&uid).execute(&pool).await;
             } else {
-                let _ = sqlx::query(
-                    "UPDATE af_notifications SET read=true WHERE tenant_id=$1"
-                ).bind(&tenant_id).execute(&pool).await;
+                let _ = sqlx::query("UPDATE af_notifications SET read=true WHERE tenant_id=$1")
+                    .bind(&tenant_id)
+                    .execute(&pool)
+                    .await;
             }
         });
     }
@@ -230,8 +282,12 @@ impl NotificationStore for PostgresNotificationStore {
         tokio::task::block_in_place(|| {
             tokio::runtime::Handle::current().block_on(async move {
                 sqlx::query("DELETE FROM af_notifications WHERE id=$1 AND tenant_id=$2")
-                .bind(&id).bind(&tenant_id)
-                .execute(&pool).await.map(|r| r.rows_affected() > 0).unwrap_or(false)
+                    .bind(&id)
+                    .bind(&tenant_id)
+                    .execute(&pool)
+                    .await
+                    .map(|r| r.rows_affected() > 0)
+                    .unwrap_or(false)
             })
         })
     }
@@ -265,30 +321,59 @@ pub enum PlatformNotificationStore {
 }
 
 impl Default for PlatformNotificationStore {
-    fn default() -> Self { Self::Memory(MemoryNotificationStore::default()) }
+    fn default() -> Self {
+        Self::Memory(MemoryNotificationStore::default())
+    }
 }
 
 impl PlatformNotificationStore {
-    pub fn postgres(pool: PgPool) -> Self { Self::Postgres(PostgresNotificationStore::new(pool)) }
+    pub fn postgres(pool: PgPool) -> Self {
+        Self::Postgres(PostgresNotificationStore::new(pool))
+    }
 }
 
 impl NotificationStore for PlatformNotificationStore {
-    fn create(&self, tenant_id: &str, user_id: Option<&str>, title: &str, body: &str, level: &str) -> Notification {
-        match self { Self::Memory(s) => s.create(tenant_id, user_id, title, body, level), Self::Postgres(s) => s.create(tenant_id, user_id, title, body, level) }
+    fn create(
+        &self,
+        tenant_id: &str,
+        user_id: Option<&str>,
+        title: &str,
+        body: &str,
+        level: &str,
+    ) -> Notification {
+        match self {
+            Self::Memory(s) => s.create(tenant_id, user_id, title, body, level),
+            Self::Postgres(s) => s.create(tenant_id, user_id, title, body, level),
+        }
     }
     fn list(&self, tenant_id: &str, user_id: Option<&str>, limit: usize) -> Vec<Notification> {
-        match self { Self::Memory(s) => s.list(tenant_id, user_id, limit), Self::Postgres(s) => s.list(tenant_id, user_id, limit) }
+        match self {
+            Self::Memory(s) => s.list(tenant_id, user_id, limit),
+            Self::Postgres(s) => s.list(tenant_id, user_id, limit),
+        }
     }
     fn mark_read(&self, id: &str, tenant_id: &str) -> bool {
-        match self { Self::Memory(s) => s.mark_read(id, tenant_id), Self::Postgres(s) => s.mark_read(id, tenant_id) }
+        match self {
+            Self::Memory(s) => s.mark_read(id, tenant_id),
+            Self::Postgres(s) => s.mark_read(id, tenant_id),
+        }
     }
     fn mark_all_read(&self, tenant_id: &str, user_id: Option<&str>) {
-        match self { Self::Memory(s) => s.mark_all_read(tenant_id, user_id), Self::Postgres(s) => s.mark_all_read(tenant_id, user_id) }
+        match self {
+            Self::Memory(s) => s.mark_all_read(tenant_id, user_id),
+            Self::Postgres(s) => s.mark_all_read(tenant_id, user_id),
+        }
     }
     fn delete(&self, id: &str, tenant_id: &str) -> bool {
-        match self { Self::Memory(s) => s.delete(id, tenant_id), Self::Postgres(s) => s.delete(id, tenant_id) }
+        match self {
+            Self::Memory(s) => s.delete(id, tenant_id),
+            Self::Postgres(s) => s.delete(id, tenant_id),
+        }
     }
     fn unread_count(&self, tenant_id: &str, user_id: Option<&str>) -> u64 {
-        match self { Self::Memory(s) => s.unread_count(tenant_id, user_id), Self::Postgres(s) => s.unread_count(tenant_id, user_id) }
+        match self {
+            Self::Memory(s) => s.unread_count(tenant_id, user_id),
+            Self::Postgres(s) => s.unread_count(tenant_id, user_id),
+        }
     }
 }

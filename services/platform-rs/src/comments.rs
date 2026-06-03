@@ -46,7 +46,10 @@ fn next_id() -> String {
 }
 
 fn unix_now() -> u64 {
-    SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_secs()
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs()
 }
 
 // ── Memory store ─────────────────────────────────────────────────────────────
@@ -58,7 +61,9 @@ pub struct MemoryCommentStore {
 
 impl MemoryCommentStore {
     pub fn create(&self, req: CreateCommentRequest) -> Result<WorkflowComment, CommentError> {
-        if req.body.trim().is_empty() { return Err(CommentError::EmptyBody); }
+        if req.body.trim().is_empty() {
+            return Err(CommentError::EmptyBody);
+        }
         let comment = WorkflowComment {
             id: next_id(),
             tenant_id: req.tenant_id,
@@ -68,13 +73,17 @@ impl MemoryCommentStore {
             created_at: unix_now(),
             edited_at: None,
         };
-        self.comments.write().unwrap().insert(comment.id.clone(), comment.clone());
+        self.comments
+            .write()
+            .unwrap()
+            .insert(comment.id.clone(), comment.clone());
         Ok(comment)
     }
 
     pub fn list(&self, tenant_id: &str, workflow_id: &str) -> Vec<WorkflowComment> {
         let map = self.comments.read().unwrap();
-        let mut out: Vec<WorkflowComment> = map.values()
+        let mut out: Vec<WorkflowComment> = map
+            .values()
             .filter(|c| c.tenant_id == tenant_id && c.workflow_id == workflow_id)
             .cloned()
             .collect();
@@ -82,11 +91,20 @@ impl MemoryCommentStore {
         out
     }
 
-    pub fn edit(&self, tenant_id: &str, comment_id: &str, req: EditCommentRequest) -> Result<WorkflowComment, CommentError> {
-        if req.body.trim().is_empty() { return Err(CommentError::EmptyBody); }
+    pub fn edit(
+        &self,
+        tenant_id: &str,
+        comment_id: &str,
+        req: EditCommentRequest,
+    ) -> Result<WorkflowComment, CommentError> {
+        if req.body.trim().is_empty() {
+            return Err(CommentError::EmptyBody);
+        }
         let mut map = self.comments.write().unwrap();
         let comment = map.get_mut(comment_id).ok_or(CommentError::NotFound)?;
-        if comment.tenant_id != tenant_id { return Err(CommentError::NotFound); }
+        if comment.tenant_id != tenant_id {
+            return Err(CommentError::NotFound);
+        }
         comment.body = req.body.trim().to_string();
         comment.edited_at = Some(unix_now());
         Ok(comment.clone())
@@ -95,7 +113,9 @@ impl MemoryCommentStore {
     pub fn delete(&self, tenant_id: &str, comment_id: &str) -> Result<(), CommentError> {
         let mut map = self.comments.write().unwrap();
         let comment = map.get(comment_id).ok_or(CommentError::NotFound)?;
-        if comment.tenant_id != tenant_id { return Err(CommentError::NotFound); }
+        if comment.tenant_id != tenant_id {
+            return Err(CommentError::NotFound);
+        }
         map.remove(comment_id);
         Ok(())
     }
@@ -109,10 +129,14 @@ pub struct PostgresCommentStore {
 }
 
 impl PostgresCommentStore {
-    pub fn new(pool: PgPool) -> Self { Self { pool } }
+    pub fn new(pool: PgPool) -> Self {
+        Self { pool }
+    }
 
     pub async fn create(&self, req: CreateCommentRequest) -> Result<WorkflowComment, CommentError> {
-        if req.body.trim().is_empty() { return Err(CommentError::EmptyBody); }
+        if req.body.trim().is_empty() {
+            return Err(CommentError::EmptyBody);
+        }
         let id = next_id();
         let now = unix_now() as i64;
         let body = req.body.trim().to_string();
@@ -124,67 +148,126 @@ impl PostgresCommentStore {
         .bind(&req.author).bind(&body).bind(now)
         .execute(&self.pool).await.map_err(|_| CommentError::StoreUnavailable)?;
         Ok(WorkflowComment {
-            id, tenant_id: req.tenant_id, workflow_id: req.workflow_id,
-            author: req.author, body, created_at: now as u64, edited_at: None,
+            id,
+            tenant_id: req.tenant_id,
+            workflow_id: req.workflow_id,
+            author: req.author,
+            body,
+            created_at: now as u64,
+            edited_at: None,
         })
     }
 
-    pub async fn list(&self, tenant_id: &str, workflow_id: &str) -> Result<Vec<WorkflowComment>, CommentError> {
+    pub async fn list(
+        &self,
+        tenant_id: &str,
+        workflow_id: &str,
+    ) -> Result<Vec<WorkflowComment>, CommentError> {
         #[derive(sqlx::FromRow)]
         struct Row {
-            id: String, tenant_id: String, workflow_id: String,
-            author: String, body: String, created_at: i64,
-            #[sqlx(default)] edited_at: Option<i64>,
+            id: String,
+            tenant_id: String,
+            workflow_id: String,
+            author: String,
+            body: String,
+            created_at: i64,
+            #[sqlx(default)]
+            edited_at: Option<i64>,
         }
         let rows = sqlx::query_as::<_, Row>(
             "SELECT id, tenant_id, workflow_id, author, body, created_at, edited_at
              FROM af_workflow_comments
              WHERE tenant_id = $1 AND workflow_id = $2
-             ORDER BY created_at ASC, id ASC"
+             ORDER BY created_at ASC, id ASC",
         )
-        .bind(tenant_id).bind(workflow_id)
-        .fetch_all(&self.pool).await.map_err(|_| CommentError::StoreUnavailable)?;
-        Ok(rows.into_iter().map(|r| WorkflowComment {
-            id: r.id, tenant_id: r.tenant_id, workflow_id: r.workflow_id,
-            author: r.author, body: r.body,
-            created_at: r.created_at as u64,
-            edited_at: r.edited_at.map(|t| t as u64),
-        }).collect())
+        .bind(tenant_id)
+        .bind(workflow_id)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|_| CommentError::StoreUnavailable)?;
+        Ok(rows
+            .into_iter()
+            .map(|r| WorkflowComment {
+                id: r.id,
+                tenant_id: r.tenant_id,
+                workflow_id: r.workflow_id,
+                author: r.author,
+                body: r.body,
+                created_at: r.created_at as u64,
+                edited_at: r.edited_at.map(|t| t as u64),
+            })
+            .collect())
     }
 
-    pub async fn edit(&self, tenant_id: &str, comment_id: &str, req: EditCommentRequest) -> Result<WorkflowComment, CommentError> {
-        if req.body.trim().is_empty() { return Err(CommentError::EmptyBody); }
+    pub async fn edit(
+        &self,
+        tenant_id: &str,
+        comment_id: &str,
+        req: EditCommentRequest,
+    ) -> Result<WorkflowComment, CommentError> {
+        if req.body.trim().is_empty() {
+            return Err(CommentError::EmptyBody);
+        }
         let body = req.body.trim().to_string();
         let now = unix_now() as i64;
         let result = sqlx::query(
             "UPDATE af_workflow_comments SET body = $1, edited_at = $2
-             WHERE id = $3 AND tenant_id = $4"
+             WHERE id = $3 AND tenant_id = $4",
         )
-        .bind(&body).bind(now).bind(comment_id).bind(tenant_id)
-        .execute(&self.pool).await.map_err(|_| CommentError::StoreUnavailable)?;
-        if result.rows_affected() == 0 { return Err(CommentError::NotFound); }
+        .bind(&body)
+        .bind(now)
+        .bind(comment_id)
+        .bind(tenant_id)
+        .execute(&self.pool)
+        .await
+        .map_err(|_| CommentError::StoreUnavailable)?;
+        if result.rows_affected() == 0 {
+            return Err(CommentError::NotFound);
+        }
 
         #[derive(sqlx::FromRow)]
-        struct Row { id: String, tenant_id: String, workflow_id: String, author: String, body: String, created_at: i64, #[sqlx(default)] edited_at: Option<i64> }
+        struct Row {
+            id: String,
+            tenant_id: String,
+            workflow_id: String,
+            author: String,
+            body: String,
+            created_at: i64,
+            #[sqlx(default)]
+            edited_at: Option<i64>,
+        }
         let row = sqlx::query_as::<_, Row>(
             "SELECT id, tenant_id, workflow_id, author, body, created_at, edited_at
-             FROM af_workflow_comments WHERE id = $1"
+             FROM af_workflow_comments WHERE id = $1",
         )
-        .bind(comment_id).fetch_one(&self.pool).await.map_err(|_| CommentError::StoreUnavailable)?;
+        .bind(comment_id)
+        .fetch_one(&self.pool)
+        .await
+        .map_err(|_| CommentError::StoreUnavailable)?;
         Ok(WorkflowComment {
-            id: row.id, tenant_id: row.tenant_id, workflow_id: row.workflow_id,
-            author: row.author, body: row.body,
-            created_at: row.created_at as u64, edited_at: row.edited_at.map(|t| t as u64),
+            id: row.id,
+            tenant_id: row.tenant_id,
+            workflow_id: row.workflow_id,
+            author: row.author,
+            body: row.body,
+            created_at: row.created_at as u64,
+            edited_at: row.edited_at.map(|t| t as u64),
         })
     }
 
     pub async fn delete(&self, tenant_id: &str, comment_id: &str) -> Result<(), CommentError> {
-        let result = sqlx::query(
-            "DELETE FROM af_workflow_comments WHERE id = $1 AND tenant_id = $2"
-        )
-        .bind(comment_id).bind(tenant_id)
-        .execute(&self.pool).await.map_err(|_| CommentError::StoreUnavailable)?;
-        if result.rows_affected() == 0 { Err(CommentError::NotFound) } else { Ok(()) }
+        let result =
+            sqlx::query("DELETE FROM af_workflow_comments WHERE id = $1 AND tenant_id = $2")
+                .bind(comment_id)
+                .bind(tenant_id)
+                .execute(&self.pool)
+                .await
+                .map_err(|_| CommentError::StoreUnavailable)?;
+        if result.rows_affected() == 0 {
+            Err(CommentError::NotFound)
+        } else {
+            Ok(())
+        }
     }
 }
 
@@ -197,11 +280,15 @@ pub enum PlatformCommentStore {
 }
 
 impl Default for PlatformCommentStore {
-    fn default() -> Self { Self::Memory(MemoryCommentStore::default()) }
+    fn default() -> Self {
+        Self::Memory(MemoryCommentStore::default())
+    }
 }
 
 impl PlatformCommentStore {
-    pub fn postgres(pool: PgPool) -> Self { Self::Postgres(PostgresCommentStore::new(pool)) }
+    pub fn postgres(pool: PgPool) -> Self {
+        Self::Postgres(PostgresCommentStore::new(pool))
+    }
 
     pub async fn create(&self, req: CreateCommentRequest) -> Result<WorkflowComment, CommentError> {
         match self {
@@ -210,14 +297,23 @@ impl PlatformCommentStore {
         }
     }
 
-    pub async fn list(&self, tenant_id: &str, workflow_id: &str) -> Result<Vec<WorkflowComment>, CommentError> {
+    pub async fn list(
+        &self,
+        tenant_id: &str,
+        workflow_id: &str,
+    ) -> Result<Vec<WorkflowComment>, CommentError> {
         match self {
             Self::Memory(s) => Ok(s.list(tenant_id, workflow_id)),
             Self::Postgres(s) => s.list(tenant_id, workflow_id).await,
         }
     }
 
-    pub async fn edit(&self, tenant_id: &str, comment_id: &str, req: EditCommentRequest) -> Result<WorkflowComment, CommentError> {
+    pub async fn edit(
+        &self,
+        tenant_id: &str,
+        comment_id: &str,
+        req: EditCommentRequest,
+    ) -> Result<WorkflowComment, CommentError> {
         match self {
             Self::Memory(s) => s.edit(tenant_id, comment_id, req),
             Self::Postgres(s) => s.edit(tenant_id, comment_id, req).await,
@@ -236,7 +332,9 @@ impl PlatformCommentStore {
 mod tests {
     use super::*;
 
-    fn store() -> MemoryCommentStore { MemoryCommentStore::default() }
+    fn store() -> MemoryCommentStore {
+        MemoryCommentStore::default()
+    }
 
     fn make_req(tenant: &str, workflow: &str, author: &str, body: &str) -> CreateCommentRequest {
         CreateCommentRequest {
@@ -250,8 +348,10 @@ mod tests {
     #[test]
     fn create_and_list_comments() {
         let s = store();
-        s.create(make_req("t1", "wf-1", "alice", "First comment")).unwrap();
-        s.create(make_req("t1", "wf-1", "bob", "Second comment")).unwrap();
+        s.create(make_req("t1", "wf-1", "alice", "First comment"))
+            .unwrap();
+        s.create(make_req("t1", "wf-1", "bob", "Second comment"))
+            .unwrap();
         let comments = s.list("t1", "wf-1");
         assert_eq!(comments.len(), 2);
         let authors: Vec<&str> = comments.iter().map(|c| c.author.as_str()).collect();
@@ -266,8 +366,19 @@ mod tests {
     #[test]
     fn edit_comment_updates_body_and_sets_edited_at() {
         let s = store();
-        let comment = s.create(make_req("t1", "wf-1", "alice", "Original body")).unwrap();
-        let edited = s.edit("t1", &comment.id, EditCommentRequest { tenant_id: "t1".into(), body: "Updated body".into() }).unwrap();
+        let comment = s
+            .create(make_req("t1", "wf-1", "alice", "Original body"))
+            .unwrap();
+        let edited = s
+            .edit(
+                "t1",
+                &comment.id,
+                EditCommentRequest {
+                    tenant_id: "t1".into(),
+                    body: "Updated body".into(),
+                },
+            )
+            .unwrap();
         assert_eq!(edited.body, "Updated body");
         assert!(edited.edited_at.is_some());
         assert!(edited.edited_at.unwrap() >= comment.created_at);
@@ -276,7 +387,9 @@ mod tests {
     #[test]
     fn delete_comment_removes_it() {
         let s = store();
-        let c = s.create(make_req("t1", "wf-1", "alice", "To delete")).unwrap();
+        let c = s
+            .create(make_req("t1", "wf-1", "alice", "To delete"))
+            .unwrap();
         assert_eq!(s.list("t1", "wf-1").len(), 1);
         s.delete("t1", &c.id).unwrap();
         assert!(s.list("t1", "wf-1").is_empty());
