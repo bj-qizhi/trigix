@@ -126,8 +126,13 @@ async fn main() {
                 trigix_platform::notification_prefs::PlatformNotificationPrefsStore::postgres(
                     pool.clone(),
                 );
-            let billing_store = trigix_platform::billing::PlatformBillingStore::postgres(pool);
+            let billing_store =
+                trigix_platform::billing::PlatformBillingStore::postgres(pool.clone());
             let email_client = trigix_platform::email::EmailClient::from_env();
+
+            // Background data-retention sweeper (opt-in via DATA_RETENTION_DAYS).
+            let retention_days = trigix_platform::retention::retention_days_from_env();
+            trigix_platform::retention::spawn_data_retention(pool, retention_days);
             trigix_platform::http::router_with_all_stores(
                 execution_service,
                 workflow_service,

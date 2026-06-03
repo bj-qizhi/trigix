@@ -24,6 +24,7 @@ pub mod notification_prefs;
 pub mod notifications;
 pub mod orgs;
 pub mod password_reset;
+pub mod retention;
 pub mod scheduler;
 pub mod stripe_billing;
 pub mod token_usage;

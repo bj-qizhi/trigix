@@ -185,6 +185,51 @@ impl CacheClient {
                 .await;
         }
     }
+
+    /// XREVRANGE stream + - COUNT n — return up to `count` most-recent messages
+    /// (newest first). Used to inspect / drain the dead-letter stream.
+    pub async fn xrange_last(
+        &self,
+        stream: &str,
+        count: usize,
+    ) -> Vec<(String, Vec<(String, String)>)> {
+        match self {
+            Self::Noop => vec![],
+            Self::Redis(conn) => {
+                let mut c = conn.clone();
+                let result: redis::RedisResult<redis::Value> = redis::cmd("XREVRANGE")
+                    .arg(stream)
+                    .arg("+")
+                    .arg("-")
+                    .arg("COUNT")
+                    .arg(count)
+                    .query_async(&mut c)
+                    .await;
+                match result {
+                    Ok(redis::Value::Array(msgs)) => parse_stream_messages(&msgs),
+                    _ => vec![],
+                }
+            }
+        }
+    }
+
+    /// XDEL stream id... — delete specific messages from a stream. Returns the
+    /// number of entries actually removed.
+    pub async fn xdel(&self, stream: &str, ids: &[String]) -> u64 {
+        match self {
+            Self::Noop => 0,
+            Self::Redis(conn) if !ids.is_empty() => {
+                let mut c = conn.clone();
+                let mut cmd = redis::cmd("XDEL");
+                cmd.arg(stream);
+                for id in ids {
+                    cmd.arg(id);
+                }
+                cmd.query_async::<u64>(&mut c).await.unwrap_or(0)
+            }
+            Self::Redis(_) => 0,
+        }
+    }
 }
 
 /// Parse the nested XREADGROUP response into flat (id, fields) pairs.
@@ -213,40 +258,48 @@ fn parse_xreadgroup_response(
             redis::Value::Array(msgs) => msgs,
             _ => continue,
         };
-        for msg in messages {
-            let msg_parts = match msg {
-                redis::Value::Array(p) => p,
-                _ => continue,
-            };
-            if msg_parts.len() < 2 {
-                continue;
-            }
-            let id = match &msg_parts[0] {
+        out.extend(parse_stream_messages(messages));
+    }
+    out
+}
+
+/// Parse a flat list of `[msg_id, [f1, v1, f2, v2, ...]]` entries (the shape
+/// returned by XRANGE/XREVRANGE and the inner list of an XREADGROUP response).
+fn parse_stream_messages(messages: &[redis::Value]) -> Vec<(String, Vec<(String, String)>)> {
+    let mut out = vec![];
+    for msg in messages {
+        let msg_parts = match msg {
+            redis::Value::Array(p) => p,
+            _ => continue,
+        };
+        if msg_parts.len() < 2 {
+            continue;
+        }
+        let id = match &msg_parts[0] {
+            redis::Value::BulkString(b) => String::from_utf8_lossy(b).to_string(),
+            redis::Value::SimpleString(s) => s.clone(),
+            _ => continue,
+        };
+        let fields_val = match &msg_parts[1] {
+            redis::Value::Array(f) => f,
+            _ => continue,
+        };
+        let mut fields = vec![];
+        let mut it = fields_val.iter();
+        while let (Some(k), Some(v)) = (it.next(), it.next()) {
+            let key = match k {
                 redis::Value::BulkString(b) => String::from_utf8_lossy(b).to_string(),
                 redis::Value::SimpleString(s) => s.clone(),
                 _ => continue,
             };
-            let fields_val = match &msg_parts[1] {
-                redis::Value::Array(f) => f,
-                _ => continue,
+            let val = match v {
+                redis::Value::BulkString(b) => String::from_utf8_lossy(b).to_string(),
+                redis::Value::SimpleString(s) => s.clone(),
+                _ => String::new(),
             };
-            let mut fields = vec![];
-            let mut it = fields_val.iter();
-            while let (Some(k), Some(v)) = (it.next(), it.next()) {
-                let key = match k {
-                    redis::Value::BulkString(b) => String::from_utf8_lossy(b).to_string(),
-                    redis::Value::SimpleString(s) => s.clone(),
-                    _ => continue,
-                };
-                let val = match v {
-                    redis::Value::BulkString(b) => String::from_utf8_lossy(b).to_string(),
-                    redis::Value::SimpleString(s) => s.clone(),
-                    _ => String::new(),
-                };
-                fields.push((key, val));
-            }
-            out.push((id, fields));
+            fields.push((key, val));
         }
+        out.push((id, fields));
     }
     out
 }
@@ -285,5 +338,68 @@ pub mod keys {
 
     pub fn exec_queue_group() -> &'static str {
         "af:exec:workers"
+    }
+
+    /// Dead-letter stream: jobs that could not be deserialized or whose execution
+    /// failed are routed here instead of being silently dropped.
+    pub fn exec_queue_dead_stream() -> &'static str {
+        "af:exec:queue:dead"
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use redis::Value;
+
+    fn bulk(s: &str) -> Value {
+        Value::BulkString(s.as_bytes().to_vec())
+    }
+
+    #[test]
+    fn parses_flat_xrange_messages() {
+        // Shape of an XRANGE/XREVRANGE reply: [[id, [f1, v1, f2, v2]], ...]
+        let messages = vec![
+            Value::Array(vec![
+                bulk("1-0"),
+                Value::Array(vec![bulk("job"), bulk("{}"), bulk("error"), bulk("boom")]),
+            ]),
+            Value::Array(vec![
+                bulk("2-0"),
+                Value::Array(vec![bulk("job"), bulk("payload")]),
+            ]),
+        ];
+        let out = parse_stream_messages(&messages);
+        assert_eq!(out.len(), 2);
+        assert_eq!(out[0].0, "1-0");
+        assert_eq!(out[0].1[0], ("job".to_string(), "{}".to_string()));
+        assert_eq!(out[0].1[1], ("error".to_string(), "boom".to_string()));
+        assert_eq!(out[1].0, "2-0");
+        assert_eq!(out[1].1[0], ("job".to_string(), "payload".to_string()));
+    }
+
+    #[test]
+    fn parses_nested_xreadgroup_response() {
+        // Shape of XREADGROUP: [[stream_name, [[id, [f, v]], ...]]]
+        let resp = Ok(Value::Array(vec![Value::Array(vec![
+            bulk("af:exec:queue"),
+            Value::Array(vec![Value::Array(vec![
+                bulk("5-0"),
+                Value::Array(vec![bulk("job"), bulk("hello")]),
+            ])]),
+        ])]));
+        let out = parse_xreadgroup_response(resp);
+        assert_eq!(out.len(), 1);
+        assert_eq!(out[0].0, "5-0");
+        assert_eq!(out[0].1[0], ("job".to_string(), "hello".to_string()));
+    }
+
+    #[test]
+    fn malformed_entries_are_skipped() {
+        let messages = vec![
+            Value::Nil,
+            Value::Array(vec![bulk("only-id")]), // missing fields list
+        ];
+        assert!(parse_stream_messages(&messages).is_empty());
     }
 }
