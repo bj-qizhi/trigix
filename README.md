@@ -2,12 +2,10 @@
 
 **AI-Native Workflow Automation Platform**
 
+[![CI](https://github.com/bj-qizhi/trigix/actions/workflows/ci.yml/badge.svg)](https://github.com/bj-qizhi/trigix/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Rust](https://img.shields.io/badge/Rust-2021-orange.svg)](https://www.rust-lang.org/)
 [![React](https://img.shields.io/badge/React-18-61dafb.svg)](https://react.dev/)
-[![GitHub Stars](https://img.shields.io/github/stars/bj-qizhi/trigix?style=social)](https://github.com/bj-qizhi/trigix)
-[![GitHub Issues](https://img.shields.io/github/issues/bj-qizhi/trigix)](https://github.com/bj-qizhi/trigix/issues)
-[![GitHub Forks](https://img.shields.io/github/forks/bj-qizhi/trigix?style=social)](https://github.com/bj-qizhi/trigix/fork)
 
 [English] · [中文](README.zh.md)
 

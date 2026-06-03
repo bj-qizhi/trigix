@@ -1,0 +1,55 @@
+name: Bug report
+description: Report a problem so we can fix it
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: Thanks for taking the time to file a bug report.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: A clear description of the bug, including expected vs. actual behaviour.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Go to '...'
+        2. Click on '...'
+        3. See error
+    validations:
+      required: true
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component
+      options:
+        - Web console (apps/web)
+        - Platform API (services/platform-rs)
+        - Executor (services/executor)
+        - AI runtime (services/ai-runtime)
+        - Infra / Helm / Docker
+        - Other / not sure
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version / commit
+      placeholder: "v1.0.0 or git SHA"
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      placeholder: "OS, Rust version, Node version, deployment mode (local/docker/k8s)"
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs
+      render: shell
