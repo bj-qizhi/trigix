@@ -565,7 +565,6 @@ function UsageHistoryChart({ history, quota, zh }: {
   const isUnlimited = quota >= 9007199254740991
 
   const fmtMonth = (ym: string) => {
-    const y = ym.slice(0, 4)
     const m = parseInt(ym.slice(4), 10)
     return zh
       ? `${m}月`

@@ -23,6 +23,29 @@ import type {
 } from '../types'
 import { getStoredAuth } from '../auth'
 
+// Re-export shared domain types so consumers can import them from the API
+// client module (the canonical definitions live in ../types).
+export type {
+  WorkflowRecord,
+  WorkflowVersionRecord,
+  WorkflowGraph,
+  ExecutionRecord,
+  ExecutionSummary,
+  WebhookInfo,
+  WebhookRecord,
+  CredentialSummary,
+  ScheduleSummary,
+  AuditEvent,
+  WorkflowExport,
+  EnvVarRecord,
+  EnvSetSummary,
+  WorkspaceRecord,
+  ProjectRecord,
+  WorkflowComment,
+  EventSubscription,
+  EventType,
+} from '../types'
+
 async function request<T>(
   path: string,
   options?: RequestInit & { params?: Record<string, string | undefined> },
@@ -1140,6 +1163,7 @@ export interface User {
   name?: string
   tenant_id: string
   created_at: number
+  email_verified?: boolean
 }
 
 export interface AuthResponse {

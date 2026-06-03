@@ -346,7 +346,7 @@ export function RunsPage({ onBack, onOpenExecution, onOpenWorkflow, initialWorkf
   const byTrigger   = triggerFilter === 'all' ? byStatus : byStatus.filter((r) => (r.trigger_type ?? 'manual') === triggerFilter)
   const byStarred   = starredOnly ? byTrigger.filter((r) => r.starred) : byTrigger
   const byLabel     = labelFilter ? byStarred.filter((r) => r.label === labelFilter) : byStarred
-  const byOutput    = outputFilter ? byLabel.filter((r) => (r as Record<string, unknown>).output_json != null && String((r as Record<string, unknown>).output_json).toLowerCase().includes(outputFilter.toLowerCase())) : byLabel
+  const byOutput    = outputFilter ? byLabel.filter((r) => (r as unknown as Record<string, unknown>).output_json != null && String((r as unknown as Record<string, unknown>).output_json).toLowerCase().includes(outputFilter.toLowerCase())) : byLabel
   const filtered    = searchQuery
     ? byOutput.filter((r) => {
         const q = searchQuery.toLowerCase()
@@ -847,7 +847,6 @@ export function RunsPage({ onBack, onOpenExecution, onOpenWorkflow, initialWorkf
           const rowHeight = 32
           const labelWidth = 140
           const chartWidth = 700
-          const totalHeight = uniqueWfs.length * rowHeight + 40
           return (
             <div style={{ overflowX: 'auto', marginBottom: 16 }}>
               <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 8, display: 'flex', gap: 16 }}>

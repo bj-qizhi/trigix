@@ -55,7 +55,8 @@ function Sparkline({ data }: { data: number[] }) {
   const max = Math.max(...data, 1)
   const w = 42, h = 16, barW = 4, gap = 2
   return (
-    <svg width={w} height={h} style={{ verticalAlign: 'middle', opacity: 0.7 }} title={`Last 7 days: ${data.join(', ')}`}>
+    <svg width={w} height={h} style={{ verticalAlign: 'middle', opacity: 0.7 }}>
+      <title>{`Last 7 days: ${data.join(', ')}`}</title>
       {data.map((v, i) => {
         const barH = Math.max(2, Math.round((v / max) * h))
         return (
@@ -278,7 +279,7 @@ export function WorkflowList({ onOpen, onOpenExecution, onCredentials, onAuditLo
   const load = () => {
     setLoading(true)
     setError(null)
-    Promise.all([
+    const loaded = Promise.all([
       api.listWorkflows(auth!.tenantId, auth!.projectId),
       api.listSchedules(auth!.tenantId),
       api.listExecutions(auth!.tenantId),
@@ -295,9 +296,10 @@ export function WorkflowList({ onOpen, onOpenExecution, onCredentials, onAuditLo
     api.getBillingStatus().then(setBillingStatus).catch(() => {})
     api.listNotifications(auth!.tenantId, 20).then((r) => { setServerNotifs(r.notifications); setServerUnread(r.unread_count) }).catch(() => {})
     api.listExpiringCredentials(auth!.tenantId, 7).then(setExpiringCreds).catch(() => {})
+    return loaded
   }
 
-  useEffect(load, [])
+  useEffect(() => { void load() }, [])
 
   const handleCreate = async () => {
     if (!newName.trim()) return
@@ -1239,7 +1241,6 @@ export function WorkflowList({ onOpen, onOpenExecution, onCredentials, onAuditLo
           // Prefer backend aggregate stats (full history) over client-side count (limited to loaded page)
           const totalRuns = execStats?.total ?? execSummaries.length
           const running   = execStats ? (execStats.running + execStats.waiting_approval) : execSummaries.filter((e) => e.status === 'running' || e.status === 'waiting_approval').length
-          const failed    = execStats?.failed ?? execSummaries.filter((e) => e.status === 'failed').length
           const succeeded = execStats?.succeeded ?? execSummaries.filter((e) => e.status === 'succeeded').length
           const successRate = totalRuns > 0 ? Math.round(succeeded / totalRuns * 100) : 0
           const todayStart = Math.floor(new Date().setHours(0, 0, 0, 0) / 1000)

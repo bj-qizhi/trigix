@@ -105,6 +105,7 @@ export interface ExecutionRecord {
   node_count?: number
   completed_node_count?: number
   retried_from?: string
+  graph?: WorkflowGraph
 }
 
 export interface ExecutionSummary {

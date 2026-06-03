@@ -59,10 +59,10 @@ export function LoginPage() {
   const [verifyError, setVerifyError] = useState<string | null>(null)
   const [verifyLoading, setVerifyLoading] = useState(false)
   const [resendEmail, setResendEmail] = useState('')
-  const [resendSent, setResendSent] = useState(false)
+  const [, setResendSent] = useState(false)
 
   // After registration, nudge user to verify
-  const [justRegistered, setJustRegistered] = useState(false)
+  const [, setJustRegistered] = useState(false)
 
   async function handleForgotSubmit(e: React.FormEvent) {
     e.preventDefault()
