@@ -146,7 +146,7 @@ export function DelayConfig({ set, num }: ConfigProps) {
   )
 }
 
-export function ForEachConfig({ config, set, str, num }: ConfigProps) {
+export function ForEachConfig({ set, str, num }: ConfigProps) {
   return (
     <>
       <div className="field">

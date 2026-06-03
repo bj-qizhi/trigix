@@ -351,7 +351,7 @@ export function GraphQLConfig({ set, str }: ConfigProps) {
   )
 }
 
-export function MistralConfig({ config, set, str, num }: ConfigProps) {
+export function MistralConfig({ config, set, str }: ConfigProps) {
   const operation = str('operation', 'chat')
   const OPERATIONS = ['chat', 'embeddings', 'list_models']
   const MODELS = ['mistral-small-latest', 'mistral-medium-latest', 'mistral-large-latest', 'mistral-embed', 'open-mistral-7b', 'open-mixtral-8x7b']
@@ -381,11 +381,11 @@ export function MistralConfig({ config, set, str, num }: ConfigProps) {
           </div>
           <div className="field">
             <label>Temperature</label>
-            <input type="number" min={0} max={2} step={0.1} placeholder="0.7" value={num('temperature', undefined) ?? ''} onChange={(e) => set('temperature', e.target.value ? parseFloat(e.target.value) : undefined)} />
+            <input type="number" min={0} max={2} step={0.1} placeholder="0.7" value={(config['temperature'] as number | undefined) ?? ''} onChange={(e) => set('temperature', e.target.value ? parseFloat(e.target.value) : undefined)} />
           </div>
           <div className="field">
             <label>Max Tokens</label>
-            <input type="number" min={1} placeholder="1024" value={num('max_tokens', undefined) ?? ''} onChange={(e) => set('max_tokens', e.target.value ? parseInt(e.target.value) : undefined)} />
+            <input type="number" min={1} placeholder="1024" value={(config['max_tokens'] as number | undefined) ?? ''} onChange={(e) => set('max_tokens', e.target.value ? parseInt(e.target.value) : undefined)} />
           </div>
         </>
       )}
@@ -410,7 +410,7 @@ export function MistralConfig({ config, set, str, num }: ConfigProps) {
   )
 }
 
-export function PerplexityConfig({ config, set, str, num }: ConfigProps) {
+export function PerplexityConfig({ config, set, str }: ConfigProps) {
   const MODELS = [
     'llama-3.1-sonar-small-128k-online',
     'llama-3.1-sonar-large-128k-online',
@@ -436,11 +436,11 @@ export function PerplexityConfig({ config, set, str, num }: ConfigProps) {
       </div>
       <div className="field">
         <label>Temperature</label>
-        <input type="number" min={0} max={2} step={0.1} placeholder="0.2" value={num('temperature', undefined) ?? ''} onChange={(e) => set('temperature', e.target.value ? parseFloat(e.target.value) : undefined)} />
+        <input type="number" min={0} max={2} step={0.1} placeholder="0.2" value={(config['temperature'] as number | undefined) ?? ''} onChange={(e) => set('temperature', e.target.value ? parseFloat(e.target.value) : undefined)} />
       </div>
       <div className="field">
         <label>Max Tokens</label>
-        <input type="number" min={1} placeholder="1024" value={num('max_tokens', undefined) ?? ''} onChange={(e) => set('max_tokens', e.target.value ? parseInt(e.target.value) : undefined)} />
+        <input type="number" min={1} placeholder="1024" value={(config['max_tokens'] as number | undefined) ?? ''} onChange={(e) => set('max_tokens', e.target.value ? parseInt(e.target.value) : undefined)} />
       </div>
       <div className="field" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
         <input type="checkbox" id="pplx-citations" checked={!!config.return_citations} onChange={(e) => set('return_citations', e.target.checked)} />
@@ -453,7 +453,7 @@ export function PerplexityConfig({ config, set, str, num }: ConfigProps) {
   )
 }
 
-export function CohereConfig({ config, set, str, num }: ConfigProps) {
+export function CohereConfig({ config, set, str }: ConfigProps) {
   const operation = str('operation', 'chat')
   const OPERATIONS = ['chat', 'embed', 'classify', 'rerank']
   const EMBED_MODELS = ['embed-english-v3.0', 'embed-multilingual-v3.0', 'embed-english-light-v3.0']
@@ -485,7 +485,7 @@ export function CohereConfig({ config, set, str, num }: ConfigProps) {
           </div>
           <div className="field">
             <label>Temperature</label>
-            <input type="number" min={0} max={1} step={0.1} value={num('temperature', undefined) ?? ''} onChange={(e) => set('temperature', e.target.value ? parseFloat(e.target.value) : undefined)} />
+            <input type="number" min={0} max={1} step={0.1} value={(config['temperature'] as number | undefined) ?? ''} onChange={(e) => set('temperature', e.target.value ? parseFloat(e.target.value) : undefined)} />
           </div>
         </>
       )}
@@ -586,7 +586,7 @@ export function ReplicateConfig({ config, set, str }: ConfigProps) {
   )
 }
 
-export function GroqConfig({ config, set, str, num }: ConfigProps) {
+export function GroqConfig({ config, set, str }: ConfigProps) {
   const operation = str('operation', 'chat')
   const OPERATIONS = ['chat', 'models']
   return (
@@ -613,11 +613,11 @@ export function GroqConfig({ config, set, str, num }: ConfigProps) {
           </div>
           <div className="field">
             <label>Temperature</label>
-            <input type="number" min={0} max={2} step={0.1} placeholder="1.0" value={num('temperature', undefined) ?? ''} onChange={(e) => set('temperature', e.target.value ? parseFloat(e.target.value) : undefined)} />
+            <input type="number" min={0} max={2} step={0.1} placeholder="1.0" value={(config['temperature'] as number | undefined) ?? ''} onChange={(e) => set('temperature', e.target.value ? parseFloat(e.target.value) : undefined)} />
           </div>
           <div className="field">
             <label>Max Tokens</label>
-            <input type="number" min={1} placeholder="1024" value={num('max_tokens', undefined) ?? ''} onChange={(e) => set('max_tokens', e.target.value ? parseInt(e.target.value) : undefined)} />
+            <input type="number" min={1} placeholder="1024" value={(config['max_tokens'] as number | undefined) ?? ''} onChange={(e) => set('max_tokens', e.target.value ? parseInt(e.target.value) : undefined)} />
           </div>
         </>
       )}
@@ -628,7 +628,7 @@ export function GroqConfig({ config, set, str, num }: ConfigProps) {
   )
 }
 
-export function OpenrouterConfig({ config, set, str, num }: ConfigProps) {
+export function OpenrouterConfig({ config, set, str }: ConfigProps) {
   const operation = str('operation', 'chat')
   const OPERATIONS = ['chat', 'models']
   return (
@@ -655,11 +655,11 @@ export function OpenrouterConfig({ config, set, str, num }: ConfigProps) {
           </div>
           <div className="field">
             <label>Temperature</label>
-            <input type="number" min={0} max={2} step={0.1} placeholder="1.0" value={num('temperature', undefined) ?? ''} onChange={(e) => set('temperature', e.target.value ? parseFloat(e.target.value) : undefined)} />
+            <input type="number" min={0} max={2} step={0.1} placeholder="1.0" value={(config['temperature'] as number | undefined) ?? ''} onChange={(e) => set('temperature', e.target.value ? parseFloat(e.target.value) : undefined)} />
           </div>
           <div className="field">
             <label>Max Tokens</label>
-            <input type="number" min={1} placeholder="1024" value={num('max_tokens', undefined) ?? ''} onChange={(e) => set('max_tokens', e.target.value ? parseInt(e.target.value) : undefined)} />
+            <input type="number" min={1} placeholder="1024" value={(config['max_tokens'] as number | undefined) ?? ''} onChange={(e) => set('max_tokens', e.target.value ? parseInt(e.target.value) : undefined)} />
           </div>
         </>
       )}
@@ -670,7 +670,7 @@ export function OpenrouterConfig({ config, set, str, num }: ConfigProps) {
   )
 }
 
-export function TogetheraiConfig({ config, set, str, num }: ConfigProps) {
+export function TogetheraiConfig({ config, set, str }: ConfigProps) {
   const operation = str('operation', 'chat')
   const OPERATIONS = ['chat', 'completions', 'embeddings']
   return (
@@ -697,11 +697,11 @@ export function TogetheraiConfig({ config, set, str, num }: ConfigProps) {
           </div>
           <div className="field">
             <label>Temperature</label>
-            <input type="number" min={0} max={2} step={0.1} placeholder="0.7" value={num('temperature', undefined) ?? ''} onChange={(e) => set('temperature', e.target.value ? parseFloat(e.target.value) : undefined)} />
+            <input type="number" min={0} max={2} step={0.1} placeholder="0.7" value={(config['temperature'] as number | undefined) ?? ''} onChange={(e) => set('temperature', e.target.value ? parseFloat(e.target.value) : undefined)} />
           </div>
           <div className="field">
             <label>Max Tokens</label>
-            <input type="number" min={1} placeholder="512" value={num('max_tokens', undefined) ?? ''} onChange={(e) => set('max_tokens', e.target.value ? parseInt(e.target.value) : undefined)} />
+            <input type="number" min={1} placeholder="512" value={(config['max_tokens'] as number | undefined) ?? ''} onChange={(e) => set('max_tokens', e.target.value ? parseInt(e.target.value) : undefined)} />
           </div>
         </>
       )}
@@ -718,7 +718,7 @@ export function TogetheraiConfig({ config, set, str, num }: ConfigProps) {
   )
 }
 
-export function HuggingfaceConfig({ config, set, str, num }: ConfigProps) {
+export function HuggingfaceConfig({ config, set, str }: ConfigProps) {
   const operation = str('operation', 'inference')
   const OPERATIONS = ['inference', 'model_info', 'list_models']
   return (
@@ -757,7 +757,7 @@ export function HuggingfaceConfig({ config, set, str, num }: ConfigProps) {
           </div>
           <div className="field">
             <label>Limit</label>
-            <input type="number" min={1} max={100} placeholder="20" value={num('limit', undefined) ?? ''} onChange={(e) => set('limit', e.target.value ? parseInt(e.target.value) : undefined)} />
+            <input type="number" min={1} max={100} placeholder="20" value={(config['limit'] as number | undefined) ?? ''} onChange={(e) => set('limit', e.target.value ? parseInt(e.target.value) : undefined)} />
           </div>
         </>
       )}
@@ -768,7 +768,7 @@ export function HuggingfaceConfig({ config, set, str, num }: ConfigProps) {
   )
 }
 
-export function PineconeConfig({ config, set, str, num }: ConfigProps) {
+export function PineconeConfig({ config, set, str }: ConfigProps) {
   const operation = str('operation', 'query')
   const OPERATIONS = ['query', 'upsert', 'delete', 'fetch']
   return (
@@ -799,7 +799,7 @@ export function PineconeConfig({ config, set, str, num }: ConfigProps) {
           </div>
           <div className="field">
             <label>Top K</label>
-            <input type="number" min={1} max={10000} placeholder="10" value={num('top_k', undefined) ?? ''} onChange={(e) => set('top_k', e.target.value ? parseInt(e.target.value) : undefined)} />
+            <input type="number" min={1} max={10000} placeholder="10" value={(config['top_k'] as number | undefined) ?? ''} onChange={(e) => set('top_k', e.target.value ? parseInt(e.target.value) : undefined)} />
           </div>
           <div className="field" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <input type="checkbox" id="pc-meta" checked={!!config.include_metadata} onChange={(e) => set('include_metadata', e.target.checked)} />
@@ -826,7 +826,7 @@ export function PineconeConfig({ config, set, str, num }: ConfigProps) {
   )
 }
 
-export function QdrantConfig({ config, set, str, num }: ConfigProps) {
+export function QdrantConfig({ config, set, str }: ConfigProps) {
   const operation = str('operation', 'search')
   const OPERATIONS = ['search', 'upsert', 'delete', 'get_collection', 'create_collection']
   return (
@@ -857,7 +857,7 @@ export function QdrantConfig({ config, set, str, num }: ConfigProps) {
           </div>
           <div className="field">
             <label>Top K</label>
-            <input type="number" min={1} max={100} placeholder="10" value={num('top', undefined) ?? ''} onChange={(e) => set('top', e.target.value ? parseInt(e.target.value) : undefined)} />
+            <input type="number" min={1} max={100} placeholder="10" value={(config['top'] as number | undefined) ?? ''} onChange={(e) => set('top', e.target.value ? parseInt(e.target.value) : undefined)} />
           </div>
         </>
       )}
@@ -876,7 +876,7 @@ export function QdrantConfig({ config, set, str, num }: ConfigProps) {
       {operation === 'create_collection' && (
         <div className="field">
           <label>Vector Size</label>
-          <input type="number" min={1} placeholder="1536" value={num('vector_size', undefined) ?? ''} onChange={(e) => set('vector_size', e.target.value ? parseInt(e.target.value) : undefined)} />
+          <input type="number" min={1} placeholder="1536" value={(config['vector_size'] as number | undefined) ?? ''} onChange={(e) => set('vector_size', e.target.value ? parseInt(e.target.value) : undefined)} />
         </div>
       )}
       <p style={{ fontSize: 11, color: 'var(--muted)', margin: '8px 0 0' }}>

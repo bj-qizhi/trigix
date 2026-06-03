@@ -379,7 +379,7 @@ export function ExecutionDetailPage({ executionId, onBack, onOpenWorkflow, onRet
               </button>
               <button
                 className="btn btn-sm"
-                onClick={() => onOpenWorkflow(record.workflow_id, record.input_json)}
+                onClick={() => onOpenWorkflow(record.workflow_id, record.input_json ?? undefined)}
                 title={zh ? '在编辑器中预填本次执行的输入' : "Open workflow editor with this execution's input pre-filled"}
               >
                 {zh ? '↺ 带输入重运行' : '↺ Re-run with Input'}
@@ -1029,6 +1029,7 @@ interface NodeResult {
   node_type: string
   status: string
   duration_ms?: number
+  started_at_ms?: number
 }
 
 const STATUS_COLORS: Record<string, string> = {

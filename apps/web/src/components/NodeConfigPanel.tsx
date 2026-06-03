@@ -2,13 +2,13 @@
 // https://www.qzso.com/ · managecode@gmail.com
 
 import { useEffect, useRef, useState } from 'react'
-import * as api from '../api/client'
 import type { FlowNode } from './Canvas'
 import type { NodeType, ExecutionSummary, NodeExecutionRecord } from '../types'
+import type { TranslationKey } from '../i18n'
+import type { ConfigProps } from './panels/types'
 import { useLocale } from '../useLocale'
 
 import {
-  CronExpressionField, HeadersEditor,
   TriggerConfig, HttpConfig, AgentConfig, ApprovalConfig, CodeConfig, SubWorkflowConfig,
 } from './panels/CorePanels'
 import {
@@ -106,7 +106,7 @@ const NODE_DESCRIPTIONS: Partial<Record<NodeType, { en: string; zh: string }>> =
   hunyuan:   { en: 'Calls Tencent Hunyuan (hunyuan-standard, turbo, lite) via OpenAI-compatible API. Returns content and usage.', zh: '通过 OpenAI 兼容接口调用腾讯混元，返回内容和 Token 用量。' },
 }
 
-const NODE_LABELS: Record<NodeType, string> = {
+const NODE_LABELS: Partial<Record<NodeType, string>> = {
   trigger: 'Trigger',
   http: 'HTTP',
   agent: 'Agent',
@@ -145,7 +145,7 @@ const NODE_LABELS: Record<NodeType, string> = {
   hunyuan: '混元',
 }
 
-const NODE_COLORS: Record<NodeType, string> = {
+const NODE_COLORS: Partial<Record<NodeType, string>> = {
   trigger: 'var(--node-trigger)',
   http: 'var(--node-http)',
   agent: 'var(--node-agent)',
@@ -328,7 +328,7 @@ export function NodeConfigPanel({ node, onUpdateConfig, recentExecutions, onSele
   // ── Hooks must all be called before any early return (Rules of Hooks) ──
   const nt = (node?.data.nodeType ?? 'trigger') as NodeType
   const config = node?.data.config ?? {}
-  const { load: loadPresets, addPreset, deletePreset } = useNodePresets(nt)
+  const { load: loadPresets, addPreset } = useNodePresets(nt)
   const [presets, setPresets] = useState<Array<{ name: string; config: Record<string, unknown> }>>([])
   const [showPresetInput, setShowPresetInput] = useState(false)
   const [presetName, setPresetName] = useState('')
@@ -627,7 +627,7 @@ export function NodeConfigPanel({ node, onUpdateConfig, recentExecutions, onSele
 }
 
 
-function AdvancedConfig({ config, set, num }: ConfigProps) {
+function AdvancedConfig({ config, set }: ConfigProps) {
   const [open, setOpen] = useState(false)
   const { t } = useLocale()
   const maxRetries = (config.max_retries as number | undefined) ?? 0
@@ -808,7 +808,7 @@ function RawConfigPreview({ config }: { config: Record<string, unknown> }) {
 }
 
 
-function NodeResultBox({ result, locale: _locale, t }: { result: NodeExecutionRecord; locale: string; t: (key: string) => string }) {
+function NodeResultBox({ result, locale: _locale, t }: { result: NodeExecutionRecord; locale: string; t: (key: TranslationKey) => string }) {
   const prettyOutput = (() => {
     if (!result.output_json) return null
     try { return JSON.stringify(JSON.parse(result.output_json), null, 2) }

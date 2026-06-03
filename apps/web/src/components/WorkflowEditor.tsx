@@ -950,7 +950,7 @@ export function WorkflowEditor({ workflowId, onBack, initialInput }: Props) {
       const info = await api.getWebhook(auth!.tenantId, ver.id)
       setWebhookUrl(window.location.origin + info.url)
       setWebhookSecret(info.secret ?? null)
-      const rec = await api.startExecutionFromVersion(auth!.tenantId, ver.id, { input: JSON.parse(inputJson || '{}') })
+      const rec = await api.startExecutionFromVersion(auth!.tenantId, ver.id, inputJson || '{}')
       setExecution(rec)
       toast(zh ? '已发布并开始运行' : 'Published and started run')
     } catch (e) {
@@ -2853,9 +2853,9 @@ export function WorkflowEditor({ workflowId, onBack, initialInput }: Props) {
                     </div>
                   ))}
                 </div>
-                {wfStats.avg_duration_ms != null && (
+                {wfStats.avg_duration_secs != null && (
                   <div style={{ marginTop: 8, fontSize: 12, color: 'var(--text-secondary)' }}>
-                    {zh ? '平均耗时' : 'Avg duration'}: <strong>{wfStats.avg_duration_ms < 1000 ? `${wfStats.avg_duration_ms}ms` : `${(wfStats.avg_duration_ms / 1000).toFixed(1)}s`}</strong>
+                    {zh ? '平均耗时' : 'Avg duration'}: <strong>{wfStats.avg_duration_secs < 1 ? `${Math.round(wfStats.avg_duration_secs * 1000)}ms` : `${wfStats.avg_duration_secs.toFixed(1)}s`}</strong>
                   </div>
                 )}
               </section>
@@ -3465,7 +3465,7 @@ function RecentRunsMini({
                   {ex.label || ex.id.slice(-8)}
                 </td>
                 <td style={{ padding: '4px 4px', color: 'var(--muted)', textAlign: 'right' }}>
-                  {age(ex.created_at)}
+                  {age(ex.started_at)}
                 </td>
                 <td style={{ padding: '4px 4px', textAlign: 'right', width: 48 }}>
                   <button

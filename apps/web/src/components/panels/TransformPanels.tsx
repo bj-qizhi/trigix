@@ -322,7 +322,7 @@ export function FormatConfig({ set, str, num }: ConfigProps) {
   )
 }
 
-export function XmlConfig({ config, set, str }: ConfigProps) {
+export function XmlConfig({ set, str }: ConfigProps) {
   return (
     <>
       <div className="field">
@@ -343,7 +343,7 @@ export function XmlConfig({ config, set, str }: ConfigProps) {
   )
 }
 
-export function YamlConfig({ config, set, str }: ConfigProps) {
+export function YamlConfig({ set, str }: ConfigProps) {
   const mode = str('mode', 'parse')
   return (
     <>
@@ -376,7 +376,7 @@ export function YamlConfig({ config, set, str }: ConfigProps) {
   )
 }
 
-export function HandlebarsConfig({ config, set, str }: ConfigProps) {
+export function HandlebarsConfig({ set, str }: ConfigProps) {
   return (
     <>
       <div className="field">
@@ -407,7 +407,7 @@ export function HandlebarsConfig({ config, set, str }: ConfigProps) {
   )
 }
 
-export function MathConfig({ config, set, str, num }: ConfigProps) {
+export function MathConfig({ set, str, num }: ConfigProps) {
   const op = str('operation', 'add')
   const needsB = ['add', 'pow', 'mod', 'pct_change', 'log'].includes(op)
   const needsItems = ['min', 'max', 'sum', 'avg'].includes(op)
@@ -475,7 +475,7 @@ export function MathConfig({ config, set, str, num }: ConfigProps) {
   )
 }
 
-export function ArrayUtilsConfig({ config, set, str, num }: ConfigProps) {
+export function ArrayUtilsConfig({ set, str, num }: ConfigProps) {
   const op = str('operation', 'chunk')
   const ARRAY_OPS = ['chunk', 'flatten', 'compact', 'zip', 'reverse', 'shuffle', 'sample', 'range', 'pluck', 'first_n', 'last_n']
   const needsSource = op !== 'range'
@@ -643,7 +643,7 @@ export function RandomConfig({ set, str, num }: ConfigProps) {
   )
 }
 
-export function CryptoConfig({ config, set, str, num }: ConfigProps) {
+export function CryptoConfig({ set, str, num }: ConfigProps) {
   const op = str('operation', 'sha256')
   const needsKey = op === 'hmac_sha256'
   const needsLength = op === 'random_hex' || op === 'random_base64'
@@ -705,7 +705,7 @@ export function CryptoConfig({ config, set, str, num }: ConfigProps) {
   )
 }
 
-export function DateConfig({ config, set, str, num }: ConfigProps) {
+export function DateConfig({ set, str, num }: ConfigProps) {
   const op = str('operation', 'now')
   const needsSource = op !== 'now'
   const needsSource2 = op === 'diff'
@@ -786,7 +786,7 @@ export function DateConfig({ config, set, str, num }: ConfigProps) {
   )
 }
 
-export function NoteConfig({ config, set, str }: ConfigProps) {
+export function NoteConfig({ set, str }: ConfigProps) {
   return (
     <>
       <div className="field">

@@ -153,7 +153,7 @@ export function EmailConfig({ set, str }: ConfigProps) {
   )
 }
 
-export function GithubConfig({ config, set, str }: ConfigProps) {
+export function GithubConfig({ set, str }: ConfigProps) {
   return (
     <>
       <div className="field">
@@ -268,7 +268,7 @@ export function WebhookSendConfig({ config, set, str }: ConfigProps) {
   )
 }
 
-export function JiraConfig({ config, set, str }: ConfigProps) {
+export function JiraConfig({ set, str }: ConfigProps) {
   const METHOD_OPTIONS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE']
   return (
     <>
@@ -329,7 +329,7 @@ export function JiraConfig({ config, set, str }: ConfigProps) {
   )
 }
 
-export function NotionConfig({ config, set, str }: ConfigProps) {
+export function NotionConfig({ set, str }: ConfigProps) {
   const METHOD_OPTIONS = ['GET', 'POST', 'PATCH', 'DELETE']
   return (
     <>
@@ -374,7 +374,7 @@ export function NotionConfig({ config, set, str }: ConfigProps) {
   )
 }
 
-export function LinearConfig({ config, set, str }: ConfigProps) {
+export function LinearConfig({ set, str }: ConfigProps) {
   return (
     <>
       <div className="field">
@@ -412,7 +412,7 @@ export function LinearConfig({ config, set, str }: ConfigProps) {
   )
 }
 
-export function AirtableConfig({ config, set, str, num }: ConfigProps) {
+export function AirtableConfig({ set, str, num }: ConfigProps) {
   const METHOD_OPTIONS = ['GET', 'POST', 'PATCH', 'DELETE']
   return (
     <>
@@ -492,7 +492,7 @@ export function AirtableConfig({ config, set, str, num }: ConfigProps) {
   )
 }
 
-export function DiscordConfig({ config, set, str }: ConfigProps) {
+export function DiscordConfig({ set, str }: ConfigProps) {
   return (
     <>
       <div className="field">
@@ -537,7 +537,7 @@ export function DiscordConfig({ config, set, str }: ConfigProps) {
   )
 }
 
-export function TeamsConfig({ config, set, str }: ConfigProps) {
+export function TeamsConfig({ set, str }: ConfigProps) {
   return (
     <>
       <div className="field">
@@ -583,7 +583,7 @@ export function TeamsConfig({ config, set, str }: ConfigProps) {
   )
 }
 
-export function SheetsConfig({ config, set, str }: ConfigProps) {
+export function SheetsConfig({ set, str }: ConfigProps) {
   return (
     <>
       <div className="field">
@@ -640,7 +640,7 @@ export function SheetsConfig({ config, set, str }: ConfigProps) {
   )
 }
 
-export function HubspotConfig({ config, set, str }: ConfigProps) {
+export function HubspotConfig({ set, str }: ConfigProps) {
   return (
     <>
       <div className="field">
@@ -688,7 +688,7 @@ export function HubspotConfig({ config, set, str }: ConfigProps) {
   )
 }
 
-export function ZendeskConfig({ config, set, str }: ConfigProps) {
+export function ZendeskConfig({ set, str }: ConfigProps) {
   return (
     <>
       <div className="field">
@@ -746,7 +746,7 @@ export function ZendeskConfig({ config, set, str }: ConfigProps) {
   )
 }
 
-export function TwilioConfig({ config, set, str }: ConfigProps) {
+export function TwilioConfig({ set, str }: ConfigProps) {
   return (
     <>
       <div className="field">
@@ -802,7 +802,7 @@ export function TwilioConfig({ config, set, str }: ConfigProps) {
   )
 }
 
-export function StripeConfig({ config, set, str }: ConfigProps) {
+export function StripeConfig({ set, str }: ConfigProps) {
   return (
     <>
       <div className="field">
@@ -1026,7 +1026,7 @@ export function FreshdeskConfig({ config, set, str }: ConfigProps) {
   )
 }
 
-export function MailgunConfig({ config, set, str }: ConfigProps) {
+export function MailgunConfig({ set, str }: ConfigProps) {
   return (
     <>
       <div className="field">
@@ -1308,7 +1308,7 @@ export function AzureDevOpsConfig({ config, set, str }: ConfigProps) {
   )
 }
 
-export function RedisConfig({ config, set, str, num }: ConfigProps) {
+export function RedisConfig({ set, str, num }: ConfigProps) {
   const op = str('operation', 'get')
   const needsValue = ['set', 'lpush', 'rpush', 'hset'].includes(op)
   const needsField = ['hget', 'hset', 'hdel'].includes(op)
@@ -1410,7 +1410,7 @@ export function RedisConfig({ config, set, str, num }: ConfigProps) {
   )
 }
 
-export function ElasticsearchConfig({ config, set, str }: ConfigProps) {
+export function ElasticsearchConfig({ set, str }: ConfigProps) {
   return (
     <>
       <div className="field">
@@ -1466,7 +1466,7 @@ export function ElasticsearchConfig({ config, set, str }: ConfigProps) {
   )
 }
 
-export function PagerdutyConfig({ config, set, str }: ConfigProps) {
+export function PagerdutyConfig({ set, str }: ConfigProps) {
   return (
     <>
       <div className="field">
