@@ -17,6 +17,7 @@ import { EnvironmentPage } from './components/EnvironmentPage'
 import { WorkspacePage } from './components/WorkspacePage'
 import { WebhookPage } from './components/WebhookPage'
 import { ApiKeysPage } from './components/ApiKeysPage'
+import { SsoSettingsPage } from './components/SsoSettingsPage'
 import { EventSubscriptionsPage } from './components/EventSubscriptionsPage'
 import { FormPage } from './components/FormPage'
 import { OrgPage } from './components/OrgPage'
@@ -39,6 +40,7 @@ type Page =
   | { name: 'workspaces' }
   | { name: 'webhooks' }
   | { name: 'apikeys' }
+  | { name: 'sso' }
   | { name: 'event-subscriptions' }
   | { name: 'orgs' }
   | { name: 'account' }
@@ -146,6 +148,10 @@ function AppInner() {
     return <ApiKeysPage onBack={() => setPage({ name: 'list' })} />
   }
 
+  if (page.name === 'sso') {
+    return <SsoSettingsPage onBack={() => setPage({ name: 'list' })} />
+  }
+
   if (page.name === 'event-subscriptions') {
     return <EventSubscriptionsPage onBack={() => setPage({ name: 'list' })} />
   }
@@ -227,6 +233,7 @@ function AppInner() {
         onWorkspaces={() => setPage({ name: 'workspaces' })}
         onWebhooks={() => setPage({ name: 'webhooks' })}
         onApiKeys={() => setPage({ name: 'apikeys' })}
+        onSso={() => setPage({ name: 'sso' })}
         onEventSubscriptions={() => setPage({ name: 'event-subscriptions' })}
         onOrgs={() => setPage({ name: 'orgs' })}
         onAccount={() => setPage({ name: 'account' })}
