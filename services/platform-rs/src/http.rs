@@ -167,6 +167,7 @@ pub struct AppState {
     stripe_client: Option<Arc<StripeClient>>,
     rate_limiter: RateLimiter,
     notification_store: Arc<PlatformNotificationStore>,
+    sso_store: Arc<crate::sso::PlatformSsoStore>,
 }
 
 pub fn router() -> Router {
@@ -223,6 +224,7 @@ pub(crate) fn default_app_state() -> AppState {
         stripe_client: StripeClient::from_env().map(Arc::new),
         rate_limiter: RateLimiter::default(),
         notification_store: Arc::new(PlatformNotificationStore::default()),
+        sso_store: Arc::new(crate::sso::PlatformSsoStore::default()),
     }
 }
 
@@ -667,6 +669,7 @@ async fn auth_middleware(State(state): State<AppState>, mut req: Request, next: 
         || path == "/v1/auth/resend-verification"
         || path.starts_with("/v1/invitations/")
         || path.starts_with("/v1/webhooks/")
+        || path.starts_with("/v1/sso/")
         || path == "/healthz"
         || path == "/healthz/detail"
         || path == "/v1/system/info"
@@ -986,6 +989,17 @@ pub(crate) fn build_router(state: AppState) -> Router {
             get(method_not_allowed).post(register_user),
         )
         .route("/v1/auth/login", get(method_not_allowed).post(login_user))
+        .route("/v1/sso/public", get(sso_public_handler))
+        .route("/v1/sso/:slug/login", get(sso_login_handler))
+        .route("/v1/sso/:slug/callback", get(sso_callback_handler))
+        .route(
+            "/v1/sso-connections",
+            get(sso_list_connections_handler).post(sso_create_connection_handler),
+        )
+        .route(
+            "/v1/sso-connections/:id",
+            delete(sso_delete_connection_handler),
+        )
         .route("/v1/auth/me", get(me_handler).patch(update_me_handler))
         .route(
             "/v1/auth/me/notifications",
@@ -1176,6 +1190,7 @@ pub fn router_with_services(
         stripe_client: StripeClient::from_env().map(Arc::new),
         rate_limiter: RateLimiter::default(),
         notification_store: Arc::new(PlatformNotificationStore::default()),
+        sso_store: Arc::new(crate::sso::PlatformSsoStore::default()),
     };
 
     build_router(state)
@@ -1208,6 +1223,7 @@ pub fn router_with_all_stores(
     notification_prefs_store: crate::notification_prefs::PlatformNotificationPrefsStore,
     email_client: crate::email::EmailClient,
     billing_store: PlatformBillingStore,
+    sso_store: crate::sso::PlatformSsoStore,
 ) -> Router {
     let state = AppState {
         execution_service: Arc::new(execution_service),
@@ -1238,6 +1254,7 @@ pub fn router_with_all_stores(
         stripe_client: StripeClient::from_env().map(Arc::new),
         rate_limiter: RateLimiter::default(),
         notification_store: Arc::new(PlatformNotificationStore::default()),
+        sso_store: Arc::new(sso_store),
     };
     spawn_schedule_runner(state.clone());
     spawn_execution_timeout_guard(state.clone());
@@ -6087,6 +6104,269 @@ async fn login_user(
         token,
         user: crate::users::PublicUser::from(&user),
     }))
+}
+
+// ── Enterprise SSO (OIDC) ───────────────────────────────────────────────────
+
+fn sso_redirect_base() -> String {
+    std::env::var("PUBLIC_BASE_URL").unwrap_or_else(|_| "http://localhost:38080".to_string())
+}
+
+fn sso_frontend_url() -> String {
+    std::env::var("FRONTEND_URL").unwrap_or_else(|_| "http://localhost:3100".to_string())
+}
+
+fn sso_callback_uri(slug: &str) -> String {
+    format!(
+        "{}/v1/sso/{}/callback",
+        sso_redirect_base().trim_end_matches('/'),
+        slug
+    )
+}
+
+/// Public list of enabled SSO connections — used to render login buttons.
+async fn sso_public_handler(
+    State(state): State<AppState>,
+) -> Json<Vec<crate::sso::PublicSsoConnection>> {
+    Json(state.sso_store.list_enabled_public().await)
+}
+
+#[derive(Deserialize)]
+struct CreateSsoBody {
+    slug: String,
+    provider: String,
+    issuer: String,
+    client_id: String,
+    client_secret: String,
+    scopes: Option<String>,
+}
+
+async fn sso_list_connections_handler(
+    State(state): State<AppState>,
+    Extension(claims): Extension<Option<Claims>>,
+) -> Result<Json<Vec<crate::sso::SsoConnection>>, ApiError> {
+    require_admin(&claims)?;
+    let tenant_id = effective_tenant_id(&claims, "tenant-1");
+    Ok(Json(state.sso_store.list_by_tenant(&tenant_id).await))
+}
+
+async fn sso_create_connection_handler(
+    State(state): State<AppState>,
+    Extension(claims): Extension<Option<Claims>>,
+    Json(body): Json<CreateSsoBody>,
+) -> Result<(StatusCode, Json<crate::sso::SsoConnection>), ApiError> {
+    require_admin(&claims)?;
+    let tenant_id = effective_tenant_id(&claims, "tenant-1");
+    let slug = body.slug.trim().to_lowercase();
+    if slug.is_empty() || !slug.chars().all(|c| c.is_ascii_alphanumeric() || c == '-') {
+        return Err(ApiError {
+            status: StatusCode::BAD_REQUEST,
+            message: "slug must be non-empty and alphanumeric/dash only".to_string(),
+        });
+    }
+    if state.sso_store.get_by_slug(&slug).await.is_some() {
+        return Err(ApiError {
+            status: StatusCode::CONFLICT,
+            message: "an SSO connection with this slug already exists".to_string(),
+        });
+    }
+    let conn = crate::sso::SsoConnection {
+        id: uuid::Uuid::new_v4().to_string(),
+        tenant_id,
+        slug,
+        provider: body.provider,
+        issuer: body.issuer.trim_end_matches('/').to_string(),
+        client_id: body.client_id,
+        client_secret: body.client_secret,
+        scopes: body
+            .scopes
+            .filter(|s| !s.trim().is_empty())
+            .unwrap_or_else(|| "openid email profile".to_string()),
+        enabled: true,
+        created_at: crate::sso::unix_now(),
+    };
+    let created = state.sso_store.create(conn).await;
+    Ok((StatusCode::CREATED, Json(created)))
+}
+
+async fn sso_delete_connection_handler(
+    State(state): State<AppState>,
+    Extension(claims): Extension<Option<Claims>>,
+    Path(id): Path<String>,
+) -> Result<StatusCode, ApiError> {
+    require_admin(&claims)?;
+    let tenant_id = effective_tenant_id(&claims, "tenant-1");
+    if state.sso_store.delete(&tenant_id, &id).await {
+        Ok(StatusCode::NO_CONTENT)
+    } else {
+        Err(ApiError {
+            status: StatusCode::NOT_FOUND,
+            message: "SSO connection not found".to_string(),
+        })
+    }
+}
+
+fn sso_redirect(location: &str) -> Response {
+    Response::builder()
+        .status(StatusCode::FOUND)
+        .header("Location", location)
+        .body(axum::body::Body::empty())
+        .unwrap()
+}
+
+fn sso_error_redirect(message: &str) -> Response {
+    let url = format!(
+        "{}/?sso_error={}",
+        sso_frontend_url().trim_end_matches('/'),
+        urlencode(message)
+    );
+    sso_redirect(&url)
+}
+
+/// Percent-encode a string for safe inclusion in a URL query value.
+fn urlencode(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for b in s.bytes() {
+        match b {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                out.push(b as char)
+            }
+            _ => out.push_str(&format!("%{b:02X}")),
+        }
+    }
+    out
+}
+
+/// `GET /v1/sso/:slug/login` — begin SP-initiated OIDC login (redirect to IdP).
+async fn sso_login_handler(State(state): State<AppState>, Path(slug): Path<String>) -> Response {
+    let conn = match state.sso_store.get_by_slug(&slug).await {
+        Some(c) if c.enabled => c,
+        _ => return sso_error_redirect("unknown or disabled SSO connection"),
+    };
+    let md = match crate::sso::discover(&conn.issuer).await {
+        Ok(m) => m,
+        Err(e) => return sso_error_redirect(&format!("OIDC discovery failed: {e}")),
+    };
+    let (state_jwt, nonce) = match crate::sso::sign_state(&slug) {
+        Ok(v) => v,
+        Err(e) => return sso_error_redirect(&e),
+    };
+    let redirect_uri = sso_callback_uri(&slug);
+    let authorize = format!(
+        "{}?response_type=code&client_id={}&redirect_uri={}&scope={}&state={}&nonce={}",
+        md.authorization_endpoint,
+        urlencode(&conn.client_id),
+        urlencode(&redirect_uri),
+        urlencode(&conn.scopes),
+        urlencode(&state_jwt),
+        urlencode(&nonce),
+    );
+    sso_redirect(&authorize)
+}
+
+#[derive(Deserialize)]
+struct SsoCallbackQuery {
+    code: Option<String>,
+    state: Option<String>,
+    error: Option<String>,
+}
+
+/// `GET /v1/sso/:slug/callback` — handle the IdP redirect: exchange the code,
+/// verify the ID token, provision the user, and hand a Trigix JWT to the SPA.
+async fn sso_callback_handler(
+    State(state): State<AppState>,
+    Path(slug): Path<String>,
+    axum::extract::Query(q): axum::extract::Query<SsoCallbackQuery>,
+) -> Response {
+    if let Some(err) = q.error {
+        return sso_error_redirect(&format!("IdP returned error: {err}"));
+    }
+    let (code, state_jwt) = match (q.code, q.state) {
+        (Some(c), Some(s)) => (c, s),
+        _ => return sso_error_redirect("missing code or state"),
+    };
+
+    let st = match crate::sso::verify_state(&state_jwt) {
+        Ok(s) if s.slug == slug => s,
+        Ok(_) => return sso_error_redirect("state/slug mismatch"),
+        Err(e) => return sso_error_redirect(&e),
+    };
+
+    let conn = match state.sso_store.get_by_slug(&slug).await {
+        Some(c) if c.enabled => c,
+        _ => return sso_error_redirect("unknown or disabled SSO connection"),
+    };
+    let md = match crate::sso::discover(&conn.issuer).await {
+        Ok(m) => m,
+        Err(e) => return sso_error_redirect(&format!("OIDC discovery failed: {e}")),
+    };
+
+    let redirect_uri = sso_callback_uri(&slug);
+    let tokens = match crate::sso::exchange_code(
+        &md.token_endpoint,
+        &code,
+        &conn.client_id,
+        &conn.client_secret,
+        &redirect_uri,
+    )
+    .await
+    {
+        Ok(t) => t,
+        Err(e) => return sso_error_redirect(&e),
+    };
+
+    let claims = match crate::sso::verify_id_token(
+        &tokens.id_token,
+        &md.jwks_uri,
+        &conn.issuer,
+        &conn.client_id,
+        &st.nonce,
+    )
+    .await
+    {
+        Ok(c) => c,
+        Err(e) => return sso_error_redirect(&e),
+    };
+
+    let email = match claims.email {
+        Some(e) if !e.is_empty() => e.to_lowercase(),
+        _ => return sso_error_redirect("IdP did not return an email claim"),
+    };
+
+    // Find-or-create the user within the connection's tenant.
+    let store = Arc::clone(&state.user_store);
+    let tenant = conn.tenant_id.clone();
+    let name = claims.name.clone();
+    let user = tokio::task::spawn_blocking(move || {
+        if let Some(u) = store.find_by_email(&email) {
+            return Ok(u);
+        }
+        let random_pw = uuid::Uuid::new_v4().to_string();
+        let created = store.create(&email, &random_pw, name.as_deref(), &tenant)?;
+        // Email is asserted by the IdP, so mark it verified.
+        let _ = store.mark_email_verified(&created.id);
+        store
+            .find_by_id(&created.id)
+            .ok_or(crate::users::UserError::NotFound)
+    })
+    .await;
+
+    let user = match user {
+        Ok(Ok(u)) => u,
+        _ => return sso_error_redirect("failed to provision SSO user"),
+    };
+
+    let token = match make_user_token(&user) {
+        Ok(t) => t,
+        Err(_) => return sso_error_redirect("failed to issue session token"),
+    };
+
+    let dest = format!(
+        "{}/?sso_token={}",
+        sso_frontend_url().trim_end_matches('/'),
+        urlencode(&token)
+    );
+    sso_redirect(&dest)
 }
 
 async fn me_handler(
