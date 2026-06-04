@@ -1196,13 +1196,17 @@ export interface PublicSsoConnection {
   provider: string
 }
 
+export type SsoKind = 'oidc' | 'feishu' | 'dingtalk' | 'wechat_work'
+
 export interface SsoConnection {
   id: string
   tenant_id: string
   slug: string
   provider: string
+  kind: SsoKind
   issuer: string
   client_id: string
+  agent_id?: string | null
   scopes: string
   enabled: boolean
   created_at: number
@@ -1220,9 +1224,11 @@ export function listSsoConnections(): Promise<SsoConnection[]> {
 export function createSsoConnection(body: {
   slug: string
   provider: string
-  issuer: string
+  kind?: SsoKind
+  issuer?: string
   client_id: string
   client_secret: string
+  agent_id?: string
   scopes?: string
 }): Promise<SsoConnection> {
   return request('/v1/sso-connections', { method: 'POST', body: JSON.stringify(body) })
