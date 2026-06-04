@@ -27,6 +27,24 @@ export function CustomNodesPage({ onBack }: Props) {
   const [endpoint, setEndpoint] = useState('')
   const [schema, setSchema] = useState('{\n  "type": "object",\n  "properties": {}\n}')
 
+  const [importUrl, setImportUrl] = useState('')
+  const [importMsg, setImportMsg] = useState<string | null>(null)
+
+  const handleImport = async () => {
+    if (!importUrl.trim()) return
+    setBusy(true); setError(null); setImportMsg(null)
+    try {
+      const imported = await api.importCustomNodes(importUrl.trim())
+      setImportMsg(zh ? `已导入 ${imported.length} 个节点` : `Imported ${imported.length} node(s)`)
+      setImportUrl('')
+      load()
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : String(e))
+    } finally {
+      setBusy(false)
+    }
+  }
+
   const load = () => {
     api.listCustomNodes().then(setNodes).catch((e: unknown) => setError(String(e)))
   }
@@ -94,6 +112,22 @@ export function CustomNodesPage({ onBack }: Props) {
         </p>
 
         {error && <p style={{ color: '#ef4444', fontSize: 13, marginBottom: 12 }}>{error}</p>}
+
+        {/* One-click import from a node service manifest */}
+        <div style={{
+          display: 'flex', gap: 8, alignItems: 'flex-end', marginBottom: 16,
+          background: 'var(--surface)', border: '1px solid var(--border)',
+          borderRadius: 'var(--radius)', padding: '12px 14px',
+        }}>
+          <div style={{ ...fieldStyle, flex: 1 }}>
+            <label style={labelStyle}>{zh ? '从清单一键导入（节点服务地址）' : 'Import from manifest (node service URL)'}</label>
+            <input className="input" placeholder="http://your-host:9000" value={importUrl} onChange={(e) => setImportUrl(e.target.value)} />
+          </div>
+          <button className="btn" onClick={handleImport} disabled={busy || !importUrl.trim()}>
+            {zh ? '↓ 导入全部' : '↓ Import All'}
+          </button>
+        </div>
+        {importMsg && <p style={{ color: '#16a34a', fontSize: 13, marginBottom: 12 }}>{importMsg}</p>}
 
         <div style={{
           display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 20,

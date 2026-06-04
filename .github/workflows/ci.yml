@@ -64,6 +64,10 @@ jobs:
       - name: Build (tsc + vite)
         run: npm run build
 
+      - name: Node SDK tests
+        working-directory: sdk/typescript
+        run: node --test
+
   ai-runtime:
     name: AI Runtime (tests)
     runs-on: ubuntu-latest
