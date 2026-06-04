@@ -191,6 +191,9 @@ pub enum NodeType {
     Minimax,
     Ernie,
     Hunyuan,
+    /// Retrieval-Augmented Generation: query a pgvector knowledge base via the
+    /// AI runtime and return the most relevant chunks.
+    Rag,
 }
 
 impl WorkflowGraph {

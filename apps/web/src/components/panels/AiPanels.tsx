@@ -885,3 +885,32 @@ export function QdrantConfig({ config, set, str }: ConfigProps) {
     </>
   )
 }
+
+export function RagConfig({ set, str, num }: ConfigProps) {
+  return (
+    <>
+      <div className="field">
+        <label>Knowledge Base *</label>
+        <input placeholder="my-kb" value={str('kb')} onChange={(e) => set('kb', e.target.value)} />
+        <span style={{ fontSize: 11, color: 'var(--muted)' }}>
+          Knowledge base to search (populated via the RAG ingest API).
+        </span>
+      </div>
+      <div className="field">
+        <label>Query *</label>
+        <input placeholder="{{input.question}}" value={str('query')} onChange={(e) => set('query', e.target.value)} />
+        <span style={{ fontSize: 11, color: 'var(--muted)' }}>
+          Supports {'{{...}}'} templates. Embedded and matched against the KB.
+        </span>
+      </div>
+      <div className="field">
+        <label>Top K</label>
+        <input type="number" min={1} max={50} value={num('top_k', 4)} onChange={(e) => set('top_k', e.target.value ? parseInt(e.target.value) : 4)} />
+      </div>
+      <div className="field">
+        <label>Tenant ID</label>
+        <input placeholder="tenant-1" value={str('tenant_id')} onChange={(e) => set('tenant_id', e.target.value)} />
+      </div>
+    </>
+  )
+}

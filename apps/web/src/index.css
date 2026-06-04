@@ -36,6 +36,7 @@
   --node-slack: #4a154b;
   --node-email: #0369a1;
   --node-openai: #10a37f;
+  --node-rag: #7c3aed;
   --node-gemini: #4285f4;
   --node-database: #336791;
   --node-extract: #0f766e;
@@ -337,6 +338,7 @@ label { font-size: 12px; color: var(--muted); display: block; margin-bottom: 4px
 .flow-node-slack .flow-node-header { background: var(--node-slack); }
 .flow-node-email .flow-node-header { background: var(--node-email); }
 .flow-node-openai .flow-node-header { background: var(--node-openai); }
+.flow-node-rag .flow-node-header { background: var(--node-rag); }
 .flow-node-gemini .flow-node-header { background: var(--node-gemini); }
 .flow-node-database .flow-node-header { background: var(--node-database); }
 .flow-node-extract .flow-node-header { background: var(--node-extract); }
