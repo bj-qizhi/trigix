@@ -161,6 +161,7 @@ const NODE_LABELS: Record<NodeType, string> = {
   slack: 'Slack',
   email: 'Email',
   openai: 'OpenAI',
+  rag: 'RAG',
   gemini: 'Gemini',
   database: 'Database',
   extract: 'Extract',
@@ -301,6 +302,7 @@ const NODE_ICONS: Record<NodeType, string> = {
   slack: '#',
   email: '@',
   openai: '⬡',
+  rag: '⌕',
   gemini: '✦',
   database: '⊞',
   extract: '↳',
@@ -464,6 +466,7 @@ function FlowNodeComponent({ data, selected, id }: NodeProps) {
     if (nt === 'code') return c.script ? String(c.script).split('\n')[0].slice(0, 40) : 'No script'
     if (nt === 'slack') return c.text ? String(c.text).slice(0, 40) : 'No message'
     if (nt === 'email') return c.to ? `to: ${String(c.to)}` : 'No recipient'
+    if (nt === 'rag') return c.kb ? `kb: ${String(c.kb)}` : 'No knowledge base'
     if (nt === 'openai') return (c.model as string) || 'gpt-4o-mini'
     if (nt === 'gemini') return (c.model as string) || 'gemini-2.0-flash'
     if (nt === 'database') return c.query ? String(c.query).split('\n')[0].slice(0, 40) : 'No query'
@@ -634,6 +637,7 @@ const nodeTypes = {
   slack: FlowNodeComponent,
   email: FlowNodeComponent,
   openai: FlowNodeComponent,
+  rag: FlowNodeComponent,
   gemini: FlowNodeComponent,
   database: FlowNodeComponent,
   extract: FlowNodeComponent,
@@ -1038,6 +1042,7 @@ export function Canvas({
               slack: '#4a154b',
               email: '#0369a1',
               openai: '#10a37f',
+              rag: '#7c3aed',
               gemini: '#4285f4',
               database: '#336791',
               extract: '#0f766e',

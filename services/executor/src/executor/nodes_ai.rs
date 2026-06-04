@@ -259,3 +259,128 @@ pub(super) async fn execute_claude(
         serde_json::json!({ "content": content, "model": model, "usage": usage }).to_string(),
     )
 }
+
+#[derive(serde::Serialize)]
+struct RagQueryRequest {
+    tenant_id: String,
+    kb: String,
+    query: String,
+    top_k: u64,
+}
+
+/// Retrieval-Augmented Generation: query a pgvector knowledge base through the
+/// AI runtime (`POST /v1/rag/query`) and return the retrieved chunks as JSON.
+/// Downstream nodes can reference them via `{{node_id.results}}`.
+pub(super) async fn execute_rag(
+    node: &Node,
+    context: &ExecutionContext,
+    client: &reqwest::Client,
+    ai_runtime_base_url: Option<&str>,
+) -> NodeExecutionResult {
+    let base_url = match ai_runtime_base_url {
+        Some(url) => url,
+        None => {
+            return NodeExecutionResult::failed(
+                "RAG node requires AI_RUNTIME_BASE_URL to be configured",
+            )
+        }
+    };
+    let cfg = match node.config.as_ref() {
+        Some(c) => c,
+        None => return NodeExecutionResult::failed("RAG node requires config"),
+    };
+    let kb = match cfg.get("kb").and_then(|v| v.as_str()) {
+        Some(s) if !s.is_empty() => s.to_string(),
+        _ => return NodeExecutionResult::failed("RAG node missing 'kb'"),
+    };
+    let query_tmpl = match cfg.get("query").and_then(|v| v.as_str()) {
+        Some(s) => s,
+        None => return NodeExecutionResult::failed("RAG node missing 'query'"),
+    };
+    let query = resolve_template(query_tmpl, context);
+    let tenant_id = cfg
+        .get("tenant_id")
+        .and_then(|v| v.as_str())
+        .map(|s| resolve_template(s, context))
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| "tenant-1".to_string());
+    let top_k = node_config_u64(node, "top_k").unwrap_or(4).clamp(1, 50);
+
+    let endpoint = format!("{}/v1/rag/query", base_url.trim_end_matches('/'));
+    let request = RagQueryRequest {
+        tenant_id,
+        kb,
+        query,
+        top_k,
+    };
+
+    match client.post(&endpoint).json(&request).send().await {
+        Ok(response) => {
+            if response.status().is_success() {
+                match response.text().await {
+                    Ok(body) => NodeExecutionResult::succeeded(body),
+                    Err(e) => {
+                        NodeExecutionResult::failed(format!("Failed to read RAG response: {e}"))
+                    }
+                }
+            } else {
+                let status = response.status();
+                let body = response.text().await.unwrap_or_default();
+                NodeExecutionResult::failed(format!("AI Runtime returned {status}: {body}"))
+            }
+        }
+        Err(e) => NodeExecutionResult::failed(format!("Failed to reach AI Runtime: {e}")),
+    }
+}
+
+#[cfg(test)]
+mod rag_tests {
+    use super::*;
+    use workflow_core::NodeType;
+
+    fn ctx() -> ExecutionContext {
+        ExecutionContext {
+            execution_id: "e1".into(),
+            workflow_version_id: "v1".into(),
+            input_json: "{\"q\":\"billing\"}".into(),
+            node_outputs: Default::default(),
+            dry_run: false,
+        }
+    }
+
+    fn rag_node(config: serde_json::Value) -> Node {
+        Node {
+            id: "rag1".into(),
+            node_type: NodeType::Rag,
+            config: Some(config),
+        }
+    }
+
+    #[tokio::test]
+    async fn fails_without_ai_runtime_base_url() {
+        let c = reqwest::Client::new();
+        let n = rag_node(serde_json::json!({ "kb": "docs", "query": "x" }));
+        let r = execute_rag(&n, &ctx(), &c, None).await;
+        assert!(r
+            .error
+            .as_deref()
+            .unwrap_or("")
+            .contains("AI_RUNTIME_BASE_URL"));
+    }
+
+    #[tokio::test]
+    async fn fails_without_kb() {
+        let c = reqwest::Client::new();
+        let n = rag_node(serde_json::json!({ "query": "x" }));
+        let r = execute_rag(&n, &ctx(), &c, Some("http://localhost:9")).await;
+        assert!(r.error.as_deref().unwrap_or("").contains("kb"));
+    }
+
+    #[tokio::test]
+    async fn fails_without_query() {
+        let c = reqwest::Client::new();
+        let n = rag_node(serde_json::json!({ "kb": "docs" }));
+        let r = execute_rag(&n, &ctx(), &c, Some("http://localhost:9")).await;
+        assert!(r.error.as_deref().unwrap_or("").contains("query"));
+    }
+}

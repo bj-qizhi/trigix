@@ -1983,6 +1983,7 @@ fn node_type_to_str(node_type: &workflow_core::NodeType) -> &'static str {
         workflow_core::NodeType::Trigger => "trigger",
         workflow_core::NodeType::Http => "http",
         workflow_core::NodeType::Agent => "agent",
+        workflow_core::NodeType::Rag => "rag",
         workflow_core::NodeType::Condition => "condition",
         workflow_core::NodeType::Approval => "approval",
         workflow_core::NodeType::Map => "map",

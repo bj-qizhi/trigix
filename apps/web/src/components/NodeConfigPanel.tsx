@@ -17,7 +17,7 @@ import {
   FilterConfig, SplitConfig, JoinConfig,
 } from './panels/ControlPanels'
 import {
-  OpenAIConfig, GeminiConfig, ClaudeConfig, DatabaseConfig, GraphQLConfig,
+  OpenAIConfig, GeminiConfig, ClaudeConfig, RagConfig, DatabaseConfig, GraphQLConfig,
   MistralConfig, PerplexityConfig, CohereConfig, ReplicateConfig, GroqConfig,
   OpenrouterConfig, TogetheraiConfig, HuggingfaceConfig,
 } from './panels/AiPanels'
@@ -499,6 +499,7 @@ export function NodeConfigPanel({ node, onUpdateConfig, recentExecutions, onSele
         {nt === 'slack' && <SlackConfig config={config} set={set} str={str} num={num} />}
         {nt === 'email' && <EmailConfig config={config} set={set} str={str} num={num} />}
         {nt === 'openai' && <OpenAIConfig config={config} set={set} str={str} num={num} />}
+        {nt === 'rag' && <RagConfig config={config} set={set} str={str} num={num} />}
         {nt === 'gemini' && <GeminiConfig config={config} set={set} str={str} num={num} />}
         {nt === 'database' && <DatabaseConfig config={config} set={set} str={str} num={num} />}
         {nt === 'extract' && <ExtractConfig config={config} set={set} str={str} num={num} />}
