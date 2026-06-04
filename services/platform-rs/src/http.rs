@@ -998,7 +998,7 @@ pub(crate) fn build_router(state: AppState) -> Router {
         )
         .route(
             "/v1/sso-connections/:id",
-            delete(sso_delete_connection_handler),
+            delete(sso_delete_connection_handler).patch(sso_update_connection_handler),
         )
         .route("/v1/auth/me", get(me_handler).patch(update_me_handler))
         .route(
@@ -6223,6 +6223,35 @@ async fn sso_delete_connection_handler(
     require_admin(&claims)?;
     let tenant_id = effective_tenant_id(&claims, "tenant-1");
     if state.sso_store.delete(&tenant_id, &id).await {
+        Ok(StatusCode::NO_CONTENT)
+    } else {
+        Err(ApiError {
+            status: StatusCode::NOT_FOUND,
+            message: "SSO connection not found".to_string(),
+        })
+    }
+}
+
+#[derive(Deserialize)]
+struct UpdateSsoBody {
+    enabled: bool,
+}
+
+/// `PATCH /v1/sso-connections/:id` — enable or disable a connection (admin).
+/// A disabled connection rejects login and is hidden from the login buttons.
+async fn sso_update_connection_handler(
+    State(state): State<AppState>,
+    Extension(claims): Extension<Option<Claims>>,
+    Path(id): Path<String>,
+    Json(body): Json<UpdateSsoBody>,
+) -> Result<StatusCode, ApiError> {
+    require_admin(&claims)?;
+    let tenant_id = effective_tenant_id(&claims, "tenant-1");
+    if state
+        .sso_store
+        .set_enabled(&tenant_id, &id, body.enabled)
+        .await
+    {
         Ok(StatusCode::NO_CONTENT)
     } else {
         Err(ApiError {

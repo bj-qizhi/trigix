@@ -141,6 +141,15 @@ export function SsoSettingsPage({ onBack }: Props) {
     }
   }
 
+  const handleToggle = async (id: string, enabled: boolean) => {
+    try {
+      await api.setSsoConnectionEnabled(id, enabled)
+      load()
+    } catch (e: unknown) {
+      setError(String(e))
+    }
+  }
+
   const fieldStyle: React.CSSProperties = { display: 'flex', flexDirection: 'column', gap: 4 }
   const labelStyle: React.CSSProperties = { fontSize: 12, color: 'var(--muted)' }
 
@@ -257,6 +266,7 @@ export function SsoSettingsPage({ onBack }: Props) {
                 <th>{zh ? '提供商' : 'Provider'}</th>
                 <th>{zh ? '类型' : 'Type'}</th>
                 <th>Slug</th>
+                <th>{zh ? '状态' : 'Status'}</th>
                 <th>Callback URL</th>
                 <th>{zh ? '创建时间' : 'Created'}</th>
                 <th></th>
@@ -269,12 +279,20 @@ export function SsoSettingsPage({ onBack }: Props) {
                   <td><code>{c.kind}</code></td>
                   <td><code>{c.slug}</code></td>
                   <td>
+                    <span style={{ fontSize: 12, color: c.enabled ? '#16a34a' : 'var(--muted)' }}>
+                      {c.enabled ? (zh ? '● 已启用' : '● Enabled') : (zh ? '○ 已停用' : '○ Disabled')}
+                    </span>
+                  </td>
+                  <td>
                     <button className="btn btn-sm" onClick={() => copy(callbackUrl(c.slug))} title={callbackUrl(c.slug)}>
                       {copied === callbackUrl(c.slug) ? (zh ? '✓ 已复制' : '✓ Copied') : (zh ? '⎘ 复制' : '⎘ Copy')}
                     </button>
                   </td>
                   <td style={{ color: 'var(--muted)', fontSize: 12 }}>{formatTs(c.created_at)}</td>
-                  <td>
+                  <td style={{ display: 'flex', gap: 6 }}>
+                    <button className="btn btn-sm" onClick={() => handleToggle(c.id, !c.enabled)}>
+                      {c.enabled ? (zh ? '停用' : 'Disable') : (zh ? '启用' : 'Enable')}
+                    </button>
                     <button className="btn btn-sm btn-danger" onClick={() => handleDelete(c.id, c.provider)}>
                       {zh ? '删除' : 'Delete'}
                     </button>

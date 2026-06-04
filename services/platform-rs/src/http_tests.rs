@@ -5082,3 +5082,72 @@ async fn sso_create_rejects_bad_slug() {
         .unwrap();
     assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
 }
+
+#[tokio::test]
+async fn sso_disable_hides_from_public_and_rejects_login() {
+    let app = router();
+    let body = json!({
+        "slug": "togg-okta", "provider": "Okta", "kind": "oidc",
+        "issuer": "https://x.okta.com", "client_id": "c", "client_secret": "s"
+    });
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/v1/sso-connections")
+                .header("content-type", "application/json")
+                .body(Body::from(body.to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::CREATED);
+    let bytes = to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let created: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+    let id = created["id"].as_str().unwrap();
+
+    // Disable it.
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("PATCH")
+                .uri(format!("/v1/sso-connections/{id}"))
+                .header("content-type", "application/json")
+                .body(Body::from(json!({"enabled": false}).to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::NO_CONTENT);
+
+    // Public list no longer includes it.
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/v1/sso/public")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let bytes = to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let pubs: Vec<serde_json::Value> = serde_json::from_slice(&bytes).unwrap();
+    assert!(!pubs.iter().any(|p| p["slug"] == "togg-okta"));
+
+    // Login is rejected (redirects to the SPA with an error).
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .uri("/v1/sso/togg-okta/login")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::FOUND);
+    let loc = resp.headers().get("location").unwrap().to_str().unwrap();
+    assert!(loc.contains("sso_error"));
+}

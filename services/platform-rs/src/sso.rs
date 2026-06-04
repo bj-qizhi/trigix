@@ -115,6 +115,19 @@ impl MemorySsoStore {
         rows.retain(|c| !(c.tenant_id == tenant_id && c.id == id));
         rows.len() != before
     }
+    pub async fn set_enabled(&self, tenant_id: &str, id: &str, enabled: bool) -> bool {
+        let mut rows = self.rows.write().unwrap();
+        match rows
+            .iter_mut()
+            .find(|c| c.tenant_id == tenant_id && c.id == id)
+        {
+            Some(c) => {
+                c.enabled = enabled;
+                true
+            }
+            None => false,
+        }
+    }
 }
 
 pub struct PostgresSsoStore {
@@ -187,6 +200,17 @@ impl PostgresSsoStore {
 
     pub async fn delete(&self, tenant_id: &str, id: &str) -> bool {
         sqlx::query("DELETE FROM af_sso_connections WHERE tenant_id = $1 AND id = $2")
+            .bind(tenant_id)
+            .bind(id)
+            .execute(&self.pool)
+            .await
+            .map(|r| r.rows_affected() > 0)
+            .unwrap_or(false)
+    }
+
+    pub async fn set_enabled(&self, tenant_id: &str, id: &str, enabled: bool) -> bool {
+        sqlx::query("UPDATE af_sso_connections SET enabled = $1 WHERE tenant_id = $2 AND id = $3")
+            .bind(enabled)
             .bind(tenant_id)
             .bind(id)
             .execute(&self.pool)
@@ -283,6 +307,12 @@ impl PlatformSsoStore {
         match self {
             Self::Memory(s) => s.delete(tenant_id, id).await,
             Self::Postgres(s) => s.delete(tenant_id, id).await,
+        }
+    }
+    pub async fn set_enabled(&self, tenant_id: &str, id: &str, enabled: bool) -> bool {
+        match self {
+            Self::Memory(s) => s.set_enabled(tenant_id, id, enabled).await,
+            Self::Postgres(s) => s.set_enabled(tenant_id, id, enabled).await,
         }
     }
 }
