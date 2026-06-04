@@ -10,7 +10,10 @@ import anthropic
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
+from .rag.router import router as rag_router
+
 app = FastAPI(title="Trigix AI Runtime")
+app.include_router(rag_router)
 
 _anthropic_client: anthropic.Anthropic | None = None
 

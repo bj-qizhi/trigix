@@ -15,3 +15,7 @@ __pycache__/
 .DS_Store
 
 *.log
+
+# Python build artifacts
+*.egg-info/
+__pycache__/
