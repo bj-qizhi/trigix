@@ -23,6 +23,7 @@ interface Props {
   onWebhooks: () => void
   onApiKeys: () => void
   onSso: () => void
+  onKnowledge: () => void
   onEventSubscriptions: () => void
   onOrgs: () => void
   onAccount: () => void
@@ -133,7 +134,7 @@ function addRecentId(id: string) {
   try { localStorage.setItem(RECENT_KEY, JSON.stringify(ids)) } catch { /* ignore */ }
 }
 
-export function WorkflowList({ onOpen, onOpenExecution, onCredentials, onAuditLog, onRuns, onAnalytics, onEnvironment, onWorkspaces, onWebhooks, onApiKeys, onSso, onEventSubscriptions, onOrgs, onAccount, onUsers, onSchedules, onMonitoring, onApprovals, onWorkflowDeps }: Props) {
+export function WorkflowList({ onOpen, onOpenExecution, onCredentials, onAuditLog, onRuns, onAnalytics, onEnvironment, onWorkspaces, onWebhooks, onApiKeys, onSso, onKnowledge, onEventSubscriptions, onOrgs, onAccount, onUsers, onSchedules, onMonitoring, onApprovals, onWorkflowDeps }: Props) {
   const { auth, logout } = useAuth()
   const { theme, toggle: toggleTheme } = useTheme()
   const { locale, toggle: toggleLocale, t } = useLocale()
@@ -806,6 +807,7 @@ export function WorkflowList({ onOpen, onOpenExecution, onCredentials, onAuditLo
                   { label: t('wl.btn.webhooks'), action: () => { onWebhooks(); setShowNavMenu(false) } },
                   { label: t('wl.btn.apikeys'), action: () => { onApiKeys(); setShowNavMenu(false) } },
                   { label: locale === 'zh' ? '🔐 企业 SSO' : '🔐 Enterprise SSO', action: () => { onSso(); setShowNavMenu(false) } },
+                  { label: locale === 'zh' ? '📚 知识库' : '📚 Knowledge Bases', action: () => { onKnowledge(); setShowNavMenu(false) } },
                   { label: t('wl.btn.events'), action: () => { onEventSubscriptions(); setShowNavMenu(false) } },
                   { label: t('wl.btn.orgs'), action: () => { onOrgs(); setShowNavMenu(false) } },
                   { label: '🔑 ' + t('wl.btn.credentials'), action: () => { onCredentials(); setShowNavMenu(false) } },

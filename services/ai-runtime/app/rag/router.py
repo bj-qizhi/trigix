@@ -101,6 +101,18 @@ async def query(req: QueryRequest) -> QueryResponse:
     )
 
 
+@router.get("/kbs")
+async def list_kbs(tenant_id: str) -> dict[str, list[dict]]:
+    store = await get_store()
+    return {"knowledge_bases": await store.list_kbs(tenant_id)}
+
+
+@router.get("/documents")
+async def list_documents(tenant_id: str, kb: str) -> dict[str, list[dict]]:
+    store = await get_store()
+    return {"documents": await store.list_documents(tenant_id, kb)}
+
+
 @router.delete("/documents/{tenant_id}/{kb}/{doc_id}")
 async def delete_document(tenant_id: str, kb: str, doc_id: str) -> dict[str, int]:
     store = await get_store()

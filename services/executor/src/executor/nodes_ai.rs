@@ -383,4 +383,118 @@ mod rag_tests {
         let r = execute_rag(&n, &ctx(), &c, Some("http://localhost:9")).await;
         assert!(r.error.as_deref().unwrap_or("").contains("query"));
     }
+
+    #[tokio::test]
+    async fn ingest_fails_without_ai_runtime_base_url() {
+        let c = reqwest::Client::new();
+        let n = Node {
+            id: "i1".into(),
+            node_type: NodeType::RagIngest,
+            config: Some(serde_json::json!({ "kb": "docs", "doc_id": "d", "text": "x" })),
+        };
+        let r = execute_rag_ingest(&n, &ctx(), &c, None).await;
+        assert!(r
+            .error
+            .as_deref()
+            .unwrap_or("")
+            .contains("AI_RUNTIME_BASE_URL"));
+    }
+
+    #[tokio::test]
+    async fn ingest_fails_without_doc_id() {
+        let c = reqwest::Client::new();
+        let n = Node {
+            id: "i2".into(),
+            node_type: NodeType::RagIngest,
+            config: Some(serde_json::json!({ "kb": "docs", "text": "x" })),
+        };
+        let r = execute_rag_ingest(&n, &ctx(), &c, Some("http://localhost:9")).await;
+        assert!(r.error.as_deref().unwrap_or("").contains("doc_id"));
+    }
+}
+
+#[derive(serde::Serialize)]
+struct RagIngestRequest {
+    tenant_id: String,
+    kb: String,
+    doc_id: String,
+    text: String,
+    chunk_size: u64,
+    overlap: u64,
+}
+
+/// Ingest a document into a pgvector knowledge base through the AI runtime
+/// (`POST /v1/rag/ingest`): the `text` is chunked, embedded, and stored under
+/// `doc_id` (re-ingesting the same doc_id replaces it). Returns `{doc_id, chunks}`.
+pub(super) async fn execute_rag_ingest(
+    node: &Node,
+    context: &ExecutionContext,
+    client: &reqwest::Client,
+    ai_runtime_base_url: Option<&str>,
+) -> NodeExecutionResult {
+    let base_url = match ai_runtime_base_url {
+        Some(url) => url,
+        None => {
+            return NodeExecutionResult::failed(
+                "RAG Ingest node requires AI_RUNTIME_BASE_URL to be configured",
+            )
+        }
+    };
+    let cfg = match node.config.as_ref() {
+        Some(c) => c,
+        None => return NodeExecutionResult::failed("RAG Ingest node requires config"),
+    };
+    let kb = match cfg.get("kb").and_then(|v| v.as_str()) {
+        Some(s) if !s.is_empty() => s.to_string(),
+        _ => return NodeExecutionResult::failed("RAG Ingest node missing 'kb'"),
+    };
+    let doc_id = match cfg.get("doc_id").and_then(|v| v.as_str()) {
+        Some(s) if !s.is_empty() => resolve_template(s, context),
+        _ => return NodeExecutionResult::failed("RAG Ingest node missing 'doc_id'"),
+    };
+    let text_tmpl = match cfg.get("text").and_then(|v| v.as_str()) {
+        Some(s) => s,
+        None => return NodeExecutionResult::failed("RAG Ingest node missing 'text'"),
+    };
+    let text = resolve_template(text_tmpl, context);
+    let tenant_id = cfg
+        .get("tenant_id")
+        .and_then(|v| v.as_str())
+        .map(|s| resolve_template(s, context))
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| "tenant-1".to_string());
+    let chunk_size = node_config_u64(node, "chunk_size")
+        .unwrap_or(1000)
+        .clamp(50, 8000);
+    let overlap = node_config_u64(node, "overlap")
+        .unwrap_or(150)
+        .min(chunk_size - 1);
+
+    let endpoint = format!("{}/v1/rag/ingest", base_url.trim_end_matches('/'));
+    let request = RagIngestRequest {
+        tenant_id,
+        kb,
+        doc_id,
+        text,
+        chunk_size,
+        overlap,
+    };
+
+    match client.post(&endpoint).json(&request).send().await {
+        Ok(response) => {
+            if response.status().is_success() {
+                match response.text().await {
+                    Ok(body) => NodeExecutionResult::succeeded(body),
+                    Err(e) => NodeExecutionResult::failed(format!(
+                        "Failed to read RAG ingest response: {e}"
+                    )),
+                }
+            } else {
+                let status = response.status();
+                let body = response.text().await.unwrap_or_default();
+                NodeExecutionResult::failed(format!("AI Runtime returned {status}: {body}"))
+            }
+        }
+        Err(e) => NodeExecutionResult::failed(format!("Failed to reach AI Runtime: {e}")),
+    }
 }

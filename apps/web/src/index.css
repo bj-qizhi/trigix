@@ -339,6 +339,7 @@ label { font-size: 12px; color: var(--muted); display: block; margin-bottom: 4px
 .flow-node-email .flow-node-header { background: var(--node-email); }
 .flow-node-openai .flow-node-header { background: var(--node-openai); }
 .flow-node-rag .flow-node-header { background: var(--node-rag); }
+.flow-node-rag_ingest .flow-node-header { background: var(--node-rag); }
 .flow-node-gemini .flow-node-header { background: var(--node-gemini); }
 .flow-node-database .flow-node-header { background: var(--node-database); }
 .flow-node-extract .flow-node-header { background: var(--node-extract); }

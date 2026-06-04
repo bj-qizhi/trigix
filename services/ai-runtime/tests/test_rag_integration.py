@@ -53,3 +53,26 @@ async def test_ingest_and_retrieve_most_relevant():
         await store.delete_document(tenant, kb, "doc-pets")
         await store.delete_document(tenant, kb, "doc-eng")
         await store.close()
+
+
+async def test_list_kbs_and_documents():
+    store = await RagStore.connect(DSN)
+    tenant, kb = "t-list", f"kb-{uuid.uuid4().hex[:8]}"
+    try:
+        await store.ingest(tenant, kb, "d1", chunk_text("alpha beta gamma " * 50, 100, 20))
+        await store.ingest(tenant, kb, "d2", chunk_text("delta epsilon", 1000, 100))
+
+        kbs = await store.list_kbs(tenant)
+        mine = [k for k in kbs if k["kb"] == kb]
+        assert len(mine) == 1
+        assert mine[0]["docs"] == 2
+        assert mine[0]["chunks"] >= 2
+
+        docs = await store.list_documents(tenant, kb)
+        ids = {d["doc_id"] for d in docs}
+        assert ids == {"d1", "d2"}
+        assert all(d["chunks"] >= 1 for d in docs)
+    finally:
+        await store.delete_document(tenant, kb, "d1")
+        await store.delete_document(tenant, kb, "d2")
+        await store.close()
