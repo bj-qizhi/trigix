@@ -99,3 +99,9 @@ jobs:
         env:
           RAG_TEST_DATABASE_URL: postgresql://t:t@localhost:5432/t
         run: python -m pytest -q
+
+      - name: Node SDK tests
+        working-directory: sdk/python
+        run: |
+          pip install -e ".[test]"
+          python -m pytest -q

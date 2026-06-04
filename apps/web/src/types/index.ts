@@ -10,7 +10,7 @@ export type NodeType = 'trigger' | 'http' | 'agent' | 'condition' | 'approval' |
  | 'apify' | 'ganalytics' | 'neon' | 'copper'
  | 'deepseek' | 'qwen' | 'zhipu' | 'moonshot'
  | 'doubao' | 'minimax' | 'ernie' | 'hunyuan'
- | 'rag' | 'rag_ingest'
+ | 'rag' | 'rag_ingest' | 'custom'
 
 export interface ApiNode {
   id: string

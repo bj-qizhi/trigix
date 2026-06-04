@@ -1278,6 +1278,37 @@ export function deleteRagDocument(kb: string, docId: string): Promise<{ deleted:
   return request(`/v1/rag/documents/${encodeURIComponent(kb)}/${encodeURIComponent(docId)}`, { method: 'DELETE' })
 }
 
+// ── Custom node registry (node SDK) ────────────────────────────────────────
+
+export interface CustomNodeDef {
+  id: string
+  tenant_id: string
+  slug: string
+  label: string
+  description: string
+  endpoint: string
+  config_schema: { properties?: Record<string, { type?: string; title?: string }> } & Record<string, unknown>
+  created_at: number
+}
+
+export function listCustomNodes(): Promise<CustomNodeDef[]> {
+  return request('/v1/custom-nodes')
+}
+
+export function upsertCustomNode(body: {
+  slug: string
+  label: string
+  description?: string
+  endpoint: string
+  config_schema?: unknown
+}): Promise<CustomNodeDef> {
+  return request('/v1/custom-nodes', { method: 'POST', body: JSON.stringify(body) })
+}
+
+export function deleteCustomNode(id: string): Promise<void> {
+  return request(`/v1/custom-nodes/${id}`, { method: 'DELETE' })
+}
+
 export interface UpdateProfileRequest {
   name?: string
   current_password?: string

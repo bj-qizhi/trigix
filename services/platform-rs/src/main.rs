@@ -131,6 +131,10 @@ async fn main() {
             let sso_store = trigix_platform::sso::PlatformSsoStore::postgres(
                 trigix_platform::sso::PostgresSsoStore::new(pool.clone()),
             );
+            let custom_node_store =
+                trigix_platform::custom_nodes::PlatformCustomNodeStore::postgres(
+                    trigix_platform::custom_nodes::PostgresCustomNodeStore::new(pool.clone()),
+                );
             let email_client = trigix_platform::email::EmailClient::from_env();
 
             // Background data-retention sweeper (opt-in via DATA_RETENTION_DAYS).
@@ -163,6 +167,7 @@ async fn main() {
                 email_client,
                 billing_store,
                 sso_store,
+                custom_node_store,
             )
         }
         Err(_) => {

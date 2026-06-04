@@ -19,6 +19,7 @@ import { WebhookPage } from './components/WebhookPage'
 import { ApiKeysPage } from './components/ApiKeysPage'
 import { SsoSettingsPage } from './components/SsoSettingsPage'
 import { KnowledgeBasePage } from './components/KnowledgeBasePage'
+import { CustomNodesPage } from './components/CustomNodesPage'
 import { EventSubscriptionsPage } from './components/EventSubscriptionsPage'
 import { FormPage } from './components/FormPage'
 import { OrgPage } from './components/OrgPage'
@@ -43,6 +44,7 @@ type Page =
   | { name: 'apikeys' }
   | { name: 'sso' }
   | { name: 'knowledge' }
+  | { name: 'custom-nodes' }
   | { name: 'event-subscriptions' }
   | { name: 'orgs' }
   | { name: 'account' }
@@ -158,6 +160,10 @@ function AppInner() {
     return <KnowledgeBasePage onBack={() => setPage({ name: 'list' })} />
   }
 
+  if (page.name === 'custom-nodes') {
+    return <CustomNodesPage onBack={() => setPage({ name: 'list' })} />
+  }
+
   if (page.name === 'event-subscriptions') {
     return <EventSubscriptionsPage onBack={() => setPage({ name: 'list' })} />
   }
@@ -241,6 +247,7 @@ function AppInner() {
         onApiKeys={() => setPage({ name: 'apikeys' })}
         onSso={() => setPage({ name: 'sso' })}
         onKnowledge={() => setPage({ name: 'knowledge' })}
+        onCustomNodes={() => setPage({ name: 'custom-nodes' })}
         onEventSubscriptions={() => setPage({ name: 'event-subscriptions' })}
         onOrgs={() => setPage({ name: 'orgs' })}
         onAccount={() => setPage({ name: 'account' })}

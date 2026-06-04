@@ -568,3 +568,40 @@ function TemplatePreview({ text }: { text: string }) {
     </div>
   )
 }
+
+export function CustomConfig({ config, set, str }: ConfigProps) {
+  const [nodes, setNodes] = useState<api.CustomNodeDef[]>([])
+  useEffect(() => { api.listCustomNodes().then(setNodes).catch(() => {}) }, [])
+  const selected = nodes.find((n) => n.slug === config['custom_node'])
+  const onPick = (slug: string) => {
+    const n = nodes.find((x) => x.slug === slug)
+    set('custom_node', slug || undefined)
+    set('endpoint', n?.endpoint || undefined)
+  }
+  const props = (selected?.config_schema?.properties ?? {}) as Record<string, { type?: string; title?: string }>
+  return (
+    <>
+      <div className="field">
+        <label>Custom Node</label>
+        <select value={str('custom_node')} onChange={(e) => onPick(e.target.value)}>
+          <option value="">— select a registered node —</option>
+          {nodes.map((n) => <option key={n.slug} value={n.slug}>{n.label}</option>)}
+        </select>
+        {nodes.length === 0 && (
+          <span style={{ fontSize: 11, color: 'var(--muted)' }}>
+            No custom nodes registered. Add one in the nav menu → Custom Nodes.
+          </span>
+        )}
+      </div>
+      {selected?.description && (
+        <p style={{ fontSize: 12, color: 'var(--muted)', margin: '0 0 6px' }}>{selected.description}</p>
+      )}
+      {Object.entries(props).map(([key, p]) => (
+        <div className="field" key={key}>
+          <label>{p.title || key}</label>
+          <input value={str(key)} onChange={(e) => set(key, e.target.value)} />
+        </div>
+      ))}
+    </>
+  )
+}
