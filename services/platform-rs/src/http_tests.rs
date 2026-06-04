@@ -5151,3 +5151,60 @@ async fn sso_disable_hides_from_public_and_rejects_login() {
     let loc = resp.headers().get("location").unwrap().to_str().unwrap();
     assert!(loc.contains("sso_error"));
 }
+
+#[tokio::test]
+async fn custom_node_import_rejects_empty_base_url() {
+    let app = router();
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/v1/custom-nodes/import")
+                .header("content-type", "application/json")
+                .body(Body::from(json!({ "base_url": "" }).to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn custom_node_crud_over_http() {
+    let app = router();
+    let body = json!({
+        "slug": "Greet", "label": "Greeter",
+        "endpoint": "http://localhost:9000/nodes/greet",
+        "config_schema": { "type": "object" }
+    });
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/v1/custom-nodes")
+                .header("content-type", "application/json")
+                .body(Body::from(body.to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::CREATED);
+    let bytes = to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let def: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+    assert_eq!(def["slug"], "greet"); // normalized
+
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .uri("/v1/custom-nodes")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let bytes = to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let list: Vec<serde_json::Value> = serde_json::from_slice(&bytes).unwrap();
+    assert_eq!(list.len(), 1);
+    assert_eq!(list[0]["label"], "Greeter");
+}

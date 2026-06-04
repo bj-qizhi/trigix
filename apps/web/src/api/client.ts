@@ -1309,6 +1309,10 @@ export function deleteCustomNode(id: string): Promise<void> {
   return request(`/v1/custom-nodes/${id}`, { method: 'DELETE' })
 }
 
+export function importCustomNodes(baseUrl: string): Promise<CustomNodeDef[]> {
+  return request('/v1/custom-nodes/import', { method: 'POST', body: JSON.stringify({ base_url: baseUrl }) })
+}
+
 export interface UpdateProfileRequest {
   name?: string
   current_password?: string
