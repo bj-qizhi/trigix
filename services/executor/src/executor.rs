@@ -41,6 +41,10 @@ use nodes_transform::*;
 mod nodes_ai;
 use nodes_ai::*;
 
+// Community/third-party HTTP nodes (node SDK).
+mod nodes_custom;
+use nodes_custom::*;
+
 // Global per-process node output cache: key → (cached_at, output_json)
 static NODE_CACHE: OnceLock<Arc<Mutex<LruCache<String, (Instant, String)>>>> = OnceLock::new();
 
@@ -347,6 +351,7 @@ async fn dispatch(
         NodeType::RagIngest => {
             execute_rag_ingest(node, context, http_client, ai_runtime_base_url).await
         }
+        NodeType::Custom => execute_custom(node, context, http_client).await,
         NodeType::Condition => execute_condition(node, context),
         NodeType::Map => execute_map(node, context),
         NodeType::Filter => execute_filter(node, context),

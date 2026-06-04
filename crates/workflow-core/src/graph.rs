@@ -196,6 +196,9 @@ pub enum NodeType {
     Rag,
     /// Ingest a document into a pgvector knowledge base via the AI runtime.
     RagIngest,
+    /// Community/third-party node served over HTTP via the node SDK. The node's
+    /// endpoint is resolved from the custom-node registry at execution start.
+    Custom,
 }
 
 impl WorkflowGraph {

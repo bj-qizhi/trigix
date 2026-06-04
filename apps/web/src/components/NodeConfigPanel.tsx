@@ -9,7 +9,7 @@ import type { ConfigProps } from './panels/types'
 import { useLocale } from '../useLocale'
 
 import {
-  TriggerConfig, HttpConfig, AgentConfig, ApprovalConfig, CodeConfig, SubWorkflowConfig,
+  TriggerConfig, HttpConfig, AgentConfig, ApprovalConfig, CodeConfig, SubWorkflowConfig, CustomConfig,
 } from './panels/CorePanels'
 import {
   ConditionConfig, FanOutConfig, FanInConfig, CatchConfig, AssertConfig, DelayConfig,
@@ -501,6 +501,7 @@ export function NodeConfigPanel({ node, onUpdateConfig, recentExecutions, onSele
         {nt === 'openai' && <OpenAIConfig config={config} set={set} str={str} num={num} />}
         {nt === 'rag' && <RagConfig config={config} set={set} str={str} num={num} />}
         {nt === 'rag_ingest' && <RagIngestConfig config={config} set={set} str={str} num={num} />}
+        {nt === 'custom' && <CustomConfig config={config} set={set} str={str} num={num} />}
         {nt === 'gemini' && <GeminiConfig config={config} set={set} str={str} num={num} />}
         {nt === 'database' && <DatabaseConfig config={config} set={set} str={str} num={num} />}
         {nt === 'extract' && <ExtractConfig config={config} set={set} str={str} num={num} />}

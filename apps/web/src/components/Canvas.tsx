@@ -163,6 +163,7 @@ const NODE_LABELS: Record<NodeType, string> = {
   openai: 'OpenAI',
   rag: 'RAG',
   rag_ingest: 'RAG Ingest',
+  custom: 'Custom',
   gemini: 'Gemini',
   database: 'Database',
   extract: 'Extract',
@@ -305,6 +306,7 @@ const NODE_ICONS: Record<NodeType, string> = {
   openai: '⬡',
   rag: '⌕',
   rag_ingest: '⊕',
+  custom: '⚙',
   gemini: '✦',
   database: '⊞',
   extract: '↳',
@@ -470,6 +472,7 @@ function FlowNodeComponent({ data, selected, id }: NodeProps) {
     if (nt === 'email') return c.to ? `to: ${String(c.to)}` : 'No recipient'
     if (nt === 'rag') return c.kb ? `kb: ${String(c.kb)}` : 'No knowledge base'
     if (nt === 'rag_ingest') return c.kb ? `kb: ${String(c.kb)}` : 'No knowledge base'
+    if (nt === 'custom') return c.custom_node ? String(c.custom_node) : 'No custom node'
     if (nt === 'openai') return (c.model as string) || 'gpt-4o-mini'
     if (nt === 'gemini') return (c.model as string) || 'gemini-2.0-flash'
     if (nt === 'database') return c.query ? String(c.query).split('\n')[0].slice(0, 40) : 'No query'
@@ -642,6 +645,7 @@ const nodeTypes = {
   openai: FlowNodeComponent,
   rag: FlowNodeComponent,
   rag_ingest: FlowNodeComponent,
+  custom: FlowNodeComponent,
   gemini: FlowNodeComponent,
   database: FlowNodeComponent,
   extract: FlowNodeComponent,
@@ -1048,6 +1052,7 @@ export function Canvas({
               openai: '#10a37f',
               rag: '#7c3aed',
               rag_ingest: '#7c3aed',
+              custom: '#475569',
               gemini: '#4285f4',
               database: '#336791',
               extract: '#0f766e',

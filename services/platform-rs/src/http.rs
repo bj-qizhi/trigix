@@ -168,6 +168,7 @@ pub struct AppState {
     rate_limiter: RateLimiter,
     notification_store: Arc<PlatformNotificationStore>,
     sso_store: Arc<crate::sso::PlatformSsoStore>,
+    custom_node_store: Arc<crate::custom_nodes::PlatformCustomNodeStore>,
 }
 
 pub fn router() -> Router {
@@ -225,6 +226,7 @@ pub(crate) fn default_app_state() -> AppState {
         rate_limiter: RateLimiter::default(),
         notification_store: Arc::new(PlatformNotificationStore::default()),
         sso_store: Arc::new(crate::sso::PlatformSsoStore::default()),
+        custom_node_store: Arc::new(crate::custom_nodes::PlatformCustomNodeStore::default()),
     }
 }
 
@@ -1007,6 +1009,11 @@ pub(crate) fn build_router(state: AppState) -> Router {
             "/v1/rag/documents/:kb/:doc_id",
             delete(rag_delete_document_handler),
         )
+        .route(
+            "/v1/custom-nodes",
+            get(custom_nodes_list_handler).post(custom_nodes_upsert_handler),
+        )
+        .route("/v1/custom-nodes/:id", delete(custom_nodes_delete_handler))
         .route("/v1/auth/me", get(me_handler).patch(update_me_handler))
         .route(
             "/v1/auth/me/notifications",
@@ -1198,6 +1205,7 @@ pub fn router_with_services(
         rate_limiter: RateLimiter::default(),
         notification_store: Arc::new(PlatformNotificationStore::default()),
         sso_store: Arc::new(crate::sso::PlatformSsoStore::default()),
+        custom_node_store: Arc::new(crate::custom_nodes::PlatformCustomNodeStore::default()),
     };
 
     build_router(state)
@@ -1231,6 +1239,7 @@ pub fn router_with_all_stores(
     email_client: crate::email::EmailClient,
     billing_store: PlatformBillingStore,
     sso_store: crate::sso::PlatformSsoStore,
+    custom_node_store: crate::custom_nodes::PlatformCustomNodeStore,
 ) -> Router {
     let state = AppState {
         execution_service: Arc::new(execution_service),
@@ -1262,6 +1271,7 @@ pub fn router_with_all_stores(
         rate_limiter: RateLimiter::default(),
         notification_store: Arc::new(PlatformNotificationStore::default()),
         sso_store: Arc::new(sso_store),
+        custom_node_store: Arc::new(custom_node_store),
     };
     spawn_schedule_runner(state.clone());
     spawn_execution_timeout_guard(state.clone());
@@ -6393,6 +6403,88 @@ async fn rag_delete_document_handler(
         urlencode(&doc_id)
     );
     rag_forward_json(reqwest::Client::new().delete(&url)).await
+}
+
+// ── Custom node registry (node SDK) ─────────────────────────────────────────
+
+async fn custom_nodes_list_handler(
+    State(state): State<AppState>,
+    Extension(claims): Extension<Option<Claims>>,
+) -> Result<Json<Vec<crate::custom_nodes::CustomNodeDef>>, ApiError> {
+    let tenant_id = effective_tenant_id(&claims, "tenant-1");
+    Ok(Json(
+        state.custom_node_store.list_by_tenant(&tenant_id).await,
+    ))
+}
+
+#[derive(Deserialize)]
+struct CustomNodeBody {
+    slug: String,
+    label: String,
+    #[serde(default)]
+    description: String,
+    endpoint: String,
+    #[serde(default)]
+    config_schema: serde_json::Value,
+}
+
+async fn custom_nodes_upsert_handler(
+    State(state): State<AppState>,
+    Extension(claims): Extension<Option<Claims>>,
+    Json(body): Json<CustomNodeBody>,
+) -> Result<(StatusCode, Json<crate::custom_nodes::CustomNodeDef>), ApiError> {
+    require_admin(&claims)?;
+    let tenant_id = effective_tenant_id(&claims, "tenant-1");
+    let slug = body.slug.trim().to_lowercase();
+    if slug.is_empty()
+        || !slug
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+    {
+        return Err(ApiError {
+            status: StatusCode::BAD_REQUEST,
+            message: "slug must be non-empty (alphanumeric, dash, underscore)".to_string(),
+        });
+    }
+    if body.endpoint.trim().is_empty() {
+        return Err(ApiError {
+            status: StatusCode::BAD_REQUEST,
+            message: "endpoint is required".to_string(),
+        });
+    }
+    let def = crate::custom_nodes::CustomNodeDef {
+        id: uuid::Uuid::new_v4().to_string(),
+        tenant_id,
+        slug,
+        label: body.label,
+        description: body.description,
+        endpoint: body.endpoint.trim().to_string(),
+        config_schema: if body.config_schema.is_null() {
+            serde_json::json!({})
+        } else {
+            body.config_schema
+        },
+        created_at: crate::custom_nodes::unix_now(),
+    };
+    let saved = state.custom_node_store.upsert(def).await;
+    Ok((StatusCode::CREATED, Json(saved)))
+}
+
+async fn custom_nodes_delete_handler(
+    State(state): State<AppState>,
+    Extension(claims): Extension<Option<Claims>>,
+    Path(id): Path<String>,
+) -> Result<StatusCode, ApiError> {
+    require_admin(&claims)?;
+    let tenant_id = effective_tenant_id(&claims, "tenant-1");
+    if state.custom_node_store.delete(&tenant_id, &id).await {
+        Ok(StatusCode::NO_CONTENT)
+    } else {
+        Err(ApiError {
+            status: StatusCode::NOT_FOUND,
+            message: "custom node not found".to_string(),
+        })
+    }
 }
 
 fn sso_redirect(location: &str) -> Response {

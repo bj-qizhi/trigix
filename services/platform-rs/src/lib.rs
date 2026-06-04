@@ -9,6 +9,7 @@ pub mod cache;
 pub mod comments;
 pub mod credentials;
 pub mod crypto;
+pub mod custom_nodes;
 pub mod env_vars;
 pub mod event_subscriptions;
 pub mod execution;
