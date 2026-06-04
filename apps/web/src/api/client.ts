@@ -1238,6 +1238,10 @@ export function deleteSsoConnection(id: string): Promise<void> {
   return request(`/v1/sso-connections/${id}`, { method: 'DELETE' })
 }
 
+export function setSsoConnectionEnabled(id: string, enabled: boolean): Promise<void> {
+  return request(`/v1/sso-connections/${id}`, { method: 'PATCH', body: JSON.stringify({ enabled }) })
+}
+
 export interface UpdateProfileRequest {
   name?: string
   current_password?: string
