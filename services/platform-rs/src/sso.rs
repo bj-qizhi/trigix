@@ -139,7 +139,7 @@ impl PostgresSsoStore {
         .bind(&c.kind)
         .bind(&c.issuer)
         .bind(&c.client_id)
-        .bind(&c.client_secret)
+        .bind(crate::crypto::encrypt(&c.client_secret))
         .bind(&c.agent_id)
         .bind(&c.scopes)
         .bind(c.enabled)
@@ -228,7 +228,7 @@ impl From<SsoRow> for SsoConnection {
             },
             issuer: r.issuer,
             client_id: r.client_id,
-            client_secret: r.client_secret,
+            client_secret: crate::crypto::decrypt(&r.client_secret),
             agent_id: r.agent_id,
             scopes: r.scopes,
             enabled: r.enabled,

@@ -270,13 +270,15 @@ impl CredentialStore for PostgresCredentialStore {
     ) -> Result<CredentialSummary, CredentialError> {
         let id = uuid::Uuid::new_v4().to_string();
         let now = unix_now() as i64;
+        // `created_at` is TIMESTAMPTZ with a `now()` default; only `updated_at`
+        // (BIGINT) is set explicitly here.
         let result = sqlx::query(
-            "INSERT INTO af_credentials (id, tenant_id, name, secret, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $5)",
+            "INSERT INTO af_credentials (id, tenant_id, name, secret, updated_at) VALUES ($1, $2, $3, $4, $5)",
         )
         .bind(&id)
         .bind(tenant_id)
         .bind(name)
-        .bind(value)
+        .bind(crate::crypto::encrypt(value))
         .bind(now)
         .execute(&self.pool)
         .await;
@@ -323,7 +325,7 @@ impl CredentialStore for PostgresCredentialStore {
         .bind(name)
         .fetch_optional(&self.pool)
         .await
-        .map(|row| row.map(|(s,)| s))
+        .map(|row| row.map(|(s,)| crate::crypto::decrypt(&s)))
         .map_err(|_| CredentialError::StoreUnavailable)
     }
 
@@ -354,7 +356,7 @@ impl CredentialStore for PostgresCredentialStore {
         // Build dynamic update — always update updated_at
         if let Some(v) = new_value {
             sqlx::query("UPDATE af_credentials SET secret = $1, updated_at = $2 WHERE tenant_id = $3 AND id = $4")
-                .bind(v).bind(now).bind(tenant_id).bind(id)
+                .bind(crate::crypto::encrypt(v)).bind(now).bind(tenant_id).bind(id)
                 .execute(&self.pool).await.map_err(|_| CredentialError::StoreUnavailable)?;
         }
         if let Some(d) = description {
