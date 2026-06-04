@@ -5,7 +5,7 @@ import { useEffect, useState } from 'react'
 import { useLocale } from '../useLocale'
 import { useTheme } from '../useTheme'
 import * as api from '../api/client'
-import type { SsoConnection } from '../api/client'
+import type { SsoConnection, SsoKind } from '../api/client'
 import logoWordmark from '../assets/logo-wordmark.svg'
 
 interface Props {
@@ -14,6 +14,33 @@ interface Props {
 
 function formatTs(secs: number): string {
   return new Date(secs * 1000).toLocaleString()
+}
+
+const KIND_OPTIONS: { value: SsoKind; zh: string; en: string }[] = [
+  { value: 'oidc', zh: 'OIDC（阿里/华为/腾讯/Authing/Okta…）', en: 'OIDC (Alibaba/Huawei/Tencent/Authing/Okta…)' },
+  { value: 'feishu', zh: '飞书 Feishu', en: 'Feishu / Lark' },
+  { value: 'dingtalk', zh: '钉钉 DingTalk', en: 'DingTalk' },
+  { value: 'wechat_work', zh: '企业微信 WeChat Work', en: 'WeChat Work' },
+]
+
+// OIDC provider presets — fill the provider label and hint the issuer format.
+const OIDC_PRESETS: { label: string; provider: string; issuerHint: string }[] = [
+  { label: 'Custom / 自定义', provider: '', issuerHint: 'https://your-idp.example.com' },
+  { label: 'Authing', provider: 'Authing', issuerHint: 'https://YOUR-POOL.authing.cn/oidc' },
+  { label: '阿里云 IDaaS', provider: '阿里云 IDaaS', issuerHint: 'https://YOUR.aliyunidaas.com/YOUR_INSTANCE/oauth2' },
+  { label: '华为云 OneAccess', provider: '华为云 OneAccess', issuerHint: 'https://YOUR.huaweione.com/oauth2/...' },
+  { label: '腾讯云 IDaaS', provider: '腾讯云 IDaaS', issuerHint: 'https://YOUR.tencentidaas.com/...' },
+  { label: 'Okta', provider: 'Okta', issuerHint: 'https://YOUR.okta.com' },
+  { label: 'Azure AD', provider: 'Azure AD', issuerHint: 'https://login.microsoftonline.com/TENANT_ID/v2.0' },
+  { label: 'Google Workspace', provider: 'Google', issuerHint: 'https://accounts.google.com' },
+]
+
+function credLabels(kind: SsoKind): [string, string] {
+  switch (kind) {
+    case 'feishu': return ['App ID', 'App Secret']
+    case 'wechat_work': return ['Corp ID', 'Corp Secret']
+    default: return ['Client ID', 'Client Secret']
+  }
 }
 
 export function SsoSettingsPage({ onBack }: Props) {
@@ -27,11 +54,14 @@ export function SsoSettingsPage({ onBack }: Props) {
   const [creating, setCreating] = useState(false)
   const [copied, setCopied] = useState<string | null>(null)
 
+  const [kind, setKind] = useState<SsoKind>('oidc')
   const [slug, setSlug] = useState('')
   const [provider, setProvider] = useState('')
   const [issuer, setIssuer] = useState('')
+  const [issuerHint, setIssuerHint] = useState(OIDC_PRESETS[0].issuerHint)
   const [clientId, setClientId] = useState('')
   const [clientSecret, setClientSecret] = useState('')
+  const [agentId, setAgentId] = useState('')
   const [scopes, setScopes] = useState('openid email profile')
 
   const load = () => {
@@ -54,25 +84,45 @@ export function SsoSettingsPage({ onBack }: Props) {
     })
   }
 
+  const onKindChange = (k: SsoKind) => {
+    setKind(k)
+    if (k === 'feishu') setProvider('飞书')
+    else if (k === 'dingtalk') setProvider('钉钉')
+    else if (k === 'wechat_work') setProvider('企业微信')
+    else setProvider('')
+  }
+
+  const onPreset = (label: string) => {
+    const p = OIDC_PRESETS.find((x) => x.label === label) ?? OIDC_PRESETS[0]
+    setProvider(p.provider)
+    setIssuerHint(p.issuerHint)
+  }
+
+  const isOidc = kind === 'oidc'
+  const [idLabel, secretLabel] = credLabels(kind)
+
+  const valid =
+    slug.trim() && provider.trim() && clientId.trim() && clientSecret.trim() &&
+    (!isOidc || issuer.trim()) &&
+    (kind !== 'wechat_work' || agentId.trim())
+
   const handleCreate = async () => {
-    if (!slug.trim() || !provider.trim() || !issuer.trim() || !clientId.trim() || !clientSecret.trim()) return
+    if (!valid) return
     setCreating(true)
     setError(null)
     try {
       await api.createSsoConnection({
         slug: slug.trim(),
         provider: provider.trim(),
-        issuer: issuer.trim(),
+        kind,
+        issuer: isOidc ? issuer.trim() : undefined,
         client_id: clientId.trim(),
         client_secret: clientSecret.trim(),
-        scopes: scopes.trim() || undefined,
+        agent_id: kind === 'wechat_work' ? agentId.trim() : undefined,
+        scopes: isOidc ? (scopes.trim() || undefined) : undefined,
       })
-      setSlug('')
-      setProvider('')
-      setIssuer('')
-      setClientId('')
-      setClientSecret('')
-      setScopes('openid email profile')
+      setSlug(''); setProvider(''); setIssuer(''); setClientId(''); setClientSecret(''); setAgentId('')
+      setScopes('openid email profile'); setKind('oidc')
       load()
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : String(e))
@@ -111,13 +161,13 @@ export function SsoSettingsPage({ onBack }: Props) {
 
       <div className="list-page">
         <div className="list-header">
-          <h1>{zh ? '企业 SSO（OIDC）' : 'Enterprise SSO (OIDC)'}</h1>
+          <h1>{zh ? '企业 SSO' : 'Enterprise SSO'}</h1>
         </div>
 
         <p style={{ marginBottom: 16, fontSize: 13, color: 'var(--muted)' }}>
           {zh
-            ? '配置 OpenID Connect 身份提供商（Okta / Azure AD / Google Workspace）。在 IdP 注册应用时，回调地址填下表中每个连接的 Callback URL。'
-            : 'Configure an OpenID Connect identity provider (Okta / Azure AD / Google Workspace). When registering the app at your IdP, use the Callback URL shown for each connection below.'}
+            ? '支持标准 OIDC（阿里云 IDaaS / 华为云 OneAccess / 腾讯云 / Authing / Okta / Azure AD）以及飞书、钉钉、企业微信。在 IdP 注册应用时，回调地址填下表中每个连接的 Callback URL。'
+            : 'Supports standard OIDC (Alibaba Cloud IDaaS / Huawei OneAccess / Tencent Cloud / Authing / Okta / Azure AD) plus Feishu, DingTalk, and WeChat Work. When registering the app at your IdP, use the Callback URL shown for each connection below.'}
         </p>
 
         {/* Create form */}
@@ -127,35 +177,68 @@ export function SsoSettingsPage({ onBack }: Props) {
           borderRadius: 'var(--radius)', padding: '14px 16px',
         }}>
           <div style={fieldStyle}>
+            <label style={labelStyle}>{zh ? '登录类型' : 'Login type'}</label>
+            <select className="input" value={kind} onChange={(e) => onKindChange(e.target.value as SsoKind)}>
+              {KIND_OPTIONS.map((k) => (
+                <option key={k.value} value={k.value}>{zh ? k.zh : k.en}</option>
+              ))}
+            </select>
+          </div>
+          <div style={fieldStyle}>
             <label style={labelStyle}>{zh ? 'Slug（URL 标识，唯一）' : 'Slug (URL id, unique)'}</label>
             <input className="input" placeholder="acme-okta" value={slug} onChange={(e) => setSlug(e.target.value)} />
           </div>
+
+          {isOidc && (
+            <>
+              <div style={fieldStyle}>
+                <label style={labelStyle}>{zh ? '提供商预设' : 'Provider preset'}</label>
+                <select className="input" onChange={(e) => onPreset(e.target.value)}>
+                  {OIDC_PRESETS.map((p) => <option key={p.label} value={p.label}>{p.label}</option>)}
+                </select>
+              </div>
+              <div style={fieldStyle}>
+                <label style={labelStyle}>{zh ? '提供商名称（按钮显示）' : 'Provider (button label)'}</label>
+                <input className="input" placeholder="Okta" value={provider} onChange={(e) => setProvider(e.target.value)} />
+              </div>
+              <div style={{ ...fieldStyle, gridColumn: '1 / 3' }}>
+                <label style={labelStyle}>Issuer</label>
+                <input className="input" placeholder={issuerHint} value={issuer} onChange={(e) => setIssuer(e.target.value)} />
+              </div>
+            </>
+          )}
+
+          {!isOidc && (
+            <div style={{ ...fieldStyle, gridColumn: '1 / 3' }}>
+              <label style={labelStyle}>{zh ? '提供商名称（按钮显示）' : 'Provider (button label)'}</label>
+              <input className="input" value={provider} onChange={(e) => setProvider(e.target.value)} />
+            </div>
+          )}
+
           <div style={fieldStyle}>
-            <label style={labelStyle}>{zh ? '提供商名称（按钮显示）' : 'Provider (button label)'}</label>
-            <input className="input" placeholder="Okta" value={provider} onChange={(e) => setProvider(e.target.value)} />
-          </div>
-          <div style={{ ...fieldStyle, gridColumn: '1 / 3' }}>
-            <label style={labelStyle}>Issuer</label>
-            <input className="input" placeholder="https://your-org.okta.com" value={issuer} onChange={(e) => setIssuer(e.target.value)} />
-          </div>
-          <div style={fieldStyle}>
-            <label style={labelStyle}>Client ID</label>
+            <label style={labelStyle}>{idLabel}</label>
             <input className="input" value={clientId} onChange={(e) => setClientId(e.target.value)} />
           </div>
           <div style={fieldStyle}>
-            <label style={labelStyle}>Client Secret</label>
+            <label style={labelStyle}>{secretLabel}</label>
             <input className="input" type="password" value={clientSecret} onChange={(e) => setClientSecret(e.target.value)} />
           </div>
-          <div style={{ ...fieldStyle, gridColumn: '1 / 3' }}>
-            <label style={labelStyle}>Scopes</label>
-            <input className="input" value={scopes} onChange={(e) => setScopes(e.target.value)} />
-          </div>
+
+          {kind === 'wechat_work' && (
+            <div style={fieldStyle}>
+              <label style={labelStyle}>Agent ID</label>
+              <input className="input" value={agentId} onChange={(e) => setAgentId(e.target.value)} />
+            </div>
+          )}
+          {isOidc && (
+            <div style={{ ...fieldStyle, gridColumn: '1 / 3' }}>
+              <label style={labelStyle}>Scopes</label>
+              <input className="input" value={scopes} onChange={(e) => setScopes(e.target.value)} />
+            </div>
+          )}
+
           <div style={{ gridColumn: '1 / 3', display: 'flex', justifyContent: 'flex-end' }}>
-            <button
-              className="btn btn-primary"
-              onClick={handleCreate}
-              disabled={creating || !slug.trim() || !provider.trim() || !issuer.trim() || !clientId.trim() || !clientSecret.trim()}
-            >
+            <button className="btn btn-primary" onClick={handleCreate} disabled={creating || !valid}>
               {creating ? (zh ? '添加中…' : 'Adding…') : (zh ? '+ 添加连接' : '+ Add Connection')}
             </button>
           </div>
@@ -172,8 +255,8 @@ export function SsoSettingsPage({ onBack }: Props) {
             <thead>
               <tr>
                 <th>{zh ? '提供商' : 'Provider'}</th>
+                <th>{zh ? '类型' : 'Type'}</th>
                 <th>Slug</th>
-                <th>Issuer</th>
                 <th>Callback URL</th>
                 <th>{zh ? '创建时间' : 'Created'}</th>
                 <th></th>
@@ -183,14 +266,10 @@ export function SsoSettingsPage({ onBack }: Props) {
               {conns.map((c) => (
                 <tr key={c.id}>
                   <td>{c.provider}</td>
+                  <td><code>{c.kind}</code></td>
                   <td><code>{c.slug}</code></td>
-                  <td style={{ maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={c.issuer}>{c.issuer}</td>
                   <td>
-                    <button
-                      className="btn btn-sm"
-                      onClick={() => copy(callbackUrl(c.slug))}
-                      title={callbackUrl(c.slug)}
-                    >
+                    <button className="btn btn-sm" onClick={() => copy(callbackUrl(c.slug))} title={callbackUrl(c.slug)}>
                       {copied === callbackUrl(c.slug) ? (zh ? '✓ 已复制' : '✓ Copied') : (zh ? '⎘ 复制' : '⎘ Copy')}
                     </button>
                   </td>

@@ -28,11 +28,17 @@ pub struct SsoConnection {
     pub tenant_id: String,
     pub slug: String,
     pub provider: String,
+    /// Flow selector: "oidc" (default), "feishu", "dingtalk", or "wechat_work".
+    #[serde(default = "default_kind")]
+    pub kind: String,
     pub issuer: String,
     pub client_id: String,
     /// Never serialized back to clients.
     #[serde(skip_serializing)]
     pub client_secret: String,
+    /// WeChat Work agent id (only used when kind == "wechat_work").
+    #[serde(default)]
+    pub agent_id: Option<String>,
     pub scopes: String,
     pub enabled: bool,
     pub created_at: i64,
@@ -52,6 +58,10 @@ impl From<&SsoConnection> for PublicSsoConnection {
             provider: c.provider.clone(),
         }
     }
+}
+
+pub fn default_kind() -> String {
+    "oidc".to_string()
 }
 
 pub fn unix_now() -> i64 {
@@ -119,16 +129,18 @@ impl PostgresSsoStore {
     pub async fn create(&self, c: SsoConnection) -> SsoConnection {
         let _ = sqlx::query(
             "INSERT INTO af_sso_connections \
-             (id, tenant_id, slug, provider, issuer, client_id, client_secret, scopes, enabled, created_at) \
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)",
+             (id, tenant_id, slug, provider, kind, issuer, client_id, client_secret, agent_id, scopes, enabled, created_at) \
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)",
         )
         .bind(&c.id)
         .bind(&c.tenant_id)
         .bind(&c.slug)
         .bind(&c.provider)
+        .bind(&c.kind)
         .bind(&c.issuer)
         .bind(&c.client_id)
         .bind(&c.client_secret)
+        .bind(&c.agent_id)
         .bind(&c.scopes)
         .bind(c.enabled)
         .bind(c.created_at)
@@ -190,9 +202,13 @@ struct SsoRow {
     tenant_id: String,
     slug: String,
     provider: String,
+    #[sqlx(default)]
+    kind: String,
     issuer: String,
     client_id: String,
     client_secret: String,
+    #[sqlx(default)]
+    agent_id: Option<String>,
     scopes: String,
     enabled: bool,
     created_at: i64,
@@ -205,9 +221,15 @@ impl From<SsoRow> for SsoConnection {
             tenant_id: r.tenant_id,
             slug: r.slug,
             provider: r.provider,
+            kind: if r.kind.is_empty() {
+                default_kind()
+            } else {
+                r.kind
+            },
             issuer: r.issuer,
             client_id: r.client_id,
             client_secret: r.client_secret,
+            agent_id: r.agent_id,
             scopes: r.scopes,
             enabled: r.enabled,
             created_at: r.created_at,
@@ -494,9 +516,11 @@ mod tests {
                 tenant_id: "t".into(),
                 slug: "okta".into(),
                 provider: "Okta".into(),
+                kind: "oidc".into(),
                 issuer: "https://example.okta.com".into(),
                 client_id: "cid".into(),
                 client_secret: "shhh".into(),
+                agent_id: None,
                 scopes: "openid email".into(),
                 enabled: true,
                 created_at: unix_now(),
@@ -517,9 +541,11 @@ mod tests {
             tenant_id: "t".into(),
             slug: "okta".into(),
             provider: "Okta".into(),
+            kind: "oidc".into(),
             issuer: "https://i".into(),
             client_id: "cid".into(),
             client_secret: "topsecret".into(),
+            agent_id: None,
             scopes: "openid".into(),
             enabled: true,
             created_at: 0,

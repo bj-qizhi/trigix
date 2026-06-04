@@ -6135,9 +6135,14 @@ async fn sso_public_handler(
 struct CreateSsoBody {
     slug: String,
     provider: String,
-    issuer: String,
+    /// "oidc" (default), "feishu", "dingtalk", or "wechat_work".
+    kind: Option<String>,
+    /// Required for OIDC; ignored by the custom-OAuth2 providers.
+    issuer: Option<String>,
     client_id: String,
     client_secret: String,
+    /// WeChat Work agent id (only used when kind == "wechat_work").
+    agent_id: Option<String>,
     scopes: Option<String>,
 }
 
@@ -6170,14 +6175,35 @@ async fn sso_create_connection_handler(
             message: "an SSO connection with this slug already exists".to_string(),
         });
     }
+    let kind = body.kind.unwrap_or_else(crate::sso::default_kind);
+    let is_oauth = crate::sso_oauth::is_oauth_kind(&kind);
+    if kind != "oidc" && !is_oauth {
+        return Err(ApiError {
+            status: StatusCode::BAD_REQUEST,
+            message: "kind must be one of: oidc, feishu, dingtalk, wechat_work".to_string(),
+        });
+    }
+    let issuer = body
+        .issuer
+        .unwrap_or_default()
+        .trim_end_matches('/')
+        .to_string();
+    if kind == "oidc" && issuer.is_empty() {
+        return Err(ApiError {
+            status: StatusCode::BAD_REQUEST,
+            message: "issuer is required for OIDC connections".to_string(),
+        });
+    }
     let conn = crate::sso::SsoConnection {
         id: uuid::Uuid::new_v4().to_string(),
         tenant_id,
         slug,
         provider: body.provider,
-        issuer: body.issuer.trim_end_matches('/').to_string(),
+        kind,
+        issuer,
         client_id: body.client_id,
         client_secret: body.client_secret,
+        agent_id: body.agent_id.filter(|s| !s.trim().is_empty()),
         scopes: body
             .scopes
             .filter(|s| !s.trim().is_empty())
@@ -6238,20 +6264,77 @@ fn urlencode(s: &str) -> String {
 }
 
 /// `GET /v1/sso/:slug/login` — begin SP-initiated OIDC login (redirect to IdP).
+/// Provision (find-or-create) the SSO user in `tenant_id`, issue a Trigix JWT,
+/// and redirect the browser back to the SPA with it. Shared by the OIDC and the
+/// custom-OAuth2 callback paths.
+async fn sso_finish_login(
+    state: &AppState,
+    tenant_id: &str,
+    email: &str,
+    name: Option<String>,
+) -> Response {
+    let store = Arc::clone(&state.user_store);
+    let email = email.to_lowercase();
+    let tenant = tenant_id.to_string();
+    let user = tokio::task::spawn_blocking(move || {
+        if let Some(u) = store.find_by_email(&email) {
+            return Ok(u);
+        }
+        let random_pw = uuid::Uuid::new_v4().to_string();
+        let created = store.create(&email, &random_pw, name.as_deref(), &tenant)?;
+        // Identity is asserted by the IdP, so mark the email verified.
+        let _ = store.mark_email_verified(&created.id);
+        store
+            .find_by_id(&created.id)
+            .ok_or(crate::users::UserError::NotFound)
+    })
+    .await;
+    let user = match user {
+        Ok(Ok(u)) => u,
+        _ => return sso_error_redirect("failed to provision SSO user"),
+    };
+    let token = match make_user_token(&user) {
+        Ok(t) => t,
+        Err(_) => return sso_error_redirect("failed to issue session token"),
+    };
+    let dest = format!(
+        "{}/?sso_token={}",
+        sso_frontend_url().trim_end_matches('/'),
+        urlencode(&token)
+    );
+    sso_redirect(&dest)
+}
+
 async fn sso_login_handler(State(state): State<AppState>, Path(slug): Path<String>) -> Response {
     let conn = match state.sso_store.get_by_slug(&slug).await {
         Some(c) if c.enabled => c,
         _ => return sso_error_redirect("unknown or disabled SSO connection"),
-    };
-    let md = match crate::sso::discover(&conn.issuer).await {
-        Ok(m) => m,
-        Err(e) => return sso_error_redirect(&format!("OIDC discovery failed: {e}")),
     };
     let (state_jwt, nonce) = match crate::sso::sign_state(&slug) {
         Ok(v) => v,
         Err(e) => return sso_error_redirect(&e),
     };
     let redirect_uri = sso_callback_uri(&slug);
+
+    // Custom-OAuth2 providers (Feishu / DingTalk / WeChat Work).
+    if crate::sso_oauth::is_oauth_kind(&conn.kind) {
+        return match crate::sso_oauth::authorize_url(
+            &conn.kind,
+            &conn.client_id,
+            conn.agent_id.as_deref(),
+            &redirect_uri,
+            &state_jwt,
+        ) {
+            Some(url) => sso_redirect(&url),
+            None => sso_error_redirect("unsupported provider kind"),
+        };
+    }
+
+    // Standard OIDC.
+    let md = match crate::sso::discover(&conn.issuer).await {
+        Ok(m) => m,
+        Err(e) => return sso_error_redirect(&format!("OIDC discovery failed: {e}")),
+    };
     let authorize = format!(
         "{}?response_type=code&client_id={}&redirect_uri={}&scope={}&state={}&nonce={}",
         md.authorization_endpoint,
@@ -6296,12 +6379,38 @@ async fn sso_callback_handler(
         Some(c) if c.enabled => c,
         _ => return sso_error_redirect("unknown or disabled SSO connection"),
     };
+
+    let redirect_uri = sso_callback_uri(&slug);
+
+    // Custom-OAuth2 providers (Feishu / DingTalk / WeChat Work). The signed
+    // state above already provided CSRF protection.
+    if crate::sso_oauth::is_oauth_kind(&conn.kind) {
+        let info = match crate::sso_oauth::fetch_user(
+            &conn.kind,
+            &conn.client_id,
+            &conn.client_secret,
+            conn.agent_id.as_deref(),
+            &code,
+            &redirect_uri,
+        )
+        .await
+        {
+            Ok(i) => i,
+            Err(e) => return sso_error_redirect(&e),
+        };
+        // Some Chinese providers don't expose an email; synthesize a stable one
+        // from the provider subject so the user can still be provisioned.
+        let email = info
+            .email
+            .unwrap_or_else(|| format!("sso-{}@{}.local", info.subject, slug));
+        return sso_finish_login(&state, &conn.tenant_id, &email, info.name).await;
+    }
+
+    // Standard OIDC.
     let md = match crate::sso::discover(&conn.issuer).await {
         Ok(m) => m,
         Err(e) => return sso_error_redirect(&format!("OIDC discovery failed: {e}")),
     };
-
-    let redirect_uri = sso_callback_uri(&slug);
     let tokens = match crate::sso::exchange_code(
         &md.token_endpoint,
         &code,
@@ -6314,7 +6423,6 @@ async fn sso_callback_handler(
         Ok(t) => t,
         Err(e) => return sso_error_redirect(&e),
     };
-
     let claims = match crate::sso::verify_id_token(
         &tokens.id_token,
         &md.jwks_uri,
@@ -6327,46 +6435,11 @@ async fn sso_callback_handler(
         Ok(c) => c,
         Err(e) => return sso_error_redirect(&e),
     };
-
     let email = match claims.email {
-        Some(e) if !e.is_empty() => e.to_lowercase(),
+        Some(e) if !e.is_empty() => e,
         _ => return sso_error_redirect("IdP did not return an email claim"),
     };
-
-    // Find-or-create the user within the connection's tenant.
-    let store = Arc::clone(&state.user_store);
-    let tenant = conn.tenant_id.clone();
-    let name = claims.name.clone();
-    let user = tokio::task::spawn_blocking(move || {
-        if let Some(u) = store.find_by_email(&email) {
-            return Ok(u);
-        }
-        let random_pw = uuid::Uuid::new_v4().to_string();
-        let created = store.create(&email, &random_pw, name.as_deref(), &tenant)?;
-        // Email is asserted by the IdP, so mark it verified.
-        let _ = store.mark_email_verified(&created.id);
-        store
-            .find_by_id(&created.id)
-            .ok_or(crate::users::UserError::NotFound)
-    })
-    .await;
-
-    let user = match user {
-        Ok(Ok(u)) => u,
-        _ => return sso_error_redirect("failed to provision SSO user"),
-    };
-
-    let token = match make_user_token(&user) {
-        Ok(t) => t,
-        Err(_) => return sso_error_redirect("failed to issue session token"),
-    };
-
-    let dest = format!(
-        "{}/?sso_token={}",
-        sso_frontend_url().trim_end_matches('/'),
-        urlencode(&token)
-    );
-    sso_redirect(&dest)
+    sso_finish_login(&state, &conn.tenant_id, &email, claims.name).await
 }
 
 async fn me_handler(
