@@ -15,6 +15,8 @@ cron = "0.12"
 hex = "0.4"
 hmac = "0.12"
 sha2 = "0.10"
+aes-gcm = "0.10"
+base64 = "0.22"
 jsonwebtoken = "9"
 sqlx = { version = "0.8", features = ["runtime-tokio", "postgres", "json", "migrate"] }
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "net", "time", "signal"] }
