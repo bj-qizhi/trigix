@@ -65,8 +65,25 @@ jobs:
         run: npm run build
 
   ai-runtime:
-    name: AI Runtime (compile check)
+    name: AI Runtime (tests)
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: t
+          POSTGRES_PASSWORD: t
+          POSTGRES_DB: t
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U t"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    defaults:
+      run:
+        working-directory: services/ai-runtime
     steps:
       - uses: actions/checkout@v4
 
@@ -75,5 +92,10 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Compile check
-        run: python -m py_compile services/ai-runtime/app/main.py
+      - name: Install dependencies
+        run: pip install -e ".[test]"
+
+      - name: Test (unit + pgvector integration)
+        env:
+          RAG_TEST_DATABASE_URL: postgresql://t:t@localhost:5432/t
+        run: python -m pytest -q
