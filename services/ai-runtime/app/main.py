@@ -10,6 +10,8 @@ import anthropic
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
+from .agent.loop import AnthropicLLM, run_agent_loop
+from .agent.tools import build_tools
 from .rag.router import router as rag_router
 
 app = FastAPI(title="Trigix AI Runtime")
@@ -57,26 +59,37 @@ async def run_agent_node(request: AgentNodeRequest) -> AgentNodeResponse:
             detail="ANTHROPIC_API_KEY is not configured",
         )
 
+    # Resolve the agent's tool set. `calculator` is always available; `rag_search`
+    # is added when configured and a knowledge-base store is reachable.
+    tool_names = config.get("tools") or []
+    store = None
+    if "rag_search" in tool_names:
+        try:
+            from .rag.router import get_store
+
+            store = await get_store()
+        except Exception:
+            store = None  # no DB → rag_search silently unavailable
+    tools = build_tools(
+        tool_names,
+        store=store,
+        tenant_id=str(config.get("tenant_id", "tenant-1")),
+        default_kb=str(config.get("kb", "")),
+    )
+    max_iterations = int(config.get("max_iterations", 6))
+
+    llm = AnthropicLLM(get_anthropic_client(), model, max_tokens)
     try:
-        client = get_anthropic_client()
-        message = client.messages.create(
-            model=model,
-            max_tokens=max_tokens,
-            system=system_prompt,
-            messages=[{"role": "user", "content": user_message}],
+        result = await run_agent_loop(
+            llm, system_prompt, user_message, tools, max_iterations
         )
     except anthropic.APIError as exc:
         raise HTTPException(status_code=502, detail=f"Anthropic API error: {exc}") from exc
 
-    text = message.content[0].text if message.content else ""
-
-    import json
-
     try:
-        parsed = json.loads(text)
-        output_json = json.dumps(parsed)
+        output_json = json.dumps(json.loads(result.output))
     except (json.JSONDecodeError, ValueError):
-        output_json = json.dumps({"text": text})
+        output_json = json.dumps({"text": result.output})
 
     return AgentNodeResponse(output_json=output_json)
 

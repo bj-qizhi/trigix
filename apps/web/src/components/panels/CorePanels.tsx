@@ -343,7 +343,12 @@ export function HttpConfig({ config, set, str, num }: ConfigProps) {
   )
 }
 
-export function AgentConfig({ set, str, num }: ConfigProps) {
+export function AgentConfig({ config, set, str, num }: ConfigProps) {
+  const tools = (config['tools'] as string[] | undefined) ?? []
+  const toggleTool = (tool: string, on: boolean) => {
+    const next = on ? [...tools, tool] : tools.filter((t) => t !== tool)
+    set('tools', next.length ? next : undefined)
+  }
   return (
     <>
       <div className="field">
@@ -383,6 +388,32 @@ export function AgentConfig({ set, str, num }: ConfigProps) {
           onChange={(e) => set('max_tokens', Number(e.target.value))}
         />
       </div>
+      <div className="field">
+        <label>Tools (tool-use loop)</label>
+        <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap' }}>
+          {(['calculator', 'rag_search'] as const).map((tool) => (
+            <label key={tool} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 13 }}>
+              <input type="checkbox" checked={tools.includes(tool)} onChange={(e) => toggleTool(tool, e.target.checked)} />
+              {tool}
+            </label>
+          ))}
+        </div>
+        <span style={{ fontSize: 11, color: 'var(--muted)' }}>
+          When tools are enabled the agent can call them in a loop until it answers.
+        </span>
+      </div>
+      {tools.includes('rag_search') && (
+        <div className="field">
+          <label>Knowledge Base (for rag_search)</label>
+          <input value={str('kb')} onChange={(e) => set('kb', e.target.value)} />
+        </div>
+      )}
+      {tools.length > 0 && (
+        <div className="field">
+          <label>Max Agent Steps</label>
+          <input type="number" min={1} max={20} value={num('max_iterations', 6)} onChange={(e) => set('max_iterations', Number(e.target.value))} />
+        </div>
+      )}
       <div style={{ display: 'flex', gap: 8 }}>
         <div className="field" style={{ flex: 1 }}>
           <label>Retries</label>
