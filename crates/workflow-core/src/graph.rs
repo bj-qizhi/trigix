@@ -194,6 +194,8 @@ pub enum NodeType {
     /// Retrieval-Augmented Generation: query a pgvector knowledge base via the
     /// AI runtime and return the most relevant chunks.
     Rag,
+    /// Ingest a document into a pgvector knowledge base via the AI runtime.
+    RagIngest,
 }
 
 impl WorkflowGraph {

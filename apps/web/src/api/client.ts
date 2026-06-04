@@ -1242,6 +1242,42 @@ export function setSsoConnectionEnabled(id: string, enabled: boolean): Promise<v
   return request(`/v1/sso-connections/${id}`, { method: 'PATCH', body: JSON.stringify({ enabled }) })
 }
 
+// ── RAG knowledge base management ──────────────────────────────────────────
+
+export interface KnowledgeBase {
+  kb: string
+  docs: number
+  chunks: number
+}
+
+export interface RagDocument {
+  doc_id: string
+  chunks: number
+  created_at: number
+}
+
+export function listKnowledgeBases(): Promise<{ knowledge_bases: KnowledgeBase[] }> {
+  return request('/v1/rag/kbs')
+}
+
+export function listRagDocuments(kb: string): Promise<{ documents: RagDocument[] }> {
+  return request('/v1/rag/documents', { params: { kb } })
+}
+
+export function ingestRagDocument(body: {
+  kb: string
+  doc_id: string
+  text: string
+  chunk_size?: number
+  overlap?: number
+}): Promise<{ doc_id: string; chunks: number; backend: string; dim: number }> {
+  return request('/v1/rag/ingest', { method: 'POST', body: JSON.stringify(body) })
+}
+
+export function deleteRagDocument(kb: string, docId: string): Promise<{ deleted: number }> {
+  return request(`/v1/rag/documents/${encodeURIComponent(kb)}/${encodeURIComponent(docId)}`, { method: 'DELETE' })
+}
+
 export interface UpdateProfileRequest {
   name?: string
   current_password?: string

@@ -344,6 +344,9 @@ async fn dispatch(
         NodeType::Http => execute_http(node, context, http_client).await,
         NodeType::Agent => execute_agent(node, context, http_client, ai_runtime_base_url).await,
         NodeType::Rag => execute_rag(node, context, http_client, ai_runtime_base_url).await,
+        NodeType::RagIngest => {
+            execute_rag_ingest(node, context, http_client, ai_runtime_base_url).await
+        }
         NodeType::Condition => execute_condition(node, context),
         NodeType::Map => execute_map(node, context),
         NodeType::Filter => execute_filter(node, context),

@@ -914,3 +914,40 @@ export function RagConfig({ set, str, num }: ConfigProps) {
     </>
   )
 }
+
+export function RagIngestConfig({ set, str, num }: ConfigProps) {
+  return (
+    <>
+      <div className="field">
+        <label>Knowledge Base *</label>
+        <input placeholder="my-kb" value={str('kb')} onChange={(e) => set('kb', e.target.value)} />
+      </div>
+      <div className="field">
+        <label>Document ID *</label>
+        <input placeholder="{{input.id}}" value={str('doc_id')} onChange={(e) => set('doc_id', e.target.value)} />
+        <span style={{ fontSize: 11, color: 'var(--muted)' }}>
+          Re-ingesting the same Document ID replaces it. Supports {'{{...}}'} templates.
+        </span>
+      </div>
+      <div className="field">
+        <label>Text *</label>
+        <textarea rows={5} placeholder="{{input.content}}" value={str('text')} onChange={(e) => set('text', e.target.value)} />
+        <span style={{ fontSize: 11, color: 'var(--muted)' }}>Document text to chunk + embed. Supports {'{{...}}'} templates.</span>
+      </div>
+      <div className="field" style={{ display: 'flex', gap: 8 }}>
+        <div style={{ flex: 1 }}>
+          <label>Chunk size</label>
+          <input type="number" min={50} max={8000} value={num('chunk_size', 1000)} onChange={(e) => set('chunk_size', e.target.value ? parseInt(e.target.value) : 1000)} />
+        </div>
+        <div style={{ flex: 1 }}>
+          <label>Overlap</label>
+          <input type="number" min={0} max={2000} value={num('overlap', 150)} onChange={(e) => set('overlap', e.target.value ? parseInt(e.target.value) : 150)} />
+        </div>
+      </div>
+      <div className="field">
+        <label>Tenant ID</label>
+        <input placeholder="tenant-1" value={str('tenant_id')} onChange={(e) => set('tenant_id', e.target.value)} />
+      </div>
+    </>
+  )
+}

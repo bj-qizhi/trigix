@@ -130,6 +130,35 @@ class RagStore:
             for r in records
         ]
 
+    async def list_kbs(self, tenant_id: str) -> list[dict]:
+        async with self._pool.acquire() as conn:
+            rows = await conn.fetch(
+                "SELECT kb, count(DISTINCT doc_id) AS docs, count(*) AS chunks "
+                "FROM af_kb_chunks WHERE tenant_id=$1 GROUP BY kb ORDER BY kb",
+                tenant_id,
+            )
+        return [
+            {"kb": r["kb"], "docs": r["docs"], "chunks": r["chunks"]} for r in rows
+        ]
+
+    async def list_documents(self, tenant_id: str, kb: str) -> list[dict]:
+        async with self._pool.acquire() as conn:
+            rows = await conn.fetch(
+                "SELECT doc_id, count(*) AS chunks, max(created_at) AS created_at "
+                "FROM af_kb_chunks WHERE tenant_id=$1 AND kb=$2 "
+                "GROUP BY doc_id ORDER BY max(created_at) DESC",
+                tenant_id,
+                kb,
+            )
+        return [
+            {
+                "doc_id": r["doc_id"],
+                "chunks": r["chunks"],
+                "created_at": int(r["created_at"]),
+            }
+            for r in rows
+        ]
+
     async def delete_document(self, tenant_id: str, kb: str, doc_id: str) -> int:
         async with self._pool.acquire() as conn:
             result = await conn.execute(
