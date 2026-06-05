@@ -1,5 +1,5 @@
 {
-  "name": "@trigix/node-sdk",
+  "name": "trigix-node-sdk",
   "version": "0.1.0",
   "description": "Write and serve custom Trigix workflow nodes over HTTP.",
   "type": "module",
@@ -19,6 +19,5 @@
     "directory": "sdk/typescript"
   },
   "bugs": { "url": "https://github.com/bj-qizhi/trigix/issues" },
-  "engines": { "node": ">=18" },
-  "publishConfig": { "access": "public" }
+  "engines": { "node": ">=18" }
 }

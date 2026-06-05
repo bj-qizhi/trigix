@@ -9,7 +9,7 @@ plus a tag push per release.
 | SDK | Package | Notes |
 |-----|---------|-------|
 | Python | `trigix-node-sdk` (PyPI) | Confirm the name is free at https://pypi.org/project/trigix-node-sdk/ |
-| TypeScript | `@trigix/node-sdk` (npm) | Scoped — needs the `@trigix` npm org. To avoid the org, rename to e.g. `trigix-node-sdk` in `sdk/typescript/package.json` and drop `publishConfig`. |
+| TypeScript | `trigix-node-sdk` (npm) | Unscoped — confirm it's free at https://www.npmjs.com/package/trigix-node-sdk |
 
 ## Python → PyPI (Trusted Publishing, no token)
 
@@ -30,14 +30,13 @@ plus a tag push per release.
 
 1. Create an npm **automation** access token (npmjs.com → Access Tokens).
 2. Add it as a repo secret `NPM_TOKEN` (Settings → Secrets → Actions).
-3. Ensure the `@trigix` org exists on npm (or rename the package; see above).
-4. Bump `version` in `sdk/typescript/package.json`, commit.
-5. Tag and push:
+3. Bump `version` in `sdk/typescript/package.json`, commit.
+4. Tag and push:
    ```bash
    git tag ts-sdk-v0.1.0
    git push github ts-sdk-v0.1.0
    ```
-   CI tests and publishes. Verify at https://www.npmjs.com/package/@trigix/node-sdk.
+   CI tests and publishes. Verify at https://www.npmjs.com/package/trigix-node-sdk.
 
 ## Manual publish (fallback)
 
