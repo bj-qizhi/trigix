@@ -1,0 +1,43 @@
+name: Publish Python SDK
+
+# Publishes sdk/python to PyPI when a tag like `py-sdk-v0.1.0` is pushed.
+# Uses PyPI Trusted Publishing (OIDC) — no API token stored as a secret.
+# One-time setup on PyPI: add a "pending publisher" for project
+# `trigix-node-sdk`, repo `bj-qizhi/trigix`, workflow `publish-python-sdk.yml`.
+
+on:
+  push:
+    tags: ["py-sdk-v*"]
+  workflow_dispatch:
+
+permissions:
+  id-token: write # required for trusted publishing
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    environment: pypi
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Test
+        working-directory: sdk/python
+        run: |
+          pip install -e ".[test]"
+          python -m pytest -q
+
+      - name: Build
+        working-directory: sdk/python
+        run: |
+          pip install build
+          python -m build
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: sdk/python/dist
