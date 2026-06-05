@@ -93,6 +93,7 @@ docs/                    Architecture, ADRs, dev guides
 | [Dev Bootstrap Guide](docs/dev/bootstrap.md) | Local setup with PostgreSQL |
 | [Port Reference](docs/dev/ports.md) | All local service ports |
 | [ADR-0001: Layered Architecture](docs/adr/0001-layered-platform-architecture.md) | Architecture decision record |
+| [Demo: Feedback Triage](docs/demo-feedback-triage.md) | Annotated end-to-end run of a custom-node pipeline |
 
 ---
 
