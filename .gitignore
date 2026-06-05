@@ -19,3 +19,9 @@ __pycache__/
 # Python build artifacts
 *.egg-info/
 __pycache__/
+
+# SDK build artifacts
+sdk/python/dist/
+sdk/python/build/
+sdk/typescript/*.tgz
+node_modules/

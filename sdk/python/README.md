@@ -7,7 +7,8 @@ like any other.
 ## Quick start
 
 ```bash
-pip install -e .
+pip install trigix-node-sdk
+# or from this repo: pip install -e sdk/python
 uvicorn examples.greeter:app --port 9000
 ```
 

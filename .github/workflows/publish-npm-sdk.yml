@@ -1,0 +1,32 @@
+name: Publish npm SDK
+
+# Publishes sdk/typescript to npm when a tag like `ts-sdk-v0.1.0` is pushed.
+# One-time setup: add an `NPM_TOKEN` repo secret (an npm automation token) and
+# make sure the `@trigix` org exists (or rename the package to an unscoped name).
+
+on:
+  push:
+    tags: ["ts-sdk-v*"]
+  workflow_dispatch:
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: sdk/typescript
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Test
+        run: node --test
+
+      - name: Publish to npm
+        run: npm publish
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
