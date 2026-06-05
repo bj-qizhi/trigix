@@ -7,12 +7,12 @@ HTTP. Zero dependencies — runs on Node's built-in `http`. Ships JS runtime plu
 ## Quick start
 
 ```bash
-npm install @trigix/node-sdk
+npm install trigix-node-sdk
 node examples/greeter.mjs   # listens on :9000
 ```
 
 ```ts
-import { defineNode, serve } from '@trigix/node-sdk'
+import { defineNode, serve } from 'trigix-node-sdk'
 
 defineNode({
   slug: 'greet',

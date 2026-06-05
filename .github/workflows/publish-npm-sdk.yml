@@ -2,7 +2,7 @@ name: Publish npm SDK
 
 # Publishes sdk/typescript to npm when a tag like `ts-sdk-v0.1.0` is pushed.
 # One-time setup: add an `NPM_TOKEN` repo secret (an npm automation token) and
-# make sure the `@trigix` org exists (or rename the package to an unscoped name).
+# the package is unscoped (trigix-node-sdk), so no npm org is required.
 
 on:
   push:
