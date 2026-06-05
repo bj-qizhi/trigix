@@ -1,9 +1,9 @@
 # Demo scripts
 
-## `demo_feedback_triage.py` — end-to-end custom-node pipeline
+## `demo_feedback_triage.py`: end-to-end custom-node pipeline
 
 A "customer feedback triage" workflow built entirely from [custom nodes](../sdk)
-(the node SDK) — **no API keys, fully offline**:
+(the node SDK). No API keys, fully offline:
 
 ```
 trigger → HTML→Text → Redact PII → Sentiment → route
@@ -32,16 +32,14 @@ python3 scripts/demo_feedback_triage.py
 ### Expected output (abridged)
 
 ```
-① Registering custom nodes …  HTML → Text / Redact PII / Sentiment
-② Building the workflow: trigger → clean → (redact, sentiment)
-③ Publishing…
-④ Running on a raw HTML feedback message with PII…
-⑤ Result: execution … → succeeded
-   ── HTML → Text   {"text": "Honestly your app is fast and super reliable…"}
-   ── Redact PII    {"redacted": "… [EMAIL] or card [CREDIT_CARD].", "total": 2}
-   ── Sentiment     {"label": "positive", "score": 1.0}
-✅ Triage:  PII masked: 2 · Sentiment: positive · Route: → auto-acknowledge
+[1/5] Registering custom nodes from the node service manifest
+[2/5] Building the workflow: trigger -> clean -> (redact, sentiment)
+[3/5] Publishing the workflow version
+[4/5] Running on a raw HTML feedback message with PII
+[5/5] Execution ...: succeeded
+      Redact PII   {"redacted": "... [EMAIL] or card [CREDIT_CARD].", "total": 2}
+      Sentiment    {"label": "positive", "score": 1.0}
+Triage decision:  PII masked 2, sentiment positive, route auto-acknowledge
 ```
 
-This is a self-contained way to show the platform + the node SDK working
-together end to end — clone, run three commands, see a real pipeline execute.
+A full annotated run is in [docs/demo-feedback-triage.md](../docs/demo-feedback-triage.md).

@@ -1,7 +1,7 @@
 # Trigix Node SDK (TypeScript / JavaScript)
 
 Write a custom Trigix workflow node in TypeScript or JavaScript and serve it over
-HTTP. Zero dependencies — runs on Node's built-in `http`. Ships JS runtime plus
+HTTP. Zero dependencies; runs on Node's built-in `http`. Ships JS runtime plus
 `.d.ts` types.
 
 ## Quick start
@@ -27,14 +27,14 @@ serve(9000)
 ```
 
 In Trigix → **Custom Nodes**, paste the service URL (`http://your-host:9000`) and
-click **Import All** — every node from `GET /manifest` is registered at once.
+click **Import All**: every node from `GET /manifest` is registered at once.
 
 ## Example nodes
 
 `examples/useful-nodes.mjs` ships practical, zero-dependency nodes:
 
-- **HTML → Text** — strip HTML to clean text (web scraping → LLM prep)
-- **Redact PII** — mask emails / phone numbers / card numbers / IPs (compliance)
+- **HTML → Text**: strip HTML to clean text (web scraping, LLM prep)
+- **Redact PII**: mask emails, phone numbers, card numbers, IPs (compliance)
 
 ```bash
 node examples/useful-nodes.mjs

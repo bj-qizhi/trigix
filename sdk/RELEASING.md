@@ -1,7 +1,7 @@
 # Releasing the Trigix node SDKs
 
 Both SDKs publish automatically from CI when you push a version tag. The actual
-publish requires registry accounts you own — the steps below are one-time setup
+publish requires registry accounts you own; the steps below are one-time setup
 plus a tag push per release.
 
 ## Package names (decide first)
@@ -9,7 +9,7 @@ plus a tag push per release.
 | SDK | Package | Notes |
 |-----|---------|-------|
 | Python | `trigix-node-sdk` (PyPI) | Confirm the name is free at https://pypi.org/project/trigix-node-sdk/ |
-| TypeScript | `trigix-node-sdk` (npm) | Unscoped — confirm it's free at https://www.npmjs.com/package/trigix-node-sdk |
+| TypeScript | `trigix-node-sdk` (npm) | Unscoped; confirm it's free at https://www.npmjs.com/package/trigix-node-sdk |
 
 ## Python → PyPI (Trusted Publishing, no token)
 

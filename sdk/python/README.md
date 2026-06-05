@@ -1,7 +1,7 @@
 # Trigix Node SDK (Python)
 
 Write a custom Trigix workflow node as a Python function and serve it over HTTP.
-No changes to the Trigix executor are required — the executor calls your node
+No changes to the Trigix executor are required; it calls your node
 like any other.
 
 ## Quick start
@@ -36,9 +36,9 @@ Add a **Custom** node to a workflow, pick `greet`, and it runs your code.
 
 `examples/useful_nodes.py` ships three practical, dependency-free nodes:
 
-- **HTML → Text** — strip HTML to clean text (web scraping → LLM prep)
-- **Redact PII** — mask emails / phone numbers / card numbers / IPs (compliance)
-- **Sentiment** — lexicon-based sentiment label + score (route reviews/feedback)
+- **HTML → Text**: strip HTML to clean text (web scraping, LLM prep)
+- **Redact PII**: mask emails, phone numbers, card numbers, IPs (compliance)
+- **Sentiment**: lexicon-based sentiment label + score (route reviews/feedback)
 
 ```bash
 uvicorn examples.useful_nodes:app --port 9000
