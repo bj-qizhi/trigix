@@ -2,6 +2,51 @@
 
 All notable changes to Trigix will be documented in this file.
 
+## [1.1.0] - 2026-06-05
+
+New AI-native and enterprise capabilities, a custom node SDK, and a major
+quality/CI uplift. Backward compatible with 1.0.0.
+
+### Added
+
+**AI-native**
+- RAG knowledge store on pgvector in the AI runtime: ingest, embed (OpenAI or
+  an offline local embedding), and cosine-similarity retrieval.
+- `rag` and `rag_ingest` workflow nodes, plus a Knowledge Bases management page.
+- Agent tool-use loop: the Agent node can call tools (sandboxed calculator and
+  knowledge-base search) and iterate to an answer.
+
+**Custom node SDK (node ecosystem)**
+- Python (`trigix-node-sdk` on PyPI) and TypeScript/JavaScript
+  (`trigix-node-sdk` on npm) SDKs for writing nodes served over HTTP.
+- `custom` node type, a tenant-scoped node registry, and one-click registration
+  from a node service's `/manifest`.
+- Example nodes (HTML to text, PII redaction, sentiment) and an end-to-end demo.
+
+**Enterprise**
+- Enterprise SSO via OIDC (Okta / Azure AD / Google Workspace / Alibaba Cloud
+  IDaaS / Huawei OneAccess / Tencent / Authing) plus Feishu, DingTalk, and
+  WeChat Work; admin management UI with enable/disable.
+- Encryption at rest for credential and SSO secrets (AES-256-GCM via
+  `CREDENTIAL_MASTER_KEY`), with transparent passthrough of legacy plaintext.
+- Dead-letter queue for the Redis Streams execution queue; failed jobs are
+  preserved and can be re-driven instead of silently dropped.
+- Opt-in data retention sweeper (`DATA_RETENTION_DAYS`) for executions, audit
+  log, token usage, and webhook deliveries.
+
+### Changed
+- Split the 14k-line `executor.rs` (previously `include!`-spliced) into cohesive
+  submodules.
+- CI now enforces formatting, the full Rust test suite, the web production
+  build, the AI runtime tests against a pgvector service, and both node SDK test
+  suites.
+
+### Fixed
+- Repaired a test suite that did not compile and 122 frontend TypeScript build
+  errors.
+- Credential creation on PostgreSQL (an i64 was bound to a `TIMESTAMPTZ` column).
+- A few latent frontend bugs surfaced by the typechecker.
+
 ## [1.0.0] - 2026-06-02
 
 ### 🎉 Initial Release
