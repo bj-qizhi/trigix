@@ -11,10 +11,26 @@ Then register http://localhost:9000 in Trigix → Custom Nodes → Import All.
 
 from __future__ import annotations
 
+import json
 import re
 from html.parser import HTMLParser
 
 from trigix_node_sdk import create_app, node
+
+
+def _read_source(config, input, node_outputs, default_field: str) -> str:
+    """Read the node's text input — from an upstream node's output when
+    `from_node` (+ optional `from_field`) is set, otherwise from the workflow
+    `input[field]`. Lets nodes be chained into a pipeline."""
+    from_node = config.get("from_node")
+    if from_node:
+        raw = node_outputs.get(from_node, "")
+        try:
+            data = json.loads(raw) if raw else {}
+        except (json.JSONDecodeError, TypeError):
+            data = {}
+        return str(data.get(config.get("from_field", default_field), ""))
+    return str(input.get(config.get("field", default_field), ""))
 
 # ── html_to_text ────────────────────────────────────────────────────────────
 # Turn raw HTML into clean plain text — the standard preprocessing step before
@@ -72,8 +88,8 @@ def html_to_text(html: str, keep_links: bool = False) -> str:
     },
 )
 def html_to_text_node(config, input, node_outputs):
-    field = config.get("field", "html")
-    text = html_to_text(str(input.get(field, "")), bool(config.get("keep_links", False)))
+    src = _read_source(config, input, node_outputs, "html")
+    text = html_to_text(src, bool(config.get("keep_links", False)))
     return {"text": text, "length": len(text)}
 
 
@@ -120,10 +136,9 @@ def redact_pii(text: str, categories: list[str] | None = None) -> tuple[str, dic
     },
 )
 def redact_pii_node(config, input, node_outputs):
-    field = config.get("field", "text")
     cats = config.get("categories")
     categories = [c.strip().upper() for c in cats.split(",")] if cats else None
-    redacted, counts = redact_pii(str(input.get(field, "")), categories)
+    redacted, counts = redact_pii(_read_source(config, input, node_outputs, "text"), categories)
     return {"redacted": redacted, "counts": counts, "total": sum(counts.values())}
 
 
@@ -167,8 +182,7 @@ def sentiment(text: str) -> dict:
     },
 )
 def sentiment_node(config, input, node_outputs):
-    field = config.get("field", "text")
-    return sentiment(str(input.get(field, "")))
+    return sentiment(_read_source(config, input, node_outputs, "text"))
 
 
 app = create_app()
