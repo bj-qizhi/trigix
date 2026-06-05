@@ -2,8 +2,8 @@
 # Copyright © 2026 北京祺智科技有限公司. All rights reserved.
 # https://www.qzso.com/ · managecode@gmail.com
 
-"""End-to-end Trigix demo: a "customer feedback triage" pipeline built entirely
-from custom nodes (the node SDK) — no API keys, fully offline.
+"""End-to-end Trigix demo: a "customer feedback triage" pipeline built
+from custom nodes (the node SDK). No API keys, fully offline.
 
 Pipeline:  trigger → HTML→Text → Redact PII → Sentiment
 
@@ -40,9 +40,9 @@ def call(method: str, url: str, body: dict | None = None) -> dict:
             raw = resp.read()
             return json.loads(raw) if raw else {}
     except urllib.error.HTTPError as e:
-        sys.exit(f"  ✗ {method} {url} → {e.code}: {e.read().decode()[:200]}")
+        sys.exit(f"  {method} {url} failed ({e.code}): {e.read().decode()[:200]}")
     except urllib.error.URLError as e:
-        sys.exit(f"  ✗ {method} {url} unreachable: {e}. Is the service running?")
+        sys.exit(f"  {method} {url} unreachable: {e}. Is the service running?")
 
 
 def main() -> None:
@@ -53,14 +53,14 @@ def main() -> None:
     platform = args.platform.rstrip("/")
     node_svc = args.node_service.rstrip("/")
 
-    print("① Registering custom nodes from the node service manifest…")
+    print("[1/5] Registering custom nodes from the node service manifest")
     imported = call("POST", f"{platform}/v1/custom-nodes/import", {"base_url": node_svc})
     by_slug = {n["slug"]: n for n in imported}
     for n in imported:
-        print(f"   • {n['label']:14s} {n['endpoint']}")
+        print(f"      {n['label']:14s} {n['endpoint']}")
     for need in ("html_to_text", "redact_pii", "sentiment"):
         if need not in by_slug:
-            sys.exit(f"   ✗ node service is missing '{need}'. Run examples.useful_nodes.")
+            sys.exit(f"  node service is missing '{need}'. Run examples.useful_nodes.")
 
     def custom(node_id: str, slug: str, cfg: dict) -> dict:
         return {
@@ -69,7 +69,7 @@ def main() -> None:
             "config": {"custom_node": slug, "endpoint": by_slug[slug]["endpoint"], **cfg},
         }
 
-    print("\n② Building the workflow: trigger → clean → (redact, sentiment)")
+    print("\n[2/5] Building the workflow: trigger -> clean -> (redact, sentiment)")
     graph = {
         "workflow_version_id": "ignored",
         "nodes": [
@@ -95,15 +95,15 @@ def main() -> None:
     version_id = wf["latest_version_id"]
     print(f"   workflow={wf['id']}  version={version_id}")
 
-    print("\n③ Publishing…")
+    print("\n[3/5] Publishing the workflow version")
     call("POST", f"{platform}/v1/workflow-versions/{version_id}/publish", {"tenant_id": TENANT})
 
     feedback = (
         "<p>Honestly your app is <b>fast</b> and super reliable, I love it &amp; "
         "recommend it!</p><p>Reach me at jane@corp.com or card 4111 1111 1111 1111.</p>"
     )
-    print("\n④ Running on a raw HTML feedback message with PII…")
-    print(f"   input: {feedback[:70]}…")
+    print("\n[4/5] Running on a raw HTML feedback message with PII")
+    print(f"      input: {feedback[:70]}...")
     ex = call("POST", f"{platform}/v1/workflows/{wf['id']}/executions", {
         "tenant_id": TENANT,
         "input_json": json.dumps({"feedback_html": feedback}),
@@ -117,7 +117,7 @@ def main() -> None:
             break
         time.sleep(0.25)
 
-    print(f"\n⑤ Result: execution {exec_id} → {ex.get('status')}\n")
+    print(f"\n[5/5] Execution {exec_id}: {ex.get('status')}\n")
     outputs = {nr["node_id"]: nr for nr in ex.get("node_results", [])}
 
     def show(node_id: str, title: str) -> dict:
@@ -128,19 +128,19 @@ def main() -> None:
                 out = json.loads(nr["output_json"])
             except (json.JSONDecodeError, TypeError):
                 out = {"raw": nr["output_json"]}
-        print(f"   ── {title} [{nr.get('status', '?')}]")
-        print(f"      {json.dumps(out, ensure_ascii=False)}")
+        print(f"      {title} [{nr.get('status', '?')}]")
+        print(f"        {json.dumps(out, ensure_ascii=False)}")
         return out
 
     show("clean", "HTML → Text")
     redact = show("redact", "Redact PII")
     score = show("score", "Sentiment")
 
-    print("\n✅ Triage:")
-    print(f"   • PII masked: {redact.get('total', 0)} item(s) {redact.get('counts', {})}")
-    print(f"   • Sentiment:  {score.get('label', '?')} (score {score.get('score', '?')})")
+    print("\nTriage decision:")
+    print(f"      PII masked:  {redact.get('total', 0)} item(s) {redact.get('counts', {})}")
+    print(f"      sentiment:   {score.get('label', '?')} (score {score.get('score', '?')})")
     route = "escalate to a human" if score.get("label") == "negative" else "auto-acknowledge"
-    print(f"   • Route:      → {route}")
+    print(f"      route:       {route}")
 
 
 if __name__ == "__main__":
