@@ -43,3 +43,12 @@ def test_sentiment_positive_and_negative():
     assert sentiment("This is great and amazing, I love it").get("label") == "positive"
     assert sentiment("Terrible, worst experience, broken and slow").get("label") == "negative"
     assert sentiment("It is a chair").get("label") == "neutral"
+
+
+def test_node_handler_reads_from_upstream():
+    from examples.useful_nodes import redact_pii_node
+    import json
+    upstream = {"clean": json.dumps({"text": "call me at jane@corp.com"})}
+    out = redact_pii_node({"from_node": "clean", "from_field": "text"}, {}, upstream)
+    assert "[EMAIL]" in out["redacted"]
+    assert out["counts"]["EMAIL"] == 1
