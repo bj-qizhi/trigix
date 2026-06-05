@@ -29,6 +29,17 @@ serve(9000)
 In Trigix → **Custom Nodes**, paste the service URL (`http://your-host:9000`) and
 click **Import All** — every node from `GET /manifest` is registered at once.
 
+## Example nodes
+
+`examples/useful-nodes.mjs` ships practical, zero-dependency nodes:
+
+- **HTML → Text** — strip HTML to clean text (web scraping → LLM prep)
+- **Redact PII** — mask emails / phone numbers / card numbers / IPs (compliance)
+
+```bash
+node examples/useful-nodes.mjs
+```
+
 ## The contract
 
 The executor POSTs to `/nodes/<slug>`:

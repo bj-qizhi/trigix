@@ -25,3 +25,7 @@ sdk/python/dist/
 sdk/python/build/
 sdk/typescript/*.tgz
 node_modules/
+
+# npm auth (never commit)
+.npmrc
+**/.npmrc

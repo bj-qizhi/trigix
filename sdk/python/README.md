@@ -32,6 +32,18 @@ Then in Trigix → **Custom Nodes**, register:
 
 Add a **Custom** node to a workflow, pick `greet`, and it runs your code.
 
+## Example nodes
+
+`examples/useful_nodes.py` ships three practical, dependency-free nodes:
+
+- **HTML → Text** — strip HTML to clean text (web scraping → LLM prep)
+- **Redact PII** — mask emails / phone numbers / card numbers / IPs (compliance)
+- **Sentiment** — lexicon-based sentiment label + score (route reviews/feedback)
+
+```bash
+uvicorn examples.useful_nodes:app --port 9000
+```
+
 ## The contract
 
 The executor POSTs to `/nodes/<slug>`:
