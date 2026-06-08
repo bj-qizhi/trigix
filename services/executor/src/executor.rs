@@ -1035,6 +1035,32 @@ fn execute_assert(node: &Node, context: &ExecutionContext) -> NodeExecutionResul
     }
 }
 
+/// Evaluate a comparison operator. `actual` is the resolved field value (None if
+/// the field was absent); `expected` is the resolved comparison value.
+fn eval_condition_op(op: &str, actual: Option<&str>, expected: &str) -> bool {
+    let a = actual.unwrap_or("");
+    match op {
+        "exists" => actual.is_some(),
+        "not_exists" => actual.is_none(),
+        "equals" => a == expected,
+        "not_equals" => a != expected,
+        "contains" => a.contains(expected),
+        "not_contains" => !a.contains(expected),
+        "gt" | "lt" | "gte" | "lte" => {
+            match (a.trim().parse::<f64>(), expected.trim().parse::<f64>()) {
+                (Ok(x), Ok(y)) => match op {
+                    "gt" => x > y,
+                    "lt" => x < y,
+                    "gte" => x >= y,
+                    _ => x <= y,
+                },
+                _ => false,
+            }
+        }
+        _ => false,
+    }
+}
+
 fn execute_condition(node: &Node, context: &ExecutionContext) -> NodeExecutionResult {
     let config = match node.config.as_ref() {
         Some(c) => c,
@@ -1046,32 +1072,46 @@ fn execute_condition(node: &Node, context: &ExecutionContext) -> NodeExecutionRe
         None => return NodeExecutionResult::failed("Condition node config missing 'field'"),
     };
 
-    // If field is a template expression (e.g. "{{trigger.status}}"), resolve it to the
-    // actual value to compare. Otherwise look the field up as a key in input_json.
-    let check_value: Option<String> = if field_raw.contains("{{") {
-        let resolved = resolve_template(field_raw, context);
-        if resolved.is_empty() {
-            None
-        } else {
-            Some(resolved)
-        }
-    } else {
-        let input: serde_json::Value = match serde_json::from_str(&context.input_json) {
-            Ok(v) => v,
-            Err(_) => {
-                return NodeExecutionResult::failed("Condition node could not parse input_json")
+    // Resolve the value to test. Priority:
+    //  1. `source` template (an upstream node or input), then `field` as a dot-path into it
+    //  2. `field` itself as a template expression (e.g. "{{node.value}}")
+    //  3. `field` as a key looked up in input_json
+    let check_value: Option<String> =
+        if let Some(source) = config.get("source").and_then(|v| v.as_str()) {
+            let resolved = resolve_template(source, context);
+            let json: serde_json::Value =
+                serde_json::from_str(&resolved).unwrap_or(serde_json::Value::Null);
+            json_path(&json, field_raw).map(json_to_string)
+        } else if field_raw.contains("{{") {
+            let resolved = resolve_template(field_raw, context);
+            if resolved.is_empty() {
+                None
+            } else {
+                Some(resolved)
             }
+        } else {
+            let input: serde_json::Value = match serde_json::from_str(&context.input_json) {
+                Ok(v) => v,
+                Err(_) => {
+                    return NodeExecutionResult::failed("Condition node could not parse input_json")
+                }
+            };
+            json_path(&input, field_raw).map(json_to_string)
         };
-        json_path(&input, field_raw).map(json_to_string)
-    };
 
-    let equals_raw = config.get("equals").and_then(|v| v.as_str());
-    let result = match equals_raw {
-        Some(expected) => {
-            let expected_resolved = resolve_template(expected, context);
-            check_value.as_deref() == Some(expected_resolved.as_str())
-        }
-        None => check_value.is_some(),
+    // Determine the result. Priority: operator+value, then equals, then existence.
+    let result = if let Some(op) = config.get("operator").and_then(|v| v.as_str()) {
+        let expected = config
+            .get("value")
+            .and_then(|v| v.as_str())
+            .map(|v| resolve_template(v, context))
+            .unwrap_or_default();
+        eval_condition_op(op, check_value.as_deref(), &expected)
+    } else if let Some(expected) = config.get("equals").and_then(|v| v.as_str()) {
+        let expected_resolved = resolve_template(expected, context);
+        check_value.as_deref() == Some(expected_resolved.as_str())
+    } else {
+        check_value.is_some()
     };
 
     NodeExecutionResult::succeeded(
@@ -1502,6 +1542,87 @@ mod tests {
         let output: serde_json::Value =
             serde_json::from_str(result.output_json.as_deref().unwrap()).unwrap();
         assert_eq!(output["result"], true);
+    }
+
+    async fn run_condition(config: serde_json::Value, input: &str) -> bool {
+        let executor = DispatchingNodeExecutor::new(None);
+        let node = Node {
+            id: "condition".to_string(),
+            node_type: NodeType::Condition,
+            config: Some(config),
+        };
+        let result = executor.execute(&node, &make_context(input)).await;
+        assert_eq!(result.status, execution_core::NodeStatus::Succeeded);
+        serde_json::from_str::<serde_json::Value>(result.output_json.as_deref().unwrap()).unwrap()
+            ["result"]
+            .as_bool()
+            .unwrap()
+    }
+
+    #[tokio::test]
+    async fn condition_numeric_operators() {
+        // gt / lt / gte / lte on a value looked up in input_json.
+        assert!(
+            run_condition(
+                serde_json::json!({ "field": "amount", "operator": "gt", "value": "100" }),
+                r#"{"amount":150}"#
+            )
+            .await
+        );
+        assert!(
+            !run_condition(
+                serde_json::json!({ "field": "amount", "operator": "gt", "value": "100" }),
+                r#"{"amount":50}"#
+            )
+            .await
+        );
+        assert!(
+            run_condition(
+                serde_json::json!({ "field": "amount", "operator": "lte", "value": "50" }),
+                r#"{"amount":50}"#
+            )
+            .await
+        );
+    }
+
+    #[tokio::test]
+    async fn condition_operators_equals_contains_exists() {
+        assert!(
+            run_condition(
+                serde_json::json!({ "field": "type", "operator": "equals", "value": "purchase" }),
+                r#"{"type":"purchase"}"#
+            )
+            .await
+        );
+        assert!(
+            run_condition(
+                serde_json::json!({ "field": "msg", "operator": "contains", "value": "error" }),
+                r#"{"msg":"fatal error here"}"#
+            )
+            .await
+        );
+        assert!(
+            run_condition(
+                serde_json::json!({ "field": "id", "operator": "exists" }),
+                r#"{"id":"x"}"#
+            )
+            .await
+        );
+        assert!(
+            !run_condition(
+                serde_json::json!({ "field": "id", "operator": "exists" }),
+                r#"{"other":1}"#
+            )
+            .await
+        );
+    }
+
+    #[tokio::test]
+    async fn condition_source_with_dotpath() {
+        // `source` resolves a JSON object, then `field` is a dot-path into it —
+        // the form the bundled templates use.
+        let cfg = serde_json::json!({ "source": "{{input}}", "field": "order.total", "operator": "gte", "value": "100" });
+        assert!(run_condition(cfg, r#"{"order":{"total":120}}"#).await);
     }
 
     #[test]
