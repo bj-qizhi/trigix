@@ -56,7 +56,7 @@ export const TEMPLATES: Template[] = [
         { id: 'trigger', type: 'trigger', config: {} },
         { id: 'fetch_lead', type: 'http', config: { method: 'GET', url: 'https://api.example.com/leads/{{input.lead_id}}' } },
         { id: 'score_lead', type: 'openai', config: { model: 'gpt-4o-mini', api_key: '{{credential.openai_key}}', system_prompt: 'You are a B2B lead scoring expert. Respond with JSON only: {"score":1-10,"reason":"..."}', prompt_template: 'Score this lead: {{fetch_lead}}', max_tokens: 200, temperature: 0.3 } },
-        { id: 'check_score', type: 'condition', config: { field: 'score', equals: '' } },
+        { id: 'check_score', type: 'condition', config: { field: 'score', operator: 'gte', value: '7', source: '{{score_lead.content}}' } },
         { id: 'notify_sales', type: 'slack', config: { webhook_url: '{{credential.slack_webhook}}', text: 'Hot lead! Score: {{score_lead.score}} — {{fetch_lead.name}} ({{fetch_lead.email}})\nReason: {{score_lead.reason}}', username: 'LeadBot' } },
       ],
       edges: [
@@ -80,7 +80,7 @@ export const TEMPLATES: Template[] = [
       nodes: [
         { id: 'trigger', type: 'trigger', config: { webhook_secret: '' } },
         { id: 'create_account', type: 'http', config: { method: 'POST', url: 'https://api.example.com/accounts', auth_token: '{{credential.api_key}}', body: '{"name":"{{input.company}}","email":"{{input.email}}","plan":"{{input.plan}}"}' } },
-        { id: 'gate', type: 'condition', config: { field: 'id', operator: 'exists' } },
+        { id: 'gate', type: 'condition', config: { field: 'body.id', operator: 'exists', source: '{{create_account}}' } },
         { id: 'welcome_email', type: 'email', config: { to: '{{input.email}}', subject: 'Welcome to the platform, {{input.name}}!', body: 'Hi {{input.name}},\n\nYour account is ready. Get started at https://app.example.com.\n\nYour account ID: {{create_account.id}}\n\nBest,\nThe Team', api_key: '{{credential.sendgrid_key}}', from: 'welcome@example.com' } },
         { id: 'notify_team', type: 'slack', config: { webhook_url: '{{credential.slack_webhook}}', text: 'New customer: *{{input.company}}* ({{input.email}}) signed up for {{input.plan}}. Account ID: {{create_account.id}}', username: 'SalesBot' } },
         { id: 'on_error', type: 'catch', config: {} },
@@ -648,7 +648,7 @@ export const TEMPLATES: Template[] = [
       nodes: [
         { id: 'trigger', type: 'trigger', config: { interval_secs: 300 } },
         { id: 'fetch_metrics', type: 'http', config: { method: 'GET', url: '{{input.metrics_url}}', auth_token: '{{credential.monitor_key}}' } },
-        { id: 'check_threshold', type: 'condition', config: { field: 'value', operator: 'gt', value: '{{input.threshold}}', source: '{{fetch_metrics}}' } },
+        { id: 'check_threshold', type: 'condition', config: { field: 'body.value', operator: 'gt', value: '{{input.threshold}}', source: '{{fetch_metrics}}' } },
         { id: 'analyze', type: 'hunyuan', config: { model: 'hunyuan-standard', api_key: '{{credential.hunyuan_key}}', system_prompt: '你是运维告警分析助手，用50字内中文描述告警原因和建议。', prompt_template: '指标：{{fetch_metrics.metric_name}}，当前值：{{fetch_metrics.value}}，阈值：{{input.threshold}}', max_tokens: 150 } },
         { id: 'send_wecom', type: 'http', config: { method: 'POST', url: '{{credential.wecom_webhook}}', body: '{"msgtype":"markdown","markdown":{"content":"## ⚠️ 告警通知\n**指标**：{{fetch_metrics.metric_name}}\n**当前值**：{{fetch_metrics.value}}\n**分析**：{{analyze.content}}"}}' } },
       ],
@@ -945,7 +945,7 @@ export const TEMPLATES: Template[] = [
       nodes: [
         { id: 'trigger', type: 'trigger', config: { cron_expression: '0 0 2 * * *' } },
         { id: 'fetch_articles', type: 'http', config: { method: 'GET', url: 'https://api.example.com/kb/articles?updated_since={{input.last_sync}}', auth_token: '{{credential.kb_api_key}}' } },
-        { id: 'check_count', type: 'condition', config: { field: 'count', operator: 'gt', value: '0', source: '{{fetch_articles}}' } },
+        { id: 'check_count', type: 'condition', config: { field: 'body.count', operator: 'gt', value: '0', source: '{{fetch_articles}}' } },
         { id: 'embed_articles', type: 'http', config: { method: 'POST', url: 'https://api.openai.com/v1/embeddings', auth_token: '{{credential.openai_key}}', body: '{"model":"text-embedding-3-small","input":{{fetch_articles.articles.map(a => a.content)}}}' } },
         { id: 'build_points', type: 'map', config: { items: '{{fetch_articles.articles}}', item_template: { id: '{{item.id}}', vector: '{{embed_articles.data.item.index.embedding}}', payload: { title: '{{item.title}}', url: '{{item.url}}', updated_at: '{{item.updated_at}}' } } } },
         { id: 'upsert_qdrant', type: 'qdrant', config: { url: '{{credential.qdrant_url}}', api_key: '{{credential.qdrant_key}}', collection: 'knowledge_base', operation: 'upsert', points: '{{build_points.items}}' } },
