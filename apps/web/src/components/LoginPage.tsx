@@ -306,6 +306,11 @@ export function LoginPage() {
               required
               style={inputStyle}
             />
+            <p style={{ color: '#64748b', margin: '-0.4rem 0 0', fontSize: '0.75rem' }}>
+              {locale === 'zh'
+                ? <>首次使用?默认开发密钥为 <code>dev</code>(可通过 <code>DEV_API_KEY</code> 修改)。</>
+                : <>First run? The default development key is <code>dev</code> (change it via <code>DEV_API_KEY</code>).</>}
+            </p>
             <div>
               <label style={{ color: '#94a3b8', fontSize: '0.75rem', display: 'block', marginBottom: '0.4rem' }}>{t('login.role.label')}</label>
               <div style={{ display: 'flex', gap: '0.5rem' }}>

@@ -17,6 +17,30 @@ export interface Template {
 }
 
 export const TEMPLATES: Template[] = [
+  // ── Starter (runs immediately, no credentials) ─────────────────────────────
+  {
+    id: 'quick-start-offline',
+    name: 'Quick Start (no setup)',
+    name_zh: '快速开始（无需配置）',
+    description: 'Runs immediately with no API keys or credentials. Builds a small dataset, sums a field, and branches on the total. Open it, hit Run, and see a workflow execute end to end.',
+    description_zh: '无需任何 API 密钥或凭证，开箱即跑。构造一组示例数据、对字段求和、按总额分支。打开后点"运行"即可看到一个工作流端到端执行。',
+    category: 'Starter',
+    category_zh: '入门',
+    graph: {
+      workflow_version_id: 'template',
+      nodes: [
+        { id: 'trigger', type: 'trigger', config: {} },
+        { id: 'sample', type: 'transform', config: { template: { orders: [{ item: 'Keyboard', amount: 40 }, { item: 'Mouse', amount: 25 }, { item: 'Monitor', amount: 43 }] } } },
+        { id: 'total', type: 'aggregate', config: { items: '{{sample.orders}}', operation: 'sum', field: 'amount' } },
+        { id: 'check', type: 'condition', config: { field: '{{total.result}}', operator: 'gt', value: '100' } },
+      ],
+      edges: [
+        { source: 'trigger', target: 'sample' },
+        { source: 'sample', target: 'total' },
+        { source: 'total', target: 'check' },
+      ],
+    },
+  },
   // ── Sales ──────────────────────────────────────────────────────────────────
   {
     id: 'ai-lead-scorer',
