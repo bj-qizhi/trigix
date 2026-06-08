@@ -24,7 +24,7 @@ type Toast = { id: number; message: string; kind: 'success' | 'error' }
 
 const NODE_TYPE_LIST: { type: NodeType; label: string; color: string; icon: string; desc: string; category: string }[] = [
   { type: 'trigger',      label: 'Trigger',      color: 'var(--node-trigger)',      icon: '▶',   desc: 'Starts the workflow. Passes input_json to downstream nodes. Supports manual, webhook, and scheduled runs.',  category: 'Control' },
-  { type: 'condition',    label: 'Condition',     color: 'var(--node-condition)',    icon: '◇',   desc: 'Evaluates a field or template expression. Routes to true/false branches. Supports equals, contains, gt/lt, regex.', category: 'Control' },
+  { type: 'condition',    label: 'Condition',     color: 'var(--node-condition)',    icon: '◇',   desc: 'Routes to true/false branches by comparing a field. Operators: equals, not_equals, contains, gt, lt, gte, lte, exists.', category: 'Control' },
   { type: 'approval',     label: 'Approval',      color: 'var(--node-approval)',     icon: '✋',  desc: 'Pauses execution until a human approves or rejects. Approve/Reject buttons appear in the execution panel.', category: 'Control' },
   { type: 'assert',       label: 'Assert',        color: 'var(--node-assert)',       icon: '⊘',   desc: 'Fails the execution with a custom message if a condition expression is falsy.', category: 'Control' },
   { type: 'catch',        label: 'Catch',         color: 'var(--node-catch)',        icon: '↻',   desc: 'Receives control when an upstream node fails (connected via an "error" edge). Auto-detects the error.', category: 'Control' },

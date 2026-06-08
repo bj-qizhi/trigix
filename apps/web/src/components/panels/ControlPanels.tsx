@@ -3,11 +3,38 @@
 
 import type { ConfigProps } from './types'
 
-export function ConditionConfig({ set, str }: ConfigProps) {
+const CONDITION_OPS: { v: string; l: string }[] = [
+  { v: 'equals', l: '= equals' },
+  { v: 'not_equals', l: '≠ not equals' },
+  { v: 'contains', l: 'contains' },
+  { v: 'gt', l: '> greater than' },
+  { v: 'lt', l: '< less than' },
+  { v: 'gte', l: '≥ at least' },
+  { v: 'lte', l: '≤ at most' },
+  { v: 'exists', l: 'exists (has a value)' },
+  { v: 'not_exists', l: 'does not exist' },
+]
+
+export function ConditionConfig({ config, set, str }: ConfigProps) {
+  // Default to the legacy `equals` form when present, else `exists`.
+  const op = str('operator') || (config['equals'] !== undefined ? 'equals' : 'exists')
+  const needsValue = op !== 'exists' && op !== 'not_exists'
+  const clear = (k: string) => set(k, undefined as unknown as string)
   return (
     <>
       <div className="field">
-        <label>Field (from input_json) *</label>
+        <label>Source <span style={{ color: 'var(--muted)' }}>(optional)</span></label>
+        <input
+          placeholder="{{previous_node}}"
+          value={str('source')}
+          onChange={(e) => set('source', e.target.value || (undefined as unknown as string))}
+        />
+        <span style={{ fontSize: 11, color: 'var(--muted)' }}>
+          If set, Field is a dot-path into that node&apos;s output. Otherwise Field is read from the workflow input (or a {'{{...}}'} expression).
+        </span>
+      </div>
+      <div className="field">
+        <label>Field *</label>
         <input
           placeholder="status"
           value={str('field')}
@@ -15,16 +42,32 @@ export function ConditionConfig({ set, str }: ConfigProps) {
         />
       </div>
       <div className="field">
-        <label>Equals <span style={{ color: 'var(--muted)' }}>(blank = check presence)</span></label>
-        <input
-          placeholder="active"
-          value={str('equals')}
-          onChange={(e) => set('equals', e.target.value || undefined as unknown as string)}
-        />
+        <label>Operator</label>
+        <select
+          value={op}
+          onChange={(e) => {
+            const v = e.target.value
+            set('operator', v)
+            clear('equals')
+            if (v === 'exists' || v === 'not_exists') clear('value')
+          }}
+        >
+          {CONDITION_OPS.map((o) => <option key={o.v} value={o.v}>{o.l}</option>)}
+        </select>
       </div>
+      {needsValue && (
+        <div className="field">
+          <label>Value</label>
+          <input
+            placeholder="active"
+            value={str('value') || str('equals')}
+            onChange={(e) => { set('value', e.target.value); clear('equals') }}
+          />
+        </div>
+      )}
       <TemplateHint />
       <p style={{ fontSize: 12, color: 'var(--muted)', marginTop: 4 }}>
-        Returns <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>{"{ result: true | false }"}</code> as output.
+        Routes the true/false branches. Returns <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>{"{ result: true | false }"}</code>.
       </p>
     </>
   )
