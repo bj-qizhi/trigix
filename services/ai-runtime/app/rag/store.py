@@ -6,6 +6,8 @@ nearest neighbours for a query embedding (cosine distance)."""
 
 from __future__ import annotations
 
+import os
+import re
 import time
 import uuid
 from dataclasses import dataclass
@@ -18,6 +20,23 @@ from .embeddings import EMBED_DIM, embed, embed_one
 def _vec_literal(vec: list[float]) -> str:
     """Format a float vector as pgvector's text representation: ``[a,b,c]``."""
     return "[" + ",".join(repr(float(x)) for x in vec) + "]"
+
+
+# Text-search config used for the lexical half of hybrid retrieval. 'simple'
+# does not segment Chinese, so prefer a CJK tokenizer config (pg_jieba's
+# `jiebacfg`, zhparser's `zhparsercfg`, …) when the database provides one.
+_FTS_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+_CJK_FTS_CANDIDATES = ("jiebacfg", "jieba_query", "zhparsercfg", "chinese", "chinese_zh")
+
+
+def _pick_fts_config(available: set[str], override: str | None) -> str:
+    """Choose the text-search config: an explicit RAG_FTS_CONFIG override first,
+    then a known CJK config if installed, otherwise 'simple'. The name must be a
+    plain identifier and actually exist in the database."""
+    for candidate in [override, *_CJK_FTS_CANDIDATES, "simple"]:
+        if candidate and _FTS_NAME_RE.match(candidate) and candidate in available:
+            return candidate
+    return "simple"
 
 
 @dataclass
@@ -34,6 +53,7 @@ class RagStore:
 
     def __init__(self, pool: asyncpg.Pool) -> None:
         self._pool = pool
+        self._fts_config = "simple"  # resolved in ensure_schema()
 
     @classmethod
     async def connect(cls, dsn: str) -> "RagStore":
@@ -72,10 +92,20 @@ class RagStore:
                 "CREATE INDEX IF NOT EXISTS af_kb_chunks_hnsw "
                 "ON af_kb_chunks USING hnsw (embedding vector_cosine_ops)"
             )
-            # Full-text index backing the lexical half of hybrid retrieval.
+            # Resolve the text-search config (CJK tokenizer if installed) and
+            # build a GIN index matching it, so the lexical half of hybrid
+            # retrieval segments Chinese when pg_jieba/zhparser is available.
+            rows = await conn.fetch("SELECT cfgname FROM pg_ts_config")
+            available = {r["cfgname"] for r in rows}
+            self._fts_config = _pick_fts_config(available, os.environ.get("RAG_FTS_CONFIG"))
+            idx_name = (
+                "af_kb_chunks_fts"
+                if self._fts_config == "simple"
+                else f"af_kb_chunks_fts_{self._fts_config}"
+            )
             await conn.execute(
-                "CREATE INDEX IF NOT EXISTS af_kb_chunks_fts "
-                "ON af_kb_chunks USING gin (to_tsvector('simple', content))"
+                f"CREATE INDEX IF NOT EXISTS {idx_name} "
+                f"ON af_kb_chunks USING gin (to_tsvector('{self._fts_config}', content))"
             )
 
     async def ingest(
@@ -211,9 +241,10 @@ class RagStore:
         qvec = _vec_literal(embed_one(query))
         pool = max(top_k * 5, 50)
         rrf_k = 60
+        cfg = self._fts_config  # a validated identifier from _pick_fts_config
         async with self._pool.acquire() as conn:
             records = await conn.fetch(
-                """
+                f"""
                 WITH vec AS (
                     SELECT id, ROW_NUMBER() OVER (ORDER BY embedding <=> $1::vector) AS rnk
                     FROM af_kb_chunks WHERE tenant_id=$2 AND kb=$3
@@ -221,11 +252,11 @@ class RagStore:
                 ),
                 kw AS (
                     SELECT id, ROW_NUMBER() OVER (
-                        ORDER BY ts_rank_cd(to_tsvector('simple', content),
-                                            websearch_to_tsquery('simple', $5)) DESC) AS rnk
+                        ORDER BY ts_rank_cd(to_tsvector('{cfg}', content),
+                                            websearch_to_tsquery('{cfg}', $5)) DESC) AS rnk
                     FROM af_kb_chunks
                     WHERE tenant_id=$2 AND kb=$3
-                      AND to_tsvector('simple', content) @@ websearch_to_tsquery('simple', $5)
+                      AND to_tsvector('{cfg}', content) @@ websearch_to_tsquery('{cfg}', $5)
                     LIMIT $4
                 ),
                 fused AS (

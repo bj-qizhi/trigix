@@ -79,6 +79,42 @@ async def test_hybrid_retrieval_finds_exact_token():
         await store.close()
 
 
+async def test_hybrid_uses_an_installed_cjk_config():
+    # Simulate a CJK text-search config (as pg_jieba's `zhparsercfg` would
+    # register) by copying `simple`, and prove the store discovers it, builds a
+    # matching index, and runs hybrid retrieval through it.
+    import asyncpg
+
+    conn = await asyncpg.connect(DSN)
+    await conn.execute("DROP TEXT SEARCH CONFIGURATION IF EXISTS zhparsercfg CASCADE")
+    await conn.execute("CREATE TEXT SEARCH CONFIGURATION zhparsercfg (COPY = simple)")
+    await conn.close()
+
+    store = await RagStore.connect(DSN)
+    tenant, kb = "t-zh", f"kb-{uuid.uuid4().hex[:8]}"
+    try:
+        assert store._fts_config == "zhparsercfg"
+        idx = await store._pool.fetchval(
+            "SELECT 1 FROM pg_indexes WHERE indexname = 'af_kb_chunks_fts_zhparsercfg'"
+        )
+        assert idx == 1, "per-config FTS index was not created"
+
+        await store.ingest(tenant, kb, "doc-a",
+                           chunk_text("order ABC-7788 shipped to the warehouse", 1000, 100))
+        await store.ingest(tenant, kb, "doc-b",
+                           chunk_text("unrelated note about office plants", 1000, 100))
+        hits = await store.query(tenant, kb, "ABC-7788", top_k=2, mode="hybrid")
+        assert hits and hits[0].doc_id == "doc-a"
+    finally:
+        await store.delete_document(tenant, kb, "doc-a")
+        await store.delete_document(tenant, kb, "doc-b")
+        await store.close()
+        conn = await asyncpg.connect(DSN)
+        await conn.execute("DROP INDEX IF EXISTS af_kb_chunks_fts_zhparsercfg")
+        await conn.execute("DROP TEXT SEARCH CONFIGURATION IF EXISTS zhparsercfg CASCADE")
+        await conn.close()
+
+
 async def test_rerank_reorders_candidates():
     store = await RagStore.connect(DSN)
     tenant, kb = "t-rr", f"kb-{uuid.uuid4().hex[:8]}"
