@@ -1,5 +1,8 @@
 # ── Stage 1: build Rust backend ──────────────────────────────────────────────
-FROM rust:1.82-slim AS rust-builder
+# Track the latest stable Rust (like CI's toolchain) so the image doesn't rot
+# when a dependency raises its edition / MSRV — 1.82 could no longer build the
+# tree once a transitive crate required edition 2024.
+FROM rust:1-slim AS rust-builder
 
 RUN apt-get update && apt-get install -y pkg-config libssl-dev && rm -rf /var/lib/apt/lists/*
 
