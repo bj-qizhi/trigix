@@ -57,6 +57,8 @@ class QueryRequest(BaseModel):
     kb: str
     query: str
     top_k: int = 4
+    mode: str = "vector"  # "vector" | "hybrid"
+    min_score: float | None = None
 
 
 class QueryResult(BaseModel):
@@ -87,7 +89,10 @@ async def ingest(req: IngestRequest) -> IngestResponse:
 async def query(req: QueryRequest) -> QueryResponse:
     store = await get_store()
     top_k = max(1, min(req.top_k, 50))
-    hits = await store.query(req.tenant_id, req.kb, req.query, top_k)
+    mode = req.mode if req.mode in ("vector", "hybrid") else "vector"
+    hits = await store.query(
+        req.tenant_id, req.kb, req.query, top_k, mode=mode, min_score=req.min_score
+    )
     return QueryResponse(
         results=[
             QueryResult(
