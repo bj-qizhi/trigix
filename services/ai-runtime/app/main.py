@@ -10,7 +10,7 @@ import anthropic
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
-from .agent.loop import AnthropicLLM, run_agent_loop
+from .agent.loop import AnthropicLLM, OpenAICompatLLM, run_agent_loop
 from .agent.tools import build_tools
 from .rag.router import router as rag_router
 
@@ -43,6 +43,57 @@ def healthz() -> dict[str, str]:
     return {"status": "ok"}
 
 
+def _select_provider(config: dict[str, Any]) -> str:
+    """Pick the LLM backend. An explicit `provider` wins; otherwise a configured
+    `base_url` or a non-Claude model implies the OpenAI-compatible path, so the
+    agent runs on Qwen/DeepSeek/Zhipu/Moonshot/self-hosted vLLM in deployments
+    where Anthropic is unreachable."""
+    provider = str(config.get("provider", "")).lower().strip()
+    if provider in ("openai", "anthropic"):
+        return provider
+    if config.get("base_url") or config.get("api_base"):
+        return "openai"
+    model = str(config.get("model", "")).lower()
+    if model == "" or model.startswith("claude"):
+        return "anthropic"
+    return "openai"
+
+
+def _build_llm(config: dict[str, Any], model: str, max_tokens: int):
+    if _select_provider(config) == "anthropic":
+        if not os.environ.get("ANTHROPIC_API_KEY"):
+            raise HTTPException(status_code=503, detail="ANTHROPIC_API_KEY is not configured")
+        return AnthropicLLM(get_anthropic_client(), model, max_tokens)
+
+    # OpenAI-compatible provider.
+    base_url = (
+        config.get("base_url")
+        or config.get("api_base")
+        or os.environ.get("OPENAI_BASE_URL")
+    )
+    api_key = (
+        config.get("api_key")
+        or os.environ.get("OPENAI_API_KEY")
+        or os.environ.get("LLM_API_KEY")
+    )
+    if not api_key:
+        raise HTTPException(
+            status_code=503,
+            detail="OpenAI-compatible agent requires an API key "
+            "(config.api_key or the OPENAI_API_KEY / LLM_API_KEY env var)",
+        )
+    try:
+        from openai import OpenAI
+    except ImportError as exc:  # pragma: no cover - import guard
+        raise HTTPException(
+            status_code=503,
+            detail="The 'openai' package is not installed; install the runtime "
+            "with the [openai] extra to use an OpenAI-compatible provider",
+        ) from exc
+    client = OpenAI(api_key=api_key, base_url=base_url) if base_url else OpenAI(api_key=api_key)
+    return OpenAICompatLLM(client, model, max_tokens)
+
+
 @app.post("/v1/nodes/agent", response_model=AgentNodeResponse)
 async def run_agent_node(request: AgentNodeRequest) -> AgentNodeResponse:
     config = request.node_config
@@ -51,13 +102,6 @@ async def run_agent_node(request: AgentNodeRequest) -> AgentNodeResponse:
     max_tokens = int(config.get("max_tokens", 1024))
 
     user_message = _build_user_message(config, request.input_json, request.node_outputs)
-
-    api_key = os.environ.get("ANTHROPIC_API_KEY")
-    if not api_key:
-        raise HTTPException(
-            status_code=503,
-            detail="ANTHROPIC_API_KEY is not configured",
-        )
 
     # Resolve the agent's tool set. `calculator` is always available; `rag_search`
     # is added when configured and a knowledge-base store is reachable.
@@ -78,7 +122,7 @@ async def run_agent_node(request: AgentNodeRequest) -> AgentNodeResponse:
     )
     max_iterations = int(config.get("max_iterations", 6))
 
-    llm = AnthropicLLM(get_anthropic_client(), model, max_tokens)
+    llm = _build_llm(config, model, max_tokens)
     try:
         result = await run_agent_loop(
             llm, system_prompt, user_message, tools, max_iterations

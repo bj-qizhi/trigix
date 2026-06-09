@@ -352,13 +352,55 @@ export function AgentConfig({ config, set, str, num }: ConfigProps) {
   return (
     <>
       <div className="field">
-        <label>Model</label>
-        <select value={str('model', 'claude-sonnet-4-6')} onChange={(e) => set('model', e.target.value)}>
-          <option value="claude-haiku-4-5-20251001">claude-haiku-4-5 (fast)</option>
-          <option value="claude-sonnet-4-6">claude-sonnet-4-6 (balanced)</option>
-          <option value="claude-opus-4-7">claude-opus-4-7 (powerful)</option>
+        <label>Provider</label>
+        <select
+          value={str('provider', 'anthropic')}
+          onChange={(e) => {
+            const p = e.target.value
+            set('provider', p)
+            if (p === 'openai' && str('model', '').startsWith('claude')) set('model', '')
+            if (p === 'anthropic') {
+              set('model', 'claude-sonnet-4-6')
+              set('base_url', undefined)
+            }
+          }}
+        >
+          <option value="anthropic">Anthropic (Claude)</option>
+          <option value="openai">OpenAI-compatible (Qwen / DeepSeek / Zhipu / vLLM …)</option>
         </select>
       </div>
+      {str('provider', 'anthropic') === 'anthropic' ? (
+        <div className="field">
+          <label>Model</label>
+          <select value={str('model', 'claude-sonnet-4-6')} onChange={(e) => set('model', e.target.value)}>
+            <option value="claude-haiku-4-5-20251001">claude-haiku-4-5 (fast)</option>
+            <option value="claude-sonnet-4-6">claude-sonnet-4-6 (balanced)</option>
+            <option value="claude-opus-4-7">claude-opus-4-7 (powerful)</option>
+          </select>
+        </div>
+      ) : (
+        <>
+          <div className="field">
+            <label>Model</label>
+            <input
+              value={str('model')}
+              placeholder="qwen-plus / deepseek-chat / glm-4 / moonshot-v1-8k"
+              onChange={(e) => set('model', e.target.value)}
+            />
+          </div>
+          <div className="field">
+            <label>Base URL</label>
+            <input
+              value={str('base_url')}
+              placeholder="https://dashscope.aliyuncs.com/compatible-mode/v1"
+              onChange={(e) => set('base_url', e.target.value)}
+            />
+            <span style={{ fontSize: 11, color: 'var(--muted)' }}>
+              API key via the OPENAI_API_KEY env var on the runtime (or set api_key in raw config).
+            </span>
+          </div>
+        </>
+      )}
       <div className="field">
         <label>System Prompt</label>
         <textarea
