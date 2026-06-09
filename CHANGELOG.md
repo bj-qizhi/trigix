@@ -2,6 +2,49 @@
 
 All notable changes to Trigix will be documented in this file.
 
+## [Unreleased]
+
+Deployment and distribution chain — the container/compose/Helm paths had never
+actually built or deployed, and nothing in CI checked them. This round makes
+them work and guards them.
+
+### Added
+
+- CI: a Docker image build smoke job that builds the platform and AI runtime
+  images and checks they run (the platform binary + nginx are present, the AI
+  runtime answers `/healthz`).
+- CI: a Helm job that lints and renders the chart across value permutations and
+  validates every manifest against the Kubernetes schemas with kubeconform.
+- A Dockerfile for the AI runtime (the repo had a platform image but none for
+  the AI runtime).
+- Helm chart: an `ai-runtime` Deployment + Service, so the chart deploys the
+  full stack — platform + AI runtime + PostgreSQL/pgvector + Redis.
+- `docker-compose.prod.yml`: the AI runtime and Redis services.
+- The Helm chart is published to GHCR (`oci://ghcr.io/bj-qizhi/charts/trigix`)
+  and attached to GitHub Releases; a workflow auto-publishes on a `chart-v*`
+  tag, syncs both channels, and bumps the README install version.
+
+### Fixed
+
+- The platform Docker image could not build: a stale crate name left over from
+  the agentflow→trigix rename, a Rust base image too old for the dependency
+  tree (a transitive crate now requires edition 2024), and the migrations
+  directory missing from the build stage (`sqlx::migrate!` reads it at compile
+  time). The runtime image also lacked `curl`, which its healthcheck used.
+- Helm chart could not deploy: the platform `DATABASE_URL` was a password-less
+  placeholder so it could not authenticate, and the platform Service/PDB
+  selectors also matched the Redis (and now AI runtime) pods. Both the platform
+  and AI runtime now build the DSN from the postgres secret, and each component
+  has a scoped selector.
+- `docker-compose.prod.yml`: dropped a migrations `initdb` mount that conflicted
+  with the app's own `sqlx::migrate!` step on a fresh database.
+
+### Changed
+
+- The platform image tracks the latest stable Rust (`rust:1-slim`), matching
+  CI, so it no longer rots when a dependency raises its edition / MSRV.
+- Helm chart bumped to `0.3.1`; `appVersion` set to the deployed app (`1.1.0`).
+
 ## [1.1.0] - 2026-06-05
 
 New AI-native and enterprise capabilities, a custom node SDK, and a major
