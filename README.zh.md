@@ -68,6 +68,26 @@ cd apps/web && npm install && npm run dev
 
 ---
 
+## 部署
+
+**Kubernetes（Helm chart，已发布到 GHCR）：**
+
+```bash
+helm install trigix oci://ghcr.io/bj-qizhi/charts/trigix --version 0.3.0 \
+  --namespace trigix --create-namespace
+```
+
+部署平台、AI Runtime、PostgreSQL/pgvector 和 Redis。配置见 `charts/trigix/values.yaml`。
+每个 [`chart-v*` release](https://github.com/bj-qizhi/trigix/releases) 也附带 chart `.tgz`。
+
+**Docker Compose（单机）：**
+
+```bash
+docker compose -f docker-compose.prod.yml up -d --build
+```
+
+---
+
 ## 目录结构
 
 ```text
