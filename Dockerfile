@@ -10,7 +10,7 @@ COPY services/ services/
 COPY packages/ packages/
 
 # Build release binary
-RUN cargo build --release -p agentflow-platform
+RUN cargo build --release -p trigix-platform
 
 # ── Stage 2: build React frontend ────────────────────────────────────────────
 FROM node:20-alpine AS web-builder
@@ -28,7 +28,7 @@ FROM debian:bookworm-slim AS runtime
 RUN apt-get update && apt-get install -y ca-certificates nginx && rm -rf /var/lib/apt/lists/*
 
 # Copy Rust binary
-COPY --from=rust-builder /build/target/release/agentflow-platform /usr/local/bin/agentflow-platform
+COPY --from=rust-builder /build/target/release/trigix-platform /usr/local/bin/trigix-platform
 
 # Copy frontend dist into nginx web root
 COPY --from=web-builder /build/dist /var/www/html
