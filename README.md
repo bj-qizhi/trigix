@@ -66,6 +66,27 @@ Default dev API key: `dev`
 
 ---
 
+## Deploy
+
+**Kubernetes (Helm chart, published to GHCR):**
+
+```bash
+helm install trigix oci://ghcr.io/bj-qizhi/charts/trigix --version 0.3.0 \
+  --namespace trigix --create-namespace
+```
+
+Deploys the platform, AI runtime, PostgreSQL/pgvector, and Redis. Configure via
+`charts/trigix/values.yaml`. The chart `.tgz` is also attached to each
+[`chart-v*` release](https://github.com/bj-qizhi/trigix/releases).
+
+**Docker Compose (single host):**
+
+```bash
+docker compose -f docker-compose.prod.yml up -d --build
+```
+
+---
+
 ## Repository Structure
 
 ```text
