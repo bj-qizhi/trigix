@@ -41,9 +41,16 @@ class _Choice:
         self.message = message
 
 
+class _Usage:
+    def __init__(self, prompt_tokens, completion_tokens):
+        self.prompt_tokens = prompt_tokens
+        self.completion_tokens = completion_tokens
+
+
 class _Completion:
-    def __init__(self, message):
+    def __init__(self, message, usage=None):
         self.choices = [_Choice(message)]
+        self.usage = usage
 
 
 class _Completions:
@@ -52,7 +59,11 @@ class _Completions:
 
     def create(self, **kwargs):
         self._outer.captured.append(kwargs)
-        return _Completion(self._outer._scripted.pop(0))
+        item = self._outer._scripted.pop(0)
+        if isinstance(item, tuple):
+            message, usage = item
+            return _Completion(message, usage)
+        return _Completion(item)
 
 
 class _Chat:
@@ -129,6 +140,17 @@ def test_message_translation_round_trips_anthropic_history():
     assert assistant["content"] == "let me compute"
     assert json.loads(assistant["tool_calls"][0]["function"]["arguments"]) == {"expression": "1+1"}
     assert out[3] == {"role": "tool", "tool_call_id": "c1", "content": "2"}
+
+
+async def test_token_usage_is_summed_across_turns():
+    scripted = [
+        (_Message(content=None, tool_calls=[_ToolCall("c1", "calculator", '{"expression": "1+1"}')]),
+         _Usage(10, 5)),
+        (_Message(content="done"), _Usage(7, 3)),
+    ]
+    llm = OpenAICompatLLM(FakeOpenAIClient(scripted), "qwen-plus", 128)
+    result = await run_agent_loop(llm, "sys", "x", build_tools(["calculator"]), max_iterations=5)
+    assert result.usage == {"input_tokens": 17, "output_tokens": 8}
 
 
 def test_tool_schema_translation():
