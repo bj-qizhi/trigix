@@ -138,11 +138,15 @@ async def run_agent_node(request: AgentNodeRequest) -> AgentNodeResponse:
         raise HTTPException(status_code=502, detail=f"Anthropic API error: {exc}") from exc
 
     try:
-        output_json = json.dumps(json.loads(result.output))
+        parsed = json.loads(result.output)
     except (json.JSONDecodeError, ValueError):
-        output_json = json.dumps({"text": result.output})
+        parsed = {"text": result.output}
 
-    return AgentNodeResponse(output_json=output_json)
+    # Attach token usage without disturbing the model's own fields.
+    if isinstance(parsed, dict):
+        parsed.setdefault("_agent_usage", result.usage)
+
+    return AgentNodeResponse(output_json=json.dumps(parsed))
 
 
 def _resolve_template(template: str, input_json: str, node_outputs: dict[str, str]) -> str:

@@ -11,6 +11,7 @@ without any API key.
 
 from __future__ import annotations
 
+import asyncio
 import json
 from dataclasses import dataclass, field
 from typing import Any, Protocol
@@ -32,6 +33,8 @@ class LLMResponse:
     tool_calls: list[ToolCall]
     # Raw assistant content blocks, appended verbatim to the message history.
     assistant_content: list
+    # {"input_tokens": int, "output_tokens": int} for this single turn.
+    usage: dict = field(default_factory=dict)
 
 
 class LLM(Protocol):
@@ -44,6 +47,8 @@ class LLM(Protocol):
 class AgentResult:
     output: str
     steps: list = field(default_factory=list)
+    # Token usage summed across every model turn in the loop.
+    usage: dict = field(default_factory=lambda: {"input_tokens": 0, "output_tokens": 0})
 
 
 async def run_agent_loop(
@@ -63,11 +68,17 @@ async def run_agent_loop(
     ]
     messages: list[dict[str, Any]] = [{"role": "user", "content": user_message}]
     steps: list[dict] = []
+    usage = {"input_tokens": 0, "output_tokens": 0}
+
+    def _accumulate(turn: dict) -> None:
+        usage["input_tokens"] += int(turn.get("input_tokens", 0) or 0)
+        usage["output_tokens"] += int(turn.get("output_tokens", 0) or 0)
 
     for _ in range(max(1, max_iterations)):
         resp = await llm.respond(system, messages, schemas)
+        _accumulate(resp.usage)
         if not resp.tool_calls:
-            return AgentResult(output=resp.text or "", steps=steps)
+            return AgentResult(output=resp.text or "", steps=steps, usage=usage)
 
         messages.append({"role": "assistant", "content": resp.assistant_content})
         results = []
@@ -89,6 +100,7 @@ async def run_agent_loop(
     return AgentResult(
         output="(agent reached the maximum number of steps without a final answer)",
         steps=steps,
+        usage=usage,
     )
 
 
@@ -111,7 +123,16 @@ class AnthropicLLM:
         }
         if tool_schemas:
             kwargs["tools"] = tool_schemas
-        msg = self._client.messages.create(**kwargs)
+        # The SDK call is synchronous; run it off the event loop.
+        msg = await asyncio.to_thread(lambda: self._client.messages.create(**kwargs))
+
+        usage = {}
+        u = getattr(msg, "usage", None)
+        if u is not None:
+            usage = {
+                "input_tokens": getattr(u, "input_tokens", 0) or 0,
+                "output_tokens": getattr(u, "output_tokens", 0) or 0,
+            }
 
         text_parts: list[str] = []
         tool_calls: list[ToolCall] = []
@@ -132,9 +153,11 @@ class AnthropicLLM:
                 )
 
         if msg.stop_reason == "tool_use":
-            return LLMResponse(text=None, tool_calls=tool_calls, assistant_content=assistant_content)
+            return LLMResponse(
+                text=None, tool_calls=tool_calls, assistant_content=assistant_content, usage=usage
+            )
         return LLMResponse(
-            text="".join(text_parts), tool_calls=[], assistant_content=assistant_content
+            text="".join(text_parts), tool_calls=[], assistant_content=assistant_content, usage=usage
         )
 
 
@@ -229,7 +252,18 @@ class OpenAICompatLLM:
         }
         if tool_schemas:
             kwargs["tools"] = _to_openai_tools(tool_schemas)
-        completion = self._client.chat.completions.create(**kwargs)
+        # The SDK call is synchronous; run it off the event loop.
+        completion = await asyncio.to_thread(
+            lambda: self._client.chat.completions.create(**kwargs)
+        )
+
+        usage = {}
+        u = getattr(completion, "usage", None)
+        if u is not None:
+            usage = {
+                "input_tokens": getattr(u, "prompt_tokens", 0) or 0,
+                "output_tokens": getattr(u, "completion_tokens", 0) or 0,
+            }
 
         choice = completion.choices[0].message
         text = choice.content or ""
@@ -251,9 +285,12 @@ class OpenAICompatLLM:
             )
 
         if tool_calls:
-            return LLMResponse(text=None, tool_calls=tool_calls, assistant_content=assistant_content)
+            return LLMResponse(
+                text=None, tool_calls=tool_calls, assistant_content=assistant_content, usage=usage
+            )
         return LLMResponse(
             text=text,
             tool_calls=[],
             assistant_content=assistant_content or [{"type": "text", "text": text}],
+            usage=usage,
         )
