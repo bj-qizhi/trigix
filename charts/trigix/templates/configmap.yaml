@@ -18,6 +18,9 @@ data:
   {{- if .Values.redis.enabled }}
   REDIS_URL: {{ printf "redis://%s-redis:6379" (include "trigix.fullname" .) | quote }}
   {{- end }}
+  {{- if .Values.aiRuntime.enabled }}
+  AI_RUNTIME_BASE_URL: {{ printf "http://%s-ai-runtime:8000" (include "trigix.fullname" .) | quote }}
+  {{- end }}
   {{- if .Values.executor.enabled }}
   EXECUTOR_BASE_URL: {{ printf "http://%s-executor:38081" (include "trigix.fullname" .) | quote }}
   {{- end }}

@@ -11,7 +11,7 @@ spec:
   {{- end }}
   selector:
     matchLabels:
-      {{- include "trigix.selectorLabels" . | nindent 6 }}
+      {{- include "trigix.platformSelectorLabels" . | nindent 6 }}
   strategy:
     type: RollingUpdate
     rollingUpdate:
@@ -20,7 +20,7 @@ spec:
   template:
     metadata:
       labels:
-        {{- include "trigix.selectorLabels" . | nindent 8 }}
+        {{- include "trigix.platformSelectorLabels" . | nindent 8 }}
       {{- with .Values.podAnnotations }}
       annotations:
         {{- toYaml . | nindent 8 }}
@@ -41,6 +41,18 @@ spec:
                 name: {{ include "trigix.fullname" . }}
             - secretRef:
                 name: {{ include "trigix.fullname" . }}
+          {{- if and .Values.postgresql.enabled (not .Values.secrets.databaseUrl) }}
+          # Build DATABASE_URL with the generated postgres password at runtime
+          # (overrides the password-less placeholder from the Secret).
+          env:
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "trigix.fullname" . }}-postgresql
+                  key: POSTGRES_PASSWORD
+            - name: DATABASE_URL
+              value: "postgres://{{ .Values.postgresql.username }}:$(POSTGRES_PASSWORD)@{{ include "trigix.fullname" . }}-postgresql:5432/{{ .Values.postgresql.database }}"
+          {{- end }}
           livenessProbe:
             httpGet:
               path: /healthz
