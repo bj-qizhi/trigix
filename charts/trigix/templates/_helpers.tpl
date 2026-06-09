@@ -60,6 +60,24 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end }}
 
 {{/*
+Platform selector labels. The base selectorLabels (name + instance) are shared
+by the redis / ai-runtime pods, so the platform Service and PDB add a component
+label to avoid also selecting those pods.
+*/}}
+{{- define "trigix.platformSelectorLabels" -}}
+{{ include "trigix.selectorLabels" . }}
+app.kubernetes.io/component: platform
+{{- end }}
+
+{{/*
+AI runtime selector labels.
+*/}}
+{{- define "trigix.aiRuntimeSelectorLabels" -}}
+{{ include "trigix.selectorLabels" . }}
+app.kubernetes.io/component: ai-runtime
+{{- end }}
+
+{{/*
 Create the name of the service account to use.
 */}}
 {{- define "trigix.serviceAccountName" -}}

@@ -65,6 +65,24 @@ redis:
   image: "redis:7-alpine"
   storage: "2Gi"
 
+aiRuntime:
+  enabled: true
+  replicaCount: 1
+  image:
+    repository: trigix/ai-runtime
+    tag: "latest"
+    pullPolicy: IfNotPresent
+  resources:
+    requests:
+      cpu: "250m"
+      memory: "512Mi"
+    limits:
+      cpu: "2000m"
+      memory: "2Gi"
+  # Optional extra env for the AI runtime: real embeddings / reranker / Chinese
+  # FTS / agent model gateway, e.g. OPENAI_API_KEY, RERANK_BASE_URL, RAG_FTS_CONFIG.
+  env: {}
+
 executor:
   enabled: false
   replicaCount: 3

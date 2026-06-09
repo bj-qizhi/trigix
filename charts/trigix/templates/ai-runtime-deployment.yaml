@@ -1,0 +1,99 @@
+{{- if .Values.aiRuntime.enabled -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "trigix.fullname" . }}-ai-runtime
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "trigix.labels" . | nindent 4 }}
+    app.kubernetes.io/component: ai-runtime
+spec:
+  replicas: {{ .Values.aiRuntime.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "trigix.aiRuntimeSelectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "trigix.aiRuntimeSelectorLabels" . | nindent 8 }}
+      {{- with .Values.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    spec:
+      terminationGracePeriodSeconds: 30
+      serviceAccountName: {{ include "trigix.serviceAccountName" . }}
+      containers:
+        - name: ai-runtime
+          image: "{{ .Values.aiRuntime.image.repository }}:{{ .Values.aiRuntime.image.tag }}"
+          imagePullPolicy: {{ .Values.aiRuntime.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 8000
+              protocol: TCP
+          env:
+            {{- if and .Values.postgresql.enabled (not .Values.secrets.databaseUrl) }}
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "trigix.fullname" . }}-postgresql
+                  key: POSTGRES_PASSWORD
+            - name: DATABASE_URL
+              value: "postgresql://{{ .Values.postgresql.username }}:$(POSTGRES_PASSWORD)@{{ include "trigix.fullname" . }}-postgresql:5432/{{ .Values.postgresql.database }}"
+            {{- else if .Values.secrets.databaseUrl }}
+            - name: DATABASE_URL
+              value: {{ .Values.secrets.databaseUrl | quote }}
+            {{- end }}
+            {{- range $k, $v := .Values.aiRuntime.env }}
+            - name: {{ $k }}
+              value: {{ $v | quote }}
+            {{- end }}
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 20
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 3
+          resources:
+            {{- toYaml .Values.aiRuntime.resources | nindent 12 }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "trigix.fullname" . }}-ai-runtime
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "trigix.labels" . | nindent 4 }}
+    app.kubernetes.io/component: ai-runtime
+spec:
+  type: ClusterIP
+  ports:
+    - port: 8000
+      targetPort: http
+      protocol: TCP
+      name: http
+  selector:
+    {{- include "trigix.aiRuntimeSelectorLabels" . | nindent 4 }}
+{{- end }}
