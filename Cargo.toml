@@ -9,4 +9,4 @@ resolver = "2"
 
 [workspace.package]
 edition = "2021"
-version = "1.1.0"
+version = "1.2.0"
