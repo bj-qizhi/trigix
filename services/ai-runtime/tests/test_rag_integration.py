@@ -79,6 +79,32 @@ async def test_hybrid_retrieval_finds_exact_token():
         await store.close()
 
 
+async def test_rerank_reorders_candidates():
+    store = await RagStore.connect(DSN)
+    tenant, kb = "t-rr", f"kb-{uuid.uuid4().hex[:8]}"
+    try:
+        await store.ingest(tenant, kb, "doc-vacation",
+                           chunk_text("Employees request annual leave through the HR portal.", 1000, 100))
+        await store.ingest(tenant, kb, "doc-expense",
+                           chunk_text("Submit travel expense reports within thirty days of the trip.", 1000, 100))
+        await store.ingest(tenant, kb, "doc-onboard",
+                           chunk_text("New hire onboarding covers accounts, equipment, and training.", 1000, 100))
+
+        # With reranking, the expense-report doc should top a reimbursement query.
+        hits = await store.query(
+            tenant, kb, "how do I get reimbursed for travel expenses?",
+            top_k=2, rerank=True,
+        )
+        assert hits, "rerank returned nothing"
+        assert hits[0].doc_id == "doc-expense"
+        # Scores are the reranker's relevance, sorted descending.
+        assert hits[0].score >= hits[-1].score
+    finally:
+        for d in ("doc-vacation", "doc-expense", "doc-onboard"):
+            await store.delete_document(tenant, kb, d)
+        await store.close()
+
+
 async def test_list_kbs_and_documents():
     store = await RagStore.connect(DSN)
     tenant, kb = "t-list", f"kb-{uuid.uuid4().hex[:8]}"

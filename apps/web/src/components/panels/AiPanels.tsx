@@ -886,7 +886,7 @@ export function QdrantConfig({ config, set, str }: ConfigProps) {
   )
 }
 
-export function RagConfig({ set, str, num }: ConfigProps) {
+export function RagConfig({ config, set, str, num }: ConfigProps) {
   return (
     <>
       <div className="field">
@@ -906,6 +906,25 @@ export function RagConfig({ set, str, num }: ConfigProps) {
       <div className="field">
         <label>Top K</label>
         <input type="number" min={1} max={50} value={num('top_k', 4)} onChange={(e) => set('top_k', e.target.value ? parseInt(e.target.value) : 4)} />
+      </div>
+      <div className="field">
+        <label>Retrieval mode</label>
+        <select value={str('mode', 'vector')} onChange={(e) => set('mode', e.target.value === 'vector' ? undefined : e.target.value)}>
+          <option value="vector">vector (semantic)</option>
+          <option value="hybrid">hybrid (semantic + keyword)</option>
+        </select>
+        <span style={{ fontSize: 11, color: 'var(--muted)' }}>
+          Hybrid fuses vector and full-text ranking — better for exact codes/identifiers.
+        </span>
+      </div>
+      <div className="field">
+        <label style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <input type="checkbox" checked={Boolean(config['rerank'])} onChange={(e) => set('rerank', e.target.checked || undefined)} />
+          Rerank results (cross-encoder)
+        </label>
+        <span style={{ fontSize: 11, color: 'var(--muted)' }}>
+          Reorders a larger candidate pool for precision. Uses RERANK_BASE_URL if set, else a local fallback.
+        </span>
       </div>
       <div className="field">
         <label>Tenant ID</label>
