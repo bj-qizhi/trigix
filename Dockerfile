@@ -11,6 +11,9 @@ COPY Cargo.toml Cargo.lock ./
 COPY crates/ crates/
 COPY services/ services/
 COPY packages/ packages/
+# sqlx::migrate! reads the migrations directory at compile time, so it must be
+# present in the build context.
+COPY infra/postgres/migrations infra/postgres/migrations
 
 # Build release binary
 RUN cargo build --release -p trigix-platform
