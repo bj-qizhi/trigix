@@ -433,7 +433,7 @@ export function AgentConfig({ config, set, str, num }: ConfigProps) {
       <div className="field">
         <label>Tools (tool-use loop)</label>
         <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap' }}>
-          {(['calculator', 'rag_search'] as const).map((tool) => (
+          {(['calculator', 'rag_search', 'http_request'] as const).map((tool) => (
             <label key={tool} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 13 }}>
               <input type="checkbox" checked={tools.includes(tool)} onChange={(e) => toggleTool(tool, e.target.checked)} />
               {tool}
@@ -448,6 +448,22 @@ export function AgentConfig({ config, set, str, num }: ConfigProps) {
         <div className="field">
           <label>Knowledge Base (for rag_search)</label>
           <input value={str('kb')} onChange={(e) => set('kb', e.target.value)} />
+        </div>
+      )}
+      {tools.includes('http_request') && (
+        <div className="field">
+          <label>HTTP allowlist (optional, comma-separated hosts)</label>
+          <input
+            placeholder="api.internal, data.example.com"
+            value={((config['http_allow_hosts'] as string[] | undefined) ?? []).join(', ')}
+            onChange={(e) => {
+              const hosts = e.target.value.split(',').map((h) => h.trim()).filter(Boolean)
+              set('http_allow_hosts', hosts.length ? hosts : undefined)
+            }}
+          />
+          <span style={{ fontSize: 11, color: 'var(--muted)' }}>
+            Empty = allow any public host (private/loopback/metadata IPs are always blocked).
+          </span>
         </div>
       )}
       {tools.length > 0 && (
