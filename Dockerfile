@@ -31,7 +31,7 @@ RUN npm run build
 # ── Stage 3: runtime image ───────────────────────────────────────────────────
 FROM debian:bookworm-slim AS runtime
 
-RUN apt-get update && apt-get install -y ca-certificates nginx && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y ca-certificates curl nginx && rm -rf /var/lib/apt/lists/*
 
 # Copy Rust binary
 COPY --from=rust-builder /build/target/release/trigix-platform /usr/local/bin/trigix-platform
