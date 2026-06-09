@@ -109,3 +109,44 @@ jobs:
         run: |
           pip install -e ".[test]"
           python -m pytest -q
+
+  docker:
+    name: Docker (image build smoke)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build platform image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          load: true
+          tags: trigix-platform:ci
+          cache-from: type=gha,scope=platform
+          cache-to: type=gha,mode=max,scope=platform
+
+      - name: Build AI runtime image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./services/ai-runtime
+          load: true
+          tags: trigix-ai-runtime:ci
+          cache-from: type=gha,scope=ai-runtime
+          cache-to: type=gha,mode=max,scope=ai-runtime
+
+      - name: Smoke - platform binary and nginx present
+        run: docker run --rm --entrypoint /bin/sh trigix-platform:ci -c 'command -v trigix-platform && nginx -v'
+
+      - name: Smoke - AI runtime answers /healthz
+        run: |
+          docker run -d --name airt -p 8000:8000 trigix-ai-runtime:ci
+          for _ in $(seq 1 30); do
+            curl -fsS http://localhost:8000/healthz && break
+            sleep 2
+          done
+          curl -fsS http://localhost:8000/healthz
+          docker rm -f airt
