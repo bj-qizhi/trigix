@@ -2356,14 +2356,18 @@ pub(super) async fn execute_pinecone(
     match operation.as_str() {
         "query" => {
             let vector = match cfg.get("vector") {
-                Some(v) => v.clone(),
+                Some(v) => json_array_or_parse(v),
                 None => {
                     return NodeExecutionResult::failed(
                         "Pinecone query requires 'vector' (float array)",
                     )
                 }
             };
-            let top_k = cfg.get("top_k").and_then(|v| v.as_u64()).unwrap_or(10);
+            let top_k = cfg
+                .get("top_k")
+                .or_else(|| cfg.get("top"))
+                .and_then(|v| v.as_u64())
+                .unwrap_or(10);
             let mut body = serde_json::json!({ "vector": vector, "topK": top_k });
             if let Some(ns) = cfg.get("namespace").and_then(|v| v.as_str()) {
                 body["namespace"] = serde_json::json!(ns);
@@ -2396,7 +2400,7 @@ pub(super) async fn execute_pinecone(
         }
         "upsert" => {
             let vectors = match cfg.get("vectors") {
-                Some(v) => v.clone(),
+                Some(v) => json_array_or_parse(v),
                 None => {
                     return NodeExecutionResult::failed(
                         "Pinecone upsert requires 'vectors' (array of {id, values, metadata})",
@@ -2429,7 +2433,7 @@ pub(super) async fn execute_pinecone(
         }
         "delete" => {
             let ids = match cfg.get("ids") {
-                Some(v) => v.clone(),
+                Some(v) => json_array_or_parse(v),
                 None => {
                     return NodeExecutionResult::failed(
                         "Pinecone delete requires 'ids' (array of vector IDs)",
