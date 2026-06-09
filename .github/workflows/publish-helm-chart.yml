@@ -1,0 +1,55 @@
+name: Publish Helm Chart
+
+# Packages charts/trigix and pushes it to GitHub Container Registry as an OCI
+# artifact when a tag like `chart-v0.2.0` is pushed (or run manually).
+#
+# Uses the Actions GITHUB_TOKEN (no PAT needed). One-time setup so the token
+# can push to the existing package:
+#   GitHub > Packages > charts/trigix > Package settings > Manage Actions access
+#   > add the `bj-qizhi/trigix` repository with the "Write" role.
+# A brand-new package also starts private; flip it to Public once (the org must
+# allow public packages).
+
+on:
+  push:
+    tags: ["chart-v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: v3.16.3
+
+      - name: Lint and render
+        run: |
+          helm lint charts/trigix
+          helm template t charts/trigix > /dev/null
+
+      - name: Check the tag matches Chart.yaml version
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          tag_version="${GITHUB_REF_NAME#chart-v}"
+          chart_version="$(grep '^version:' charts/trigix/Chart.yaml | awk '{print $2}')"
+          echo "tag=$tag_version chart=$chart_version"
+          if [ "$tag_version" != "$chart_version" ]; then
+            echo "::error::tag $GITHUB_REF_NAME does not match Chart.yaml version $chart_version"
+            exit 1
+          fi
+
+      - name: Log in to ghcr.io
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | helm registry login ghcr.io -u "${{ github.actor }}" --password-stdin
+
+      - name: Package and push
+        run: |
+          helm package charts/trigix -d dist
+          helm push dist/trigix-*.tgz oci://ghcr.io/${{ github.repository_owner }}/charts
