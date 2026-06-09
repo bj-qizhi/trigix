@@ -270,6 +270,8 @@ struct RagQueryRequest {
     mode: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     min_score: Option<f64>,
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    rerank: bool,
 }
 
 /// Retrieval-Augmented Generation: query a pgvector knowledge base through the
@@ -315,6 +317,7 @@ pub(super) async fn execute_rag(
         .filter(|s| *s == "vector" || *s == "hybrid")
         .map(|s| s.to_string());
     let min_score = cfg.get("min_score").and_then(|v| v.as_f64());
+    let rerank = cfg.get("rerank").and_then(|v| v.as_bool()).unwrap_or(false);
 
     let endpoint = format!("{}/v1/rag/query", base_url.trim_end_matches('/'));
     let request = RagQueryRequest {
@@ -324,6 +327,7 @@ pub(super) async fn execute_rag(
         top_k,
         mode,
         min_score,
+        rerank,
     };
 
     match client.post(&endpoint).json(&request).send().await {

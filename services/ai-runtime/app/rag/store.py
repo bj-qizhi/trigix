@@ -124,6 +124,8 @@ class RagStore:
         top_k: int = 4,
         mode: str = "vector",
         min_score: float | None = None,
+        rerank: bool = False,
+        reranker: "Reranker | None" = None,
     ) -> list[RetrievedChunk]:
         """Retrieve the most relevant chunks.
 
@@ -133,10 +135,47 @@ class RagStore:
           full-text ranking — helps when the query hinges on exact tokens
           (codes, identifiers, English terms inside CJK text) that embeddings
           blur. ``score`` is then the fused RRF score, not cosine.
+        - ``rerank``: pull a larger candidate pool with the chosen mode, then
+          reorder it with a cross-encoder reranker and keep the best ``top_k``
+          (``score`` becomes the reranker's relevance score).
         """
+        if rerank:
+            return await self._query_reranked(
+                tenant_id, kb, query, top_k, mode, min_score, reranker
+            )
         if mode == "hybrid":
             return await self._query_hybrid(tenant_id, kb, query, top_k)
         return await self._query_vector(tenant_id, kb, query, top_k, min_score)
+
+    async def _query_reranked(
+        self,
+        tenant_id: str,
+        kb: str,
+        query: str,
+        top_k: int,
+        mode: str,
+        min_score: float | None,
+        reranker: "Reranker | None",
+    ) -> list[RetrievedChunk]:
+        pool = max(top_k * 5, 20)
+        if mode == "hybrid":
+            candidates = await self._query_hybrid(tenant_id, kb, query, pool)
+        else:
+            candidates = await self._query_vector(tenant_id, kb, query, pool, None)
+        if not candidates:
+            return []
+        if reranker is None:
+            from .rerank import get_reranker
+
+            reranker = get_reranker()
+        scores = await reranker.rerank(query, [c.content for c in candidates])
+        for chunk, score in zip(candidates, scores):
+            chunk.score = float(score)
+        candidates.sort(key=lambda c: c.score, reverse=True)
+        hits = candidates[:top_k]
+        if min_score is not None:
+            hits = [h for h in hits if h.score >= min_score]
+        return hits
 
     async def _query_vector(
         self, tenant_id: str, kb: str, query: str, top_k: int, min_score: float | None
