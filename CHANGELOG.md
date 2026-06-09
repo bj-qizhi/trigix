@@ -2,27 +2,50 @@
 
 All notable changes to Trigix will be documented in this file.
 
-## [Unreleased]
+## [1.2.0] - 2026-06-09
 
-Deployment and distribution chain — the container/compose/Helm paths had never
-actually built or deployed, and nothing in CI checked them. This round makes
-them work and guards them.
+Deeper AI-native capabilities — the agent runs on Chinese / self-hosted models,
+richer RAG retrieval, and acting tools — plus a deployment and distribution
+chain that actually builds and deploys. Backward compatible with 1.1.0.
 
 ### Added
 
-- CI: a Docker image build smoke job that builds the platform and AI runtime
-  images and checks they run (the platform binary + nginx are present, the AI
-  runtime answers `/healthz`).
-- CI: a Helm job that lints and renders the chart across value permutations and
-  validates every manifest against the Kubernetes schemas with kubeconform.
+**AI-native**
+- The Agent node runs on OpenAI-compatible models (Qwen, DeepSeek, Zhipu,
+  Moonshot, a self-hosted vLLM/Ollama gateway) in addition to Anthropic, so the
+  tool-use agent works in a self-hosted / China deployment where the Anthropic
+  API is unreachable.
+- Agent tools: a sandboxed `http_request` (default-deny egress, SSRF guard,
+  DNS-rebinding-safe IP pinning, response size cap) and custom-node tools that
+  let the agent call the tenant's own registered nodes.
+- Hybrid RAG retrieval — vector + full-text fused with Reciprocal Rank Fusion —
+  and an optional `min_score` floor; helps queries that hinge on exact tokens
+  (codes, identifiers, English terms inside CJK text).
+- Optional cross-encoder reranking over a Cohere/Jina/BGE-compatible endpoint
+  (e.g. a self-hosted bge-reranker), with a dependency-free local fallback.
+- An HNSW vector index for retrieval at scale, and CJK tokenization for the
+  hybrid keyword side when a Chinese FTS config (pg_jieba / zhparser) is present.
+- The Agent node reports token usage (`_agent_usage`).
+
+**Deployment & CI**
+- CI: a Docker image build smoke job (builds the platform and AI runtime images
+  and checks they run) and a Helm job (lint + render across value permutations
+  + kubeconform schema validation).
 - A Dockerfile for the AI runtime (the repo had a platform image but none for
   the AI runtime).
 - Helm chart: an `ai-runtime` Deployment + Service, so the chart deploys the
-  full stack — platform + AI runtime + PostgreSQL/pgvector + Redis.
-- `docker-compose.prod.yml`: the AI runtime and Redis services.
+  full stack — platform + AI runtime + PostgreSQL/pgvector + Redis; the AI
+  runtime and Redis were also added to `docker-compose.prod.yml`.
 - The Helm chart is published to GHCR (`oci://ghcr.io/bj-qizhi/charts/trigix`)
   and attached to GitHub Releases; a workflow auto-publishes on a `chart-v*`
   tag, syncs both channels, and bumps the README install version.
+
+### Changed
+
+- Both Agent LLM backends run the (synchronous) model call off the event loop.
+- The platform image tracks the latest stable Rust (`rust:1-slim`), matching CI,
+  so it no longer rots when a dependency raises its edition / MSRV.
+- Helm chart `0.3.2`, `appVersion` `1.2.0`.
 
 ### Fixed
 
@@ -38,12 +61,9 @@ them work and guards them.
   has a scoped selector.
 - `docker-compose.prod.yml`: dropped a migrations `initdb` mount that conflicted
   with the app's own `sqlx::migrate!` step on a fresh database.
-
-### Changed
-
-- The platform image tracks the latest stable Rust (`rust:1-slim`), matching
-  CI, so it no longer rots when a dependency raises its edition / MSRV.
-- Helm chart bumped to `0.3.1`; `appVersion` set to the deployed app (`1.1.0`).
+- The condition node now evaluates operators (`gt`/`lt`/`contains`/…) and a
+  `source` path instead of silently falling back to an existence check, and the
+  bundled gallery templates were corrected to read values from the right paths.
 
 ## [1.1.0] - 2026-06-05
 

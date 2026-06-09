@@ -648,7 +648,7 @@ dependencies = [
 
 [[package]]
 name = "execution-core"
-version = "1.1.0"
+version = "1.2.0"
 dependencies = [
  "serde",
 ]
@@ -2999,7 +2999,7 @@ dependencies = [
 
 [[package]]
 name = "trigix-executor"
-version = "1.1.0"
+version = "1.2.0"
 dependencies = [
  "axum",
  "base64",
@@ -3029,7 +3029,7 @@ dependencies = [
 
 [[package]]
 name = "trigix-platform"
-version = "1.1.0"
+version = "1.2.0"
 dependencies = [
  "aes-gcm",
  "axum",
@@ -3657,7 +3657,7 @@ dependencies = [
 
 [[package]]
 name = "workflow-core"
-version = "1.1.0"
+version = "1.2.0"
 dependencies = [
  "serde",
  "serde_json",
