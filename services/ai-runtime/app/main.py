@@ -114,11 +114,18 @@ async def run_agent_node(request: AgentNodeRequest) -> AgentNodeResponse:
             store = await get_store()
         except Exception:
             store = None  # no DB → rag_search silently unavailable
+    node_tools = config.get("node_tools") if isinstance(config.get("node_tools"), list) else []
+    http_allow_hosts = config.get("http_allow_hosts")
+    if not isinstance(http_allow_hosts, list):
+        env_allow = os.environ.get("AGENT_HTTP_ALLOW_HOSTS", "").strip()
+        http_allow_hosts = [h.strip() for h in env_allow.split(",") if h.strip()] or None
     tools = build_tools(
         tool_names,
         store=store,
         tenant_id=str(config.get("tenant_id", "tenant-1")),
         default_kb=str(config.get("kb", "")),
+        node_tools=node_tools,
+        http_allow_hosts=http_allow_hosts,
     )
     max_iterations = int(config.get("max_iterations", 6))
 
