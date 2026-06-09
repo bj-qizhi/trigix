@@ -87,9 +87,10 @@ def rag_search_tool(store: Any, tenant_id: str, default_kb: str) -> Tool:
         kb = str(args.get("kb") or default_kb)
         query = str(args.get("query", ""))
         top_k = int(args.get("top_k", 4))
+        mode = args.get("mode") if args.get("mode") in ("vector", "hybrid") else "vector"
         if not kb:
             return "error: no knowledge base specified"
-        hits = await store.query(tenant_id, kb, query, top_k)
+        hits = await store.query(tenant_id, kb, query, top_k, mode=mode)
         return json.dumps(
             [{"content": h.content, "score": round(h.score, 4), "doc_id": h.doc_id} for h in hits]
         )
@@ -103,6 +104,7 @@ def rag_search_tool(store: Any, tenant_id: str, default_kb: str) -> Tool:
                 "query": {"type": "string"},
                 "kb": {"type": "string", "description": "knowledge base name (optional)"},
                 "top_k": {"type": "integer"},
+                "mode": {"type": "string", "enum": ["vector", "hybrid"]},
             },
             "required": ["query"],
         },

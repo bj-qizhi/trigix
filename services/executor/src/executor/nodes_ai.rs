@@ -266,6 +266,10 @@ struct RagQueryRequest {
     kb: String,
     query: String,
     top_k: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    mode: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    min_score: Option<f64>,
 }
 
 /// Retrieval-Augmented Generation: query a pgvector knowledge base through the
@@ -305,6 +309,12 @@ pub(super) async fn execute_rag(
         .filter(|s| !s.is_empty())
         .unwrap_or_else(|| "tenant-1".to_string());
     let top_k = node_config_u64(node, "top_k").unwrap_or(4).clamp(1, 50);
+    let mode = cfg
+        .get("mode")
+        .and_then(|v| v.as_str())
+        .filter(|s| *s == "vector" || *s == "hybrid")
+        .map(|s| s.to_string());
+    let min_score = cfg.get("min_score").and_then(|v| v.as_f64());
 
     let endpoint = format!("{}/v1/rag/query", base_url.trim_end_matches('/'));
     let request = RagQueryRequest {
@@ -312,6 +322,8 @@ pub(super) async fn execute_rag(
         kb,
         query,
         top_k,
+        mode,
+        min_score,
     };
 
     match client.post(&endpoint).json(&request).send().await {

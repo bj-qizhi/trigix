@@ -66,6 +66,17 @@ class RagStore:
                 "CREATE INDEX IF NOT EXISTS af_kb_chunks_kb_idx "
                 "ON af_kb_chunks (tenant_id, kb)"
             )
+            # ANN index for vector search at scale (cosine). HNSW gives
+            # sub-linear nearest-neighbour lookups instead of a full scan.
+            await conn.execute(
+                "CREATE INDEX IF NOT EXISTS af_kb_chunks_hnsw "
+                "ON af_kb_chunks USING hnsw (embedding vector_cosine_ops)"
+            )
+            # Full-text index backing the lexical half of hybrid retrieval.
+            await conn.execute(
+                "CREATE INDEX IF NOT EXISTS af_kb_chunks_fts "
+                "ON af_kb_chunks USING gin (to_tsvector('simple', content))"
+            )
 
     async def ingest(
         self, tenant_id: str, kb: str, doc_id: str, chunks: list[str]
@@ -106,7 +117,29 @@ class RagStore:
         return len(rows)
 
     async def query(
-        self, tenant_id: str, kb: str, query: str, top_k: int = 4
+        self,
+        tenant_id: str,
+        kb: str,
+        query: str,
+        top_k: int = 4,
+        mode: str = "vector",
+        min_score: float | None = None,
+    ) -> list[RetrievedChunk]:
+        """Retrieve the most relevant chunks.
+
+        - ``vector`` (default): cosine similarity; ``min_score`` drops weak hits
+          (``score`` is cosine similarity in [-1, 1]).
+        - ``hybrid``: Reciprocal Rank Fusion of the vector ranking and a
+          full-text ranking — helps when the query hinges on exact tokens
+          (codes, identifiers, English terms inside CJK text) that embeddings
+          blur. ``score`` is then the fused RRF score, not cosine.
+        """
+        if mode == "hybrid":
+            return await self._query_hybrid(tenant_id, kb, query, top_k)
+        return await self._query_vector(tenant_id, kb, query, top_k, min_score)
+
+    async def _query_vector(
+        self, tenant_id: str, kb: str, query: str, top_k: int, min_score: float | None
     ) -> list[RetrievedChunk]:
         qvec = _vec_literal(embed_one(query))
         async with self._pool.acquire() as conn:
@@ -119,6 +152,60 @@ class RagStore:
                 kb,
                 top_k,
                 qvec,
+            )
+        hits = [
+            RetrievedChunk(
+                doc_id=r["doc_id"],
+                chunk_index=r["chunk_index"],
+                content=r["content"],
+                score=float(r["score"]),
+            )
+            for r in records
+        ]
+        if min_score is not None:
+            hits = [h for h in hits if h.score >= min_score]
+        return hits
+
+    async def _query_hybrid(
+        self, tenant_id: str, kb: str, query: str, top_k: int
+    ) -> list[RetrievedChunk]:
+        qvec = _vec_literal(embed_one(query))
+        pool = max(top_k * 5, 50)
+        rrf_k = 60
+        async with self._pool.acquire() as conn:
+            records = await conn.fetch(
+                """
+                WITH vec AS (
+                    SELECT id, ROW_NUMBER() OVER (ORDER BY embedding <=> $1::vector) AS rnk
+                    FROM af_kb_chunks WHERE tenant_id=$2 AND kb=$3
+                    ORDER BY embedding <=> $1::vector LIMIT $4
+                ),
+                kw AS (
+                    SELECT id, ROW_NUMBER() OVER (
+                        ORDER BY ts_rank_cd(to_tsvector('simple', content),
+                                            websearch_to_tsquery('simple', $5)) DESC) AS rnk
+                    FROM af_kb_chunks
+                    WHERE tenant_id=$2 AND kb=$3
+                      AND to_tsvector('simple', content) @@ websearch_to_tsquery('simple', $5)
+                    LIMIT $4
+                ),
+                fused AS (
+                    SELECT COALESCE(vec.id, kw.id) AS id,
+                           COALESCE(1.0 / ($6 + vec.rnk), 0.0)
+                         + COALESCE(1.0 / ($6 + kw.rnk), 0.0) AS score
+                    FROM vec FULL OUTER JOIN kw ON vec.id = kw.id
+                )
+                SELECT c.doc_id, c.chunk_index, c.content, f.score
+                FROM fused f JOIN af_kb_chunks c ON c.id = f.id
+                ORDER BY f.score DESC LIMIT $7
+                """,
+                qvec,
+                tenant_id,
+                kb,
+                pool,
+                query,
+                rrf_k,
+                top_k,
             )
         return [
             RetrievedChunk(

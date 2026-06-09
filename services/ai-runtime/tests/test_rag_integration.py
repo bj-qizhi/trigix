@@ -55,6 +55,30 @@ async def test_ingest_and_retrieve_most_relevant():
         await store.close()
 
 
+async def test_hybrid_retrieval_finds_exact_token():
+    store = await RagStore.connect(DSN)
+    tenant, kb = "t-hyb", f"kb-{uuid.uuid4().hex[:8]}"
+    try:
+        # The exact identifier SKU-99421 lives in one doc; the others are noise.
+        await store.ingest(tenant, kb, "doc-order",
+                           chunk_text("订单 SKU-99421 已发货，预计三天送达。", 1000, 100))
+        await store.ingest(tenant, kb, "doc-other",
+                           chunk_text("库存盘点流程与仓库管理规范说明。", 1000, 100))
+
+        hits = await store.query(tenant, kb, "SKU-99421", top_k=2, mode="hybrid")
+        assert hits, "hybrid search returned nothing"
+        assert hits[0].doc_id == "doc-order"
+
+        # min_score gates weak vector hits.
+        gated = await store.query(tenant, kb, "totally unrelated quantum topic",
+                                  top_k=5, mode="vector", min_score=0.99)
+        assert all(h.score >= 0.99 for h in gated)
+    finally:
+        await store.delete_document(tenant, kb, "doc-order")
+        await store.delete_document(tenant, kb, "doc-other")
+        await store.close()
+
+
 async def test_list_kbs_and_documents():
     store = await RagStore.connect(DSN)
     tenant, kb = "t-list", f"kb-{uuid.uuid4().hex[:8]}"
