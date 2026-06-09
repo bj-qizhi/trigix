@@ -16,7 +16,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write # create the GitHub Release on tag
   packages: write
 
 jobs:
@@ -53,3 +53,16 @@ jobs:
         run: |
           helm package charts/trigix -d dist
           helm push dist/trigix-*.tgz oci://ghcr.io/${{ github.repository_owner }}/charts
+
+      - name: Publish GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          version="${GITHUB_REF_NAME#chart-v}"
+          owner="${{ github.repository_owner }}"
+          printf 'Helm chart `trigix` **%s** (deploys app 1.1.0).\n\nInstall:\n```bash\nhelm install trigix oci://ghcr.io/%s/charts/trigix --version %s --namespace trigix --create-namespace\n```\n' \
+            "$version" "$owner" "$version" > /tmp/notes.md
+          gh release create "$GITHUB_REF_NAME" dist/trigix-*.tgz \
+            --title "Helm chart v${version}" --notes-file /tmp/notes.md \
+            || gh release upload "$GITHUB_REF_NAME" dist/trigix-*.tgz --clobber
