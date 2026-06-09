@@ -119,6 +119,9 @@ async def run_agent_node(request: AgentNodeRequest) -> AgentNodeResponse:
     if not isinstance(http_allow_hosts, list):
         env_allow = os.environ.get("AGENT_HTTP_ALLOW_HOSTS", "").strip()
         http_allow_hosts = [h.strip() for h in env_allow.split(",") if h.strip()] or None
+    http_allow_public = bool(config.get("http_allow_public")) or os.environ.get(
+        "AGENT_HTTP_ALLOW_PUBLIC", ""
+    ).strip().lower() in ("1", "true", "yes")
     tools = build_tools(
         tool_names,
         store=store,
@@ -126,6 +129,7 @@ async def run_agent_node(request: AgentNodeRequest) -> AgentNodeResponse:
         default_kb=str(config.get("kb", "")),
         node_tools=node_tools,
         http_allow_hosts=http_allow_hosts,
+        http_allow_public=http_allow_public,
     )
     max_iterations = int(config.get("max_iterations", 6))
 
