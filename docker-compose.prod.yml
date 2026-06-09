@@ -8,12 +8,49 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-trigix}
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./infra/postgres/migrations:/docker-entrypoint-initdb.d:ro
+    # Note: schema is applied by the app at startup via sqlx::migrate!, so the
+    # migrations are NOT mounted into docker-entrypoint-initdb.d (that would
+    # create the tables without sqlx's tracking table and make the app's
+    # migration step fail).
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U trigix"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-trigix}"]
       interval: 10s
       timeout: 5s
       retries: 5
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  ai-runtime:
+    build:
+      context: ./services/ai-runtime
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-trigix}:${POSTGRES_PASSWORD:-changeme}@postgres:5432/${POSTGRES_DB:-trigix}
+      # Optional — real embeddings / reranker / Chinese FTS / agent model gateway.
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      RAG_FTS_CONFIG: ${RAG_FTS_CONFIG:-}
+      RERANK_BASE_URL: ${RERANK_BASE_URL:-}
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request;urllib.request.urlopen('http://localhost:8000/healthz')\""]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
 
   app:
     build:
@@ -23,14 +60,22 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      redis:
+        condition: service_started
+      ai-runtime:
+        condition: service_started
     ports:
       - "${PORT:-8080}:80"
     environment:
       DATABASE_URL: postgres://${POSTGRES_USER:-trigix}:${POSTGRES_PASSWORD:-changeme}@postgres:5432/${POSTGRES_DB:-trigix}
+      REDIS_URL: redis://redis:6379
+      AI_RUNTIME_BASE_URL: http://ai-runtime:8000
       DEV_API_KEY: ${API_KEY:-changeme}
+      JWT_SECRET: ${JWT_SECRET:-change-me-in-production}
       AUTH_REQUIRED: "true"
       RUST_LOG: ${RUST_LOG:-info}
-      PORT: "38080"
+      # Set USE_QUEUE=true to run executions through the Redis Streams queue.
+      USE_QUEUE: ${USE_QUEUE:-false}
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://localhost:38080/healthz || exit 1"]
       interval: 30s
@@ -39,3 +84,4 @@ services:
 
 volumes:
   postgres_data:
+  redis_data:
