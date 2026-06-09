@@ -44,7 +44,7 @@ def test_build_tools_includes_rag_with_store():
     assert [t.name for t in tools] == ["rag_search"]
 
 
-# ── SSRF guard ──────────────────────────────────────────────────────────────
+# ── Egress guard ────────────────────────────────────────────────────────────
 
 
 @pytest.mark.parametrize(
@@ -60,13 +60,19 @@ def test_build_tools_includes_rag_with_store():
         "https:///nohost",
     ],
 )
-def test_is_safe_url_blocks_dangerous_targets(url):
-    assert is_safe_url(url, allow_hosts=None)[0] is False
+def test_open_egress_blocks_dangerous_targets(url):
+    # allow_public reaches the IP validation; every target must still be blocked.
+    assert is_safe_url(url, allow_hosts=None, allow_public=True)[0] is False
 
 
-def test_is_safe_url_allows_public_ip():
-    ok, reason = is_safe_url("https://8.8.8.8/", allow_hosts=None)
+def test_open_egress_allows_public_ip():
+    ok, reason = is_safe_url("https://8.8.8.8/", allow_hosts=None, allow_public=True)
     assert ok is True, reason
+
+
+def test_default_denies_open_egress():
+    ok, reason = is_safe_url("https://8.8.8.8/", allow_hosts=None)
+    assert ok is False and "disabled" in reason
 
 
 def test_allowlist_restricts_to_exact_hosts():
@@ -80,10 +86,18 @@ def test_allowlist_restricts_to_exact_hosts():
 
 
 class _FakeResp:
-    def __init__(self, status=200, text="", payload=None):
+    def __init__(self, status=200, chunks=(b"",), payload=None, text=""):
         self.status_code = status
-        self.text = text
+        self._chunks = list(chunks)
         self._payload = payload
+        self.text = text
+
+    async def aiter_bytes(self):
+        for chunk in self._chunks:
+            yield chunk
+
+    async def aclose(self):
+        pass
 
     def json(self):
         return self._payload
@@ -104,12 +118,16 @@ class _FakeClient:
     async def __aexit__(self, *exc):
         return False
 
-    async def request(self, method, url, **kw):
-        self._capture.update(method=method, url=url, **kw)
+    def build_request(self, method, url, **kw):
+        self._capture.update(method=method, url=str(url), build=kw)
+        return ("request", method, str(url), kw)
+
+    async def send(self, request, stream=False):
+        self._capture["stream"] = stream
         return self._resp
 
     async def post(self, url, **kw):
-        self._capture.update(method="POST", url=url, **kw)
+        self._capture.update(method="POST", url=str(url), **kw)
         return self._resp
 
 
@@ -117,22 +135,57 @@ def _patch_httpx(monkeypatch, resp, capture):
     monkeypatch.setattr(tools_mod.httpx, "AsyncClient", lambda **kw: _FakeClient(resp, capture))
 
 
-async def test_http_request_refuses_blocked_url_without_network(monkeypatch):
+def _patch_dns(monkeypatch, ip):
+    monkeypatch.setattr(
+        tools_mod.socket, "getaddrinfo", lambda host, port, **kw: [(2, 1, 6, "", (ip, port))]
+    )
+
+
+async def test_http_request_default_denies(monkeypatch):
     capture: dict = {}
     _patch_httpx(monkeypatch, _FakeResp(), capture)
-    out = await http_request_tool(allow_hosts=None).run({"url": "http://169.254.169.254/"})
-    assert out.startswith("error:")
-    assert capture == {}  # guard tripped before any request
+    out = await http_request_tool().run({"url": "https://example.com/"})
+    assert out.startswith("error:") and "disabled" in out
+    assert capture == {}  # no request issued
 
 
-async def test_http_request_success_path(monkeypatch):
+async def test_http_request_allowlisted_is_unpinned(monkeypatch):
     capture: dict = {}
-    _patch_httpx(monkeypatch, _FakeResp(status=201, text="created"), capture)
+    _patch_httpx(monkeypatch, _FakeResp(status=201, chunks=[b"crea", b"ted"]), capture)
     out = await http_request_tool(allow_hosts=["api.internal"]).run(
         {"url": "https://api.internal/v1", "method": "POST", "body": {"x": 1}}
     )
     assert json.loads(out) == {"status": 201, "body": "created"}
-    assert capture["method"] == "POST" and capture["json"] == {"x": 1}
+    assert capture["method"] == "POST"
+    assert capture["url"] == "https://api.internal/v1"  # not rewritten to an IP
+    assert capture["build"]["json"] == {"x": 1}
+    assert "extensions" not in capture["build"]
+    assert capture["stream"] is True
+
+
+async def test_http_request_pins_validated_ip(monkeypatch):
+    capture: dict = {}
+    _patch_httpx(monkeypatch, _FakeResp(status=200, chunks=[b"ok"]), capture)
+    _patch_dns(monkeypatch, "93.184.216.34")
+    out = await http_request_tool(allow_hosts=None, allow_public=True).run(
+        {"url": "https://example.com/data"}
+    )
+    assert json.loads(out) == {"status": 200, "body": "ok"}
+    # Connected to the validated IP, with the real Host and TLS SNI preserved.
+    assert capture["url"] == "https://93.184.216.34/data"
+    assert capture["build"]["headers"]["Host"] == "example.com"
+    assert capture["build"]["extensions"] == {"sni_hostname": "example.com"}
+
+
+async def test_http_request_blocks_rebind_to_private(monkeypatch):
+    capture: dict = {}
+    _patch_httpx(monkeypatch, _FakeResp(), capture)
+    _patch_dns(monkeypatch, "10.0.0.7")  # hostname resolves to an internal IP
+    out = await http_request_tool(allow_hosts=None, allow_public=True).run(
+        {"url": "http://sneaky.example/"}
+    )
+    assert out.startswith("error:") and "non-public" in out
+    assert capture == {}  # blocked before any connection
 
 
 async def test_custom_node_tool_uses_executor_contract(monkeypatch):

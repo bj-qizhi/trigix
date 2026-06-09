@@ -451,20 +451,28 @@ export function AgentConfig({ config, set, str, num }: ConfigProps) {
         </div>
       )}
       {tools.includes('http_request') && (
-        <div className="field">
-          <label>HTTP allowlist (optional, comma-separated hosts)</label>
-          <input
-            placeholder="api.internal, data.example.com"
-            value={((config['http_allow_hosts'] as string[] | undefined) ?? []).join(', ')}
-            onChange={(e) => {
-              const hosts = e.target.value.split(',').map((h) => h.trim()).filter(Boolean)
-              set('http_allow_hosts', hosts.length ? hosts : undefined)
-            }}
-          />
-          <span style={{ fontSize: 11, color: 'var(--muted)' }}>
-            Empty = allow any public host (private/loopback/metadata IPs are always blocked).
-          </span>
-        </div>
+        <>
+          <div className="field">
+            <label>HTTP allowlist (comma-separated hosts)</label>
+            <input
+              placeholder="api.internal, data.example.com"
+              value={((config['http_allow_hosts'] as string[] | undefined) ?? []).join(', ')}
+              onChange={(e) => {
+                const hosts = e.target.value.split(',').map((h) => h.trim()).filter(Boolean)
+                set('http_allow_hosts', hosts.length ? hosts : undefined)
+              }}
+            />
+          </div>
+          <div className="field">
+            <label style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <input type="checkbox" checked={Boolean(config['http_allow_public'])} onChange={(e) => set('http_allow_public', e.target.checked || undefined)} />
+              Allow any public host
+            </label>
+            <span style={{ fontSize: 11, color: 'var(--muted)' }}>
+              Outbound is denied by default. Allowlist hosts, or allow any public host — either way private/loopback/metadata IPs are blocked and the resolved IP is pinned.
+            </span>
+          </div>
+        </>
       )}
       {tools.length > 0 && (
         <div className="field">

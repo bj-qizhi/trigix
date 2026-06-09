@@ -4,8 +4,10 @@
 """Built-in tools the agent can call.
 
 Each tool exposes an Anthropic-compatible `input_schema` and an async `run`.
-Tools are deliberately safe and side-effect-free (a sandboxed calculator and
-knowledge-base search) so the agent loop is fully testable offline.
+The read-only tools (a sandboxed calculator, knowledge-base search) keep the
+loop testable offline; the acting tools (http_request, custom nodes) reach the
+network, so http_request runs under a locked-down egress policy (default-deny,
+SSRF validation, DNS-rebinding-safe IP pinning, response size cap).
 """
 
 from __future__ import annotations
@@ -114,43 +116,57 @@ def rag_search_tool(store: Any, tenant_id: str, default_kb: str) -> Tool:
     )
 
 
-# ── HTTP request (SSRF-guarded outbound calls) ──────────────────────────────
+# ── HTTP request (sandboxed outbound egress) ────────────────────────────────
+#
+# The agent's egress is locked down rather than merely SSRF-checked:
+#   * default-deny — refused unless the host is allowlisted or open public
+#     egress is explicitly enabled;
+#   * the validated IP is pinned at connect time, so a hostname that passes the
+#     check cannot be re-resolved to an internal address (DNS rebinding);
+#   * responses are size-capped and redirects are not followed.
 
 _BLOCKED_HOST_LITERALS = {"localhost", "metadata.google.internal"}
+_MAX_RESPONSE_BYTES = 2 * 1024 * 1024
 
 
-def is_safe_url(url: str, allow_hosts: list[str] | None) -> tuple[bool, str]:
-    """Decide whether the agent may call `url`.
+def _egress_target(
+    url: str, allow_hosts: list[str] | None, allow_public: bool
+) -> tuple[bool, str | None, str]:
+    """Authorise an outbound request.
 
-    With an allowlist, only those exact hosts are reachable (the operator
-    explicitly trusts them, e.g. an internal tool API). Without one, the URL
-    must be http/https and must not resolve to a private, loopback, link-local,
-    reserved, or multicast address — the usual SSRF targets (cloud metadata,
-    localhost, RFC-1918).
+    Returns ``(allowed, pinned_ip, reason)``. ``pinned_ip`` is the validated
+    address the request must connect to (open-egress hosts); it is ``None`` for
+    allowlisted hosts, which the operator already trusts and which are reached
+    by normal resolution.
     """
     parsed = urlparse(url)
     if parsed.scheme not in ("http", "https"):
-        return False, "only http/https URLs are allowed"
+        return False, None, "only http/https URLs are allowed"
     host = parsed.hostname
     if not host:
-        return False, "URL has no host"
+        return False, None, "URL has no host"
     if allow_hosts is not None:
-        return (host in allow_hosts), (
-            "" if host in allow_hosts else f"host '{host}' is not in the allowlist"
+        if host in allow_hosts:
+            return True, None, ""
+        return False, None, f"host '{host}' is not in the allowlist"
+    if not allow_public:
+        return False, None, (
+            "outbound HTTP is disabled; set an allowlist or AGENT_HTTP_ALLOW_PUBLIC"
         )
     if host.lower() in _BLOCKED_HOST_LITERALS:
-        return False, f"host '{host}' is blocked"
+        return False, None, f"host '{host}' is blocked"
     port = parsed.port or (443 if parsed.scheme == "https" else 80)
     try:
         infos = socket.getaddrinfo(host, port, proto=socket.IPPROTO_TCP)
     except socket.gaierror as exc:
-        return False, f"DNS resolution failed: {exc}"
+        return False, None, f"DNS resolution failed: {exc}"
+    pinned: str | None = None
     for info in infos:
-        ip = info[4][0]
+        ip = info[4][0].split("%")[0]
         try:
-            addr = ipaddress.ip_address(ip.split("%")[0])
+            addr = ipaddress.ip_address(ip)
         except ValueError:
-            return False, f"unparseable address {ip}"
+            return False, None, f"unparseable address {ip}"
         if (
             addr.is_private
             or addr.is_loopback
@@ -159,34 +175,68 @@ def is_safe_url(url: str, allow_hosts: list[str] | None) -> tuple[bool, str]:
             or addr.is_multicast
             or addr.is_unspecified
         ):
-            return False, f"host resolves to a non-public address ({ip})"
-    return True, ""
+            return False, None, f"host resolves to a non-public address ({ip})"
+        if pinned is None:
+            pinned = ip
+    if pinned is None:
+        return False, None, "no address resolved"
+    return True, pinned, ""
 
 
-def http_request_tool(allow_hosts: list[str] | None = None) -> Tool:
+def is_safe_url(
+    url: str, allow_hosts: list[str] | None, allow_public: bool = False
+) -> tuple[bool, str]:
+    """Whether the agent may call `url` (validation only; see _egress_target)."""
+    allowed, _ip, reason = _egress_target(url, allow_hosts, allow_public)
+    return allowed, reason
+
+
+def http_request_tool(
+    allow_hosts: list[str] | None = None, allow_public: bool = False
+) -> Tool:
     async def run(args: dict) -> str:
         url = str(args.get("url", ""))
         method = str(args.get("method", "GET")).upper()
-        ok, reason = is_safe_url(url, allow_hosts)
-        if not ok:
+        allowed, pinned_ip, reason = _egress_target(url, allow_hosts, allow_public)
+        if not allowed:
             return f"error: {reason}"
-        headers = args.get("headers") if isinstance(args.get("headers"), dict) else None
+
+        headers = dict(args["headers"]) if isinstance(args.get("headers"), dict) else {}
         body = args.get("body")
-        kwargs: dict[str, Any] = {}
+        req_kwargs: dict[str, Any] = {}
         if isinstance(body, (dict, list)):
-            kwargs["json"] = body
+            req_kwargs["json"] = body
         elif body is not None:
-            kwargs["content"] = str(body)
+            req_kwargs["content"] = str(body)
+
+        target = httpx.URL(url)
+        if pinned_ip is not None:
+            # Connect to the exact validated IP, keep the real Host, and verify
+            # TLS against the hostname — closes the DNS-rebinding window.
+            headers["Host"] = target.host
+            req_kwargs["extensions"] = {"sni_hostname": target.host}
+            target = target.copy_with(host=pinned_ip)
+        if headers:
+            req_kwargs["headers"] = headers
+
         try:
             async with httpx.AsyncClient(timeout=15.0, follow_redirects=False) as client:
-                resp = await client.request(method, url, headers=headers, **kwargs)
-            return json.dumps({"status": resp.status_code, "body": resp.text[:8000]})
+                request = client.build_request(method, target, **req_kwargs)
+                resp = await client.send(request, stream=True)
+                buf = bytearray()
+                async for chunk in resp.aiter_bytes():
+                    buf.extend(chunk)
+                    if len(buf) >= _MAX_RESPONSE_BYTES:
+                        break
+                await resp.aclose()
+            text = bytes(buf).decode("utf-8", errors="replace")
+            return json.dumps({"status": resp.status_code, "body": text[:8000]})
         except httpx.HTTPError as exc:
             return f"error: request failed: {exc}"
 
     return Tool(
         name="http_request",
-        description="Make an HTTP request to a public URL and return its status and body.",
+        description="Make an HTTP request to an allowed public URL and return its status and body.",
         input_schema={
             "type": "object",
             "properties": {
@@ -241,6 +291,7 @@ def build_tools(
     default_kb: str = "",
     node_tools: list[dict] | None = None,
     http_allow_hosts: list[str] | None = None,
+    http_allow_public: bool = False,
 ) -> list[Tool]:
     """Resolve enabled tool names into Tool instances. Unknown names and
     rag_search without a store are skipped. `node_tools` are explicit custom
@@ -252,7 +303,7 @@ def build_tools(
         elif name == "rag_search" and store is not None:
             tools.append(rag_search_tool(store, tenant_id, default_kb))
         elif name == "http_request":
-            tools.append(http_request_tool(http_allow_hosts))
+            tools.append(http_request_tool(http_allow_hosts, http_allow_public))
     for spec in node_tools or []:
         if spec.get("name") and spec.get("url"):
             tools.append(custom_node_tool(spec))
