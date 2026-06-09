@@ -230,7 +230,7 @@ pub(super) async fn execute_qdrant(
     match operation.as_str() {
         "search" => {
             let vector = match cfg.get("vector") {
-                Some(v) => v.clone(),
+                Some(v) => json_array_or_parse(v),
                 None => return NodeExecutionResult::failed("Qdrant search requires 'vector'"),
             };
             let limit = cfg.get("limit").and_then(|v| v.as_u64()).unwrap_or(10);
@@ -256,7 +256,7 @@ pub(super) async fn execute_qdrant(
         }
         "upsert" => {
             let points = match cfg.get("points") {
-                Some(p) => p.clone(),
+                Some(p) => json_array_or_parse(p),
                 None => {
                     return NodeExecutionResult::failed(
                         "Qdrant upsert requires 'points' (array of {id, vector, payload})",
@@ -279,7 +279,7 @@ pub(super) async fn execute_qdrant(
         }
         "delete" => {
             let ids = match cfg.get("ids") {
-                Some(v) => v.clone(),
+                Some(v) => json_array_or_parse(v),
                 None => return NodeExecutionResult::failed("Qdrant delete requires 'ids'"),
             };
             let body = serde_json::json!({ "points": ids });

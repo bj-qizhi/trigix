@@ -148,6 +148,27 @@ fn json_to_string(val: &serde_json::Value) -> String {
     }
 }
 
+/// Resolve a config value that may be a JSON-encoded string back into JSON.
+///
+/// `resolve_config_strings` renders every `{{...}}` substitution to a string, so
+/// an upstream array or object (e.g. a list of vectors produced by a code node)
+/// arrives at the consuming node as a string like `"[{...}]"`. Nodes that need
+/// the real array/object call this to parse it back. Values that are not
+/// JSON-looking strings (and non-string values) are returned unchanged.
+fn json_array_or_parse(value: &serde_json::Value) -> serde_json::Value {
+    if let serde_json::Value::String(s) = value {
+        let t = s.trim();
+        let looks_json =
+            (t.starts_with('[') && t.ends_with(']')) || (t.starts_with('{') && t.ends_with('}'));
+        if looks_json {
+            if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(t) {
+                return parsed;
+            }
+        }
+    }
+    value.clone()
+}
+
 fn resolve_config_strings(
     config: &serde_json::Value,
     context: &ExecutionContext,
@@ -1623,6 +1644,38 @@ mod tests {
         // the form the bundled templates use.
         let cfg = serde_json::json!({ "source": "{{input}}", "field": "order.total", "operator": "gte", "value": "100" });
         assert!(run_condition(cfg, r#"{"order":{"total":120}}"#).await);
+    }
+
+    #[test]
+    fn json_array_or_parse_handles_stringified_and_plain() {
+        // A JSON array that arrived as a string (the template engine stringifies
+        // every {{...}} substitution) is parsed back into a real array, with
+        // inner float arrays preserved.
+        let stringified = serde_json::Value::String(
+            r#"[{"id":"d-0","values":[0.1,0.2],"metadata":{"text":"a"}}]"#.to_string(),
+        );
+        let parsed = json_array_or_parse(&stringified);
+        assert!(parsed.is_array());
+        let first = &parsed[0];
+        assert_eq!(first["id"], "d-0");
+        assert!(first["values"].is_array());
+        assert_eq!(first["values"][1], 0.2);
+
+        // Whitespace around a JSON object is tolerated.
+        let obj = serde_json::Value::String("  {\"a\":1}  ".to_string());
+        assert_eq!(json_array_or_parse(&obj)["a"], 1);
+
+        // A plain (non-JSON) string is returned unchanged.
+        let plain = serde_json::Value::String("hello".to_string());
+        assert_eq!(json_array_or_parse(&plain), plain);
+
+        // A malformed array string is left as-is rather than silently dropped.
+        let broken = serde_json::Value::String("[1,2".to_string());
+        assert_eq!(json_array_or_parse(&broken), broken);
+
+        // Already-structured values pass through untouched.
+        let arr = serde_json::json!([1, 2, 3]);
+        assert_eq!(json_array_or_parse(&arr), arr);
     }
 
     #[test]
