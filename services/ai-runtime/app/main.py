@@ -23,7 +23,9 @@ _anthropic_client: anthropic.Anthropic | None = None
 def get_anthropic_client() -> anthropic.Anthropic:
     global _anthropic_client
     if _anthropic_client is None:
-        _anthropic_client = anthropic.Anthropic()
+        # Retries are handled in the agent loop (_call_with_retries); disable the
+        # SDK's own so the two don't compound.
+        _anthropic_client = anthropic.Anthropic(max_retries=0)
     return _anthropic_client
 
 
@@ -90,7 +92,12 @@ def _build_llm(config: dict[str, Any], model: str, max_tokens: int):
             detail="The 'openai' package is not installed; install the runtime "
             "with the [openai] extra to use an OpenAI-compatible provider",
         ) from exc
-    client = OpenAI(api_key=api_key, base_url=base_url) if base_url else OpenAI(api_key=api_key)
+    # Retries are handled in the agent loop; disable the SDK's own to avoid
+    # compounding (see get_anthropic_client).
+    opts: dict[str, Any] = {"api_key": api_key, "max_retries": 0}
+    if base_url:
+        opts["base_url"] = base_url
+    client = OpenAI(**opts)
     return OpenAICompatLLM(client, model, max_tokens)
 
 

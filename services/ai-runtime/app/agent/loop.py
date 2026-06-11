@@ -13,10 +13,39 @@ from __future__ import annotations
 
 import asyncio
 import json
+import random
 from dataclasses import dataclass, field
 from typing import Any, Protocol
 
 from .tools import Tool
+
+# Transient LLM API failures worth retrying. Both the Anthropic and OpenAI SDKs
+# expose the HTTP code on `.status_code`; connection/timeout errors carry none.
+_RETRYABLE_STATUS = frozenset({408, 409, 429, 500, 502, 503, 504, 529})
+
+
+def _is_transient(exc: Exception) -> bool:
+    status = getattr(exc, "status_code", None)
+    if isinstance(status, int):
+        return status in _RETRYABLE_STATUS
+    name = type(exc).__name__
+    return any(k in name for k in ("Timeout", "Connection", "Overloaded"))
+
+
+async def _call_with_retries(fn, *, max_attempts: int = 3, base_delay: float = 0.5):
+    """Run a blocking SDK call off the event loop, retrying transient API errors
+    (HTTP 429/5xx, connection/timeout) with exponential backoff + jitter.
+    Non-transient errors propagate immediately."""
+    attempt = 0
+    while True:
+        try:
+            return await asyncio.to_thread(fn)
+        except Exception as exc:
+            attempt += 1
+            if attempt >= max_attempts or not _is_transient(exc):
+                raise
+            delay = base_delay * (2 ** (attempt - 1))
+            await asyncio.sleep(delay + random.uniform(0, delay * 0.25))
 
 
 @dataclass
@@ -81,16 +110,22 @@ async def run_agent_loop(
             return AgentResult(output=resp.text or "", steps=steps, usage=usage)
 
         messages.append({"role": "assistant", "content": resp.assistant_content})
-        results = []
-        for call in resp.tool_calls:
+
+        async def _run_one(call: ToolCall) -> str:
             tool = tool_map.get(call.name)
             if tool is None:
-                content = f"error: unknown tool '{call.name}'"
-            else:
-                try:
-                    content = await tool.run(call.input)
-                except Exception as exc:  # surface tool errors back to the model
-                    content = f"error: {exc}"
+                return f"error: unknown tool '{call.name}'"
+            try:
+                return await tool.run(call.input)
+            except Exception as exc:  # surface tool errors back to the model
+                return f"error: {exc}"
+
+        # A turn may request several tools at once; run them concurrently
+        # (gather preserves order) instead of awaiting each in sequence.
+        outputs = await asyncio.gather(*(_run_one(c) for c in resp.tool_calls))
+
+        results = []
+        for call, content in zip(resp.tool_calls, outputs):
             steps.append({"tool": call.name, "input": call.input, "output": content})
             results.append(
                 {"type": "tool_result", "tool_use_id": call.id, "content": content}
@@ -118,13 +153,25 @@ class AnthropicLLM:
         kwargs: dict[str, Any] = {
             "model": self._model,
             "max_tokens": self._max_tokens,
-            "system": system,
             "messages": messages,
         }
+        # Prompt caching: mark the static prefix (tools + system, sent
+        # identically on every loop turn) as a cache breakpoint so turns 2..N
+        # reuse it. The breakpoint on `system` also caches the tools that
+        # precede it; with no system, anchor it on the last tool instead. Below
+        # the model's minimum cacheable size Anthropic ignores the marker, so
+        # this is always safe.
+        if system:
+            kwargs["system"] = [
+                {"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}
+            ]
         if tool_schemas:
-            kwargs["tools"] = tool_schemas
-        # The SDK call is synchronous; run it off the event loop.
-        msg = await asyncio.to_thread(lambda: self._client.messages.create(**kwargs))
+            tools = list(tool_schemas)
+            if not system:
+                tools[-1] = {**tools[-1], "cache_control": {"type": "ephemeral"}}
+            kwargs["tools"] = tools
+        # The SDK call is synchronous; run it off the event loop, with retries.
+        msg = await _call_with_retries(lambda: self._client.messages.create(**kwargs))
 
         usage = {}
         u = getattr(msg, "usage", None)
@@ -252,8 +299,8 @@ class OpenAICompatLLM:
         }
         if tool_schemas:
             kwargs["tools"] = _to_openai_tools(tool_schemas)
-        # The SDK call is synchronous; run it off the event loop.
-        completion = await asyncio.to_thread(
+        # The SDK call is synchronous; run it off the event loop, with retries.
+        completion = await _call_with_retries(
             lambda: self._client.chat.completions.create(**kwargs)
         )
 
