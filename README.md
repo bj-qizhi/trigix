@@ -7,7 +7,9 @@
 [![Rust](https://img.shields.io/badge/Rust-2021-orange.svg)](https://www.rust-lang.org/)
 [![React](https://img.shields.io/badge/React-18-61dafb.svg)](https://react.dev/)
 
-[English] · [中文](README.zh.md)
+[English] · [中文](README.zh.md) · [Website](https://bj-qizhi.github.io/trigix/)
+
+> Open-source, **AI-native workflow automation** — a Rust execution engine, 140+ node types, RAG, agents, MCP, and a visual canvas. A self-hosted [n8n](https://github.com/n8n-io/n8n) alternative built for AI-first automation.
 
 > © 2026 [北京祺智科技有限公司](https://www.qzso.com/) · managecode@gmail.com
 
