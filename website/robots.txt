@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://bj-qizhi.github.io/trigix/sitemap.xml
