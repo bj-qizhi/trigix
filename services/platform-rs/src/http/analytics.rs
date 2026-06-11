@@ -374,3 +374,32 @@ pub(super) fn routes() -> Router<AppState> {
         .route("/v1/analytics/sla-breaches", get(sla_breaches_handler))
         .route("/v1/analytics/errors", get(error_analysis_handler))
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::http::*;
+    use axum::body::{to_bytes, Body};
+    use axum::http::Request;
+    use axum::http::StatusCode;
+    use serde_json::json;
+    use tower::ServiceExt;
+
+    #[tokio::test]
+    async fn node_type_analytics_returns_empty_initially() {
+        let app = router();
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/v1/analytics/node-types?tenant_id=t1")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let bytes = to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let stats: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert!(stats.as_array().is_some());
+    }
+}

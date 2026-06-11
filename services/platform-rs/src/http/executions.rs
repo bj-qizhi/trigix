@@ -734,3 +734,552 @@ pub(super) fn routes() -> Router<AppState> {
         )
         .route("/v1/cron/preview", post(cron_preview_handler))
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::http::*;
+    use axum::body::{to_bytes, Body};
+    use axum::http::Request;
+    use axum::http::StatusCode;
+    use serde_json::json;
+    use tower::ServiceExt;
+
+    #[tokio::test]
+    async fn starts_and_gets_execution_over_http() {
+        let app = router();
+        // Use trigger → transform so we can verify node-output template resolution
+        // without requiring an external AI runtime.
+        let request_body = json!({
+            "tenant_id": "tenant-1",
+            "workflow_id": "workflow-1",
+            "workflow_version_id": "version-1",
+            "graph": {
+                "workflow_version_id": "version-1",
+                "nodes": [
+                    {"id": "trigger", "type": "trigger"},
+                    {"id": "xform", "type": "transform",
+                     "config": {"template": {"result": "{{input.lead_id}}"}}}
+                ],
+                "edges": [
+                    {"source": "trigger", "target": "xform"}
+                ]
+            },
+            "input_json": "{\"lead_id\":\"lead-1\"}"
+        });
+
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/executions")
+                    .header("content-type", "application/json")
+                    .body(Body::from(request_body.to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::ACCEPTED);
+
+        let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        let payload: serde_json::Value = serde_json::from_slice(&body).unwrap();
+
+        assert_eq!(payload["tenant_id"], "tenant-1");
+        assert_eq!(payload["workflow_id"], "workflow-1");
+        assert_eq!(payload["workflow_version_id"], "version-1");
+        assert_eq!(payload["status"], "running");
+
+        let execution_id = payload["id"].as_str().unwrap().to_string();
+
+        // Wait for background execution to complete
+        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/v1/executions?tenant_id=tenant-1")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        let payload: serde_json::Value = serde_json::from_slice(&body).unwrap();
+
+        assert_eq!(payload.as_array().unwrap().len(), 1);
+        assert_eq!(payload[0]["id"], execution_id);
+        assert_eq!(payload[0]["status"], "succeeded");
+
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri(format!("/v1/executions/{execution_id}?tenant_id=tenant-1"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        let payload: serde_json::Value = serde_json::from_slice(&body).unwrap();
+
+        assert_eq!(payload["id"], execution_id);
+        assert_eq!(payload["status"], "succeeded");
+        assert_eq!(payload["node_results"][0]["node_id"], "trigger");
+        assert_eq!(payload["node_results"][0]["node_type"], "trigger");
+        assert_eq!(payload["node_results"][0]["status"], "succeeded");
+        // Transform output should contain the resolved input value
+        let xform_out: serde_json::Value = serde_json::from_str(
+            payload["node_results"][1]["output_json"]
+                .as_str()
+                .unwrap_or("{}"),
+        )
+        .unwrap();
+        assert_eq!(xform_out["result"], "lead-1");
+    }
+
+    #[tokio::test]
+    async fn approval_node_waits_and_resumes_on_approve() {
+        let app = router();
+
+        let request_body = json!({
+            "tenant_id": "tenant-1",
+            "workflow_id": "workflow-1",
+            "workflow_version_id": "version-a",
+            "graph": {
+                "workflow_version_id": "version-a",
+                "nodes": [
+                    {"id": "trigger", "type": "trigger"},
+                    {"id": "approve", "type": "approval"}
+                ],
+                "edges": [{"source": "trigger", "target": "approve"}]
+            },
+            "input_json": "{}"
+        });
+
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/executions")
+                    .header("content-type", "application/json")
+                    .body(Body::from(request_body.to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::ACCEPTED);
+        let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        let payload: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(payload["status"], "running");
+        let execution_id = payload["id"].as_str().unwrap().to_string();
+
+        // Give the executor time to reach the approval node
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+
+        // Status should be waiting_approval
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri(format!("/v1/executions/{execution_id}?tenant_id=tenant-1"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        let payload: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(payload["status"], "waiting_approval");
+
+        // Approve
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!("/v1/executions/{execution_id}/approve"))
+                    .header("content-type", "application/json")
+                    .body(Body::from(json!({"tenant_id": "tenant-1"}).to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+
+        // Wait for the execution to complete
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri(format!("/v1/executions/{execution_id}?tenant_id=tenant-1"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        let payload: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(payload["status"], "succeeded");
+    }
+
+    #[tokio::test]
+    async fn approval_node_fails_on_reject() {
+        let app = router();
+
+        let request_body = json!({
+            "tenant_id": "tenant-1",
+            "workflow_id": "workflow-1",
+            "workflow_version_id": "version-b",
+            "graph": {
+                "workflow_version_id": "version-b",
+                "nodes": [
+                    {"id": "trigger", "type": "trigger"},
+                    {"id": "approve", "type": "approval"}
+                ],
+                "edges": [{"source": "trigger", "target": "approve"}]
+            },
+            "input_json": "{}"
+        });
+
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/executions")
+                    .header("content-type", "application/json")
+                    .body(Body::from(request_body.to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        let payload: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        let execution_id = payload["id"].as_str().unwrap().to_string();
+
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+
+        // Reject
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!("/v1/executions/{execution_id}/reject"))
+                    .header("content-type", "application/json")
+                    .body(Body::from(json!({}).to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri(format!("/v1/executions/{execution_id}?tenant_id=tenant-1"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        let payload: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(payload["status"], "failed");
+    }
+
+    #[tokio::test]
+    async fn approve_returns_404_when_no_pending_approval() {
+        let app = router();
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/executions/no-such-execution/approve")
+                    .header("content-type", "application/json")
+                    .body(Body::from(json!({}).to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn rejects_invalid_graph_over_http() {
+        let app = router();
+        let request_body = json!({
+            "tenant_id": "tenant-1",
+            "workflow_id": "workflow-1",
+            "workflow_version_id": "version-1",
+            "graph": {
+                "workflow_version_id": "version-1",
+                "nodes": [
+                    {"id": "a", "type": "http"},
+                    {"id": "b", "type": "agent"}
+                ],
+                "edges": [
+                    {"source": "a", "target": "b"},
+                    {"source": "b", "target": "a"}
+                ]
+            },
+            "input_json": "{}"
+        });
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/executions")
+                    .header("content-type", "application/json")
+                    .body(Body::from(request_body.to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn credential_reference_resolved_before_execution() {
+        let cred_store = PlatformCredentialStore::default();
+        cred_store
+            .create("tenant-1", "my-token", "Bearer secret-abc")
+            .await
+            .unwrap();
+
+        let store = PlatformExecutionStore::memory();
+        let gate = Arc::new(ApprovalGate::default());
+        let service = ExecutionService::new(
+            store.clone(),
+            PlatformExecutorClient::inline_with_gate(store, Arc::clone(&gate)),
+        );
+        let workflow_service =
+            WorkflowService::new(PlatformWorkflowVersionStore::memory_with_dev_seed());
+        let app = router_with_services(
+            service,
+            workflow_service,
+            PlatformWebhookStore::default(),
+            gate,
+            cred_store,
+        );
+
+        // Start execution with a graph whose node config has a credential reference.
+        let request_body = json!({
+            "tenant_id": "tenant-1",
+            "workflow_id": "workflow-1",
+            "workflow_version_id": "version-cred",
+            "graph": {
+                "workflow_version_id": "version-cred",
+                "nodes": [{
+                    "id": "trigger", "type": "trigger",
+                    "config": {"auth": "{{credential.my-token}}"}
+                }],
+                "edges": []
+            },
+            "input_json": "{}"
+        });
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/executions")
+                    .header("content-type", "application/json")
+                    .body(Body::from(request_body.to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::ACCEPTED);
+        let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        let payload: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        // The graph stored in the execution record should have the resolved value.
+        assert_eq!(
+            payload["graph"]["nodes"][0]["config"]["auth"],
+            "Bearer secret-abc"
+        );
+    }
+
+    #[tokio::test]
+    async fn audit_log_records_execution_started() {
+        let app = router();
+
+        let request_body = json!({
+            "tenant_id": "tenant-audit",
+            "workflow_id": "workflow-1",
+            "workflow_version_id": "version-1",
+            "graph": {
+                "workflow_version_id": "version-1",
+                "nodes": [{"id": "trigger", "type": "trigger"}],
+                "edges": []
+            },
+            "input_json": "{}"
+        });
+
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/executions")
+                    .header("content-type", "application/json")
+                    .body(Body::from(request_body.to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::ACCEPTED);
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/v1/audit-log?tenant_id=tenant-audit")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        let events: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        let list = events.as_array().unwrap();
+        assert_eq!(list.len(), 1);
+        assert_eq!(list[0]["action"], "execution.started");
+        assert_eq!(list[0]["tenant_id"], "tenant-audit");
+        assert_eq!(list[0]["resource_type"], "execution");
+    }
+
+    #[tokio::test]
+    async fn drain_mode_rejects_new_executions() {
+        // Reset drain flag before test (other parallel tests must not interfere)
+        super::DRAINING.store(false, std::sync::atomic::Ordering::SeqCst);
+
+        let app = router();
+        let body = serde_json::json!({
+            "tenant_id": "tenant-drain",
+            "workflow_id": "wf-1",
+            "workflow_version_id": "v-1",
+            "graph": {"workflow_version_id": "v-1", "nodes": [{"id": "t", "type": "trigger"}], "edges": []},
+            "input_json": "{}"
+        });
+
+        // Should succeed before drain
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/executions")
+                    .header("content-type", "application/json")
+                    .body(Body::from(body.to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::ACCEPTED);
+
+        // Activate drain mode
+        super::DRAINING.store(true, std::sync::atomic::Ordering::SeqCst);
+
+        // Should now return 503
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/executions")
+                    .header("content-type", "application/json")
+                    .body(Body::from(body.to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::SERVICE_UNAVAILABLE);
+
+        // Also blocks start-from-workflow-version
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/workflow-versions/v-1/executions")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        serde_json::json!({"tenant_id": "tenant-drain", "input_json": "{}"})
+                            .to_string(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::SERVICE_UNAVAILABLE);
+
+        // Reset for subsequent tests
+        super::DRAINING.store(false, std::sync::atomic::Ordering::SeqCst);
+    }
+
+    #[tokio::test]
+    async fn quota_exceeded_returns_402() {
+        use crate::billing::{BillingStore, TenantQuota};
+        use std::sync::Arc;
+
+        // Build a state where billing quota is exhausted
+        let state = super::default_app_state();
+        // Set a quota of 0 executions for the test tenant
+        let zero_quota = TenantQuota {
+            tenant_id: "tenant-quota".to_string(),
+            tier: "free".to_string(),
+            max_executions_per_month: 0,
+            max_concurrent_executions: 10,
+            max_workflows: 50,
+        };
+        state.billing_store.set_quota(zero_quota);
+
+        let app = super::build_router(state);
+        let body = json!({
+            "tenant_id": "tenant-quota",
+            "workflow_id": "wf-1",
+            "workflow_version_id": "v-1",
+            "graph": {"workflow_version_id": "v-1", "nodes": [{"id": "t", "type": "trigger"}], "edges": []},
+            "input_json": "{}"
+        });
+
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/executions")
+                    .header("content-type", "application/json")
+                    .body(Body::from(body.to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::PAYMENT_REQUIRED);
+    }
+}

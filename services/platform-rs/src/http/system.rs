@@ -361,3 +361,273 @@ pub(super) fn routes() -> Router<AppState> {
         .route("/.well-known/mcp.json", get(mcp_manifest))
         .route("/v1/mcp/tools", post(mcp_execute_tool))
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::http::*;
+    use axum::body::{to_bytes, Body};
+    use axum::http::Request;
+    use axum::http::StatusCode;
+    use serde_json::json;
+    use tower::ServiceExt;
+
+    #[tokio::test]
+    async fn system_info_returns_expected_fields() {
+        let app = router();
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/v1/system/info")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let bytes = to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let info: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert!(info["version"].is_string());
+        assert!(info["node_types"].as_u64().unwrap() > 0);
+        assert!(info["features"].is_array());
+        assert!(info["features"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|f| f.as_str() == Some("jwt-auth")));
+    }
+
+    #[tokio::test]
+    async fn metrics_endpoint_returns_prometheus_text() {
+        let app = router();
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/metrics")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let ct = resp
+            .headers()
+            .get("content-type")
+            .unwrap()
+            .to_str()
+            .unwrap();
+        assert!(ct.contains("text/plain"));
+        let bytes = to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let body = std::str::from_utf8(&bytes).unwrap();
+        assert!(body.contains("af_executions_started_total"));
+        assert!(body.contains("af_http_requests_total"));
+    }
+
+    #[tokio::test]
+    async fn openapi_json_returns_valid_spec() {
+        let app = router();
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/openapi.json")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let bytes = to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let spec: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(spec["openapi"], "3.0.3");
+        assert!(spec["paths"].as_object().unwrap().len() > 20);
+    }
+
+    #[tokio::test]
+    async fn openapi_docs_returns_html() {
+        let app = router();
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/docs")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let bytes = to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let body = String::from_utf8(bytes.to_vec()).unwrap();
+        assert!(body.contains("swagger-ui"));
+        assert!(body.contains("/openapi.json"));
+    }
+
+    // ── User auth HTTP tests ────────────────────────────────────────────────
+
+    #[tokio::test]
+    async fn mcp_manifest_returns_json() {
+        let app = router();
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/.well-known/mcp.json")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let bytes = to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let v: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert!(v
+            .get("tools")
+            .and_then(|t| t.as_array())
+            .map(|a| a.len() >= 2)
+            .unwrap_or(false));
+    }
+
+    #[tokio::test]
+    async fn mcp_list_workflows_tool() {
+        let app = router();
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/mcp/tools")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        json!({
+                            "tool": "list_workflows",
+                            "tenant_id": "tenant-1"
+                        })
+                        .to_string(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let bytes = to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let v: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert!(v.get("workflows").and_then(|w| w.as_array()).is_some());
+    }
+
+    #[tokio::test]
+    async fn mcp_unknown_tool_returns_400() {
+        let app = router();
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/mcp/tools")
+                    .header("content-type", "application/json")
+                    .body(Body::from(json!({"tool": "nonexistent_tool"}).to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn request_id_header_present_on_response() {
+        let app = router();
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/healthz")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert!(
+            resp.headers().contains_key("x-request-id"),
+            "x-request-id header missing from response"
+        );
+        let id = resp
+            .headers()
+            .get("x-request-id")
+            .unwrap()
+            .to_str()
+            .unwrap();
+        assert_eq!(id.len(), 36, "request ID should be a 36-char UUID");
+    }
+
+    #[tokio::test]
+    async fn security_headers_present_on_response() {
+        let app = router();
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/healthz")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let headers = resp.headers();
+        assert_eq!(
+            headers.get("x-frame-options").and_then(|v| v.to_str().ok()),
+            Some("DENY")
+        );
+        assert_eq!(
+            headers
+                .get("x-content-type-options")
+                .and_then(|v| v.to_str().ok()),
+            Some("nosniff")
+        );
+        assert!(
+            headers.contains_key("strict-transport-security"),
+            "missing HSTS header"
+        );
+        assert!(
+            headers.contains_key("referrer-policy"),
+            "missing referrer-policy header"
+        );
+    }
+
+    #[tokio::test]
+    async fn request_ids_are_unique_across_requests() {
+        let r1 = router()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/healthz")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let r2 = router()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/healthz")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let id1 = r1
+            .headers()
+            .get("x-request-id")
+            .unwrap()
+            .to_str()
+            .unwrap()
+            .to_string();
+        let id2 = r2
+            .headers()
+            .get("x-request-id")
+            .unwrap()
+            .to_str()
+            .unwrap()
+            .to_string();
+        assert_ne!(id1, id2, "each request should get a unique request ID");
+    }
+}

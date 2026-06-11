@@ -2198,3 +2198,1997 @@ pub(super) fn routes() -> Router<AppState> {
             post(rollback_workflow_version),
         )
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::http::*;
+    use axum::body::{to_bytes, Body};
+    use axum::http::Request;
+    use axum::http::StatusCode;
+    use serde_json::json;
+    use tower::ServiceExt;
+
+    #[tokio::test]
+    async fn creates_and_lists_workflows_over_http() {
+        let app = router();
+        let request_body = json!({
+            "tenant_id": "tenant-1",
+            "workspace_id": "workspace-1",
+            "project_id": "project-1",
+            "name": "New Workflow"
+        });
+
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/workflows")
+                    .header("content-type", "application/json")
+                    .body(Body::from(request_body.to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::CREATED);
+
+        let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        let payload: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        let workflow_id = payload["id"].as_str().unwrap();
+
+        assert_eq!(payload["name"], "New Workflow");
+        assert_eq!(payload["status"], "draft");
+        assert!(payload["latest_version_id"].is_null());
+
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/v1/workflows?tenant_id=tenant-1&project_id=project-1")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        let payload: serde_json::Value = serde_json::from_slice(&body).unwrap();
+
+        assert!(payload
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|workflow| workflow["id"] == workflow_id));
+
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/v1/workflows?tenant_id=tenant-1&project_id=project-1&status=draft")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        let payload: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(payload.as_array().unwrap().len(), 1);
+        assert_eq!(payload[0]["id"], workflow_id);
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/v1/workflows?tenant_id=tenant-1&status=deleted")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn gets_workflow_over_http() {
+        let app = router();
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/v1/workflows/workflow-1?tenant_id=tenant-1")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        let payload: serde_json::Value = serde_json::from_slice(&body).unwrap();
+
+        assert_eq!(payload["id"], "workflow-1");
+        assert_eq!(payload["name"], "Dev Lead Workflow");
+        assert_eq!(payload["status"], "published");
+        assert_eq!(payload["latest_version_id"], "version-1");
+    }
+
+    #[tokio::test]
+    async fn updates_workflow_over_http() {
+        let app = router();
+        let request_body = json!({
+            "tenant_id": "tenant-1",
+            "name": "Renamed Workflow"
+        });
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("PATCH")
+                    .uri("/v1/workflows/workflow-1")
+                    .header("content-type", "application/json")
+                    .body(Body::from(request_body.to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        let payload: serde_json::Value = serde_json::from_slice(&body).unwrap();
+
+        assert_eq!(payload["id"], "workflow-1");
+        assert_eq!(payload["name"], "Renamed Workflow");
+        assert_eq!(payload["status"], "published");
+        assert_eq!(payload["latest_version_id"], "version-1");
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/v1/workflows/workflow-1?tenant_id=tenant-1")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        let payload: serde_json::Value = serde_json::from_slice(&body).unwrap();
+
+        assert_eq!(payload["name"], "Renamed Workflow");
+    }
+
+    #[tokio::test]
+    async fn archives_workflow_over_http() {
+        let app = router();
+        let request_body = json!({
+            "tenant_id": "tenant-1"
+        });
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/workflows/workflow-1/archive")
+                    .header("content-type", "application/json")
+                    .body(Body::from(request_body.to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        let payload: serde_json::Value = serde_json::from_slice(&body).unwrap();
+
+        assert_eq!(payload["id"], "workflow-1");
+        assert_eq!(payload["status"], "archived");
+        assert_eq!(payload["latest_version_id"], "version-1");
+
+        let run_body = json!({
+            "tenant_id": "tenant-1",
+            "input_json": "{\"lead_id\":\"lead-from-archived-workflow\"}"
+        });
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/workflows/workflow-1/executions")
+                    .header("content-type", "application/json")
+                    .body(Body::from(run_body.to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+
+        let version_run_body = json!({
+            "tenant_id": "tenant-1",
+            "input_json": "{\"lead_id\":\"lead-from-archived-version\"}"
+        });
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/workflow-versions/version-1/executions")
+                    .header("content-type", "application/json")
+                    .body(Body::from(version_run_body.to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+
+        let restore_body = json!({
+            "tenant_id": "tenant-1"
+        });
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/workflows/workflow-1/restore")
+                    .header("content-type", "application/json")
+                    .body(Body::from(restore_body.to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        let payload: serde_json::Value = serde_json::from_slice(&body).unwrap();
+
+        assert_eq!(payload["id"], "workflow-1");
+        assert_eq!(payload["status"], "published");
+        assert_eq!(payload["latest_version_id"], "version-1");
+
+        let run_body = json!({
+            "tenant_id": "tenant-1",
+            "input_json": "{\"lead_id\":\"lead-from-restored-workflow\"}"
+        });
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/workflows/workflow-1/executions")
+                    .header("content-type", "application/json")
+                    .body(Body::from(run_body.to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::ACCEPTED);
+    }
+
+    #[tokio::test]
+    async fn starts_execution_from_workflow_version_over_http() {
+        let app = router();
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/v1/workflow-versions/version-1?tenant_id=tenant-1")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        let payload: serde_json::Value = serde_json::from_slice(&body).unwrap();
+
+        assert_eq!(payload["id"], "version-1");
+        assert_eq!(payload["workflow_id"], "workflow-1");
+        assert_eq!(payload["graph"]["nodes"].as_array().unwrap().len(), 2);
+
+        let request_body = json!({
+            "tenant_id": "tenant-1",
+            "input_json": "{\"lead_id\":\"lead-from-version\"}"
+        });
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/workflow-versions/version-1/executions")
+                    .header("content-type", "application/json")
+                    .body(Body::from(request_body.to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::ACCEPTED);
+
+        let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        let payload: serde_json::Value = serde_json::from_slice(&body).unwrap();
+
+        assert_eq!(payload["tenant_id"], "tenant-1");
+        assert_eq!(payload["workflow_id"], "workflow-1");
+        assert_eq!(payload["workflow_version_id"], "version-1");
+        assert_eq!(payload["status"], "running");
+    }
+
+    #[tokio::test]
+    async fn draft_version_execution_is_rejected() {
+        let app = router();
+
+        // Create a new (draft) version of workflow-1
+        let create_body = json!({
+            "tenant_id": "tenant-1",
+            "graph": {
+                "workflow_version_id": "draft-version-x",
+                "nodes": [{"id": "trigger", "type": "trigger"}],
+                "edges": []
+            }
+        });
+        let create_resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/workflows/workflow-1/versions")
+                    .header("content-type", "application/json")
+                    .body(Body::from(create_body.to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(create_resp.status(), StatusCode::CREATED);
+        let body = to_bytes(create_resp.into_body(), usize::MAX).await.unwrap();
+        let version: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        let draft_id = version["id"].as_str().unwrap().to_string();
+        assert_eq!(version["status"], "draft");
+
+        // Trying to run the draft version must be rejected
+        let exec_body = json!({
+            "tenant_id": "tenant-1",
+            "input_json": "{}"
+        });
+        let exec_resp = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!("/v1/workflow-versions/{draft_id}/executions"))
+                    .header("content-type", "application/json")
+                    .body(Body::from(exec_body.to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(exec_resp.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn delete_execution_removes_terminal_execution() {
+        let app = router();
+        // Start execution on pre-seeded workflow
+        let start_body = json!({ "tenant_id": "tenant-1", "input_json": "{}" });
+        let start_resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/workflow-versions/version-1/executions")
+                    .header("content-type", "application/json")
+                    .body(Body::from(start_body.to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(start_resp.status(), StatusCode::ACCEPTED);
+        let bytes = to_bytes(start_resp.into_body(), usize::MAX).await.unwrap();
+        let exec: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        let exec_id = exec["id"].as_str().unwrap().to_string();
+
+        // Wait for the background executor task to complete
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+
+        // Delete the finished execution
+        let del_resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("DELETE")
+                    .uri(format!("/v1/executions/{exec_id}?tenant_id=tenant-1"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(del_resp.status(), StatusCode::NO_CONTENT);
+
+        // Verify it's gone
+        let get_resp = app
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri(format!("/v1/executions/{exec_id}?tenant_id=tenant-1"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(get_resp.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn starts_execution_from_latest_workflow_over_http() {
+        let app = router();
+        let request_body = json!({
+            "tenant_id": "tenant-1",
+            "input_json": "{\"lead_id\":\"lead-from-workflow\"}"
+        });
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/workflows/workflow-1/executions")
+                    .header("content-type", "application/json")
+                    .body(Body::from(request_body.to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::ACCEPTED);
+
+        let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        let payload: serde_json::Value = serde_json::from_slice(&body).unwrap();
+
+        assert_eq!(payload["tenant_id"], "tenant-1");
+        assert_eq!(payload["workflow_id"], "workflow-1");
+        assert_eq!(payload["workflow_version_id"], "version-1");
+        assert_eq!(payload["status"], "running");
+    }
+
+    #[tokio::test]
+    async fn creates_workflow_version_over_http() {
+        let app = router();
+        let request_body = json!({
+            "tenant_id": "tenant-1",
+            "graph": {
+                "workflow_version_id": "client-supplied-id",
+                "nodes": [
+                    {"id": "trigger", "type": "trigger"},
+                    {"id": "agent", "type": "agent"}
+                ],
+                "edges": [
+                    {"source": "trigger", "target": "agent"}
+                ]
+            }
+        });
+
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/workflows/workflow-1/versions")
+                    .header("content-type", "application/json")
+                    .body(Body::from(request_body.to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::CREATED);
+
+        let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        let payload: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        let workflow_version_id = payload["id"].as_str().unwrap();
+
+        assert_ne!(workflow_version_id, "client-supplied-id");
+        assert_eq!(payload["workflow_id"], "workflow-1");
+        assert_eq!(payload["version"], 2);
+        assert_eq!(payload["status"], "draft");
+        assert_eq!(payload["graph"]["workflow_version_id"], workflow_version_id);
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri(format!(
+                        "/v1/workflow-versions/{workflow_version_id}?tenant_id=tenant-1"
+                    ))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn lists_workflow_versions_over_http() {
+        let app = router();
+        let request_body = json!({
+            "tenant_id": "tenant-1",
+            "graph": {
+                "workflow_version_id": "client-supplied-id",
+                "nodes": [
+                    {"id": "trigger", "type": "trigger"},
+                    {"id": "agent", "type": "agent"}
+                ],
+                "edges": [
+                    {"source": "trigger", "target": "agent"}
+                ]
+            }
+        });
+
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/workflows/workflow-1/versions")
+                    .header("content-type", "application/json")
+                    .body(Body::from(request_body.to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::CREATED);
+
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/v1/workflows/workflow-1/versions?tenant_id=tenant-1")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        let payload: serde_json::Value = serde_json::from_slice(&body).unwrap();
+
+        assert_eq!(payload.as_array().unwrap().len(), 2);
+        assert_eq!(payload[0]["version"], 2);
+        assert_eq!(payload[1]["version"], 1);
+
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/v1/workflows/workflow-1/versions?tenant_id=tenant-1&status=draft")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        let payload: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(payload.as_array().unwrap().len(), 1);
+        assert_eq!(payload[0]["version"], 2);
+        assert_eq!(payload[0]["status"], "draft");
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/v1/workflows/workflow-1/versions?tenant_id=tenant-1&status=archived")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn publishes_workflow_version_over_http() {
+        let app = router();
+        let workflow_body = json!({
+            "tenant_id": "tenant-1",
+            "workspace_id": "workspace-1",
+            "project_id": "project-1",
+            "name": "New Workflow"
+        });
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/workflows")
+                    .header("content-type", "application/json")
+                    .body(Body::from(workflow_body.to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        let workflow: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        let workflow_id = workflow["id"].as_str().unwrap();
+
+        let version_body = json!({
+            "tenant_id": "tenant-1",
+            "graph": {
+                "workflow_version_id": "client-supplied-id",
+                "nodes": [
+                    {"id": "trigger", "type": "trigger"},
+                    {"id": "agent", "type": "agent"}
+                ],
+                "edges": [
+                    {"source": "trigger", "target": "agent"}
+                ]
+            }
+        });
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!("/v1/workflows/{workflow_id}/versions"))
+                    .header("content-type", "application/json")
+                    .body(Body::from(version_body.to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        let version: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        let workflow_version_id = version["id"].as_str().unwrap();
+
+        let publish_body = json!({
+            "tenant_id": "tenant-1"
+        });
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!(
+                        "/v1/workflow-versions/{workflow_version_id}/publish"
+                    ))
+                    .header("content-type", "application/json")
+                    .body(Body::from(publish_body.to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        let payload: serde_json::Value = serde_json::from_slice(&body).unwrap();
+
+        assert_eq!(payload["id"], workflow_version_id);
+        assert_eq!(payload["status"], "published");
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/v1/workflows?tenant_id=tenant-1&project_id=project-1")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        let payload: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        let workflow = payload
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|workflow| workflow["id"] == workflow_id)
+            .unwrap();
+
+        assert_eq!(workflow["status"], "published");
+        assert_eq!(workflow["latest_version_id"], workflow_version_id);
+    }
+
+    #[tokio::test]
+    async fn creates_and_triggers_webhook_over_http() {
+        let app = router();
+
+        // Create webhook for the dev-seeded version-1
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/workflow-versions/version-1/webhook")
+                    .header("content-type", "application/json")
+                    .body(Body::from(json!({"tenant_id": "tenant-1"}).to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        let webhook: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        let token = webhook["token"].as_str().unwrap();
+        assert!(!token.is_empty());
+        assert_eq!(webhook["url"], format!("/v1/webhooks/{token}"));
+
+        // Idempotent: same call returns the same token
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/workflow-versions/version-1/webhook")
+                    .header("content-type", "application/json")
+                    .body(Body::from(json!({"tenant_id": "tenant-1"}).to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        let webhook2: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(webhook2["token"], webhook["token"]);
+
+        // Trigger the webhook with a JSON body
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!("/v1/webhooks/{token}"))
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        json!({"source": "crm", "lead_id": "lead-99"}).to_string(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::ACCEPTED);
+        let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        let execution: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(execution["tenant_id"], "tenant-1");
+        assert_eq!(execution["workflow_id"], "workflow-1");
+        assert_eq!(execution["status"], "running");
+
+        // Unknown token → 404
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/webhooks/not-a-real-token")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn publishing_with_schedule_trigger_registers_schedule() {
+        let app = router();
+
+        // Create a new workflow
+        let wf_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/workflows")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        json!({"tenant_id":"tenant-1","workspace_id":"ws-1","project_id":"proj-1","name":"Scheduled WF"})
+                            .to_string(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let body = to_bytes(wf_response.into_body(), usize::MAX).await.unwrap();
+        let wf: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        let wf_id = wf["id"].as_str().unwrap();
+
+        // Create a version with interval_secs on the trigger node
+        let ver_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!("/v1/workflows/{wf_id}/versions"))
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        json!({
+                            "tenant_id": "tenant-1",
+                            "graph": {
+                                "workflow_version_id": "temp",
+                                "nodes": [{"id":"trigger","type":"trigger","config":{"interval_secs":3600}}],
+                                "edges": []
+                            }
+                        })
+                        .to_string(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let body = to_bytes(ver_response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let ver: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        let ver_id = ver["id"].as_str().unwrap();
+
+        // Initially no schedules
+        let sched_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/v1/schedules?tenant_id=tenant-1")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let body = to_bytes(sched_response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let schedules: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(schedules.as_array().unwrap().len(), 0);
+
+        // Publish the version
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!("/v1/workflow-versions/{ver_id}/publish"))
+                    .header("content-type", "application/json")
+                    .body(Body::from(json!({"tenant_id":"tenant-1"}).to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+
+        // Schedule should now be registered
+        let sched_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/v1/schedules?tenant_id=tenant-1")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let body = to_bytes(sched_response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let schedules: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        let list = schedules.as_array().unwrap();
+        assert_eq!(list.len(), 1);
+        assert_eq!(list[0]["workflow_id"], wf_id);
+        assert_eq!(list[0]["interval_secs"], 3600);
+    }
+
+    #[tokio::test]
+    async fn exports_workflow_graph_over_http() {
+        let app = router();
+
+        // Export the dev-seeded workflow-1 (has published version-1)
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/v1/workflows/workflow-1/export?tenant_id=tenant-1")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        let export: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(export["name"], "Dev Lead Workflow");
+        assert!(export["graph"]["nodes"].as_array().unwrap().len() >= 1);
+        assert!(export["exported_at"].as_u64().unwrap() > 0);
+    }
+
+    #[tokio::test]
+    async fn imports_workflow_from_json_over_http() {
+        let app = router();
+
+        let body = json!({
+            "tenant_id": "tenant-1",
+            "workspace_id": "workspace-1",
+            "project_id": "project-1",
+            "name": "Imported Copy",
+            "graph": {
+                "workflow_version_id": "ignored-id",
+                "nodes": [
+                    {"id": "trigger", "type": "trigger"},
+                    {"id": "agent",   "type": "agent"}
+                ],
+                "edges": [{"source": "trigger", "target": "agent"}]
+            }
+        });
+
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/workflows/import")
+                    .header("content-type", "application/json")
+                    .body(Body::from(body.to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::CREATED);
+        let bytes = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        let workflow: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(workflow["name"], "Imported Copy");
+        assert_eq!(workflow["status"], "draft");
+        // Import creates the workflow together with a draft version and points
+        // latest_version_id at it (see import/duplicate latest_version_id fix).
+        assert!(workflow["latest_version_id"].is_string());
+
+        // A draft version should have been created with the imported graph
+        let wf_id = workflow["id"].as_str().unwrap();
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri(format!("/v1/workflows/{wf_id}/versions?tenant_id=tenant-1"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let bytes = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        let versions: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        let list = versions.as_array().unwrap();
+        assert_eq!(list.len(), 1);
+        assert_eq!(list[0]["status"], "draft");
+        assert_eq!(list[0]["graph"]["nodes"].as_array().unwrap().len(), 2);
+    }
+
+    #[tokio::test]
+    async fn archiving_workflow_removes_schedule() {
+        let app = router();
+
+        // Use the dev-seeded workflow-1 / version-1 — first add a schedule manually via publish.
+        // Create version with schedule
+        let ver_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/workflows/workflow-1/versions")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        json!({
+                            "tenant_id": "tenant-1",
+                            "graph": {
+                                "workflow_version_id": "temp",
+                                "nodes": [{"id":"trigger","type":"trigger","config":{"interval_secs":60}}],
+                                "edges": []
+                            }
+                        })
+                        .to_string(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let body = to_bytes(ver_response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let ver: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        let ver_id = ver["id"].as_str().unwrap();
+
+        // Publish to register schedule
+        app.clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!("/v1/workflow-versions/{ver_id}/publish"))
+                    .header("content-type", "application/json")
+                    .body(Body::from(json!({"tenant_id":"tenant-1"}).to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        // Verify schedule registered
+        let sched_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/v1/schedules?tenant_id=tenant-1")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let body = to_bytes(sched_response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let schedules: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(schedules.as_array().unwrap().len(), 1);
+
+        // Archive the workflow
+        app.clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/workflows/workflow-1/archive")
+                    .header("content-type", "application/json")
+                    .body(Body::from(json!({"tenant_id":"tenant-1"}).to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        // Schedule should be gone
+        let sched_response = app
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/v1/schedules?tenant_id=tenant-1")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let body = to_bytes(sched_response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let schedules: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(schedules.as_array().unwrap().len(), 0);
+    }
+
+    #[tokio::test]
+    async fn retry_execution_creates_new_execution() {
+        let store = PlatformExecutionStore::memory();
+        let service = ExecutionService::new(store.clone(), PlatformExecutorClient::noop());
+        let workflow_service =
+            WorkflowService::new(PlatformWorkflowVersionStore::memory_with_dev_seed());
+        let gate = Arc::new(ApprovalGate::default());
+        let app = router_with_services(
+            service,
+            workflow_service,
+            PlatformWebhookStore::default(),
+            gate,
+            PlatformCredentialStore::default(),
+        );
+
+        // Start original execution
+        let exec_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/workflows/workflow-1/executions")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        json!({ "tenant_id": "tenant-1", "input_json": "{\"key\":\"val\"}" })
+                            .to_string(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let bytes = to_bytes(exec_response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let original: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        let original_id = original["id"].as_str().unwrap().to_string();
+
+        // Retry it
+        let retry_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!("/v1/executions/{original_id}/retry"))
+                    .header("content-type", "application/json")
+                    .body(Body::from(json!({ "tenant_id": "tenant-1" }).to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(retry_response.status(), StatusCode::CREATED);
+        let bytes = to_bytes(retry_response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let retried: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+
+        // New execution has a different ID
+        assert_ne!(retried["id"], original["id"]);
+        // Same workflow and input
+        assert_eq!(retried["workflow_id"], original["workflow_id"]);
+        assert_eq!(retried["input_json"], original["input_json"]);
+        assert_eq!(retried["status"], "running");
+    }
+
+    #[tokio::test]
+    async fn cancel_execution_over_http() {
+        // Noop executor leaves execution in Running state so we can cancel it.
+        let store = PlatformExecutionStore::memory();
+        let service = ExecutionService::new(store.clone(), PlatformExecutorClient::noop());
+        let workflow_service =
+            WorkflowService::new(PlatformWorkflowVersionStore::memory_with_dev_seed());
+        let gate = Arc::new(ApprovalGate::default());
+        let app = router_with_services(
+            service,
+            workflow_service,
+            PlatformWebhookStore::default(),
+            gate,
+            PlatformCredentialStore::default(),
+        );
+
+        // Start an execution
+        let exec_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/workflows/workflow-1/executions")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        json!({ "tenant_id": "tenant-1", "input_json": "{}" }).to_string(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert!(exec_response.status().is_success());
+        let bytes = to_bytes(exec_response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let exec: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        let exec_id = exec["id"].as_str().unwrap().to_string();
+
+        // Cancel it
+        let cancel_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!("/v1/executions/{exec_id}/cancel"))
+                    .header("content-type", "application/json")
+                    .body(Body::from(json!({ "tenant_id": "tenant-1" }).to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(cancel_response.status(), StatusCode::OK);
+
+        // Verify status is cancelled
+        let get_response = app
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri(format!("/v1/executions/{exec_id}?tenant_id=tenant-1"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let bytes = to_bytes(get_response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let updated: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(updated["status"], "cancelled");
+        assert!(updated["finished_at"].is_number());
+    }
+
+    #[tokio::test]
+    async fn duplicate_workflow_creates_copy() {
+        let app = router();
+
+        // Create a workflow to duplicate
+        let create_body = json!({
+            "tenant_id": "tenant-1",
+            "workspace_id": "workspace-1",
+            "project_id": "project-1",
+            "name": "Original Workflow"
+        });
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/workflows")
+                    .header("content-type", "application/json")
+                    .body(Body::from(create_body.to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::CREATED);
+        let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        let original: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        let original_id = original["id"].as_str().unwrap().to_string();
+
+        // Duplicate it
+        let dup_body = json!({ "tenant_id": "tenant-1" });
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!("/v1/workflows/{original_id}/duplicate"))
+                    .header("content-type", "application/json")
+                    .body(Body::from(dup_body.to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::CREATED);
+        let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        let copy: serde_json::Value = serde_json::from_slice(&body).unwrap();
+
+        assert_ne!(copy["id"], original["id"]);
+        assert_eq!(copy["name"], "Original Workflow (copy)");
+        assert_eq!(copy["status"], "draft");
+        assert_eq!(copy["workspace_id"], original["workspace_id"]);
+        assert_eq!(copy["project_id"], original["project_id"]);
+    }
+
+    #[tokio::test]
+    async fn search_returns_matching_workflows() {
+        let app = router();
+        // First create a workflow
+        let body = serde_json::json!({ "name": "SearchTargetWorkflow", "workspace_id": "ws-1", "project_id": "project-1", "tenant_id": "t1" });
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/workflows")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&body).unwrap()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::CREATED);
+
+        // Search for it
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/v1/search?q=SearchTarget&tenant_id=t1")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let bytes = to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let result: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert!(result["workflows"]
+            .as_array()
+            .map(|a| !a.is_empty())
+            .unwrap_or(false));
+    }
+
+    #[tokio::test]
+    async fn form_publish_and_get() {
+        let app = router();
+
+        // Create a workflow first
+        let resp = app.clone().oneshot(
+            Request::builder().method("POST").uri("/v1/workflows")
+                .header("content-type", "application/json")
+                .body(Body::from(json!({"tenant_id":"t1","workspace_id":"ws1","project_id":"proj1","name":"FormWf"}).to_string())).unwrap()
+        ).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::CREATED);
+        let bytes = to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let wf: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        let wf_id = wf["id"].as_str().unwrap().to_string();
+
+        // Publish a form
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!("/v1/workflows/{wf_id}/publish-form"))
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        json!({"tenant_id":"t1","title":"My Form"}).to_string(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let bytes = to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let form: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        let token = form["token"].as_str().unwrap().to_string();
+        assert!(!token.is_empty());
+
+        // Get the form by token
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri(format!("/v1/forms/{token}"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let bytes = to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let got: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(got["title"].as_str().unwrap(), "My Form");
+        assert_eq!(got["workflow_id"].as_str().unwrap(), wf_id);
+    }
+
+    #[tokio::test]
+    async fn form_list_and_delete() {
+        let app = router();
+
+        let resp = app.clone().oneshot(
+            Request::builder().method("POST").uri("/v1/workflows")
+                .header("content-type", "application/json")
+                .body(Body::from(json!({"tenant_id":"t1","workspace_id":"ws1","project_id":"proj1","name":"FormWf2"}).to_string())).unwrap()
+        ).await.unwrap();
+        let bytes = to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let wf: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        let wf_id = wf["id"].as_str().unwrap().to_string();
+
+        // Publish two forms
+        for title in ["Form A", "Form B"] {
+            let resp = app
+                .clone()
+                .oneshot(
+                    Request::builder()
+                        .method("POST")
+                        .uri(format!("/v1/workflows/{wf_id}/publish-form"))
+                        .header("content-type", "application/json")
+                        .body(Body::from(
+                            json!({"tenant_id":"t1","title":title}).to_string(),
+                        ))
+                        .unwrap(),
+                )
+                .await
+                .unwrap();
+            assert_eq!(resp.status(), StatusCode::OK);
+        }
+
+        // List forms for the workflow
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri(format!("/v1/workflows/{wf_id}/forms?tenant_id=t1"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let bytes = to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let forms: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(forms.as_array().unwrap().len(), 2);
+
+        // Get token of first form
+        let token = forms[0]["token"].as_str().unwrap().to_string();
+
+        // Delete that form
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("DELETE")
+                    .uri(format!("/v1/forms/{token}"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::NO_CONTENT);
+
+        // Confirm it's gone
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri(format!("/v1/forms/{token}"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+    }
+
+    // ── Test case HTTP tests ────────────────────────────────────────────────
+
+    #[tokio::test]
+    async fn test_case_create_list_update_delete() {
+        let app = router();
+
+        let resp = app.clone().oneshot(
+            Request::builder().method("POST").uri("/v1/workflows")
+                .header("content-type", "application/json")
+                .body(Body::from(json!({"tenant_id":"t1","workspace_id":"ws1","project_id":"proj1","name":"TcWf"}).to_string())).unwrap()
+        ).await.unwrap();
+        let bytes = to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let wf: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        let wf_id = wf["id"].as_str().unwrap().to_string();
+
+        // Create test case
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!("/v1/workflows/{wf_id}/test-cases"))
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        json!({
+                            "tenant_id": "t1",
+                            "name": "TC1",
+                            "input_json": r#"{"x":1}"#,
+                            "expected_output": r#"{"result":2}"#
+                        })
+                        .to_string(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::CREATED);
+        let bytes = to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let tc: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        let tc_id = tc["id"].as_str().unwrap().to_string();
+        assert_eq!(tc["name"].as_str().unwrap(), "TC1");
+
+        // List test cases
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri(format!("/v1/workflows/{wf_id}/test-cases?tenant_id=t1"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let bytes = to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let tcs: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(tcs.as_array().unwrap().len(), 1);
+
+        // Get test case
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri(format!("/v1/test-cases/{tc_id}"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        // Update test case
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("PATCH")
+                    .uri(format!("/v1/test-cases/{tc_id}"))
+                    .header("content-type", "application/json")
+                    .body(Body::from(json!({"name": "TC1 Updated"}).to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let bytes = to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let updated: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(updated["name"].as_str().unwrap(), "TC1 Updated");
+
+        // Delete test case
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("DELETE")
+                    .uri(format!("/v1/test-cases/{tc_id}"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::NO_CONTENT);
+
+        // Confirm deletion
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri(format!("/v1/test-cases/{tc_id}"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+    }
+
+    // ── Comment HTTP tests ──────────────────────────────────────────────────
+
+    #[tokio::test]
+    async fn workflow_comments_crud() {
+        let app = router();
+
+        // Create a workflow first
+        let resp = app.clone().oneshot(
+            Request::builder().method("POST").uri("/v1/workflows")
+                .header("content-type", "application/json")
+                .body(Body::from(json!({"tenant_id":"t1","workspace_id":"ws1","project_id":"proj1","name":"CommentWf"}).to_string())).unwrap()
+        ).await.unwrap();
+        let bytes = to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let wf: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        let wf_id = wf["id"].as_str().unwrap().to_string();
+
+        // Create comment
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!("/v1/workflows/{wf_id}/comments"))
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        json!({"tenant_id":"t1","author":"alice","body":"Hello world"}).to_string(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::CREATED);
+        let bytes = to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let comment: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        let comment_id = comment["id"].as_str().unwrap().to_string();
+        assert_eq!(comment["author"].as_str().unwrap(), "alice");
+        assert_eq!(comment["body"].as_str().unwrap(), "Hello world");
+        assert!(comment["edited_at"].is_null());
+
+        // List comments
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri(format!("/v1/workflows/{wf_id}/comments?tenant_id=t1"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let bytes = to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let comments: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(comments.as_array().unwrap().len(), 1);
+
+        // Edit comment
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("PATCH")
+                    .uri(format!("/v1/comments/{comment_id}"))
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        json!({"tenant_id":"t1","body":"Updated body"}).to_string(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let bytes = to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let edited: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(edited["body"].as_str().unwrap(), "Updated body");
+        assert!(!edited["edited_at"].is_null());
+
+        // Delete comment
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("DELETE")
+                    .uri(format!("/v1/comments/{comment_id}?tenant_id=t1"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::NO_CONTENT);
+
+        // List should now be empty
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri(format!("/v1/workflows/{wf_id}/comments?tenant_id=t1"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let bytes = to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let comments: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert!(comments.as_array().unwrap().is_empty());
+    }
+
+    // ── Workflow locking HTTP tests ─────────────────────────────────────────
+
+    #[tokio::test]
+    async fn workflow_lock_blocks_version_save() {
+        let app = router();
+
+        // Create workflow
+        let resp = app.clone().oneshot(
+            Request::builder().method("POST").uri("/v1/workflows")
+                .header("content-type", "application/json")
+                .body(Body::from(json!({"tenant_id":"t1","workspace_id":"ws1","project_id":"proj1","name":"LockWf"}).to_string())).unwrap()
+        ).await.unwrap();
+        let bytes = to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let wf: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        let wf_id = wf["id"].as_str().unwrap().to_string();
+        assert!(!wf["locked"].as_bool().unwrap_or(false));
+
+        // Lock it
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!("/v1/workflows/{wf_id}/lock"))
+                    .header("content-type", "application/json")
+                    .body(Body::from(json!({"tenant_id":"t1"}).to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let bytes = to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let locked_wf: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(locked_wf["locked"].as_bool(), Some(true));
+
+        let min_graph = json!({
+            "workflow_version_id": "v1",
+            "nodes": [{"id": "trigger-1", "type": "trigger"}],
+            "edges": [],
+            "input_schema": []
+        });
+
+        // Attempt to save a version — must be rejected (workflow is locked)
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!("/v1/workflows/{wf_id}/versions"))
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        json!({"tenant_id": "t1", "graph": min_graph}).to_string(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+
+        // Unlock it
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!("/v1/workflows/{wf_id}/unlock"))
+                    .header("content-type", "application/json")
+                    .body(Body::from(json!({"tenant_id":"t1"}).to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        // Now save should succeed
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!("/v1/workflows/{wf_id}/versions"))
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        json!({"tenant_id": "t1", "graph": min_graph}).to_string(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::CREATED);
+    }
+
+    #[tokio::test]
+    async fn workflow_visibility_set_and_filter() {
+        let app = router();
+
+        // Create a workflow via the API
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/workflows")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        json!({
+                            "tenant_id": "vis-tenant",
+                            "workspace_id": "ws-1",
+                            "project_id": "proj-1",
+                            "name": "Private WF"
+                        })
+                        .to_string(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::CREATED);
+        let bytes = to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let wf: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        let wf_id = wf["id"].as_str().unwrap().to_string();
+        assert_eq!(wf["visibility"], "tenant");
+
+        // Set visibility to private
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("PATCH")
+                    .uri(format!("/v1/workflows/{wf_id}/visibility"))
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        json!({"tenant_id": "vis-tenant", "visibility": "private"}).to_string(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let bytes = to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let updated: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(updated["visibility"], "private");
+
+        // List should still include it (no auth in test mode — created_by is None, caller is None)
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/v1/workflows?tenant_id=vis-tenant")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let bytes = to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let list: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        let found = list.as_array().unwrap().iter().any(|w| w["id"] == wf_id);
+        assert!(
+        found,
+        "workflow with visibility=private still visible when created_by matches caller (both None)"
+    );
+
+        // Set back to tenant
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("PATCH")
+                    .uri(format!("/v1/workflows/{wf_id}/visibility"))
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        json!({"tenant_id": "vis-tenant", "visibility": "tenant"}).to_string(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let bytes = to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let restored: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(restored["visibility"], "tenant");
+    }
+
+    #[tokio::test]
+    async fn set_visibility_rejects_invalid_value() {
+        let app = router();
+
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/workflows")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        json!({
+                            "tenant_id": "vis2-tenant",
+                            "workspace_id": "ws-1",
+                            "project_id": "proj-1",
+                            "name": "WF2"
+                        })
+                        .to_string(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let bytes = to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let wf: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        let wf_id = wf["id"].as_str().unwrap().to_string();
+
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("PATCH")
+                    .uri(format!("/v1/workflows/{wf_id}/visibility"))
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        json!({"tenant_id": "vis2-tenant", "visibility": "public"}).to_string(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn rollback_creates_new_draft_version() {
+        let app = router();
+        // Create a workflow
+        let create_body = json!({
+            "tenant_id": "t-rollback",
+            "workspace_id": "ws-1",
+            "project_id": "proj-1",
+            "name": "Rollback Test Workflow"
+        });
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/workflows")
+                    .header("content-type", "application/json")
+                    .body(Body::from(create_body.to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::CREATED);
+        let bytes = to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let wf: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        let wf_id = wf["id"].as_str().unwrap();
+
+        // Create a version
+        let version_body = json!({
+            "tenant_id": "t-rollback",
+            "graph": { "workflow_version_id": "v-rb", "nodes": [{"id": "n1", "type": "trigger"}], "edges": [] },
+            "status": "draft",
+            "message": "initial"
+        });
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!("/v1/workflows/{wf_id}/versions"))
+                    .header("content-type", "application/json")
+                    .body(Body::from(version_body.to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::CREATED);
+        let bytes = to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let version: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        let version_id = version["id"].as_str().unwrap();
+
+        // Rollback to that version
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!(
+                        "/v1/workflows/{wf_id}/rollback/{version_id}?tenant_id=t-rollback"
+                    ))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::CREATED);
+        let bytes = to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let rolled: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        // New version should be a draft with a rollback message
+        assert_eq!(rolled["status"].as_str().unwrap(), "draft");
+        let msg = rolled["message"].as_str().unwrap_or("");
+        assert!(
+            msg.contains("Rollback") || msg.contains("ollback"),
+            "message should mention rollback: {msg}"
+        );
+    }
+
+    // ── Slice 360: MCP server ─────────────────────────────────────────────────
+
+    #[tokio::test]
+    async fn run_test_case_returns_404_for_unknown_id() {
+        let app = router();
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/test-cases/nonexistent-tc-id/run")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+    }
+
+    // ── Slice 392: Notification center ────────────────────────────────────────
+}

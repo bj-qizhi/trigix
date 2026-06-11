@@ -252,3 +252,197 @@ pub(super) fn routes() -> Router<AppState> {
             put(admin_set_quota_handler),
         )
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::http::*;
+    use axum::body::{to_bytes, Body};
+    use axum::http::Request;
+    use axum::http::StatusCode;
+    use serde_json::json;
+    use tower::ServiceExt;
+
+    #[tokio::test]
+    async fn invite_flow_create_and_accept() {
+        let app = router();
+
+        // Create an invitation (admin; no AUTH_REQUIRED so passes through)
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/admin/invitations")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        json!({"email": "invited@example.com", "role": "editor"}).to_string(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::CREATED);
+        let bytes = to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let inv: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        let token = inv["token"].as_str().unwrap().to_string();
+
+        // Look up the invite
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri(format!("/v1/invitations/{token}"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let bytes = to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let info: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(info["email"], "invited@example.com");
+        assert_eq!(info["valid"], true);
+
+        // Accept the invite
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/auth/accept-invite")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        json!({"token": token, "password": "securepass", "name": "Invited User"})
+                            .to_string(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::CREATED);
+        let bytes = to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let auth: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(auth["user"]["email"], "invited@example.com");
+        assert!(auth["token"]
+            .as_str()
+            .map(|t| t.len() > 10)
+            .unwrap_or(false));
+    }
+
+    #[tokio::test]
+    async fn invite_cannot_be_used_twice() {
+        let app = router();
+
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/admin/invitations")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        json!({"email": "twice@example.com"}).to_string(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let bytes = to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let inv: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        let token = inv["token"].as_str().unwrap().to_string();
+
+        // Use it once
+        app.clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/auth/accept-invite")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        json!({"token": &token, "password": "pw1"}).to_string(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        // Second attempt — should return GONE
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/auth/accept-invite")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        json!({"token": &token, "password": "pw2"}).to_string(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::GONE);
+    }
+
+    #[tokio::test]
+    async fn invite_list_and_revoke() {
+        let app = router();
+
+        // Create an invite
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/admin/invitations")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        json!({"email": "revoke_me@example.com"}).to_string(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let bytes = to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let inv: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        let invite_id = inv["id"].as_str().unwrap().to_string();
+
+        // List — should contain the invite
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/v1/admin/invitations")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let bytes = to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let list: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert!(list
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|i| i["id"] == invite_id));
+
+        // Revoke it
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("DELETE")
+                    .uri(format!("/v1/admin/invitations/{invite_id}"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::NO_CONTENT);
+    }
+
+    // ── Org management HTTP tests ───────────────────────────────────────────
+}

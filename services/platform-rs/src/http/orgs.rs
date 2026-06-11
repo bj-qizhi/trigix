@@ -424,3 +424,95 @@ pub(super) fn routes() -> Router<AppState> {
             post(mark_notification_read_handler),
         )
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::http::test_support::register_and_get_token;
+    use crate::http::*;
+    use axum::body::{to_bytes, Body};
+    use axum::http::Request;
+    use axum::http::StatusCode;
+    use serde_json::json;
+    use tower::ServiceExt;
+
+    #[tokio::test]
+    async fn create_and_list_org() {
+        let app = router();
+        let token = register_and_get_token(app.clone(), "owner@org.test").await;
+
+        // Create org
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/orgs")
+                    .header("content-type", "application/json")
+                    .header("authorization", format!("Bearer {token}"))
+                    .body(Body::from(json!({"name": "Acme Corp"}).to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::CREATED);
+        let bytes = to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let org: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(org["name"], "Acme Corp");
+
+        // List orgs
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/v1/orgs")
+                    .header("authorization", format!("Bearer {token}"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let bytes = to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let orgs: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(orgs.as_array().unwrap().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn non_member_cannot_switch_org() {
+        let app = router();
+        let owner_token = register_and_get_token(app.clone(), "owner3@org.test").await;
+        let stranger_token = register_and_get_token(app.clone(), "stranger@org.test").await;
+
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/orgs")
+                    .header("content-type", "application/json")
+                    .header("authorization", format!("Bearer {owner_token}"))
+                    .body(Body::from(json!({"name": "Gamma LLC"}).to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let bytes = to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let org: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        let org_id = org["id"].as_str().unwrap();
+
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!("/v1/orgs/{org_id}/switch"))
+                    .header("authorization", format!("Bearer {stranger_token}"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+    }
+}

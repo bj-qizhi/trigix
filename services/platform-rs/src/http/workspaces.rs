@@ -118,3 +118,141 @@ pub(super) fn routes() -> Router<AppState> {
             get(method_not_allowed).delete(delete_project_handler),
         )
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::http::*;
+    use axum::body::{to_bytes, Body};
+    use axum::http::Request;
+    use axum::http::StatusCode;
+    use serde_json::json;
+    use tower::ServiceExt;
+
+    #[tokio::test]
+    async fn workspace_crud_over_http() {
+        let app = router();
+
+        // Create workspace
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/workspaces")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        json!({ "tenant_id": "tenant-1", "name": "Engineering" }).to_string(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::CREATED);
+        let bytes = to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let ws: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        let ws_id = ws["id"].as_str().unwrap().to_string();
+        assert_eq!(ws["name"], "Engineering");
+
+        // List workspaces
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/v1/workspaces?tenant_id=tenant-1")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let bytes = to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let list: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert!(list.as_array().unwrap().iter().any(|w| w["id"] == ws_id));
+
+        // Create project in workspace
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!("/v1/workspaces/{ws_id}/projects"))
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        json!({ "tenant_id": "tenant-1", "name": "Backend" }).to_string(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::CREATED);
+        let bytes = to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let proj: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        let proj_id = proj["id"].as_str().unwrap().to_string();
+        assert_eq!(proj["name"], "Backend");
+
+        // List projects
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri(format!(
+                        "/v1/workspaces/{ws_id}/projects?tenant_id=tenant-1"
+                    ))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let bytes = to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let projects: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(projects.as_array().unwrap().len(), 1);
+        assert_eq!(projects[0]["id"], proj_id);
+
+        // Delete project
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("DELETE")
+                    .uri(format!("/v1/projects/{proj_id}?tenant_id=tenant-1"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::NO_CONTENT);
+
+        // Delete workspace
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("DELETE")
+                    .uri(format!("/v1/workspaces/{ws_id}?tenant_id=tenant-1"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::NO_CONTENT);
+
+        // Workspace gone
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/v1/workspaces?tenant_id=tenant-1")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let bytes = to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let list: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert!(!list.as_array().unwrap().iter().any(|w| w["id"] == ws_id));
+    }
+}

@@ -360,3 +360,236 @@ pub(super) fn routes() -> Router<AppState> {
             post(set_payload_transform_handler),
         )
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::http::*;
+    use axum::body::{to_bytes, Body};
+    use axum::http::Request;
+    use axum::http::StatusCode;
+    use serde_json::json;
+    use tower::ServiceExt;
+
+    #[tokio::test]
+    async fn webhook_delivery_recorded_on_trigger_success() {
+        use crate::webhook::{WebhookRecord, WebhookStore};
+        let state = default_app_state();
+        state
+            .webhook_store
+            .upsert(WebhookRecord {
+                token: "test-delivery-token".to_string(),
+                tenant_id: "tenant-1".to_string(),
+                workflow_id: "workflow-1".to_string(),
+                workflow_version_id: "version-1".to_string(),
+                secret: None,
+                condition_expr: None,
+                max_calls_per_minute: None,
+                paused: false,
+                payload_transform_script: None,
+            })
+            .await
+            .unwrap();
+        let app = build_router(state.clone());
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/webhooks/test-delivery-token")
+                    .header("content-type", "application/json")
+                    .body(Body::from(json!({"x": 1}).to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::ACCEPTED);
+        let deliveries = state
+            .webhook_store
+            .list_deliveries("test-delivery-token", 10)
+            .await;
+        assert_eq!(deliveries.len(), 1);
+        assert!(deliveries[0].success);
+        assert_eq!(deliveries[0].status_code, Some(202));
+        assert!(deliveries[0].execution_id.is_some());
+    }
+
+    #[tokio::test]
+    async fn webhook_delivery_recorded_on_quota_failure() {
+        use crate::billing::{BillingStore, TenantQuota};
+        use crate::webhook::{WebhookRecord, WebhookStore};
+        let state = default_app_state();
+        state
+            .webhook_store
+            .upsert(WebhookRecord {
+                token: "test-quota-tok".to_string(),
+                tenant_id: "tenant-1".to_string(),
+                workflow_id: "workflow-1".to_string(),
+                workflow_version_id: "version-1".to_string(),
+                secret: None,
+                condition_expr: None,
+                max_calls_per_minute: None,
+                paused: false,
+                payload_transform_script: None,
+            })
+            .await
+            .unwrap();
+        state.billing_store.set_quota(TenantQuota {
+            tenant_id: "tenant-1".to_string(),
+            tier: "free".to_string(),
+            max_executions_per_month: 0,
+            max_concurrent_executions: 10,
+            max_workflows: 100,
+        });
+        let app = build_router(state.clone());
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/webhooks/test-quota-tok")
+                    .header("content-type", "application/json")
+                    .body(Body::from("{}".to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::PAYMENT_REQUIRED);
+        let deliveries = state
+            .webhook_store
+            .list_deliveries("test-quota-tok", 10)
+            .await;
+        assert_eq!(deliveries.len(), 1);
+        assert!(!deliveries[0].success);
+        assert_eq!(deliveries[0].status_code, Some(402));
+        assert!(deliveries[0].error_message.is_some());
+    }
+
+    #[tokio::test]
+    async fn list_webhook_deliveries_endpoint() {
+        use crate::webhook::{WebhookDelivery, WebhookRecord, WebhookStore};
+        let state = default_app_state();
+        state
+            .webhook_store
+            .upsert(WebhookRecord {
+                token: "tok-list-del".to_string(),
+                tenant_id: "tenant-1".to_string(),
+                workflow_id: "workflow-1".to_string(),
+                workflow_version_id: "version-1".to_string(),
+                secret: None,
+                condition_expr: None,
+                max_calls_per_minute: None,
+                paused: false,
+                payload_transform_script: None,
+            })
+            .await
+            .unwrap();
+        // Pre-populate a delivery
+        state
+            .webhook_store
+            .record_delivery(WebhookDelivery {
+                id: "del-1".to_string(),
+                webhook_token: "tok-list-del".to_string(),
+                tenant_id: "tenant-1".to_string(),
+                delivered_at: 1_700_000_000,
+                status_code: Some(202),
+                success: true,
+                error_message: None,
+                execution_id: Some("exec-1".to_string()),
+            })
+            .await;
+        let app = build_router(state);
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/v1/webhooks/tok-list-del/deliveries")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let bytes = to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let list: Vec<serde_json::Value> = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(list.len(), 1);
+        assert_eq!(list[0]["success"], true);
+    }
+
+    #[tokio::test]
+    async fn webhook_condition_blocks_non_matching_payload() {
+        use crate::webhook::{WebhookRecord, WebhookStore};
+        let state = default_app_state();
+        state
+            .webhook_store
+            .upsert(WebhookRecord {
+                token: "cond-filter-tok".to_string(),
+                tenant_id: "tenant-1".to_string(),
+                workflow_id: "workflow-1".to_string(),
+                workflow_version_id: "version-1".to_string(),
+                secret: None,
+                condition_expr: Some("event == \"purchase\"".to_string()),
+                max_calls_per_minute: None,
+                paused: false,
+                payload_transform_script: None,
+            })
+            .await
+            .unwrap();
+        let app = build_router(state);
+
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/webhooks/cond-filter-tok")
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"event":"login"}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::ACCEPTED);
+        let bytes = to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let body: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert!(body["error"]
+            .as_str()
+            .unwrap_or("")
+            .starts_with("filtered:"));
+    }
+
+    #[tokio::test]
+    async fn webhook_condition_passes_matching_payload() {
+        use crate::webhook::{WebhookRecord, WebhookStore};
+        let state = default_app_state();
+        state
+            .webhook_store
+            .upsert(WebhookRecord {
+                token: "cond-match-tok".to_string(),
+                tenant_id: "tenant-1".to_string(),
+                workflow_id: "workflow-1".to_string(),
+                workflow_version_id: "version-1".to_string(),
+                secret: None,
+                condition_expr: Some("event == \"purchase\"".to_string()),
+                max_calls_per_minute: None,
+                paused: false,
+                payload_transform_script: None,
+            })
+            .await
+            .unwrap();
+        let app = build_router(state);
+
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/webhooks/cond-match-tok")
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"event":"purchase","amount":99.99}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::ACCEPTED);
+        let bytes = to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let body: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert!(body["id"].is_string());
+    }
+}

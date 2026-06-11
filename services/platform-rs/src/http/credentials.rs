@@ -261,3 +261,119 @@ pub(super) fn routes() -> Router<AppState> {
         )
         .route("/v1/env-sets", get(list_env_sets).delete(delete_env_set))
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::http::*;
+    use axum::body::{to_bytes, Body};
+    use axum::http::Request;
+    use axum::http::StatusCode;
+    use serde_json::json;
+    use tower::ServiceExt;
+
+    #[tokio::test]
+    async fn credential_update_endpoint_returns_200() {
+        let app = build_router(default_app_state());
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/credentials")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        json!({
+                            "tenant_id": "tenant-1",
+                            "name": "update-test-key",
+                            "value": "initial"
+                        })
+                        .to_string(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::CREATED);
+        let bytes = to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let body: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        let cred_id = body["id"].as_str().unwrap().to_string();
+
+        let resp2 = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("PATCH")
+                    .uri(format!("/v1/credentials/{cred_id}"))
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        json!({
+                            "tenant_id": "tenant-1",
+                            "description": "Updated key",
+                            "expires_at": 1999999999u64
+                        })
+                        .to_string(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp2.status(), StatusCode::OK);
+        let bytes2 = to_bytes(resp2.into_body(), usize::MAX).await.unwrap();
+        let body2: serde_json::Value = serde_json::from_slice(&bytes2).unwrap();
+        assert_eq!(body2["description"].as_str().unwrap(), "Updated key");
+        assert_eq!(body2["expires_at"].as_u64().unwrap(), 1999999999u64);
+    }
+
+    #[tokio::test]
+    async fn list_expiring_credentials_endpoint() {
+        use crate::credentials::CredentialStore;
+        let state = default_app_state();
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+        let c1 = state
+            .credential_store
+            .create("tenant-1", "soon-key-exp", "v")
+            .await
+            .unwrap();
+        state
+            .credential_store
+            .update("tenant-1", &c1.id, None, None, Some(Some(now + 5 * 86400)))
+            .await
+            .unwrap();
+        let c2 = state
+            .credential_store
+            .create("tenant-1", "far-key-exp", "v")
+            .await
+            .unwrap();
+        state
+            .credential_store
+            .update(
+                "tenant-1",
+                &c2.id,
+                None,
+                None,
+                Some(Some(now + 365 * 86400)),
+            )
+            .await
+            .unwrap();
+
+        let app = build_router(state);
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/v1/credentials/expiring?tenant_id=tenant-1&within_days=30")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let bytes = to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let body: Vec<serde_json::Value> = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(body.len(), 1);
+        assert_eq!(body[0]["name"].as_str().unwrap(), "soon-key-exp");
+    }
+}

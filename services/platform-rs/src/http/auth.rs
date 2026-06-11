@@ -624,3 +624,883 @@ pub(super) fn routes() -> Router<AppState> {
             post(resend_verification_handler),
         )
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::http::test_support::register_and_get_token;
+    use crate::http::*;
+    use axum::body::{to_bytes, Body};
+    use axum::http::Request;
+    use axum::http::StatusCode;
+    use serde_json::json;
+    use tower::ServiceExt;
+
+    #[tokio::test]
+    async fn create_token_returns_jwt_for_valid_key() {
+        // Uses default DEV_API_KEY = "dev"
+        let app = router();
+        let body = serde_json::json!({ "api_key": "dev" });
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/auth/token")
+                    .header("content-type", "application/json")
+                    .body(Body::from(body.to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let bytes = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        let resp: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert!(resp["token"]
+            .as_str()
+            .map(|t| t.len() > 20)
+            .unwrap_or(false));
+        assert_eq!(resp["tenant_id"], "tenant-1");
+        assert_eq!(resp["workspace_id"], "workspace-1");
+    }
+
+    #[tokio::test]
+    async fn create_token_rejects_wrong_key() {
+        // Uses default DEV_API_KEY = "dev"; submits wrong key
+        let app = router();
+        let body = serde_json::json!({ "api_key": "definitely-not-dev" });
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/auth/token")
+                    .header("content-type", "application/json")
+                    .body(Body::from(body.to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
+    async fn register_and_login_user() {
+        let app = router();
+
+        // Register
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/auth/register")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        json!({
+                            "email": "alice@example.com",
+                            "password": "hunter2",
+                            "name": "Alice"
+                        })
+                        .to_string(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::CREATED);
+        let bytes = to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let body: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert!(body["token"].as_str().is_some());
+        assert_eq!(body["user"]["email"], "alice@example.com");
+        assert_eq!(body["user"]["name"], "Alice");
+
+        // Login
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/auth/login")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        json!({
+                            "email": "alice@example.com",
+                            "password": "hunter2"
+                        })
+                        .to_string(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let bytes = to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let body: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert!(body["token"].as_str().is_some());
+    }
+
+    #[tokio::test]
+    async fn register_duplicate_email_returns_conflict() {
+        let app = router();
+
+        for _ in 0..2 {
+            let _ = app
+                .clone()
+                .oneshot(
+                    Request::builder()
+                        .method("POST")
+                        .uri("/v1/auth/register")
+                        .header("content-type", "application/json")
+                        .body(Body::from(
+                            json!({
+                                "email": "dup@example.com",
+                                "password": "secret"
+                            })
+                            .to_string(),
+                        ))
+                        .unwrap(),
+                )
+                .await
+                .unwrap();
+        }
+
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/auth/register")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        json!({
+                            "email": "dup@example.com",
+                            "password": "secret"
+                        })
+                        .to_string(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::CONFLICT);
+    }
+
+    #[tokio::test]
+    async fn login_wrong_password_returns_unauthorized() {
+        let app = router();
+
+        let _ = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/auth/register")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        json!({
+                            "email": "bob@example.com",
+                            "password": "correct"
+                        })
+                        .to_string(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/auth/login")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        json!({
+                            "email": "bob@example.com",
+                            "password": "wrong"
+                        })
+                        .to_string(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
+    async fn me_handler_returns_user_for_user_jwt() {
+        let app = router();
+
+        // Register to get a user token
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/auth/register")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        json!({
+                            "email": "carol@example.com",
+                            "password": "pass123"
+                        })
+                        .to_string(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let bytes = to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let reg: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        let token = reg["token"].as_str().unwrap().to_string();
+
+        // Use the token to call /me
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/v1/auth/me")
+                    .header("authorization", format!("Bearer {token}"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let bytes = to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let me: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(me["email"], "carol@example.com");
+    }
+
+    #[tokio::test]
+    async fn update_me_name() {
+        let app = router();
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/auth/register")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        json!({"email": "upme1@example.com", "password": "pass123"}).to_string(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let bytes = to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let reg: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        let token = reg["token"].as_str().unwrap().to_string();
+
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("PATCH")
+                    .uri("/v1/auth/me")
+                    .header("content-type", "application/json")
+                    .header("authorization", format!("Bearer {token}"))
+                    .body(Body::from(json!({"name": "Updated Name"}).to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let bytes = to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let me: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(me["name"], "Updated Name");
+    }
+
+    #[tokio::test]
+    async fn update_me_password_success() {
+        let app = router();
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/auth/register")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        json!({"email": "upme2@example.com", "password": "oldpass"}).to_string(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let bytes = to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let reg: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        let token = reg["token"].as_str().unwrap().to_string();
+
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("PATCH")
+                    .uri("/v1/auth/me")
+                    .header("content-type", "application/json")
+                    .header("authorization", format!("Bearer {token}"))
+                    .body(Body::from(
+                        json!({"current_password": "oldpass", "new_password": "newpass"})
+                            .to_string(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        // Verify login works with the new password
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/auth/login")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        json!({"email": "upme2@example.com", "password": "newpass"}).to_string(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn update_me_wrong_current_password_returns_401() {
+        let app = router();
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/auth/register")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        json!({"email": "upme3@example.com", "password": "rightpass"}).to_string(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let bytes = to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let reg: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        let token = reg["token"].as_str().unwrap().to_string();
+
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("PATCH")
+                    .uri("/v1/auth/me")
+                    .header("content-type", "application/json")
+                    .header("authorization", format!("Bearer {token}"))
+                    .body(Body::from(
+                        json!({"current_password": "wrongpass", "new_password": "newpass"})
+                            .to_string(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
+    async fn admin_list_users() {
+        let app = router();
+
+        // Register two users
+        for email in &["adm1@example.com", "adm2@example.com"] {
+            app.clone()
+                .oneshot(
+                    Request::builder()
+                        .method("POST")
+                        .uri("/v1/auth/register")
+                        .header("content-type", "application/json")
+                        .body(Body::from(
+                            json!({"email": email, "password": "pw"}).to_string(),
+                        ))
+                        .unwrap(),
+                )
+                .await
+                .unwrap();
+        }
+
+        // List users (no auth required in test mode)
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/v1/admin/users")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let bytes = to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let users: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert!(users.as_array().unwrap().len() >= 2);
+    }
+
+    #[tokio::test]
+    async fn admin_delete_user_success() {
+        let app = router();
+
+        // Register the user to delete
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/auth/register")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        json!({"email": "del_target@example.com", "password": "pw"}).to_string(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let bytes = to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let reg: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        let target_id = reg["user"]["id"].as_str().unwrap().to_string();
+
+        // Register admin caller (different user)
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/auth/register")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        json!({"email": "del_admin@example.com", "password": "pw"}).to_string(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let bytes = to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let admin_reg: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        let admin_token = admin_reg["token"].as_str().unwrap().to_string();
+
+        // Delete the target user
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("DELETE")
+                    .uri(format!("/v1/admin/users/{target_id}"))
+                    .header("authorization", format!("Bearer {admin_token}"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::NO_CONTENT);
+    }
+
+    #[tokio::test]
+    async fn admin_cannot_delete_self() {
+        let app = router();
+
+        // Register a user
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/auth/register")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        json!({"email": "del_self@example.com", "password": "pw"}).to_string(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let bytes = to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let reg: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        let token = reg["token"].as_str().unwrap().to_string();
+        let user_id = reg["user"]["id"].as_str().unwrap().to_string();
+
+        // Attempt to delete own account
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("DELETE")
+                    .uri(format!("/v1/admin/users/{user_id}"))
+                    .header("authorization", format!("Bearer {token}"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+    }
+
+    #[tokio::test]
+    async fn add_member_and_switch_org() {
+        let app = router();
+        let owner_token = register_and_get_token(app.clone(), "owner2@org.test").await;
+
+        // Register second user
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/auth/register")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        json!({"email": "member@org.test", "password": "pw1234"}).to_string(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let bytes = to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let member_data: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        let member_id = member_data["user"]["id"].as_str().unwrap().to_string();
+        let member_token = member_data["token"].as_str().unwrap().to_string();
+
+        // Create org
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/orgs")
+                    .header("content-type", "application/json")
+                    .header("authorization", format!("Bearer {owner_token}"))
+                    .body(Body::from(json!({"name": "Beta Inc"}).to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let bytes = to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let org: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        let org_id = org["id"].as_str().unwrap().to_string();
+
+        // Add member
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!("/v1/orgs/{org_id}/members"))
+                    .header("content-type", "application/json")
+                    .header("authorization", format!("Bearer {owner_token}"))
+                    .body(Body::from(
+                        json!({"user_id": member_id, "role": "editor"}).to_string(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::CREATED);
+
+        // Switch org as member
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!("/v1/orgs/{org_id}/switch"))
+                    .header("authorization", format!("Bearer {member_token}"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let bytes = to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let switched: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert!(switched["token"].as_str().is_some());
+        assert_eq!(switched["org_id"], org_id);
+    }
+
+    #[tokio::test]
+    async fn forgot_password_always_returns_ok() {
+        let app = router();
+
+        // Unknown email still returns 200 (no enumeration)
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/auth/forgot-password")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        json!({"email": "nobody@example.com"}).to_string(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let bytes = to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let body: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert!(body["message"].as_str().is_some());
+    }
+
+    #[tokio::test]
+    async fn password_reset_full_flow() {
+        let app = router();
+
+        // Register a user
+        let email = "resetme@test.com";
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/auth/register")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        json!({"email": email, "password": "oldpassword"}).to_string(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::CREATED);
+
+        // Request a reset
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/auth/forgot-password")
+                    .header("content-type", "application/json")
+                    .body(Body::from(json!({"email": email}).to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let bytes = to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let body: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        // In dev mode (AUTH_REQUIRED not set) the token is returned
+        let token = body["token"]
+            .as_str()
+            .expect("token returned in dev mode")
+            .to_string();
+
+        // Reset with new password
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/auth/reset-password")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        json!({"token": token, "new_password": "newpassword123"}).to_string(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        // Login with new password succeeds
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/auth/login")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        json!({"email": email, "password": "newpassword123"}).to_string(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        // Old password no longer works
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/auth/login")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        json!({"email": email, "password": "oldpassword"}).to_string(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+
+        // Token cannot be reused
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/auth/reset-password")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        json!({"token": token, "new_password": "anotherpassword"}).to_string(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::GONE);
+    }
+
+    #[tokio::test]
+    async fn reset_password_rejects_short_password() {
+        let app = router();
+
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/auth/reset-password")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        json!({"token": "fake-token", "new_password": "abc"}).to_string(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn email_verification_full_flow() {
+        let app = router();
+
+        // Register a user — email_verified should be false initially
+        let email = "verify@test.com";
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/auth/register")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        json!({"email": email, "password": "password123"}).to_string(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::CREATED);
+        let bytes = to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let body: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(body["user"]["email_verified"].as_bool(), Some(false));
+
+        // Resend verification always returns 200 (enumeration safe)
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/auth/resend-verification")
+                    .header("content-type", "application/json")
+                    .body(Body::from(json!({"email": email}).to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        // Verify with invalid token returns 404
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/auth/verify-email")
+                    .header("content-type", "application/json")
+                    .body(Body::from(json!({"token": "no-such-token"}).to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn notification_prefs_get_and_update() {
+        let app = router();
+        let token = register_and_get_token(app.clone(), "notif@test.com").await;
+
+        // Default prefs: both false
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/v1/auth/me/notifications")
+                    .header("authorization", format!("Bearer {}", token))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let bytes = to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let body: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(body["email_on_failure"].as_bool(), Some(false));
+        assert_eq!(body["email_on_success"].as_bool(), Some(false));
+
+        // Update prefs
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("PUT")
+                    .uri("/v1/auth/me/notifications")
+                    .header("authorization", format!("Bearer {}", token))
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        json!({"email_on_failure": true, "email_on_success": false}).to_string(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        // Verify persisted
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/v1/auth/me/notifications")
+                    .header("authorization", format!("Bearer {}", token))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let bytes = to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let body: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(body["email_on_failure"].as_bool(), Some(true));
+        assert_eq!(body["email_on_success"].as_bool(), Some(false));
+    }
+}

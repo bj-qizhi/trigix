@@ -2409,6 +2409,590 @@ pub(crate) fn push_notification(
         .create(tenant_id, user_id, title, body, level);
 }
 
+/// Test helpers shared across the per-domain test modules.
 #[cfg(test)]
-#[path = "http_tests.rs"]
-mod tests;
+pub(crate) mod test_support {
+    use axum::body::{to_bytes, Body};
+    use axum::http::Request;
+    use serde_json::json;
+    use tower::ServiceExt;
+
+    /// Register a fresh user and return their JWT.
+    pub(crate) async fn register_and_get_token(app: axum::Router, email: &str) -> String {
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/auth/register")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        json!({"email": email, "password": "pw1234"}).to_string(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let bytes = to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let body: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        body["token"].as_str().unwrap().to_string()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use axum::body::{to_bytes, Body};
+    use axum::http::Request;
+    use axum::http::StatusCode;
+    use serde_json::json;
+    use tower::ServiceExt;
+
+    #[tokio::test]
+    async fn creates_lists_and_deletes_credentials_over_http() {
+        let app = router();
+
+        // List empty
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/v1/credentials?tenant_id=tenant-1")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        let list: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(list.as_array().unwrap().len(), 0);
+
+        // Create
+        let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/v1/credentials")
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({"tenant_id": "tenant-1", "name": "my-api-key", "value": "sk-secret"})
+                        .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+        assert_eq!(response.status(), StatusCode::CREATED);
+        let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        let cred: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(cred["name"], "my-api-key");
+        assert!(cred.get("value").is_none(), "value must not be returned");
+        let cred_id = cred["id"].as_str().unwrap().to_string();
+
+        // List shows one
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/v1/credentials?tenant_id=tenant-1")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        let list: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(list.as_array().unwrap().len(), 1);
+
+        // Delete
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("DELETE")
+                    .uri(format!("/v1/credentials/{cred_id}?tenant_id=tenant-1"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::NO_CONTENT);
+
+        // List empty again
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/v1/credentials?tenant_id=tenant-1")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        let list: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(list.as_array().unwrap().len(), 0);
+    }
+
+    #[test]
+    fn effective_tenant_id_jwt_always_wins() {
+        // JWT present → JWT tenant_id wins regardless of auth_required flag.
+        let claims_a = Some(Claims {
+            sub: "user".to_string(),
+            tenant_id: "tenant-a".to_string(),
+            workspace_id: "ws".to_string(),
+            project_id: "proj".to_string(),
+            exp: u64::MAX,
+            role: crate::auth::Role::Editor,
+            ..Default::default()
+        });
+        // Even in dev mode (auth_required=false), JWT tenant cannot be spoofed.
+        assert_eq!(
+            effective_tenant_id_with_flag(false, &claims_a, "tenant-b"),
+            "tenant-a"
+        );
+        // No JWT → fall back to supplied (dev mode only).
+        assert_eq!(
+            effective_tenant_id_with_flag(false, &None, "tenant-b"),
+            "tenant-b"
+        );
+    }
+
+    #[test]
+    fn effective_tenant_id_auth_mode_uses_jwt_tenant() {
+        // auth_required=true + claims → JWT tenant overrides supplied value
+        let claims_a = Some(Claims {
+            sub: "user".to_string(),
+            tenant_id: "tenant-a".to_string(),
+            workspace_id: "ws".to_string(),
+            project_id: "proj".to_string(),
+            exp: u64::MAX,
+            role: crate::auth::Role::Editor,
+            ..Default::default()
+        });
+        // Claims present → JWT tenant wins
+        assert_eq!(
+            effective_tenant_id_with_flag(true, &claims_a, "tenant-b"),
+            "tenant-a",
+            "JWT tenant should override supplied value"
+        );
+        // No claims → fallback to supplied
+        assert_eq!(
+            effective_tenant_id_with_flag(true, &None, "tenant-b"),
+            "tenant-b",
+            "No claims → use supplied fallback"
+        );
+    }
+
+    #[tokio::test]
+    async fn jwt_claims_injected_into_extensions() {
+        // Verify that a valid Bearer token causes claims to be available in extensions,
+        // and that GET /v1/executions succeeds with a JWT (dev mode, no AUTH_REQUIRED).
+        use crate::auth::{sign_token, Claims};
+
+        let app = router();
+
+        let claims = Claims {
+            sub: "user".to_string(),
+            tenant_id: "tenant-a".to_string(),
+            workspace_id: "ws".to_string(),
+            project_id: "proj".to_string(),
+            exp: u64::MAX,
+            role: crate::auth::Role::Editor,
+            ..Default::default()
+        };
+        let token = sign_token(&claims).unwrap();
+
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/v1/executions?tenant_id=tenant-a")
+                    .header("Authorization", format!("Bearer {token}"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let bytes = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        let payload: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        // Tenant-A has no executions in fresh router → empty array
+        assert!(payload.as_array().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn search_empty_query_returns_all() {
+        let app = router();
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/v1/search?q=&tenant_id=t1")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let bytes = to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let result: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert!(result["workflows"].is_array());
+        assert!(result["executions"].is_array());
+    }
+
+    #[test]
+    fn rbac_viewer_blocked_from_write() {
+        use crate::auth::{Claims, Role};
+        let viewer = Some(Claims {
+            sub: "u".to_string(),
+            tenant_id: "t".to_string(),
+            workspace_id: "w".to_string(),
+            project_id: "p".to_string(),
+            exp: u64::MAX,
+            role: Role::Viewer,
+            ..Default::default()
+        });
+        // dev mode: always allowed
+        assert!(require_write_inner(&viewer, false).is_ok());
+        // enforced: viewer blocked
+        assert!(require_write_inner(&viewer, true).is_err());
+    }
+
+    #[test]
+    fn rbac_editor_allowed_to_write() {
+        use crate::auth::{Claims, Role};
+        let editor = Some(Claims {
+            sub: "u".to_string(),
+            tenant_id: "t".to_string(),
+            workspace_id: "w".to_string(),
+            project_id: "p".to_string(),
+            exp: u64::MAX,
+            role: Role::Editor,
+            ..Default::default()
+        });
+        assert!(require_write_inner(&editor, true).is_ok());
+    }
+
+    #[test]
+    fn rbac_no_claims_blocked_when_enforced() {
+        assert!(require_write_inner(&None, true).is_err());
+        assert!(require_admin_inner(&None, true).is_err());
+        // dev mode: always allowed even without claims
+        assert!(require_write_inner(&None, false).is_ok());
+        assert!(require_admin_inner(&None, false).is_ok());
+    }
+
+    #[test]
+    fn rbac_editor_cannot_perform_admin_ops() {
+        use crate::auth::{Claims, Role};
+        let editor = Some(Claims {
+            sub: "u".to_string(),
+            tenant_id: "t".to_string(),
+            workspace_id: "w".to_string(),
+            project_id: "p".to_string(),
+            exp: u64::MAX,
+            role: Role::Editor,
+            ..Default::default()
+        });
+        assert!(require_admin_inner(&editor, true).is_err());
+    }
+
+    #[test]
+    fn rbac_admin_can_perform_all_ops() {
+        use crate::auth::{Claims, Role};
+        let admin = Some(Claims {
+            sub: "u".to_string(),
+            tenant_id: "t".to_string(),
+            workspace_id: "w".to_string(),
+            project_id: "p".to_string(),
+            exp: u64::MAX,
+            role: Role::Admin,
+            ..Default::default()
+        });
+        assert!(require_write_inner(&admin, true).is_ok());
+        assert!(require_admin_inner(&admin, true).is_ok());
+    }
+
+    // ── Form store HTTP tests ───────────────────────────────────────────────
+
+    #[tokio::test]
+    async fn event_subscriptions_crud() {
+        let app = router();
+
+        // List — initially empty
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/v1/event-subscriptions?tenant_id=t1")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let bytes = to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let list: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(list.as_array().unwrap().len(), 0);
+
+        // Create
+        let resp = app.clone().oneshot(
+            Request::builder().method("POST").uri("/v1/event-subscriptions")
+                .header("content-type", "application/json")
+                .body(Body::from(json!({"tenant_id":"t1","url":"https://example.com/hook","events":["execution.started"],"description":"test hook"}).to_string())).unwrap()
+        ).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::CREATED);
+        let bytes = to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let sub: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        let sub_id = sub["id"].as_str().unwrap().to_string();
+        assert_eq!(sub["url"].as_str(), Some("https://example.com/hook"));
+        assert_eq!(sub["description"].as_str(), Some("test hook"));
+        assert_eq!(sub["events"].as_array().unwrap().len(), 1);
+
+        // List — now has one
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/v1/event-subscriptions?tenant_id=t1")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let bytes = to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let list: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(list.as_array().unwrap().len(), 1);
+
+        // Delete
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("DELETE")
+                    .uri(format!("/v1/event-subscriptions/{sub_id}?tenant_id=t1"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::NO_CONTENT);
+
+        // List — empty again
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/v1/event-subscriptions?tenant_id=t1")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let bytes = to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let list: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(list.as_array().unwrap().len(), 0);
+    }
+
+    #[tokio::test]
+    async fn webhook_replay_protection_rejects_stale_timestamp() {
+        use crate::webhook::{WebhookRecord, WebhookStore};
+
+        // Build state and insert a webhook record directly with a secret
+        let state = super::default_app_state();
+        let token = "replay-token-secret".to_string();
+        state
+            .webhook_store
+            .upsert(WebhookRecord {
+                token: token.clone(),
+                tenant_id: "tenant-1".to_string(),
+                workflow_id: "workflow-1".to_string(),
+                workflow_version_id: "version-1".to_string(),
+                secret: Some("replay-secret".to_string()),
+                condition_expr: None,
+                max_calls_per_minute: None,
+                paused: false,
+                payload_transform_script: None,
+            })
+            .await
+            .unwrap();
+
+        let app = super::build_router(state);
+
+        // Trigger with stale timestamp (epoch 0 far outside ±300s) → expect 400
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!("/v1/webhooks/{token}"))
+                    .header("content-type", "application/json")
+                    .header("x-trigix-timestamp", "0")
+                    .header("x-webhook-signature", "invalid")
+                    .body(Body::from("{}"))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn webhook_without_secret_skips_replay_check() {
+        use crate::webhook::{WebhookRecord, WebhookStore};
+
+        // Insert a webhook record WITHOUT a secret — replay check must not fire
+        let state = super::default_app_state();
+        let token = "replay-token-nosecret".to_string();
+        state
+            .webhook_store
+            .upsert(WebhookRecord {
+                token: token.clone(),
+                tenant_id: "tenant-1".to_string(),
+                workflow_id: "workflow-1".to_string(),
+                workflow_version_id: "version-1".to_string(),
+                secret: None,
+                condition_expr: None,
+                max_calls_per_minute: None,
+                paused: false,
+                payload_transform_script: None,
+            })
+            .await
+            .unwrap();
+
+        let app = super::build_router(state);
+
+        // No timestamp header, no secret → must NOT return 400 (replay check skipped)
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!("/v1/webhooks/{token}"))
+                    .header("content-type", "application/json")
+                    .body(Body::from("{}"))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_ne!(resp.status(), StatusCode::BAD_REQUEST);
+    }
+
+    // ── Slice 359: Workflow version rollback ──────────────────────────────────
+
+    #[tokio::test]
+    async fn notifications_list_and_mark_read() {
+        use crate::notifications::NotificationStore;
+        let state = default_app_state();
+        state.notification_store.create(
+            "tenant-1",
+            None,
+            "Test alert",
+            "Something happened",
+            "warning",
+        );
+        let app = build_router(state);
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/v1/notifications?tenant_id=tenant-1")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let bytes = to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let body: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(body["unread_count"], 1);
+        assert_eq!(body["notifications"].as_array().unwrap().len(), 1);
+        let notif_id = body["notifications"][0]["id"].as_str().unwrap().to_string();
+
+        let resp2 = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!("/v1/notifications/{notif_id}/read"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp2.status(), StatusCode::OK);
+    }
+
+    // ── Slice 393: Webhook condition filter ────────────────────────────────────
+
+    #[test]
+    fn eval_condition_unit_tests() {
+        use crate::webhook::eval_condition;
+        let payload =
+            serde_json::json!({ "event": "purchase", "amount": 150.0, "nested": { "x": true } });
+        assert!(eval_condition("event == \"purchase\"", &payload));
+        assert!(!eval_condition("event == \"login\"", &payload));
+        assert!(eval_condition("event != \"login\"", &payload));
+        assert!(eval_condition("amount > 100", &payload));
+        assert!(!eval_condition("amount > 200", &payload));
+        assert!(eval_condition("amount < 200", &payload));
+        assert!(eval_condition("nested.x == true", &payload));
+        assert!(!eval_condition("nested.y == \"foo\"", &payload));
+        assert!(eval_condition("", &payload));
+    }
+
+    // ── Slice 395: Credential expiry ───────────────────────────────────────────
+
+    #[tokio::test]
+    async fn credential_update_and_expiry() {
+        use crate::credentials::CredentialStore;
+        let state = default_app_state();
+        let cred = state
+            .credential_store
+            .create("tenant-1", "my-key", "secret-value")
+            .await
+            .unwrap();
+
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+        let expires_soon = now + 3 * 86400;
+        let updated = state
+            .credential_store
+            .update(
+                "tenant-1",
+                &cred.id,
+                Some("new-secret"),
+                Some(Some("A description")),
+                Some(Some(expires_soon)),
+            )
+            .await
+            .unwrap();
+        assert_eq!(updated.description.as_deref(), Some("A description"));
+        assert_eq!(updated.expires_at, Some(expires_soon));
+
+        let expiring = state
+            .credential_store
+            .list_expiring("tenant-1", now + 7 * 86400)
+            .await
+            .unwrap();
+        assert_eq!(expiring.len(), 1);
+        assert_eq!(expiring[0].id, cred.id);
+
+        let not_expiring = state
+            .credential_store
+            .list_expiring("tenant-1", now + 86400)
+            .await
+            .unwrap();
+        assert_eq!(not_expiring.len(), 0);
+    }
+}

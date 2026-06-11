@@ -214,3 +214,36 @@ pub(super) fn routes() -> Router<AppState> {
         .route("/v1/billing/portal", post(billing_portal_handler))
         .route("/v1/stripe/webhook", post(stripe_webhook_handler))
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::http::*;
+    use axum::body::{to_bytes, Body};
+    use axum::http::Request;
+    use axum::http::StatusCode;
+    use serde_json::json;
+    use tower::ServiceExt;
+
+    #[tokio::test]
+    async fn billing_status_endpoint_returns_ok() {
+        let app = router();
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/v1/billing/status")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let bytes = to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let v: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert!(v.get("quota").is_some());
+        assert!(v.get("usage").is_some());
+        assert!(v.get("usage_pct").is_some());
+    }
+
+    // ── Slice 358: Webhook replay protection ──────────────────────────────────
+}
