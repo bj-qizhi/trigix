@@ -294,6 +294,27 @@ fn node_config_u64(node: &Node, key: &str) -> Option<u64> {
     node.config.as_ref()?.get(key)?.as_u64()
 }
 
+/// Run a CPU-bound *synchronous* node executor on Tokio's blocking pool.
+///
+/// The runtime executes every node in a graph level concurrently on a single
+/// async task (`join_all`), so a long interpreted-script (Rhai) or regex
+/// evaluation that ran inline would stall the whole level — the I/O-bound
+/// siblings can't make progress while one CPU-bound node hogs the worker.
+/// Offloading to `spawn_blocking` keeps the async worker free. Node/context are
+/// cloned because the blocking closure must be `'static`.
+async fn run_blocking(
+    node: &Node,
+    context: &ExecutionContext,
+    f: fn(&Node, &ExecutionContext) -> NodeExecutionResult,
+) -> NodeExecutionResult {
+    let node = node.clone();
+    let context = context.clone();
+    match tokio::task::spawn_blocking(move || f(&node, &context)).await {
+        Ok(result) => result,
+        Err(e) => NodeExecutionResult::failed(format!("blocking node task failed: {e}")),
+    }
+}
+
 async fn dispatch_with_timeout(
     node: &Node,
     context: &ExecutionContext,
@@ -385,7 +406,7 @@ async fn dispatch(
         NodeType::Catch => execute_catch(node, context),
         NodeType::FanOut => execute_fan_out(context),
         NodeType::FanIn => execute_fan_in(node, context),
-        NodeType::Code => execute_code(node, context),
+        NodeType::Code => run_blocking(node, context, execute_code).await,
         NodeType::Slack => execute_slack(node, context, http_client).await,
         NodeType::Email => execute_email(node, context, http_client).await,
         NodeType::Openai => execute_openai(node, context, http_client).await,
@@ -403,7 +424,7 @@ async fn dispatch(
         NodeType::Switch => execute_switch(node, context),
         NodeType::Random => execute_random(node, context),
         NodeType::Dedupe => execute_dedupe(node, context),
-        NodeType::Regex => execute_regex(node, context),
+        NodeType::Regex => run_blocking(node, context, execute_regex).await,
         NodeType::Csv => execute_csv(node, context),
         NodeType::Rename => execute_rename(node, context),
         NodeType::Format => execute_format(node, context),
@@ -429,7 +450,7 @@ async fn dispatch(
         NodeType::Elasticsearch => execute_elasticsearch(node, context, http_client).await,
         NodeType::Pagerduty => execute_pagerduty(node, context, http_client).await,
         NodeType::Handlebars => execute_handlebars(node, context),
-        NodeType::Math => execute_math(node, context),
+        NodeType::Math => run_blocking(node, context, execute_math).await,
         NodeType::ArrayUtils => execute_array_utils(node, context),
         NodeType::Shopify => execute_shopify(node, context, http_client).await,
         NodeType::Datadog => execute_datadog(node, context, http_client).await,
