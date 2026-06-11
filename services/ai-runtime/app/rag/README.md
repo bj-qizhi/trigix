@@ -6,9 +6,11 @@ retrieve the nearest chunks for a query.
 ## Pieces
 
 - `chunking.py` — split documents into overlapping, boundary-aware windows.
-- `embeddings.py` — OpenAI `text-embedding-3-small` when `OPENAI_API_KEY` is
-  set; otherwise a deterministic local hashing embedding so RAG works offline
-  and is fully testable. Both produce `EMBED_DIM` (default 1536) vectors.
+- `embeddings.py` — a remote OpenAI-compatible embeddings endpoint when an API
+  key or `EMBED_BASE_URL` is set (OpenAI, or a China-reachable / self-hosted one:
+  DashScope, bge-m3 via vLLM/TEI, SiliconFlow…); otherwise a deterministic local
+  hashing embedding so RAG works offline and is fully testable. Both produce
+  `EMBED_DIM` (default 1536) vectors.
 - `store.py` — owns its pgvector schema (`af_kb_chunks`) with an HNSW vector
   index and a full-text index; ingest replaces a document's chunks, query
   retrieves the most relevant ones.
@@ -41,7 +43,9 @@ These compose: hybrid → rerank → score floor.
 
 | Env | Effect |
 |-----|--------|
-| `OPENAI_API_KEY` | Use OpenAI embeddings instead of the local fallback |
+| `OPENAI_API_KEY` | Use real embeddings (OpenAI) instead of the local fallback |
+| `EMBED_BASE_URL` / `EMBED_API_KEY` | Point embeddings at a self-hosted / China-reachable OpenAI-compatible endpoint (DashScope, bge-m3 via vLLM/TEI…). Key is optional for keyless self-hosted servers |
+| `EMBED_MODEL` / `EMBED_DIM` | Embedding model name and its vector dimension (match the model, e.g. bge-m3 → 1024) |
 | `RERANK_BASE_URL` / `RERANK_MODEL` / `RERANK_API_KEY` | Enable a real cross-encoder reranker |
 | `RAG_FTS_CONFIG` | Text-search config for hybrid's lexical side |
 

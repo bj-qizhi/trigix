@@ -45,6 +45,11 @@ services:
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       RAG_FTS_CONFIG: ${RAG_FTS_CONFIG:-}
       RERANK_BASE_URL: ${RERANK_BASE_URL:-}
+      # Self-hosted / China-reachable embeddings (DashScope, bge-m3 via vLLM/TEI…).
+      EMBED_BASE_URL: ${EMBED_BASE_URL:-}
+      EMBED_API_KEY: ${EMBED_API_KEY:-}
+      EMBED_MODEL: ${EMBED_MODEL:-}
+      EMBED_DIM: ${EMBED_DIM:-}
     healthcheck:
       test: ["CMD-SHELL", "python -c \"import urllib.request;urllib.request.urlopen('http://localhost:8000/healthz')\""]
       interval: 15s

@@ -11,7 +11,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from .chunking import chunk_text
-from .embeddings import EMBED_DIM, using_openai
+from .embeddings import EMBED_DIM, backend_name
 from .store import RagStore
 
 router = APIRouter(prefix="/v1/rag", tags=["rag"])
@@ -81,7 +81,7 @@ async def ingest(req: IngestRequest) -> IngestResponse:
     return IngestResponse(
         doc_id=req.doc_id,
         chunks=n,
-        backend="openai" if using_openai() else "local",
+        backend=backend_name(),
         dim=EMBED_DIM,
     )
 
