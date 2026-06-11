@@ -1343,19 +1343,23 @@ impl ExecutionStore for PostgresExecutionStore {
         .await
         .map_err(|_| ExecutionError::StoreUnavailable)?;
 
-        sqlx::query(r#"DELETE FROM af_node_executions WHERE tenant_id = $1 AND execution_id = $2"#)
-            .bind(tenant_id)
-            .bind(execution_id)
-            .execute(&self.pool)
-            .await
-            .map_err(|_| ExecutionError::StoreUnavailable)?;
-
+        // Upsert each node result keyed on (tenant_id, execution_id, node_id).
+        // The live progress callback may have already written some of these rows
+        // (and may still be racing to), so a delete-then-insert here could
+        // duplicate; the unique index lets both writers converge on one row.
         for node in node_results {
             let output_json = parse_optional_json(node.output_json.as_deref())?;
             sqlx::query(
                 r#"
                 INSERT INTO af_node_executions (id, tenant_id, execution_id, node_id, node_type, status, output_json, error, duration_ms, started_at_ms)
                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+                ON CONFLICT (tenant_id, execution_id, node_id) DO UPDATE SET
+                    node_type = EXCLUDED.node_type,
+                    status = EXCLUDED.status,
+                    output_json = EXCLUDED.output_json,
+                    error = EXCLUDED.error,
+                    duration_ms = EXCLUDED.duration_ms,
+                    started_at_ms = EXCLUDED.started_at_ms
                 "#,
             )
             .bind(next_id())
@@ -1418,17 +1422,9 @@ impl ExecutionStore for PostgresExecutionStore {
         execution_id: &str,
         node_result: NodeExecutionRecord,
     ) -> Result<(), ExecutionError> {
-        // Remove any prior entry for this node (e.g. a previous status) then insert fresh.
-        sqlx::query(
-            r#"DELETE FROM af_node_executions WHERE tenant_id = $1 AND execution_id = $2 AND node_id = $3"#,
-        )
-        .bind(tenant_id)
-        .bind(execution_id)
-        .bind(&node_result.node_id)
-        .execute(&self.pool)
-        .await
-        .map_err(|_| ExecutionError::StoreUnavailable)?;
-
+        // Upsert this node's row (a later status for the same node replaces the
+        // earlier one). Keyed on (tenant_id, execution_id, node_id) so this can
+        // race with `complete` without leaving duplicate rows.
         let output_json = parse_optional_json(node_result.output_json.as_deref())?;
         let is_terminal = matches!(
             node_result.status,
@@ -1438,6 +1434,13 @@ impl ExecutionStore for PostgresExecutionStore {
             r#"
             INSERT INTO af_node_executions (id, tenant_id, execution_id, node_id, node_type, status, output_json, error, duration_ms, started_at_ms)
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+            ON CONFLICT (tenant_id, execution_id, node_id) DO UPDATE SET
+                node_type = EXCLUDED.node_type,
+                status = EXCLUDED.status,
+                output_json = EXCLUDED.output_json,
+                error = EXCLUDED.error,
+                duration_ms = EXCLUDED.duration_ms,
+                started_at_ms = EXCLUDED.started_at_ms
             "#,
         )
         .bind(next_id())

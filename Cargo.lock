@@ -650,7 +650,12 @@ dependencies = [
 name = "execution-core"
 version = "1.2.0"
 dependencies = [
+ "futures",
  "serde",
+ "serde_json",
+ "tokio",
+ "tracing",
+ "workflow-core",
 ]
 
 [[package]]
