@@ -130,6 +130,14 @@ async fn register_user(
     Json(body): Json<RegisterRequest>,
 ) -> Result<(StatusCode, Json<AuthResponse>), ApiError> {
     enforce_captcha(&state, body.captcha_token.as_deref(), &headers).await?;
+    if crate::disposable_email::blocking_enabled()
+        && crate::disposable_email::is_disposable(&body.email)
+    {
+        return Err(ApiError {
+            status: StatusCode::BAD_REQUEST,
+            message: "Disposable email addresses are not allowed".to_string(),
+        });
+    }
     let tenant_id = body.tenant_id.unwrap_or_else(|| "tenant-1".to_string());
     let store = &state.user_store;
     let user = tokio::task::spawn_blocking({
@@ -816,6 +824,29 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(resp.status(), StatusCode::CONFLICT);
+    }
+
+    #[tokio::test]
+    async fn register_disposable_email_rejected() {
+        let app = router();
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/auth/register")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        json!({
+                            "email": "farm@mailinator.com",
+                            "password": "secret"
+                        })
+                        .to_string(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
     }
 
     #[tokio::test]

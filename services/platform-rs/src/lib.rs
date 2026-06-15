@@ -20,6 +20,7 @@ pub mod test_cases;
 
 pub mod billing;
 pub mod captcha;
+pub mod disposable_email;
 pub mod email;
 pub mod email_verification;
 pub mod invitations;
