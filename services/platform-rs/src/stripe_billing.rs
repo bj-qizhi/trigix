@@ -164,6 +164,23 @@ impl StripeClient {
     }
 }
 
+/// Returns whether the `t=<unix_ts>` in a `Stripe-Signature` header is within
+/// `tolerance_secs` of `now_secs`. The timestamp is part of the HMAC-signed
+/// payload, so it can't be altered without the secret — checking it against the
+/// current time rejects replays of a captured (still validly-signed) request
+/// once it ages past the window. Returns `false` when `t` is missing or
+/// unparseable.
+pub fn webhook_timestamp_fresh(sig_header: &str, now_secs: i64, tolerance_secs: i64) -> bool {
+    let Some(ts) = sig_header
+        .split(',')
+        .find_map(|p| p.strip_prefix("t="))
+        .and_then(|v| v.trim().parse::<i64>().ok())
+    else {
+        return false;
+    };
+    (now_secs - ts).abs() <= tolerance_secs
+}
+
 /// Builds the form parameters for a Stripe Billing Meter Event. Extracted so the
 /// Stripe wire contract (default payload keys `stripe_customer_id` / `value`) can
 /// be unit-tested without hitting the network.
@@ -285,6 +302,21 @@ mod tests {
     #[test]
     fn price_to_tier_unknown_returns_none() {
         assert!(price_id_to_tier("price_unknown").is_none());
+    }
+
+    #[test]
+    fn webhook_timestamp_freshness() {
+        let now = 1_700_000_000i64;
+        // Within tolerance: exactly now, and 200s old.
+        assert!(webhook_timestamp_fresh("t=1700000000,v1=abc", now, 300));
+        assert!(webhook_timestamp_fresh("t=1699999800,v1=abc", now, 300));
+        // 400s old → a replayed request ages out.
+        assert!(!webhook_timestamp_fresh("t=1699999600,v1=abc", now, 300));
+        // 400s in the future → clock skew beyond tolerance.
+        assert!(!webhook_timestamp_fresh("t=1700000400,v1=abc", now, 300));
+        // Missing / unparseable timestamp is rejected.
+        assert!(!webhook_timestamp_fresh("v1=abc", now, 300));
+        assert!(!webhook_timestamp_fresh("t=notanumber,v1=abc", now, 300));
     }
 
     #[test]

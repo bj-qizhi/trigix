@@ -119,6 +119,20 @@ async fn stripe_webhook_handler(
     if !StripeClient::verify_webhook_signature(&body, sig, &secret) {
         return (StatusCode::BAD_REQUEST, "invalid signature").into_response();
     }
+    // Reject events whose signed timestamp is outside the tolerance window
+    // (default 5 min, matching Stripe's SDKs) so a captured request can't be
+    // replayed indefinitely.
+    let tolerance = std::env::var("STRIPE_WEBHOOK_TOLERANCE_SECS")
+        .ok()
+        .and_then(|s| s.parse::<i64>().ok())
+        .unwrap_or(300);
+    if !crate::stripe_billing::webhook_timestamp_fresh(
+        sig,
+        crate::execution::unix_now() as i64,
+        tolerance,
+    ) {
+        return (StatusCode::BAD_REQUEST, "stale webhook timestamp").into_response();
+    }
 
     let Ok(event) = serde_json::from_slice::<serde_json::Value>(&body) else {
         return (StatusCode::BAD_REQUEST, "invalid json").into_response();
