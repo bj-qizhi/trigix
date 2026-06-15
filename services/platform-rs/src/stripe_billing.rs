@@ -110,6 +110,27 @@ impl StripeClient {
             .ok_or_else(|| "Stripe portal session missing url field".to_string())
     }
 
+    /// Reports a usage event to a Stripe Billing Meter via the Meter Events API
+    /// (`POST /v1/billing/meter_events`).
+    ///
+    /// `event_name` must match the Stripe meter's configured event name. The
+    /// default meter payload maps the customer through `stripe_customer_id` and
+    /// reads the quantity from `value`. `identifier` deduplicates retried sends
+    /// so an at-least-once caller cannot double-bill within the same meter window.
+    pub async fn report_meter_event(
+        &self,
+        event_name: &str,
+        customer_id: &str,
+        value: i64,
+        identifier: &str,
+    ) -> Result<(), String> {
+        let value = value.to_string();
+        let params = meter_event_params(event_name, identifier, customer_id, value.as_str());
+        self.stripe_post("/v1/billing/meter_events", &params)
+            .await
+            .map(|_| ())
+    }
+
     /// Verifies a `Stripe-Signature` header using HMAC-SHA256.
     ///
     /// Header format: `t=<unix_ts>,v1=<hex_hmac>`
@@ -141,6 +162,23 @@ impl StripeClient {
             .iter()
             .any(|s| constant_time_eq(s.as_bytes(), computed.as_bytes()))
     }
+}
+
+/// Builds the form parameters for a Stripe Billing Meter Event. Extracted so the
+/// Stripe wire contract (default payload keys `stripe_customer_id` / `value`) can
+/// be unit-tested without hitting the network.
+fn meter_event_params<'a>(
+    event_name: &'a str,
+    identifier: &'a str,
+    customer_id: &'a str,
+    value: &'a str,
+) -> [(&'static str, &'a str); 4] {
+    [
+        ("event_name", event_name),
+        ("identifier", identifier),
+        ("payload[stripe_customer_id]", customer_id),
+        ("payload[value]", value),
+    ]
 }
 
 /// Maps a Stripe Price ID → tier name using env vars.
@@ -247,5 +285,14 @@ mod tests {
     #[test]
     fn price_to_tier_unknown_returns_none() {
         assert!(price_id_to_tier("price_unknown").is_none());
+    }
+
+    #[test]
+    fn meter_event_params_shape_matches_stripe_contract() {
+        let params = meter_event_params("trigix_tokens", "id-1", "cus_42", "1500");
+        assert_eq!(params[0], ("event_name", "trigix_tokens"));
+        assert_eq!(params[1], ("identifier", "id-1"));
+        assert_eq!(params[2], ("payload[stripe_customer_id]", "cus_42"));
+        assert_eq!(params[3], ("payload[value]", "1500"));
     }
 }

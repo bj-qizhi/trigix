@@ -57,6 +57,13 @@ async fn main() {
                 ),
             );
             let cache = trigix_platform::cache::CacheClient::from_env().await;
+            let billing_store =
+                trigix_platform::billing::PlatformBillingStore::postgres(pool.clone());
+            // Opt-in Stripe metered billing: reports per-run token usage when
+            // STRIPE_SECRET_KEY + STRIPE_METER_TOKENS are configured.
+            let stripe_meter = trigix_platform::billing::StripeMeter::from_env(
+                std::sync::Arc::new(billing_store.clone()),
+            );
             let executor = if std::env::var("USE_QUEUE").as_deref() == Ok("true") {
                 trigix_platform::execution::PlatformExecutorClient::queue(cache.clone())
             } else {
@@ -69,6 +76,7 @@ async fn main() {
                         store.clone(),
                         std::sync::Arc::clone(&gate),
                         std::sync::Arc::clone(&token_usage_store),
+                        stripe_meter,
                     ),
                 }
             };
@@ -126,8 +134,6 @@ async fn main() {
                 trigix_platform::notification_prefs::PlatformNotificationPrefsStore::postgres(
                     pool.clone(),
                 );
-            let billing_store =
-                trigix_platform::billing::PlatformBillingStore::postgres(pool.clone());
             let sso_store = trigix_platform::sso::PlatformSsoStore::postgres(
                 trigix_platform::sso::PostgresSsoStore::new(pool.clone()),
             );

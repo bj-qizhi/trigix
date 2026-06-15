@@ -922,6 +922,7 @@ pub struct InlineExecutorClient<S> {
     store: S,
     approval_gate: std::sync::Arc<ApprovalGate>,
     token_usage_store: Option<std::sync::Arc<crate::token_usage::PlatformTokenUsageStore>>,
+    meter: Option<std::sync::Arc<crate::billing::StripeMeter>>,
 }
 
 impl<S> InlineExecutorClient<S>
@@ -933,6 +934,7 @@ where
             store,
             approval_gate,
             token_usage_store: None,
+            meter: None,
         }
     }
 
@@ -941,6 +943,16 @@ where
         store: std::sync::Arc<crate::token_usage::PlatformTokenUsageStore>,
     ) -> Self {
         self.token_usage_store = Some(store);
+        self
+    }
+
+    /// Attaches a Stripe meter so each run's token usage is reported for
+    /// metered billing. `None` (the default) disables metered reporting.
+    pub fn with_meter(
+        mut self,
+        meter: Option<std::sync::Arc<crate::billing::StripeMeter>>,
+    ) -> Self {
+        self.meter = meter;
         self
     }
 }
@@ -1044,6 +1056,21 @@ where
                 &completed.node_results,
                 now,
             );
+            // Report this run's total token usage to Stripe for metered billing.
+            // Resolve the customer here (in the async, non-detached context) so
+            // the Postgres lookup may block-in-place; only the HTTP send is
+            // detached and fire-and-forget.
+            if let Some(meter) = &self.meter {
+                let total_tokens: i64 = usage_records.iter().map(|r| r.total_tokens).sum();
+                if total_tokens > 0 {
+                    if let Some(customer_id) = meter.customer_for(&completed.tenant_id) {
+                        let meter = std::sync::Arc::clone(meter);
+                        tokio::spawn(async move {
+                            meter.report(&customer_id, total_tokens).await;
+                        });
+                    }
+                }
+            }
             for rec in usage_records {
                 let store = std::sync::Arc::clone(usage_store);
                 tokio::spawn(async move {
@@ -1167,8 +1194,13 @@ impl PlatformExecutorClient {
         store: PlatformExecutionStore,
         gate: std::sync::Arc<ApprovalGate>,
         token_usage_store: std::sync::Arc<crate::token_usage::PlatformTokenUsageStore>,
+        meter: Option<std::sync::Arc<crate::billing::StripeMeter>>,
     ) -> Self {
-        Self::Inline(InlineExecutorClient::new(store, gate).with_token_usage(token_usage_store))
+        Self::Inline(
+            InlineExecutorClient::new(store, gate)
+                .with_token_usage(token_usage_store)
+                .with_meter(meter),
+        )
     }
 
     pub fn http(base_url: impl Into<String>, store: PlatformExecutionStore) -> Self {

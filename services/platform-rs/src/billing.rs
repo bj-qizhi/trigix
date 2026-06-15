@@ -696,6 +696,59 @@ impl BillingStore for PlatformBillingStore {
     }
 }
 
+// ── Stripe metered-usage reporting ─────────────────────────────────────────
+
+/// Reports per-tenant usage to a Stripe Billing Meter so a metered Stripe price
+/// can charge customers by actual consumption.
+///
+/// Construct via [`StripeMeter::from_env`]: it is enabled only when **both**
+/// `STRIPE_SECRET_KEY` and `STRIPE_METER_TOKENS` are configured, so metering is
+/// strictly opt-in and absent in dev/test by default.
+pub struct StripeMeter {
+    client: crate::stripe_billing::StripeClient,
+    billing: Arc<PlatformBillingStore>,
+    /// Stripe meter event name, e.g. `trigix_tokens`.
+    event_name: String,
+}
+
+impl StripeMeter {
+    /// Returns a meter only when Stripe billing and a token meter are both
+    /// configured; otherwise `None` (metering disabled, zero behavior change).
+    pub fn from_env(billing: Arc<PlatformBillingStore>) -> Option<Arc<Self>> {
+        let client = crate::stripe_billing::StripeClient::from_env()?;
+        let event_name = std::env::var("STRIPE_METER_TOKENS")
+            .ok()
+            .filter(|s| !s.is_empty())?;
+        Some(Arc::new(Self {
+            client,
+            billing,
+            event_name,
+        }))
+    }
+
+    /// Resolves the tenant's Stripe customer id, if any. Synchronous; call from
+    /// an async (non-detached) context so the Postgres lookup can block-in-place.
+    pub fn customer_for(&self, tenant_id: &str) -> Option<String> {
+        self.billing.get_stripe_ids(tenant_id).0
+    }
+
+    /// Fires a single meter event for `tokens` against `customer_id`.
+    /// Failures are logged, not propagated — billing must never fail a run.
+    pub async fn report(&self, customer_id: &str, tokens: i64) {
+        if tokens <= 0 {
+            return;
+        }
+        let identifier = uuid::Uuid::new_v4().to_string();
+        if let Err(e) = self
+            .client
+            .report_meter_event(&self.event_name, customer_id, tokens, &identifier)
+            .await
+        {
+            tracing::warn!(customer_id, tokens, error = %e, "Stripe meter event failed");
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

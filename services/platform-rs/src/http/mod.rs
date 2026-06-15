@@ -200,12 +200,15 @@ pub(crate) fn default_app_state() -> AppState {
     let workflow_store = PlatformWorkflowVersionStore::memory_with_dev_seed();
     let gate = Arc::new(ApprovalGate::default());
     let usage_store = Arc::new(PlatformTokenUsageStore::default());
+    let billing_store = Arc::new(PlatformBillingStore::memory());
+    let stripe_meter = crate::billing::StripeMeter::from_env(Arc::clone(&billing_store));
     let service = ExecutionService::new(
         store.clone(),
         PlatformExecutorClient::inline_with_gate_and_usage(
             store,
             Arc::clone(&gate),
             Arc::clone(&usage_store),
+            stripe_meter,
         ),
     );
     AppState {
@@ -237,7 +240,7 @@ pub(crate) fn default_app_state() -> AppState {
             crate::notification_prefs::PlatformNotificationPrefsStore::memory(),
         ),
         email_client: Arc::new(crate::email::EmailClient::default()),
-        billing_store: Arc::new(PlatformBillingStore::memory()),
+        billing_store,
         stripe_client: StripeClient::from_env().map(Arc::new),
         rate_limiter: RateLimiter::default(),
         notification_store: Arc::new(PlatformNotificationStore::default()),
@@ -391,7 +394,10 @@ fn spawn_queue_worker(state: AppState) {
                             state.execution_service.store().clone(),
                             Arc::clone(&state.approval_gate),
                         )
-                        .with_token_usage(Arc::clone(&state.token_usage_store));
+                        .with_token_usage(Arc::clone(&state.token_usage_store))
+                        .with_meter(crate::billing::StripeMeter::from_env(Arc::clone(
+                            &state.billing_store,
+                        )));
                         use crate::execution::ExecutorClient;
                         match inline.start(&record).await {
                             Ok(_) => None,
