@@ -1035,27 +1035,43 @@ export function AnalyticsPage({ onBack }: Props) {
               </div>
             )}
 
-            {/* ── Acquisition channels (admin-only) ── */}
+            {/* ── Acquisition channels ROI (admin-only) ── */}
             {acquisition.length > 0 && (() => {
-              const total = acquisition.reduce((s, c) => s + c.signups, 0)
-              const max = Math.max(...acquisition.map((c) => c.signups), 1)
+              const totalSignups = acquisition.reduce((s, c) => s + c.signups, 0)
+              const totalPaid = acquisition.reduce((s, c) => s + c.paid, 0)
+              const totalRevenue = acquisition.reduce((s, c) => s + c.revenue_cents, 0)
+              const money = (cents: number) => `$${(cents / 100).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+              const rate = (paid: number, signups: number) => (signups > 0 ? `${((paid / signups) * 100).toFixed(0)}%` : '—')
               return (
                 <div style={{ marginBottom: 28 }}>
-                  <h2 style={{ marginBottom: 4 }}>{zh ? '获客渠道' : 'Acquisition Channels'}</h2>
+                  <h2 style={{ marginBottom: 4 }}>{zh ? '获客渠道 ROI' : 'Acquisition ROI'}</h2>
                   <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 12 }}>
-                    {zh ? `按首触渠道统计的注册租户(共 ${total})` : `Signed-up tenants by first-touch channel (${total} total)`}
+                    {zh
+                      ? `按首触渠道:注册 → 付费转化 → 转化收入(${totalSignups} 注册 / ${totalPaid} 付费 / ${money(totalRevenue)})`
+                      : `By first-touch channel: signup → paid → converted revenue (${totalSignups} signups / ${totalPaid} paid / ${money(totalRevenue)})`}
                   </div>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxWidth: 520 }}>
-                    {acquisition.map((c) => (
-                      <div key={c.channel} style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                        <div style={{ width: 120, fontSize: 13, fontFamily: 'monospace', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={c.channel}>{c.channel}</div>
-                        <div style={{ flex: 1, height: 14, background: 'var(--panel)', borderRadius: 4, overflow: 'hidden' }}>
-                          <div style={{ width: `${(c.signups / max) * 100}%`, height: '100%', background: 'var(--accent)' }} />
-                        </div>
-                        <div style={{ width: 48, textAlign: 'right', fontSize: 13, fontWeight: 600 }}>{c.signups.toLocaleString()}</div>
-                      </div>
-                    ))}
-                  </div>
+                  <table className="workflow-table" style={{ maxWidth: 600 }}>
+                    <thead>
+                      <tr>
+                        <th>{zh ? '渠道' : 'Channel'}</th>
+                        <th>{zh ? '注册' : 'Signups'}</th>
+                        <th>{zh ? '付费' : 'Paid'}</th>
+                        <th>{zh ? '转化率' : 'Conv.'}</th>
+                        <th>{zh ? '收入' : 'Revenue'}</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {acquisition.map((c) => (
+                        <tr key={c.channel}>
+                          <td style={{ fontFamily: 'monospace', fontSize: 12 }}>{c.channel}</td>
+                          <td style={{ fontSize: 12 }}>{c.signups.toLocaleString()}</td>
+                          <td style={{ fontSize: 12 }}>{c.paid.toLocaleString()}</td>
+                          <td style={{ fontSize: 12, color: 'var(--muted)' }}>{rate(c.paid, c.signups)}</td>
+                          <td style={{ fontSize: 12, fontWeight: 600 }}>{money(c.revenue_cents)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
               )
             })()}

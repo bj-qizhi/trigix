@@ -3,16 +3,16 @@
 
 use super::*;
 
-/// Operator view of acquisition channels: how many tenants each `utm_source`
-/// brought in. Admin-gated and global (it spans tenants by design), mirroring
-/// the cross-tenant `admin_list_users` handler.
+/// Operator view of acquisition ROI: per channel, how many tenants signed up,
+/// how many converted to paid, and the converted revenue. Admin-gated and global
+/// (it spans tenants by design), mirroring the cross-tenant `admin_list_users`.
 async fn acquisition_channels_handler(
     State(state): State<AppState>,
     Extension(claims): Extension<Option<Claims>>,
-) -> Result<Json<Vec<crate::attribution::ChannelCount>>, ApiError> {
+) -> Result<Json<Vec<crate::attribution::ChannelStats>>, ApiError> {
     require_admin(&claims)?;
     use crate::attribution::AttributionStore;
-    Ok(Json(state.attribution_store.channel_breakdown().await))
+    Ok(Json(state.attribution_store.channel_revenue().await))
 }
 
 async fn list_audit_log(

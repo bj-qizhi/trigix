@@ -49,21 +49,25 @@ impl AttributionRecord {
 }
 
 #[allow(async_fn_in_trait)]
-/// One acquisition channel and how many tenants it brought in. Records with no
-/// `utm_source` are bucketed as `direct`.
+/// Acquisition-channel ROI: tenants brought in by a `utm_source`, how many
+/// converted to a paid tier, and the converted revenue attributed to them.
+/// Records with no `utm_source` are bucketed as `direct`.
 #[derive(Debug, Clone, Serialize)]
-pub struct ChannelCount {
+pub struct ChannelStats {
     pub channel: String,
     pub signups: i64,
+    pub paid: i64,
+    pub revenue_cents: i64,
 }
 
 pub trait AttributionStore: Clone + Send + Sync + 'static {
     /// Records first-touch attribution. No-op if the tenant already has a row.
     async fn record_first_touch(&self, rec: AttributionRecord);
     async fn get(&self, tenant_id: &str) -> Option<AttributionRecord>;
-    /// Aggregate signup count grouped by acquisition channel (utm_source),
-    /// largest first. Powers the operator acquisition-analytics view.
-    async fn channel_breakdown(&self) -> Vec<ChannelCount>;
+    /// Acquisition → revenue breakdown grouped by channel, largest revenue
+    /// first. Joins attribution to billing; the in-memory store reports signups
+    /// only (paid/revenue are a Postgres/production concern).
+    async fn channel_revenue(&self) -> Vec<ChannelStats>;
 }
 
 /// Buckets a record's `utm_source` into a channel name, defaulting to `direct`.
@@ -93,7 +97,7 @@ impl AttributionStore for MemoryAttributionStore {
             .ok()
             .and_then(|r| r.get(tenant_id).cloned())
     }
-    async fn channel_breakdown(&self) -> Vec<ChannelCount> {
+    async fn channel_revenue(&self) -> Vec<ChannelStats> {
         let Ok(rows) = self.rows.read() else {
             return Vec::new();
         };
@@ -101,9 +105,14 @@ impl AttributionStore for MemoryAttributionStore {
         for rec in rows.values() {
             *counts.entry(channel_of(rec)).or_insert(0) += 1;
         }
-        let mut out: Vec<ChannelCount> = counts
+        let mut out: Vec<ChannelStats> = counts
             .into_iter()
-            .map(|(channel, signups)| ChannelCount { channel, signups })
+            .map(|(channel, signups)| ChannelStats {
+                channel,
+                signups,
+                paid: 0,
+                revenue_cents: 0,
+            })
             .collect();
         out.sort_by(|a, b| b.signups.cmp(&a.signups).then(a.channel.cmp(&b.channel)));
         out
@@ -188,21 +197,29 @@ impl AttributionStore for PostgresAttributionStore {
             created_at: row.created_at as u64,
         })
     }
-    async fn channel_breakdown(&self) -> Vec<ChannelCount> {
-        sqlx::query_as::<_, (String, i64)>(
+    async fn channel_revenue(&self) -> Vec<ChannelStats> {
+        sqlx::query_as::<_, (String, i64, i64, i64)>(
             r#"
-            SELECT COALESCE(NULLIF(TRIM(utm_source), ''), 'direct') AS channel,
-                   COUNT(*)::bigint AS signups
-            FROM af_attribution
+            SELECT COALESCE(NULLIF(TRIM(a.utm_source), ''), 'direct') AS channel,
+                   COUNT(*)::bigint AS signups,
+                   COUNT(*) FILTER (WHERE q.tier IS NOT NULL AND q.tier <> 'free')::bigint AS paid,
+                   COALESCE(SUM(q.revenue_cents), 0)::bigint AS revenue_cents
+            FROM af_attribution a
+            LEFT JOIN af_tenant_quotas q ON q.tenant_id = a.tenant_id
             GROUP BY 1
-            ORDER BY signups DESC, channel ASC
+            ORDER BY revenue_cents DESC, signups DESC, channel ASC
             "#,
         )
         .fetch_all(&self.pool)
         .await
         .unwrap_or_default()
         .into_iter()
-        .map(|(channel, signups)| ChannelCount { channel, signups })
+        .map(|(channel, signups, paid, revenue_cents)| ChannelStats {
+            channel,
+            signups,
+            paid,
+            revenue_cents,
+        })
         .collect()
     }
 }
@@ -238,10 +255,10 @@ impl AttributionStore for PlatformAttributionStore {
             Self::Postgres(s) => s.get(tenant_id).await,
         }
     }
-    async fn channel_breakdown(&self) -> Vec<ChannelCount> {
+    async fn channel_revenue(&self) -> Vec<ChannelStats> {
         match self {
-            Self::Memory(s) => s.channel_breakdown().await,
-            Self::Postgres(s) => s.channel_breakdown().await,
+            Self::Memory(s) => s.channel_revenue().await,
+            Self::Postgres(s) => s.channel_revenue().await,
         }
     }
 }
@@ -275,7 +292,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn channel_breakdown_groups_and_buckets_direct() {
+    async fn channel_revenue_groups_and_buckets_direct() {
         let store = MemoryAttributionStore::default();
         store.record_first_touch(rec("t1", "google")).await;
         store.record_first_touch(rec("t2", "google")).await;
@@ -288,8 +305,8 @@ mod tests {
                 ..Default::default()
             })
             .await;
-        let breakdown = store.channel_breakdown().await;
-        // Sorted by count desc: google(2), then direct(1)/twitter(1) by name.
+        let breakdown = store.channel_revenue().await;
+        // Sorted by signups desc: google(2), then direct(1)/twitter(1) by name.
         assert_eq!(breakdown[0].channel, "google");
         assert_eq!(breakdown[0].signups, 2);
         let names: Vec<_> = breakdown.iter().map(|c| c.channel.as_str()).collect();

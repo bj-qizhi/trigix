@@ -253,6 +253,9 @@ pub trait BillingStore: Send + Sync {
     /// slow) response, so handlers must dedupe to avoid applying an upgrade or
     /// clawback twice.
     fn mark_stripe_event_processed(&self, event_id: &str) -> bool;
+    /// Adds converted revenue (Stripe `amount_total`, minor currency unit) to the
+    /// tenant, attributed to its acquisition channel via the analytics join.
+    fn add_revenue(&self, tenant_id: &str, cents: i64);
     fn billing_status(&self, tenant_id: &str) -> BillingStatus {
         let quota = self.get_quota(tenant_id);
         let ym = current_year_month();
@@ -298,6 +301,7 @@ pub struct MemoryBillingStore {
     usage: RwLock<HashMap<(String, String), UsageSummary>>,
     stripe_ids: RwLock<HashMap<String, (Option<String>, Option<String>)>>,
     seen_events: RwLock<std::collections::HashSet<String>>,
+    revenue: RwLock<HashMap<String, i64>>,
 }
 
 impl BillingStore for MemoryBillingStore {
@@ -400,6 +404,14 @@ impl BillingStore for MemoryBillingStore {
             .write()
             .unwrap()
             .insert(event_id.to_string())
+    }
+    fn add_revenue(&self, tenant_id: &str, cents: i64) {
+        *self
+            .revenue
+            .write()
+            .unwrap()
+            .entry(tenant_id.to_string())
+            .or_insert(0) += cents;
     }
 }
 
@@ -658,6 +670,19 @@ impl BillingStore for PostgresBillingStore {
             })
         })
     }
+    fn add_revenue(&self, tenant_id: &str, cents: i64) {
+        let pool = self.pool.clone();
+        let tid = tenant_id.to_string();
+        tokio::spawn(async move {
+            let _ = sqlx::query(
+                "UPDATE af_tenant_quotas SET revenue_cents = revenue_cents + $2 WHERE tenant_id = $1",
+            )
+            .bind(&tid)
+            .bind(cents)
+            .execute(&pool)
+            .await;
+        });
+    }
 }
 
 // ── Platform enum ──────────────────────────────────────────────────────────
@@ -736,6 +761,12 @@ impl BillingStore for PlatformBillingStore {
         match self {
             Self::Memory(s) => s.mark_stripe_event_processed(event_id),
             Self::Postgres(s) => s.mark_stripe_event_processed(event_id),
+        }
+    }
+    fn add_revenue(&self, tenant_id: &str, cents: i64) {
+        match self {
+            Self::Memory(s) => s.add_revenue(tenant_id, cents),
+            Self::Postgres(s) => s.add_revenue(tenant_id, cents),
         }
     }
 }

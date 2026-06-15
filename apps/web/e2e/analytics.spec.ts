@@ -37,20 +37,23 @@ test('analytics: acquisition-channels card renders channel data (admin)', async 
   await page.route('**/v1/analytics/attribution', (r) =>
     r.fulfill({
       json: [
-        { channel: 'google', signups: 5 },
-        { channel: 'direct', signups: 2 },
+        { channel: 'google', signups: 5, paid: 2, revenue_cents: 9800 },
+        { channel: 'direct', signups: 2, paid: 0, revenue_cents: 0 },
       ],
     }),
   )
   await openAnalytics(page)
-  await expect(page.getByText('获客渠道')).toBeVisible()
+  await expect(page.getByText('获客渠道 ROI')).toBeVisible()
   await expect(page.getByText('google')).toBeVisible()
   await expect(page.getByText('direct')).toBeVisible()
+  // Converted revenue is rendered ($98.00 from 9800 cents) — appears in both the
+  // summary line and the channel row.
+  await expect(page.getByText('$98.00').first()).toBeVisible()
 })
 
 test('analytics: acquisition card hidden when there are no channels', async ({ page }) => {
   // No specific attribution route → catch-all 403 → empty → card hidden.
   await authed(page)
   await openAnalytics(page)
-  await expect(page.getByText('获客渠道')).toHaveCount(0)
+  await expect(page.getByText('获客渠道 ROI')).toHaveCount(0)
 })

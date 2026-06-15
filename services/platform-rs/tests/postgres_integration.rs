@@ -101,41 +101,63 @@ async fn users_create_verify_find_roundtrip() {
 #[tokio::test(flavor = "multi_thread")]
 async fn attribution_first_touch_roundtrip() {
     let Some(pool) = setup().await else { return };
-    let store = PlatformAttributionStore::postgres(PostgresAttributionStore::new(pool));
+    let store = PlatformAttributionStore::postgres(PostgresAttributionStore::new(pool.clone()));
+    let billing = PlatformBillingStore::postgres(pool.clone());
     let tenant = uniq("tenant");
+    // Unique channel name → channel_revenue assertions stay deterministic even
+    // though the aggregate is global across tenants/parallel test runs.
+    let channel = uniq("ch");
 
-    let first = AttributionRecord {
-        tenant_id: tenant.clone(),
-        utm_source: Some("google".into()),
-        utm_campaign: Some("launch".into()),
-        referrer: Some("https://news.ycombinator.com".into()),
-        created_at: 1_700_000_000,
-        ..Default::default()
-    };
-    store.record_first_touch(first).await;
+    store
+        .record_first_touch(AttributionRecord {
+            tenant_id: tenant.clone(),
+            utm_source: Some(channel.clone()),
+            utm_campaign: Some("launch".into()),
+            created_at: 1_700_000_000,
+            ..Default::default()
+        })
+        .await;
 
     // Second touch must NOT overwrite.
-    let second = AttributionRecord {
-        tenant_id: tenant.clone(),
-        utm_source: Some("twitter".into()),
-        created_at: 1_700_001_000,
-        ..Default::default()
-    };
-    store.record_first_touch(second).await;
+    store
+        .record_first_touch(AttributionRecord {
+            tenant_id: tenant.clone(),
+            utm_source: Some("twitter".into()),
+            created_at: 1_700_001_000,
+            ..Default::default()
+        })
+        .await;
 
     let got = store.get(&tenant).await.expect("attribution row present");
-    assert_eq!(got.utm_source.as_deref(), Some("google"));
+    assert_eq!(got.utm_source.as_deref(), Some(channel.as_str()));
     assert_eq!(got.utm_campaign.as_deref(), Some("launch"));
     assert_eq!(store.get(&uniq("absent")).await.map(|_| ()), None);
 
-    // The channel breakdown (GROUP BY) buckets the row under its utm_source.
-    // Global across tenants, so assert our channel is present with >= 1 signup.
-    let breakdown = store.channel_breakdown().await;
-    let google = breakdown.iter().find(|c| c.channel == "google");
-    assert!(
-        google.map(|c| c.signups >= 1).unwrap_or(false),
-        "channel_breakdown should include google with >= 1 signup"
-    );
+    // Convert the tenant to paid with revenue (fire-and-forget writes → poll).
+    billing.set_quota(TenantQuota::pro(&tenant));
+    billing.add_revenue(&tenant, 4900);
+
+    // channel_revenue joins attribution × quotas: our channel should show one
+    // signup that converted to paid with the attributed revenue.
+    let mut stats = None;
+    for _ in 0..30 {
+        if let Some(s) = store
+            .channel_revenue()
+            .await
+            .into_iter()
+            .find(|c| c.channel == channel)
+        {
+            if s.paid >= 1 && s.revenue_cents >= 4900 {
+                stats = Some(s);
+                break;
+            }
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    }
+    let s = stats.expect("channel_revenue should show the converted channel");
+    assert_eq!(s.signups, 1);
+    assert_eq!(s.paid, 1);
+    assert!(s.revenue_cents >= 4900);
 }
 
 /// Token-usage records persist and aggregate per model in the summary.

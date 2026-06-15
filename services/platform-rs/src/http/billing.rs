@@ -230,6 +230,13 @@ fn apply_stripe_event(state: &AppState, event_type: &str, obj: &serde_json::Valu
                 state
                     .billing_store
                     .set_stripe_ids(tenant_id, customer, sub_id);
+                // Attribute converted revenue (minor currency unit) to the tenant
+                // so the acquisition-channel ROI view can sum it.
+                if let Some(cents) = obj["amount_total"].as_i64() {
+                    if cents > 0 {
+                        state.billing_store.add_revenue(tenant_id, cents);
+                    }
+                }
                 info!(
                     tenant_id,
                     tier, "Stripe checkout.session.completed → quota upgraded"
