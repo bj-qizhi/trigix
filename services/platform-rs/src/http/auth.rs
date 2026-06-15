@@ -3,6 +3,37 @@
 
 use super::*;
 
+/// Extracts the originating client IP from `X-Forwarded-For` (first hop), used
+/// as the optional `remoteip` hint for captcha verification.
+fn client_ip(headers: &axum::http::HeaderMap) -> Option<String> {
+    headers
+        .get("x-forwarded-for")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|s| s.split(',').next())
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+}
+
+/// Enforces captcha when a verifier is configured; a no-op otherwise so dev/test
+/// and deployments without `CAPTCHA_PROVIDER` keep working unchanged.
+async fn enforce_captcha(
+    state: &AppState,
+    token: Option<&str>,
+    headers: &axum::http::HeaderMap,
+) -> Result<(), ApiError> {
+    let Some(captcha) = &state.captcha else {
+        return Ok(());
+    };
+    let ip = client_ip(headers);
+    captcha
+        .verify(token.unwrap_or(""), ip.as_deref())
+        .await
+        .map_err(|e| ApiError {
+            status: StatusCode::BAD_REQUEST,
+            message: format!("Captcha verification failed: {e}"),
+        })
+}
+
 async fn create_token(
     State(state): State<AppState>,
     Json(body): Json<TokenRequest>,
@@ -95,8 +126,10 @@ async fn create_token(
 
 async fn register_user(
     State(state): State<AppState>,
+    headers: axum::http::HeaderMap,
     Json(body): Json<RegisterRequest>,
 ) -> Result<(StatusCode, Json<AuthResponse>), ApiError> {
+    enforce_captcha(&state, body.captcha_token.as_deref(), &headers).await?;
     let tenant_id = body.tenant_id.unwrap_or_else(|| "tenant-1".to_string());
     let store = &state.user_store;
     let user = tokio::task::spawn_blocking({
@@ -152,8 +185,10 @@ async fn register_user(
 
 async fn login_user(
     State(state): State<AppState>,
+    headers: axum::http::HeaderMap,
     Json(body): Json<LoginRequest>,
 ) -> Result<Json<AuthResponse>, ApiError> {
+    enforce_captcha(&state, body.captcha_token.as_deref(), &headers).await?;
     let store = Arc::clone(&state.user_store);
     let user = tokio::task::spawn_blocking({
         let email = body.email.clone();

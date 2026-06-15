@@ -181,6 +181,7 @@ pub struct AppState {
     email_client: Arc<crate::email::EmailClient>,
     billing_store: Arc<PlatformBillingStore>,
     stripe_client: Option<Arc<StripeClient>>,
+    captcha: Option<Arc<crate::captcha::CaptchaVerifier>>,
     rate_limiter: RateLimiter,
     notification_store: Arc<PlatformNotificationStore>,
     sso_store: Arc<crate::sso::PlatformSsoStore>,
@@ -242,6 +243,7 @@ pub(crate) fn default_app_state() -> AppState {
         email_client: Arc::new(crate::email::EmailClient::default()),
         billing_store,
         stripe_client: StripeClient::from_env().map(Arc::new),
+        captcha: crate::captcha::CaptchaVerifier::from_env().map(Arc::new),
         rate_limiter: RateLimiter::default(),
         notification_store: Arc::new(PlatformNotificationStore::default()),
         sso_store: Arc::new(crate::sso::PlatformSsoStore::default()),
@@ -841,6 +843,7 @@ pub fn router_with_services(
         email_client: Arc::new(crate::email::EmailClient::default()),
         billing_store: Arc::new(PlatformBillingStore::memory()),
         stripe_client: StripeClient::from_env().map(Arc::new),
+        captcha: crate::captcha::CaptchaVerifier::from_env().map(Arc::new),
         rate_limiter: RateLimiter::default(),
         notification_store: Arc::new(PlatformNotificationStore::default()),
         sso_store: Arc::new(crate::sso::PlatformSsoStore::default()),
@@ -907,6 +910,7 @@ pub fn router_with_all_stores(
         email_client: Arc::new(email_client),
         billing_store: Arc::new(billing_store),
         stripe_client: StripeClient::from_env().map(Arc::new),
+        captcha: crate::captcha::CaptchaVerifier::from_env().map(Arc::new),
         rate_limiter: RateLimiter::default(),
         notification_store: Arc::new(PlatformNotificationStore::default()),
         sso_store: Arc::new(sso_store),
@@ -1594,12 +1598,16 @@ struct RegisterRequest {
     password: String,
     name: Option<String>,
     tenant_id: Option<String>,
+    #[serde(default)]
+    captcha_token: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
 struct LoginRequest {
     email: String,
     password: String,
+    #[serde(default)]
+    captcha_token: Option<String>,
 }
 
 #[derive(Debug, Serialize)]

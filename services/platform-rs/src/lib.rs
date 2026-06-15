@@ -19,6 +19,7 @@ pub mod openapi;
 pub mod test_cases;
 
 pub mod billing;
+pub mod captcha;
 pub mod email;
 pub mod email_verification;
 pub mod invitations;
