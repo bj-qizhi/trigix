@@ -124,6 +124,14 @@ async fn stripe_webhook_handler(
         return (StatusCode::BAD_REQUEST, "invalid json").into_response();
     };
 
+    // Idempotency: Stripe retries delivery on any non-2xx/slow response, so
+    // process each event id at most once to avoid double-applying upgrades or
+    // clawbacks. Events without an id (shouldn't happen) fall through.
+    let event_id = event["id"].as_str().unwrap_or("");
+    if !event_id.is_empty() && !state.billing_store.mark_stripe_event_processed(event_id) {
+        return StatusCode::OK.into_response();
+    }
+
     let event_type = event["type"].as_str().unwrap_or("");
     let obj = &event["data"]["object"];
     apply_stripe_event(&state, event_type, obj);

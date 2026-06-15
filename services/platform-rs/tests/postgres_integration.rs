@@ -212,4 +212,15 @@ async fn billing_quota_usage_and_stripe_ids() {
         store.get_tenant_by_stripe_customer(&customer).as_deref(),
         Some(tenant.as_str())
     );
+
+    // Webhook idempotency: an event id is claimed once, then deduped.
+    let event_id = uniq("evt");
+    assert!(
+        store.mark_stripe_event_processed(&event_id),
+        "first delivery of an event is processed"
+    );
+    assert!(
+        !store.mark_stripe_event_processed(&event_id),
+        "a retried/replayed event is skipped"
+    );
 }

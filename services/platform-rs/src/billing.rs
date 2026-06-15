@@ -248,6 +248,11 @@ pub trait BillingStore: Send + Sync {
     fn get_tenant_by_stripe_customer(&self, customer_id: &str) -> Option<String>;
     /// Returns usage records for the last `months` months (newest first).
     fn get_usage_history(&self, tenant_id: &str, months: usize) -> Vec<UsageSummary>;
+    /// Records that a Stripe webhook event id has been processed, returning
+    /// `true` only the first time. Stripe retries delivery on any non-2xx (or
+    /// slow) response, so handlers must dedupe to avoid applying an upgrade or
+    /// clawback twice.
+    fn mark_stripe_event_processed(&self, event_id: &str) -> bool;
     fn billing_status(&self, tenant_id: &str) -> BillingStatus {
         let quota = self.get_quota(tenant_id);
         let ym = current_year_month();
@@ -292,6 +297,7 @@ pub struct MemoryBillingStore {
     quotas: RwLock<HashMap<String, TenantQuota>>,
     usage: RwLock<HashMap<(String, String), UsageSummary>>,
     stripe_ids: RwLock<HashMap<String, (Option<String>, Option<String>)>>,
+    seen_events: RwLock<std::collections::HashSet<String>>,
 }
 
 impl BillingStore for MemoryBillingStore {
@@ -388,6 +394,12 @@ impl BillingStore for MemoryBillingStore {
                     })
             })
             .collect()
+    }
+    fn mark_stripe_event_processed(&self, event_id: &str) -> bool {
+        self.seen_events
+            .write()
+            .unwrap()
+            .insert(event_id.to_string())
     }
 }
 
@@ -620,6 +632,32 @@ impl BillingStore for PostgresBillingStore {
             })
         })
     }
+    fn mark_stripe_event_processed(&self, event_id: &str) -> bool {
+        let pool = self.pool.clone();
+        let eid = event_id.to_string();
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs() as i64;
+        tokio::task::block_in_place(|| {
+            tokio::runtime::Handle::current().block_on(async move {
+                // Atomic claim: the row is inserted (and returned) only on first
+                // sight; a duplicate event conflicts and returns no row.
+                sqlx::query_scalar::<_, String>(
+                    "INSERT INTO af_stripe_events (event_id, received_at) VALUES ($1, $2) \
+                     ON CONFLICT (event_id) DO NOTHING RETURNING event_id",
+                )
+                .bind(&eid)
+                .bind(now)
+                .fetch_optional(&pool)
+                .await
+                .map(|row| row.is_some())
+                // On a DB error, fail closed (treat as already-processed) so a
+                // transient outage can't double-apply billing changes.
+                .unwrap_or(false)
+            })
+        })
+    }
 }
 
 // ── Platform enum ──────────────────────────────────────────────────────────
@@ -692,6 +730,12 @@ impl BillingStore for PlatformBillingStore {
         match self {
             Self::Memory(s) => s.get_usage_history(t, months),
             Self::Postgres(s) => s.get_usage_history(t, months),
+        }
+    }
+    fn mark_stripe_event_processed(&self, event_id: &str) -> bool {
+        match self {
+            Self::Memory(s) => s.mark_stripe_event_processed(event_id),
+            Self::Postgres(s) => s.mark_stripe_event_processed(event_id),
         }
     }
 }
@@ -805,6 +849,23 @@ mod tests {
         assert!(
             store.check_execution_quota("t1").is_err(),
             "quota should be exhausted after 2 increments"
+        );
+    }
+
+    #[test]
+    fn stripe_event_processed_only_once() {
+        let store = MemoryBillingStore::default();
+        assert!(
+            store.mark_stripe_event_processed("evt_1"),
+            "first sight of an event is processed"
+        );
+        assert!(
+            !store.mark_stripe_event_processed("evt_1"),
+            "a replayed event is skipped"
+        );
+        assert!(
+            store.mark_stripe_event_processed("evt_2"),
+            "a distinct event is processed"
         );
     }
 }
