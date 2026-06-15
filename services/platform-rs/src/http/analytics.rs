@@ -3,6 +3,18 @@
 
 use super::*;
 
+/// Operator view of acquisition channels: how many tenants each `utm_source`
+/// brought in. Admin-gated and global (it spans tenants by design), mirroring
+/// the cross-tenant `admin_list_users` handler.
+async fn acquisition_channels_handler(
+    State(state): State<AppState>,
+    Extension(claims): Extension<Option<Claims>>,
+) -> Result<Json<Vec<crate::attribution::ChannelCount>>, ApiError> {
+    require_admin(&claims)?;
+    use crate::attribution::AttributionStore;
+    Ok(Json(state.attribution_store.channel_breakdown().await))
+}
+
 async fn list_audit_log(
     State(state): State<AppState>,
     Extension(claims): Extension<Option<Claims>>,
@@ -373,6 +385,10 @@ pub(super) fn routes() -> Router<AppState> {
         )
         .route("/v1/analytics/sla-breaches", get(sla_breaches_handler))
         .route("/v1/analytics/errors", get(error_analysis_handler))
+        .route(
+            "/v1/analytics/attribution",
+            get(acquisition_channels_handler),
+        )
 }
 
 #[cfg(test)]

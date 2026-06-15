@@ -49,10 +49,31 @@ impl AttributionRecord {
 }
 
 #[allow(async_fn_in_trait)]
+/// One acquisition channel and how many tenants it brought in. Records with no
+/// `utm_source` are bucketed as `direct`.
+#[derive(Debug, Clone, Serialize)]
+pub struct ChannelCount {
+    pub channel: String,
+    pub signups: i64,
+}
+
 pub trait AttributionStore: Clone + Send + Sync + 'static {
     /// Records first-touch attribution. No-op if the tenant already has a row.
     async fn record_first_touch(&self, rec: AttributionRecord);
     async fn get(&self, tenant_id: &str) -> Option<AttributionRecord>;
+    /// Aggregate signup count grouped by acquisition channel (utm_source),
+    /// largest first. Powers the operator acquisition-analytics view.
+    async fn channel_breakdown(&self) -> Vec<ChannelCount>;
+}
+
+/// Buckets a record's `utm_source` into a channel name, defaulting to `direct`.
+fn channel_of(rec: &AttributionRecord) -> String {
+    rec.utm_source
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .unwrap_or("direct")
+        .to_string()
 }
 
 #[derive(Clone, Default)]
@@ -71,6 +92,21 @@ impl AttributionStore for MemoryAttributionStore {
             .read()
             .ok()
             .and_then(|r| r.get(tenant_id).cloned())
+    }
+    async fn channel_breakdown(&self) -> Vec<ChannelCount> {
+        let Ok(rows) = self.rows.read() else {
+            return Vec::new();
+        };
+        let mut counts: HashMap<String, i64> = HashMap::new();
+        for rec in rows.values() {
+            *counts.entry(channel_of(rec)).or_insert(0) += 1;
+        }
+        let mut out: Vec<ChannelCount> = counts
+            .into_iter()
+            .map(|(channel, signups)| ChannelCount { channel, signups })
+            .collect();
+        out.sort_by(|a, b| b.signups.cmp(&a.signups).then(a.channel.cmp(&b.channel)));
+        out
     }
 }
 
@@ -152,6 +188,23 @@ impl AttributionStore for PostgresAttributionStore {
             created_at: row.created_at as u64,
         })
     }
+    async fn channel_breakdown(&self) -> Vec<ChannelCount> {
+        sqlx::query_as::<_, (String, i64)>(
+            r#"
+            SELECT COALESCE(NULLIF(TRIM(utm_source), ''), 'direct') AS channel,
+                   COUNT(*)::bigint AS signups
+            FROM af_attribution
+            GROUP BY 1
+            ORDER BY signups DESC, channel ASC
+            "#,
+        )
+        .fetch_all(&self.pool)
+        .await
+        .unwrap_or_default()
+        .into_iter()
+        .map(|(channel, signups)| ChannelCount { channel, signups })
+        .collect()
+    }
 }
 
 #[derive(Clone)]
@@ -185,6 +238,12 @@ impl AttributionStore for PlatformAttributionStore {
             Self::Postgres(s) => s.get(tenant_id).await,
         }
     }
+    async fn channel_breakdown(&self) -> Vec<ChannelCount> {
+        match self {
+            Self::Memory(s) => s.channel_breakdown().await,
+            Self::Postgres(s) => s.channel_breakdown().await,
+        }
+    }
 }
 
 #[cfg(test)]
@@ -213,5 +272,27 @@ mod tests {
     fn has_signal_detects_empty_vs_attributed() {
         assert!(!AttributionRecord::default().has_signal());
         assert!(rec("t1", "google").has_signal());
+    }
+
+    #[tokio::test]
+    async fn channel_breakdown_groups_and_buckets_direct() {
+        let store = MemoryAttributionStore::default();
+        store.record_first_touch(rec("t1", "google")).await;
+        store.record_first_touch(rec("t2", "google")).await;
+        store.record_first_touch(rec("t3", "twitter")).await;
+        // No utm_source → bucketed as "direct".
+        store
+            .record_first_touch(AttributionRecord {
+                tenant_id: "t4".into(),
+                created_at: 1,
+                ..Default::default()
+            })
+            .await;
+        let breakdown = store.channel_breakdown().await;
+        // Sorted by count desc: google(2), then direct(1)/twitter(1) by name.
+        assert_eq!(breakdown[0].channel, "google");
+        assert_eq!(breakdown[0].signups, 2);
+        let names: Vec<_> = breakdown.iter().map(|c| c.channel.as_str()).collect();
+        assert!(names.contains(&"direct") && names.contains(&"twitter"));
     }
 }

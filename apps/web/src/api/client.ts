@@ -670,6 +670,16 @@ export function getTokenUsage(tenantId: string, days?: number): Promise<TokenUsa
   })
 }
 
+export interface AcquisitionChannel {
+  channel: string
+  signups: number
+}
+
+/** Operator-only (admin): tenant signups grouped by acquisition channel. */
+export function getAcquisitionChannels(): Promise<AcquisitionChannel[]> {
+  return request('/v1/analytics/attribution')
+}
+
 export interface NodeTypeStat {
   node_type: string
   total: number

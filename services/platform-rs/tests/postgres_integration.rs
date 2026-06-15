@@ -127,6 +127,15 @@ async fn attribution_first_touch_roundtrip() {
     assert_eq!(got.utm_source.as_deref(), Some("google"));
     assert_eq!(got.utm_campaign.as_deref(), Some("launch"));
     assert_eq!(store.get(&uniq("absent")).await.map(|_| ()), None);
+
+    // The channel breakdown (GROUP BY) buckets the row under its utm_source.
+    // Global across tenants, so assert our channel is present with >= 1 signup.
+    let breakdown = store.channel_breakdown().await;
+    let google = breakdown.iter().find(|c| c.channel == "google");
+    assert!(
+        google.map(|c| c.signups >= 1).unwrap_or(false),
+        "channel_breakdown should include google with >= 1 signup"
+    );
 }
 
 /// Token-usage records persist and aggregate per model in the summary.

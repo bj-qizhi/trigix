@@ -53,6 +53,7 @@ export function AnalyticsPage({ onBack }: Props) {
   const [workflows, setWorkflows]   = useState<WorkflowRecord[]>([])
   const [loading, setLoading]       = useState(true)
   const [tokenUsage, setTokenUsage] = useState<api.TokenUsageSummary | null>(null)
+  const [acquisition, setAcquisition] = useState<api.AcquisitionChannel[]>([])
   const [nodeTypeStats, setNodeTypeStats] = useState<api.NodeTypeStat[]>([])
   const [timeRange, setTimeRange] = useState<7 | 14 | 30 | 90>(14)
   const [showDeps, setShowDeps] = useState(false)
@@ -87,6 +88,8 @@ export function AnalyticsPage({ onBack }: Props) {
     api.getWorkflowStatsAnalytics(auth!.tenantId, 30).then(setWfStatsAnalytics).catch(() => {})
     api.getSlaBreaches(auth!.tenantId, 30).then(setSlaBreaches).catch(() => {})
     api.getErrorAnalysis(auth!.tenantId, 30).then(setErrorAnalysis).catch(() => {})
+    // Admin-only; non-admins get 403 → leave empty (card hidden).
+    api.getAcquisitionChannels().then(setAcquisition).catch(() => {})
   }, [])
 
   // ── Filter by selected time range ───────────────────────────────────────────
@@ -1031,6 +1034,31 @@ export function AnalyticsPage({ onBack }: Props) {
                 )}
               </div>
             )}
+
+            {/* ── Acquisition channels (admin-only) ── */}
+            {acquisition.length > 0 && (() => {
+              const total = acquisition.reduce((s, c) => s + c.signups, 0)
+              const max = Math.max(...acquisition.map((c) => c.signups), 1)
+              return (
+                <div style={{ marginBottom: 28 }}>
+                  <h2 style={{ marginBottom: 4 }}>{zh ? '获客渠道' : 'Acquisition Channels'}</h2>
+                  <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 12 }}>
+                    {zh ? `按首触渠道统计的注册租户(共 ${total})` : `Signed-up tenants by first-touch channel (${total} total)`}
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxWidth: 520 }}>
+                    {acquisition.map((c) => (
+                      <div key={c.channel} style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                        <div style={{ width: 120, fontSize: 13, fontFamily: 'monospace', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={c.channel}>{c.channel}</div>
+                        <div style={{ flex: 1, height: 14, background: 'var(--panel)', borderRadius: 4, overflow: 'hidden' }}>
+                          <div style={{ width: `${(c.signups / max) * 100}%`, height: '100%', background: 'var(--accent)' }} />
+                        </div>
+                        <div style={{ width: 48, textAlign: 'right', fontSize: 13, fontWeight: 600 }}>{c.signups.toLocaleString()}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )
+            })()}
 
             {nodeTypeStats.length > 0 && (
               <div style={{ marginBottom: 24 }}>
