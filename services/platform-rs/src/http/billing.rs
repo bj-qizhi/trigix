@@ -292,11 +292,17 @@ fn apply_stripe_event(state: &AppState, event_type: &str, obj: &serde_json::Valu
         "invoice.paid" => {
             let customer = obj["customer"].as_str().unwrap_or("");
             let amount = obj["amount_paid"].as_i64().unwrap_or(0);
+            let currency = obj["currency"].as_str().unwrap_or("usd");
             if !customer.is_empty() && amount > 0 {
                 if let Some(tenant_id) = state.billing_store.get_tenant_by_stripe_customer(customer)
                 {
-                    state.billing_store.add_revenue(&tenant_id, amount);
-                    info!(tenant_id, amount, "Stripe invoice.paid → revenue recorded");
+                    state
+                        .billing_store
+                        .add_revenue(&tenant_id, currency, amount);
+                    info!(
+                        tenant_id,
+                        amount, currency, "Stripe invoice.paid → revenue recorded"
+                    );
                 }
             }
         }

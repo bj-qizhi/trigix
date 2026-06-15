@@ -671,11 +671,16 @@ export function getTokenUsage(tenantId: string, days?: number): Promise<TokenUsa
   })
 }
 
+export interface CurrencyRevenue {
+  currency: string
+  cents: number
+}
+
 export interface AcquisitionChannel {
   channel: string
   signups: number
   paid: number
-  revenue_cents: number
+  revenue: CurrencyRevenue[]
 }
 
 /** Operator-only (admin): acquisition ROI per channel (signups, paid, revenue). */

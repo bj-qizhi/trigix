@@ -253,11 +253,13 @@ pub trait BillingStore: Send + Sync {
     /// slow) response, so handlers must dedupe to avoid applying an upgrade or
     /// clawback twice.
     fn mark_stripe_event_processed(&self, event_id: &str) -> bool;
-    /// Adds paid-invoice revenue (Stripe `amount_paid`, minor currency unit) to
-    /// the tenant, attributed to its acquisition channel via the analytics join.
-    fn add_revenue(&self, tenant_id: &str, cents: i64);
-    /// Total revenue recorded for the tenant (minor currency unit).
+    /// Adds paid-invoice revenue for a `currency` (Stripe `amount_paid`, minor
+    /// unit) to the tenant, attributed to its acquisition channel via the join.
+    fn add_revenue(&self, tenant_id: &str, currency: &str, cents: i64);
+    /// Total revenue across all currencies for the tenant (minor unit).
     fn revenue_cents(&self, tenant_id: &str) -> i64;
+    /// Revenue per currency for the tenant, largest first.
+    fn revenue_by_currency(&self, tenant_id: &str) -> Vec<(String, i64)>;
     fn billing_status(&self, tenant_id: &str) -> BillingStatus {
         let quota = self.get_quota(tenant_id);
         let ym = current_year_month();
@@ -303,7 +305,8 @@ pub struct MemoryBillingStore {
     usage: RwLock<HashMap<(String, String), UsageSummary>>,
     stripe_ids: RwLock<HashMap<String, (Option<String>, Option<String>)>>,
     seen_events: RwLock<std::collections::HashSet<String>>,
-    revenue: RwLock<HashMap<String, i64>>,
+    /// Revenue keyed by (tenant, currency).
+    revenue: RwLock<HashMap<(String, String), i64>>,
 }
 
 impl BillingStore for MemoryBillingStore {
@@ -407,21 +410,34 @@ impl BillingStore for MemoryBillingStore {
             .unwrap()
             .insert(event_id.to_string())
     }
-    fn add_revenue(&self, tenant_id: &str, cents: i64) {
+    fn add_revenue(&self, tenant_id: &str, currency: &str, cents: i64) {
         *self
             .revenue
             .write()
             .unwrap()
-            .entry(tenant_id.to_string())
+            .entry((tenant_id.to_string(), currency.to_string()))
             .or_insert(0) += cents;
     }
     fn revenue_cents(&self, tenant_id: &str) -> i64 {
         self.revenue
             .read()
             .unwrap()
-            .get(tenant_id)
-            .copied()
-            .unwrap_or(0)
+            .iter()
+            .filter(|((t, _), _)| t == tenant_id)
+            .map(|(_, v)| *v)
+            .sum()
+    }
+    fn revenue_by_currency(&self, tenant_id: &str) -> Vec<(String, i64)> {
+        let mut out: Vec<(String, i64)> = self
+            .revenue
+            .read()
+            .unwrap()
+            .iter()
+            .filter(|((t, _), _)| t == tenant_id)
+            .map(|((_, c), v)| (c.clone(), *v))
+            .collect();
+        out.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(&b.0)));
+        out
     }
 }
 
@@ -680,14 +696,17 @@ impl BillingStore for PostgresBillingStore {
             })
         })
     }
-    fn add_revenue(&self, tenant_id: &str, cents: i64) {
+    fn add_revenue(&self, tenant_id: &str, currency: &str, cents: i64) {
         let pool = self.pool.clone();
         let tid = tenant_id.to_string();
+        let cur = currency.to_string();
         tokio::spawn(async move {
             let _ = sqlx::query(
-                "UPDATE af_tenant_quotas SET revenue_cents = revenue_cents + $2 WHERE tenant_id = $1",
+                "INSERT INTO af_tenant_revenue (tenant_id, currency, cents) VALUES ($1, $2, $3) \
+                 ON CONFLICT (tenant_id, currency) DO UPDATE SET cents = af_tenant_revenue.cents + EXCLUDED.cents",
             )
             .bind(&tid)
+            .bind(&cur)
             .bind(cents)
             .execute(&pool)
             .await;
@@ -699,14 +718,28 @@ impl BillingStore for PostgresBillingStore {
         tokio::task::block_in_place(|| {
             tokio::runtime::Handle::current().block_on(async move {
                 sqlx::query_scalar::<_, i64>(
-                    "SELECT revenue_cents FROM af_tenant_quotas WHERE tenant_id = $1",
+                    "SELECT COALESCE(SUM(cents), 0)::bigint FROM af_tenant_revenue WHERE tenant_id = $1",
                 )
                 .bind(&tid)
-                .fetch_optional(&pool)
+                .fetch_one(&pool)
                 .await
-                .ok()
-                .flatten()
                 .unwrap_or(0)
+            })
+        })
+    }
+    fn revenue_by_currency(&self, tenant_id: &str) -> Vec<(String, i64)> {
+        let pool = self.pool.clone();
+        let tid = tenant_id.to_string();
+        tokio::task::block_in_place(|| {
+            tokio::runtime::Handle::current().block_on(async move {
+                sqlx::query_as::<_, (String, i64)>(
+                    "SELECT currency, cents FROM af_tenant_revenue WHERE tenant_id = $1 \
+                     ORDER BY cents DESC, currency ASC",
+                )
+                .bind(&tid)
+                .fetch_all(&pool)
+                .await
+                .unwrap_or_default()
             })
         })
     }
@@ -790,16 +823,22 @@ impl BillingStore for PlatformBillingStore {
             Self::Postgres(s) => s.mark_stripe_event_processed(event_id),
         }
     }
-    fn add_revenue(&self, tenant_id: &str, cents: i64) {
+    fn add_revenue(&self, tenant_id: &str, currency: &str, cents: i64) {
         match self {
-            Self::Memory(s) => s.add_revenue(tenant_id, cents),
-            Self::Postgres(s) => s.add_revenue(tenant_id, cents),
+            Self::Memory(s) => s.add_revenue(tenant_id, currency, cents),
+            Self::Postgres(s) => s.add_revenue(tenant_id, currency, cents),
         }
     }
     fn revenue_cents(&self, tenant_id: &str) -> i64 {
         match self {
             Self::Memory(s) => s.revenue_cents(tenant_id),
             Self::Postgres(s) => s.revenue_cents(tenant_id),
+        }
+    }
+    fn revenue_by_currency(&self, tenant_id: &str) -> Vec<(String, i64)> {
+        match self {
+            Self::Memory(s) => s.revenue_by_currency(tenant_id),
+            Self::Postgres(s) => s.revenue_by_currency(tenant_id),
         }
     }
 }

@@ -18,7 +18,8 @@
 
 use trigix_platform::affiliate::{AffiliateStore, PlatformAffiliateStore, PostgresAffiliateStore};
 use trigix_platform::attribution::{
-    AttributionRecord, AttributionStore, PlatformAttributionStore, PostgresAttributionStore,
+    AttributionRecord, AttributionStore, CurrencyRevenue, PlatformAttributionStore,
+    PostgresAttributionStore,
 };
 use trigix_platform::billing::{BillingStore, PlatformBillingStore, TenantQuota};
 use trigix_platform::token_usage::{
@@ -145,10 +146,10 @@ async fn attribution_first_touch_roundtrip() {
         }
         tokio::time::sleep(std::time::Duration::from_millis(100)).await;
     }
-    billing.add_revenue(&tenant, 4900);
+    billing.add_revenue(&tenant, "eur", 4900);
 
-    // channel_revenue joins attribution × quotas: our channel should show one
-    // signup that converted to paid with the attributed revenue.
+    // channel_revenue joins attribution × per-currency revenue: our channel
+    // should show one paid signup with the EUR revenue (not mixed into USD).
     let mut stats = None;
     for _ in 0..30 {
         if let Some(s) = store
@@ -157,7 +158,11 @@ async fn attribution_first_touch_roundtrip() {
             .into_iter()
             .find(|c| c.channel == channel)
         {
-            if s.paid >= 1 && s.revenue_cents >= 4900 {
+            if s.paid >= 1
+                && s.revenue
+                    .iter()
+                    .any(|r| r.currency == "eur" && r.cents >= 4900)
+            {
                 stats = Some(s);
                 break;
             }
@@ -167,7 +172,18 @@ async fn attribution_first_touch_roundtrip() {
     let s = stats.expect("channel_revenue should show the converted channel");
     assert_eq!(s.signups, 1);
     assert_eq!(s.paid, 1);
-    assert!(s.revenue_cents >= 4900);
+    assert_eq!(
+        s.revenue,
+        vec![CurrencyRevenue {
+            currency: "eur".into(),
+            cents: 4900
+        }]
+    );
+    // Revenue read-back is per-currency (settled by the poll above).
+    assert_eq!(
+        billing.revenue_by_currency(&tenant),
+        vec![("eur".to_string(), 4900)]
+    );
 }
 
 /// Referral codes, first-touch links and the signed commission ledger round-trip.

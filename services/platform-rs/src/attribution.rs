@@ -48,17 +48,25 @@ impl AttributionRecord {
     }
 }
 
-#[allow(async_fn_in_trait)]
+/// Revenue in one currency.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct CurrencyRevenue {
+    pub currency: String,
+    pub cents: i64,
+}
+
 /// Acquisition-channel ROI: tenants brought in by a `utm_source`, how many
-/// converted to a paid tier, and the converted revenue attributed to them.
-/// Records with no `utm_source` are bucketed as `direct`.
+/// converted to a paid tier, and the converted revenue (per currency) attributed
+/// to them. Records with no `utm_source` are bucketed as `direct`.
 #[derive(Debug, Clone, Serialize)]
 pub struct ChannelStats {
     pub channel: String,
     pub signups: i64,
     pub paid: i64,
-    pub revenue_cents: i64,
+    pub revenue: Vec<CurrencyRevenue>,
 }
+
+#[allow(async_fn_in_trait)]
 
 pub trait AttributionStore: Clone + Send + Sync + 'static {
     /// Records first-touch attribution. No-op if the tenant already has a row.
@@ -111,7 +119,7 @@ impl AttributionStore for MemoryAttributionStore {
                 channel,
                 signups,
                 paid: 0,
-                revenue_cents: 0,
+                revenue: Vec::new(),
             })
             .collect();
         out.sort_by(|a, b| b.signups.cmp(&a.signups).then(a.channel.cmp(&b.channel)));
@@ -198,29 +206,68 @@ impl AttributionStore for PostgresAttributionStore {
         })
     }
     async fn channel_revenue(&self) -> Vec<ChannelStats> {
-        sqlx::query_as::<_, (String, i64, i64, i64)>(
+        // Signups + paid conversions per channel (tier lives on af_tenant_quotas).
+        let base = sqlx::query_as::<_, (String, i64, i64)>(
             r#"
             SELECT COALESCE(NULLIF(TRIM(a.utm_source), ''), 'direct') AS channel,
                    COUNT(*)::bigint AS signups,
-                   COUNT(*) FILTER (WHERE q.tier IS NOT NULL AND q.tier <> 'free')::bigint AS paid,
-                   COALESCE(SUM(q.revenue_cents), 0)::bigint AS revenue_cents
+                   COUNT(*) FILTER (WHERE q.tier IS NOT NULL AND q.tier <> 'free')::bigint AS paid
             FROM af_attribution a
             LEFT JOIN af_tenant_quotas q ON q.tenant_id = a.tenant_id
             GROUP BY 1
-            ORDER BY revenue_cents DESC, signups DESC, channel ASC
             "#,
         )
         .fetch_all(&self.pool)
         .await
-        .unwrap_or_default()
-        .into_iter()
-        .map(|(channel, signups, paid, revenue_cents)| ChannelStats {
-            channel,
-            signups,
-            paid,
-            revenue_cents,
-        })
-        .collect()
+        .unwrap_or_default();
+
+        // Revenue per (channel, currency) — kept separate so currencies aren't summed.
+        let rev = sqlx::query_as::<_, (String, String, i64)>(
+            r#"
+            SELECT COALESCE(NULLIF(TRIM(a.utm_source), ''), 'direct') AS channel,
+                   r.currency,
+                   SUM(r.cents)::bigint AS cents
+            FROM af_attribution a
+            JOIN af_tenant_revenue r ON r.tenant_id = a.tenant_id
+            GROUP BY 1, 2
+            "#,
+        )
+        .fetch_all(&self.pool)
+        .await
+        .unwrap_or_default();
+
+        let mut by_channel: std::collections::HashMap<String, Vec<CurrencyRevenue>> =
+            std::collections::HashMap::new();
+        for (channel, currency, cents) in rev {
+            by_channel
+                .entry(channel)
+                .or_default()
+                .push(CurrencyRevenue { currency, cents });
+        }
+        for revs in by_channel.values_mut() {
+            revs.sort_by(|a, b| b.cents.cmp(&a.cents).then(a.currency.cmp(&b.currency)));
+        }
+
+        let mut out: Vec<ChannelStats> = base
+            .into_iter()
+            .map(|(channel, signups, paid)| {
+                let revenue = by_channel.remove(&channel).unwrap_or_default();
+                ChannelStats {
+                    channel,
+                    signups,
+                    paid,
+                    revenue,
+                }
+            })
+            .collect();
+        out.sort_by(|a, b| {
+            let ra: i64 = a.revenue.iter().map(|r| r.cents).sum();
+            let rb: i64 = b.revenue.iter().map(|r| r.cents).sum();
+            rb.cmp(&ra)
+                .then(b.signups.cmp(&a.signups))
+                .then(a.channel.cmp(&b.channel))
+        });
+        out
     }
 }
 

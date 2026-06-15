@@ -1039,16 +1039,21 @@ export function AnalyticsPage({ onBack }: Props) {
             {acquisition.length > 0 && (() => {
               const totalSignups = acquisition.reduce((s, c) => s + c.signups, 0)
               const totalPaid = acquisition.reduce((s, c) => s + c.paid, 0)
-              const totalRevenue = acquisition.reduce((s, c) => s + c.revenue_cents, 0)
-              const money = (cents: number) => `$${(cents / 100).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+              const fmtCur = (cents: number, currency: string) =>
+                `${(cents / 100).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${currency.toUpperCase()}`
+              // Sum revenue per currency (never mix currencies).
+              const totalsByCur: Record<string, number> = {}
+              for (const c of acquisition) for (const r of c.revenue) totalsByCur[r.currency] = (totalsByCur[r.currency] ?? 0) + r.cents
+              const totalRevenue = Object.entries(totalsByCur).map(([cur, cents]) => fmtCur(cents, cur)).join(' + ') || fmtCur(0, 'usd')
+              const revCell = (rev: api.CurrencyRevenue[]) => (rev.length ? rev.map((r) => fmtCur(r.cents, r.currency)).join(' + ') : '—')
               const rate = (paid: number, signups: number) => (signups > 0 ? `${((paid / signups) * 100).toFixed(0)}%` : '—')
               return (
                 <div style={{ marginBottom: 28 }}>
                   <h2 style={{ marginBottom: 4 }}>{zh ? '获客渠道 ROI' : 'Acquisition ROI'}</h2>
                   <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 12 }}>
                     {zh
-                      ? `按首触渠道:注册 → 付费转化 → 收入(首单+续费)(${totalSignups} 注册 / ${totalPaid} 付费 / ${money(totalRevenue)})`
-                      : `By first-touch channel: signup → paid → revenue (initial + recurring) (${totalSignups} signups / ${totalPaid} paid / ${money(totalRevenue)})`}
+                      ? `按首触渠道:注册 → 付费转化 → 收入(首单+续费,分币种)(${totalSignups} 注册 / ${totalPaid} 付费 / ${totalRevenue})`
+                      : `By first-touch channel: signup → paid → revenue (initial + recurring, per currency) (${totalSignups} signups / ${totalPaid} paid / ${totalRevenue})`}
                   </div>
                   <table className="workflow-table" style={{ maxWidth: 600 }}>
                     <thead>
@@ -1067,7 +1072,7 @@ export function AnalyticsPage({ onBack }: Props) {
                           <td style={{ fontSize: 12 }}>{c.signups.toLocaleString()}</td>
                           <td style={{ fontSize: 12 }}>{c.paid.toLocaleString()}</td>
                           <td style={{ fontSize: 12, color: 'var(--muted)' }}>{rate(c.paid, c.signups)}</td>
-                          <td style={{ fontSize: 12, fontWeight: 600 }}>{money(c.revenue_cents)}</td>
+                          <td style={{ fontSize: 12, fontWeight: 600 }}>{revCell(c.revenue)}</td>
                         </tr>
                       ))}
                     </tbody>
