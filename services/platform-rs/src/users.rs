@@ -281,7 +281,7 @@ impl UserStore for PostgresUserStore {
             tokio::runtime::Handle::current().block_on(async move {
                 let row: Option<UserRow> = sqlx::query_as::<_, UserRow>(
                     "INSERT INTO af_users (id, email, password_hash, name, tenant_id, created_at, email_verified) \
-                     VALUES ($1, $2, $3, $4, $5, $6, FALSE) \
+                     VALUES ($1, $2, $3, $4, $5, to_timestamp($6), FALSE) \
                      ON CONFLICT (email) DO NOTHING \
                      RETURNING id, email, password_hash, name, tenant_id, EXTRACT(EPOCH FROM created_at)::BIGINT AS created_at, email_verified"
                 )
