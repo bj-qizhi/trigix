@@ -22,6 +22,7 @@ import type {
   EventType,
 } from '../types'
 import { getStoredAuth } from '../auth'
+import { getAttribution } from './attribution'
 
 // Re-export shared domain types so consumers can import them from the API
 // client module (the canonical definitions live in ../types).
@@ -1174,7 +1175,7 @@ export interface AuthResponse {
 export function registerUser(email: string, password: string, name?: string, tenantId?: string): Promise<AuthResponse> {
   return request('/v1/auth/register', {
     method: 'POST',
-    body: JSON.stringify({ email, password, name, tenant_id: tenantId }),
+    body: JSON.stringify({ email, password, name, tenant_id: tenantId, attribution: getAttribution() }),
   })
 }
 

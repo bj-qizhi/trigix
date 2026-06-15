@@ -3,6 +3,7 @@
 
 #![recursion_limit = "512"]
 pub mod api_keys;
+pub mod attribution;
 pub mod audit;
 pub mod auth;
 pub mod cache;
@@ -28,6 +29,7 @@ pub mod notification_prefs;
 pub mod notifications;
 pub mod orgs;
 pub mod password_reset;
+pub mod posthog;
 pub mod retention;
 pub mod scheduler;
 pub mod sso;

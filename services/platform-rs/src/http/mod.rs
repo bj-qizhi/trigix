@@ -167,6 +167,7 @@ pub struct AppState {
     variable_store: Arc<PlatformVariableStore>,
     api_key_store: Arc<PlatformApiKeyStore>,
     token_usage_store: Arc<PlatformTokenUsageStore>,
+    attribution_store: Arc<crate::attribution::PlatformAttributionStore>,
     form_store: Arc<PlatformFormStore>,
     test_case_store: Arc<PlatformTestCaseStore>,
     comment_store: Arc<PlatformCommentStore>,
@@ -182,6 +183,7 @@ pub struct AppState {
     billing_store: Arc<PlatformBillingStore>,
     stripe_client: Option<Arc<StripeClient>>,
     captcha: Option<Arc<crate::captcha::CaptchaVerifier>>,
+    posthog: Option<Arc<crate::posthog::PostHogClient>>,
     rate_limiter: RateLimiter,
     notification_store: Arc<PlatformNotificationStore>,
     sso_store: Arc<crate::sso::PlatformSsoStore>,
@@ -225,6 +227,7 @@ pub(crate) fn default_app_state() -> AppState {
         variable_store: Arc::new(PlatformVariableStore::default()),
         api_key_store: Arc::new(PlatformApiKeyStore::default()),
         token_usage_store: usage_store,
+        attribution_store: Arc::new(crate::attribution::PlatformAttributionStore::default()),
         form_store: Arc::new(PlatformFormStore::memory()),
         test_case_store: Arc::new(PlatformTestCaseStore::memory()),
         comment_store: Arc::new(PlatformCommentStore::default()),
@@ -244,6 +247,7 @@ pub(crate) fn default_app_state() -> AppState {
         billing_store,
         stripe_client: StripeClient::from_env().map(Arc::new),
         captcha: crate::captcha::CaptchaVerifier::from_env().map(Arc::new),
+        posthog: crate::posthog::PostHogClient::from_env().map(Arc::new),
         rate_limiter: RateLimiter::default(),
         notification_store: Arc::new(PlatformNotificationStore::default()),
         sso_store: Arc::new(crate::sso::PlatformSsoStore::default()),
@@ -825,6 +829,7 @@ pub fn router_with_services(
         variable_store: Arc::new(PlatformVariableStore::default()),
         api_key_store: Arc::new(PlatformApiKeyStore::default()),
         token_usage_store: Arc::new(PlatformTokenUsageStore::default()),
+        attribution_store: Arc::new(crate::attribution::PlatformAttributionStore::default()),
         form_store: Arc::new(PlatformFormStore::memory()),
         test_case_store: Arc::new(PlatformTestCaseStore::memory()),
         comment_store: Arc::new(PlatformCommentStore::default()),
@@ -844,6 +849,7 @@ pub fn router_with_services(
         billing_store: Arc::new(PlatformBillingStore::memory()),
         stripe_client: StripeClient::from_env().map(Arc::new),
         captcha: crate::captcha::CaptchaVerifier::from_env().map(Arc::new),
+        posthog: crate::posthog::PostHogClient::from_env().map(Arc::new),
         rate_limiter: RateLimiter::default(),
         notification_store: Arc::new(PlatformNotificationStore::default()),
         sso_store: Arc::new(crate::sso::PlatformSsoStore::default()),
@@ -867,6 +873,7 @@ pub fn router_with_all_stores(
     variable_store: PlatformVariableStore,
     api_key_store: PlatformApiKeyStore,
     token_usage_store: PlatformTokenUsageStore,
+    attribution_store: crate::attribution::PlatformAttributionStore,
     form_store: PlatformFormStore,
     test_case_store: PlatformTestCaseStore,
     comment_store: PlatformCommentStore,
@@ -896,6 +903,7 @@ pub fn router_with_all_stores(
         variable_store: Arc::new(variable_store),
         api_key_store: Arc::new(api_key_store),
         token_usage_store: Arc::new(token_usage_store),
+        attribution_store: Arc::new(attribution_store),
         form_store: Arc::new(form_store),
         test_case_store: Arc::new(test_case_store),
         comment_store: Arc::new(comment_store),
@@ -911,6 +919,7 @@ pub fn router_with_all_stores(
         billing_store: Arc::new(billing_store),
         stripe_client: StripeClient::from_env().map(Arc::new),
         captcha: crate::captcha::CaptchaVerifier::from_env().map(Arc::new),
+        posthog: crate::posthog::PostHogClient::from_env().map(Arc::new),
         rate_limiter: RateLimiter::default(),
         notification_store: Arc::new(PlatformNotificationStore::default()),
         sso_store: Arc::new(sso_store),
@@ -1600,6 +1609,22 @@ struct RegisterRequest {
     tenant_id: Option<String>,
     #[serde(default)]
     captcha_token: Option<String>,
+    #[serde(default)]
+    attribution: Option<AttributionInput>,
+}
+
+/// Acquisition-attribution fields the SPA forwards from the landing page
+/// (UTM params, referrer, landing URL, PostHog distinct id).
+#[derive(Debug, Default, Deserialize)]
+struct AttributionInput {
+    utm_source: Option<String>,
+    utm_medium: Option<String>,
+    utm_campaign: Option<String>,
+    utm_term: Option<String>,
+    utm_content: Option<String>,
+    referrer: Option<String>,
+    landing_page: Option<String>,
+    distinct_id: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]

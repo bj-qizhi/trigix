@@ -139,6 +139,7 @@ async fn register_user(
         });
     }
     let tenant_id = body.tenant_id.unwrap_or_else(|| "tenant-1".to_string());
+    let tenant_for_attr = tenant_id.clone();
     let store = &state.user_store;
     let user = tokio::task::spawn_blocking({
         let email = body.email.clone();
@@ -179,6 +180,30 @@ async fn register_user(
                     .await;
             }
         });
+    }
+
+    // First-touch acquisition attribution (best-effort, non-blocking).
+    if let Some(attr) = body.attribution {
+        let rec = crate::attribution::AttributionRecord {
+            tenant_id: tenant_for_attr,
+            user_id: Some(user.id.clone()),
+            utm_source: attr.utm_source,
+            utm_medium: attr.utm_medium,
+            utm_campaign: attr.utm_campaign,
+            utm_term: attr.utm_term,
+            utm_content: attr.utm_content,
+            referrer: attr.referrer,
+            landing_page: attr.landing_page,
+            distinct_id: attr.distinct_id,
+            created_at: crate::execution::unix_now(),
+        };
+        if rec.has_signal() {
+            let store = Arc::clone(&state.attribution_store);
+            tokio::spawn(async move {
+                use crate::attribution::AttributionStore;
+                store.record_first_touch(rec).await;
+            });
+        }
     }
 
     let token = make_user_token(&user)?;

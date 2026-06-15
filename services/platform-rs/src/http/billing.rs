@@ -127,7 +127,64 @@ async fn stripe_webhook_handler(
     let event_type = event["type"].as_str().unwrap_or("");
     let obj = &event["data"]["object"];
     apply_stripe_event(&state, event_type, obj);
+
+    // Server-side conversion → PostHog, credited to the tenant's first-touch
+    // acquisition channel. Fire-and-forget so the webhook still returns 200 fast.
+    if event_type == "checkout.session.completed" {
+        if let Some(posthog) = state.posthog.clone() {
+            let tenant_id = obj["metadata"]["tenant_id"]
+                .as_str()
+                .unwrap_or("")
+                .to_string();
+            let tier = obj["metadata"]["tier"]
+                .as_str()
+                .unwrap_or("pro")
+                .to_string();
+            if !tenant_id.is_empty() {
+                let attribution_store = Arc::clone(&state.attribution_store);
+                tokio::spawn(async move {
+                    use crate::attribution::AttributionStore;
+                    let attr = attribution_store.get(&tenant_id).await;
+                    let distinct_id = attr
+                        .as_ref()
+                        .and_then(|a| a.distinct_id.clone())
+                        .unwrap_or_else(|| format!("tenant:{tenant_id}"));
+                    let props = conversion_properties(&tenant_id, &tier, attr.as_ref());
+                    posthog
+                        .capture(&distinct_id, "subscription_started", props)
+                        .await;
+                });
+            }
+        }
+    }
+
     StatusCode::OK.into_response()
+}
+
+/// Builds the PostHog properties for a paid-conversion event, merging the
+/// tenant's first-touch attribution so revenue is credited to its channel.
+fn conversion_properties(
+    tenant_id: &str,
+    tier: &str,
+    attr: Option<&crate::attribution::AttributionRecord>,
+) -> serde_json::Value {
+    let mut props = serde_json::json!({ "tier": tier, "tenant_id": tenant_id });
+    if let (Some(a), Some(map)) = (attr, props.as_object_mut()) {
+        for (key, val) in [
+            ("utm_source", &a.utm_source),
+            ("utm_medium", &a.utm_medium),
+            ("utm_campaign", &a.utm_campaign),
+            ("utm_term", &a.utm_term),
+            ("utm_content", &a.utm_content),
+            ("referrer", &a.referrer),
+            ("landing_page", &a.landing_page),
+        ] {
+            if let Some(v) = val {
+                map.insert(key.to_string(), serde_json::Value::String(v.clone()));
+            }
+        }
+    }
+    props
 }
 
 /// Applies a verified Stripe webhook event to billing state. Pure over `state`
@@ -247,6 +304,28 @@ mod tests {
     use axum::http::StatusCode;
     use serde_json::json;
     use tower::ServiceExt;
+
+    #[test]
+    fn conversion_properties_merge_attribution() {
+        let attr = crate::attribution::AttributionRecord {
+            tenant_id: "t1".into(),
+            utm_source: Some("google".into()),
+            utm_campaign: Some("launch".into()),
+            ..Default::default()
+        };
+        let props = super::conversion_properties("t1", "pro", Some(&attr));
+        assert_eq!(props["tier"], "pro");
+        assert_eq!(props["tenant_id"], "t1");
+        assert_eq!(props["utm_source"], "google");
+        assert_eq!(props["utm_campaign"], "launch");
+        // Absent fields are omitted, not null.
+        assert!(props.get("utm_medium").is_none());
+
+        // No attribution → just tier + tenant.
+        let bare = super::conversion_properties("t1", "free", None);
+        assert_eq!(bare["tier"], "free");
+        assert!(bare.get("utm_source").is_none());
+    }
 
     #[test]
     fn refund_claws_back_quota_to_free() {
