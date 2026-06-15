@@ -126,7 +126,14 @@ async fn stripe_webhook_handler(
 
     let event_type = event["type"].as_str().unwrap_or("");
     let obj = &event["data"]["object"];
+    apply_stripe_event(&state, event_type, obj);
+    StatusCode::OK.into_response()
+}
 
+/// Applies a verified Stripe webhook event to billing state. Pure over `state`
+/// (no signature/HTTP concerns) so every branch — including credit-clawback — is
+/// unit-testable without env-based signature setup.
+fn apply_stripe_event(state: &AppState, event_type: &str, obj: &serde_json::Value) {
     match event_type {
         "checkout.session.completed" => {
             let tenant_id = obj["metadata"]["tenant_id"].as_str().unwrap_or("");
@@ -185,10 +192,27 @@ async fn stripe_webhook_handler(
                 );
             }
         }
+        // Credit-clawback: a refund or chargeback revokes the granted tier so a
+        // fraudulent/charged-back upgrade can't keep its paid quota. The customer
+        // id lives directly on the charge object for these events.
+        "charge.refunded" | "charge.dispute.created" | "charge.dispute.funds_withdrawn" => {
+            let customer = obj["customer"].as_str().unwrap_or("");
+            if !customer.is_empty() {
+                if let Some(tenant_id) = state.billing_store.get_tenant_by_stripe_customer(customer)
+                {
+                    state.billing_store.set_quota(TenantQuota::free(&tenant_id));
+                    state
+                        .billing_store
+                        .set_stripe_ids(&tenant_id, Some(customer), None);
+                    info!(
+                        tenant_id,
+                        event_type, "Stripe refund/dispute → quota clawed back to free"
+                    );
+                }
+            }
+        }
         _ => {}
     }
-
-    StatusCode::OK.into_response()
 }
 
 async fn get_token_usage_handler(
@@ -223,6 +247,48 @@ mod tests {
     use axum::http::StatusCode;
     use serde_json::json;
     use tower::ServiceExt;
+
+    #[test]
+    fn refund_claws_back_quota_to_free() {
+        use crate::billing::BillingStore;
+        let state = default_app_state();
+        let tenant = "tenant-claw";
+        let customer = "cus_claw";
+
+        // Paid upgrade grants the pro tier.
+        super::apply_stripe_event(
+            &state,
+            "checkout.session.completed",
+            &json!({
+                "metadata": {"tenant_id": tenant, "tier": "pro"},
+                "customer": customer,
+                "subscription": "sub_claw"
+            }),
+        );
+        assert_eq!(state.billing_store.get_quota(tenant).tier, "pro");
+
+        // A refund/chargeback claws the tier back to free.
+        super::apply_stripe_event(&state, "charge.refunded", &json!({"customer": customer}));
+        assert_eq!(state.billing_store.get_quota(tenant).tier, "free");
+
+        // A dispute likewise revokes the grant.
+        super::apply_stripe_event(
+            &state,
+            "checkout.session.completed",
+            &json!({
+                "metadata": {"tenant_id": tenant, "tier": "business"},
+                "customer": customer,
+                "subscription": "sub_claw2"
+            }),
+        );
+        assert_eq!(state.billing_store.get_quota(tenant).tier, "business");
+        super::apply_stripe_event(
+            &state,
+            "charge.dispute.created",
+            &json!({"customer": customer}),
+        );
+        assert_eq!(state.billing_store.get_quota(tenant).tier, "free");
+    }
 
     #[tokio::test]
     async fn billing_status_endpoint_returns_ok() {
