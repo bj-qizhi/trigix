@@ -970,6 +970,9 @@ export interface SystemInfo {
   auth_required: boolean
   rust_edition: string
   features: string[]
+  /** Captcha provider + public site key, present only when captcha is enforced. */
+  captcha_provider?: string | null
+  captcha_site_key?: string | null
 }
 
 export function getSystemInfo(): Promise<SystemInfo> {
@@ -1172,17 +1175,17 @@ export interface AuthResponse {
   user: User
 }
 
-export function registerUser(email: string, password: string, name?: string, tenantId?: string): Promise<AuthResponse> {
+export function registerUser(email: string, password: string, name?: string, tenantId?: string, captchaToken?: string): Promise<AuthResponse> {
   return request('/v1/auth/register', {
     method: 'POST',
-    body: JSON.stringify({ email, password, name, tenant_id: tenantId, attribution: getAttribution() }),
+    body: JSON.stringify({ email, password, name, tenant_id: tenantId, captcha_token: captchaToken, attribution: getAttribution() }),
   })
 }
 
-export function loginUser(email: string, password: string): Promise<AuthResponse> {
+export function loginUser(email: string, password: string, captchaToken?: string): Promise<AuthResponse> {
   return request('/v1/auth/login', {
     method: 'POST',
-    body: JSON.stringify({ email, password }),
+    body: JSON.stringify({ email, password, captcha_token: captchaToken }),
   })
 }
 

@@ -951,6 +951,11 @@ struct SystemInfo {
     max_concurrent_executions: u64,
     max_executions_per_tenant: u64,
     running_executions: u64,
+    /// Captcha provider (`turnstile` | `hcaptcha`) the SPA should render, and its
+    /// public site key. Both `None` unless captcha is configured server-side, so
+    /// the SPA shows a widget only when verification is actually enforced.
+    captcha_provider: Option<String>,
+    captcha_site_key: Option<String>,
 }
 
 #[derive(serde::Serialize)]

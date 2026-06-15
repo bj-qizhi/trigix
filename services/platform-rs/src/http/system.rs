@@ -36,11 +36,33 @@ async fn healthz_detail(State(state): State<AppState>) -> Json<HealthDetail> {
     })
 }
 
+/// Reads the SPA-facing captcha config: returns `(provider, site_key)` only when
+/// a valid provider, a public site key, and the server-side secret are all set —
+/// i.e. only when the SPA's token will actually be verified.
+fn captcha_public_config() -> (Option<String>, Option<String>) {
+    let provider = std::env::var("CAPTCHA_PROVIDER")
+        .ok()
+        .and_then(|p| crate::captcha::CaptchaProvider::parse(&p).map(|_| p.trim().to_lowercase()));
+    let site_key = std::env::var("CAPTCHA_SITE_KEY")
+        .ok()
+        .filter(|s| !s.is_empty());
+    let secret_set = std::env::var("CAPTCHA_SECRET")
+        .map(|s| !s.is_empty())
+        .unwrap_or(false);
+    match (provider, site_key, secret_set) {
+        (Some(p), Some(k), true) => (Some(p), Some(k)),
+        _ => (None, None),
+    }
+}
+
 async fn system_info() -> Json<SystemInfo> {
+    let (captcha_provider, captcha_site_key) = captcha_public_config();
     Json(SystemInfo {
         version: env!("CARGO_PKG_VERSION"),
         node_types: 136,
         auth_required: std::env::var("AUTH_REQUIRED").as_deref() == Ok("true"),
+        captcha_provider,
+        captcha_site_key,
         max_concurrent_executions: max_concurrent_executions(),
         max_executions_per_tenant: max_executions_per_tenant(),
         running_executions: METRIC_EXEC_RUNNING.load(Ordering::Relaxed),

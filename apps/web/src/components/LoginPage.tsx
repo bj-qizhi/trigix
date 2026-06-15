@@ -3,7 +3,8 @@
 
 import { useEffect, useState } from 'react'
 import { useAuth } from '../AuthContext'
-import { loginUser, registerUser, acceptInvite, getInvitation, forgotPassword, resetPassword, verifyEmail, resendVerification, listPublicSso, type PublicSsoConnection } from '../api/client'
+import { loginUser, registerUser, acceptInvite, getInvitation, forgotPassword, resetPassword, verifyEmail, resendVerification, listPublicSso, getSystemInfo, type PublicSsoConnection } from '../api/client'
+import { CaptchaWidget, type CaptchaProvider } from './CaptchaWidget'
 import { useLocale } from '../useLocale'
 import logoWordmark from '../assets/logo-wordmark.svg'
 
@@ -44,6 +45,22 @@ export function LoginPage() {
   const [name, setName] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
+
+  // Captcha (Turnstile / hCaptcha) — config comes from the backend at runtime.
+  const [captchaProvider, setCaptchaProvider] = useState<CaptchaProvider | null>(null)
+  const [captchaSiteKey, setCaptchaSiteKey] = useState<string | null>(null)
+  const [captchaToken, setCaptchaToken] = useState<string | null>(null)
+
+  useEffect(() => {
+    getSystemInfo()
+      .then((info) => {
+        if (info.captcha_provider === 'turnstile' || info.captcha_provider === 'hcaptcha') {
+          setCaptchaProvider(info.captcha_provider)
+          setCaptchaSiteKey(info.captcha_site_key ?? null)
+        }
+      })
+      .catch(() => {})
+  }, [])
 
   // Enterprise SSO state
   const [ssoConns, setSsoConns] = useState<PublicSsoConnection[]>([])
@@ -227,11 +244,15 @@ export function LoginPage() {
   async function handleEmailSubmit(e: React.FormEvent) {
     e.preventDefault()
     setError(null)
+    if (captchaProvider && captchaSiteKey && !captchaToken) {
+      setError(locale === 'zh' ? '请先完成人机验证' : 'Please complete the captcha')
+      return
+    }
     setLoading(true)
     try {
       const data = isRegister
-        ? await registerUser(email, password, name || undefined)
-        : await loginUser(email, password)
+        ? await registerUser(email, password, name || undefined, undefined, captchaToken ?? undefined)
+        : await loginUser(email, password, captchaToken ?? undefined)
 
       if (isRegister) setJustRegistered(true)
       const claims = parseJwtPayload(data.token)
@@ -246,6 +267,8 @@ export function LoginPage() {
       })
     } catch (err) {
       setError(err instanceof Error ? err.message : isRegister ? 'Registration failed' : 'Login failed')
+      // The captcha token is single-use; force a fresh solve before retrying.
+      setCaptchaToken(null)
     } finally {
       setLoading(false)
     }
@@ -393,6 +416,9 @@ export function LoginPage() {
               required
               style={inputStyle}
             />
+            {captchaProvider && captchaSiteKey && (
+              <CaptchaWidget provider={captchaProvider} siteKey={captchaSiteKey} onToken={setCaptchaToken} />
+            )}
             {error && <p style={{ color: '#ef4444', margin: 0, fontSize: '0.8rem' }}>{error}</p>}
             <button type="submit" disabled={loading} className="btn btn-primary">
               {loading ? (isRegister ? (locale === 'zh' ? '注册中…' : 'Registering…') : (locale === 'zh' ? '登录中…' : 'Signing in…')) : (isRegister ? t('login.register') : t('login.signin'))}
