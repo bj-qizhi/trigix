@@ -60,6 +60,9 @@ async fn main() {
                 trigix_platform::attribution::PlatformAttributionStore::postgres(
                     trigix_platform::attribution::PostgresAttributionStore::new(pool.clone()),
                 );
+            let affiliate_store = trigix_platform::affiliate::PlatformAffiliateStore::postgres(
+                trigix_platform::affiliate::PostgresAffiliateStore::new(pool.clone()),
+            );
             let cache = trigix_platform::cache::CacheClient::from_env().await;
             let billing_store =
                 trigix_platform::billing::PlatformBillingStore::postgres(pool.clone());
@@ -164,6 +167,7 @@ async fn main() {
                 api_key_store,
                 std::sync::Arc::try_unwrap(token_usage_store).unwrap_or_else(|arc| (*arc).clone()),
                 attribution_store,
+                affiliate_store,
                 form_store,
                 test_case_store,
                 comment_store,

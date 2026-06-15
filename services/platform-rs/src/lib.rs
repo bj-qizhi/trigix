@@ -2,6 +2,7 @@
 // https://www.qzso.com/ · managecode@gmail.com
 
 #![recursion_limit = "512"]
+pub mod affiliate;
 pub mod api_keys;
 pub mod attribution;
 pub mod audit;

@@ -23,6 +23,7 @@ import type {
 } from '../types'
 import { getStoredAuth } from '../auth'
 import { getAttribution } from './attribution'
+import { getReferralCode } from './referral'
 
 // Re-export shared domain types so consumers can import them from the API
 // client module (the canonical definitions live in ../types).
@@ -682,6 +683,28 @@ export function getAcquisitionChannels(): Promise<AcquisitionChannel[]> {
   return request('/v1/analytics/attribution')
 }
 
+export interface AffiliateLedgerEntry {
+  id: string
+  referee_tenant: string | null
+  amount_cents: number
+  kind: string
+  source_ref: string | null
+  created_at: number
+}
+
+export interface AffiliateInfo {
+  code: string
+  referral_count: number
+  balance_cents: number
+  commission_pct: number
+  entries: AffiliateLedgerEntry[]
+}
+
+/** The caller's affiliate dashboard: code, referrals, balance and ledger. */
+export function getAffiliate(): Promise<AffiliateInfo> {
+  return request('/v1/affiliate/me')
+}
+
 export interface NodeTypeStat {
   node_type: string
   total: number
@@ -1190,7 +1213,7 @@ export interface AuthResponse {
 export function registerUser(email: string, password: string, name?: string, tenantId?: string, captchaToken?: string): Promise<AuthResponse> {
   return request('/v1/auth/register', {
     method: 'POST',
-    body: JSON.stringify({ email, password, name, tenant_id: tenantId, captcha_token: captchaToken, attribution: getAttribution() }),
+    body: JSON.stringify({ email, password, name, tenant_id: tenantId, captcha_token: captchaToken, attribution: getAttribution(), referral_code: getReferralCode() }),
   })
 }
 

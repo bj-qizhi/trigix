@@ -16,6 +16,9 @@
 //! Multi-thread flavor is required: the Postgres stores use
 //! `tokio::task::block_in_place`, which panics on the current-thread runtime.
 
+use trigix_platform::affiliate::{
+    kind, AffiliateStore, LedgerEntry, PlatformAffiliateStore, PostgresAffiliateStore,
+};
 use trigix_platform::attribution::{
     AttributionRecord, AttributionStore, PlatformAttributionStore, PostgresAttributionStore,
 };
@@ -167,6 +170,45 @@ async fn attribution_first_touch_roundtrip() {
     assert_eq!(s.signups, 1);
     assert_eq!(s.paid, 1);
     assert!(s.revenue_cents >= 4900);
+}
+
+/// Referral codes, first-touch links and the signed commission ledger round-trip.
+#[tokio::test(flavor = "multi_thread")]
+async fn affiliate_referral_and_ledger_roundtrip() {
+    let Some(pool) = setup().await else { return };
+    let store = PlatformAffiliateStore::postgres(PostgresAffiliateStore::new(pool));
+    let referrer = uniq("affref");
+    let referee = uniq("affee");
+
+    // A code is created, resolves back, and the referral is first-touch.
+    let code = store.get_or_create_code(&referrer).await;
+    assert_eq!(
+        store.resolve_code(&code).await.as_deref(),
+        Some(referrer.as_str())
+    );
+    store.record_referral(&referee, &referrer, &code).await;
+    store.record_referral(&referee, &uniq("other"), &code).await; // ignored
+    assert_eq!(
+        store.get_referrer(&referee).await.as_deref(),
+        Some(referrer.as_str())
+    );
+    assert_eq!(store.referral_count(&referrer).await, 1);
+
+    // Signed ledger: commission − clawback − payout.
+    let entry = |amount, k: &str| LedgerEntry {
+        id: uuid::Uuid::new_v4().to_string(),
+        referrer_tenant: referrer.clone(),
+        referee_tenant: Some(referee.clone()),
+        amount_cents: amount,
+        kind: k.to_string(),
+        source_ref: None,
+        created_at: 1,
+    };
+    store.add_entry(entry(1000, kind::COMMISSION)).await;
+    store.add_entry(entry(-300, kind::CLAWBACK)).await;
+    store.add_entry(entry(-200, kind::PAYOUT)).await;
+    assert_eq!(store.balance_cents(&referrer).await, 500);
+    assert_eq!(store.list_entries(&referrer, 10).await.len(), 3);
 }
 
 /// Token-usage records persist and aggregate per model in the summary.

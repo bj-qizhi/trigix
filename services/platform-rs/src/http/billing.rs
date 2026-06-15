@@ -149,6 +149,7 @@ async fn stripe_webhook_handler(
     let event_type = event["type"].as_str().unwrap_or("");
     let obj = &event["data"]["object"];
     apply_stripe_event(&state, event_type, obj);
+    apply_affiliate_event(&state, event_type, obj, event_id);
 
     // Server-side conversion → PostHog, credited to the tenant's first-touch
     // acquisition channel. Fire-and-forget so the webhook still returns 200 fast.
@@ -207,6 +208,55 @@ fn conversion_properties(
         }
     }
     props
+}
+
+/// Accrues or claws back an affiliate commission for a paid/refunded invoice.
+/// The tenant is resolved synchronously (a quick read); the ledger write is
+/// spawned so the webhook still returns fast. No-op unless a commission rate is
+/// configured and the paying tenant was referred.
+fn apply_affiliate_event(
+    state: &AppState,
+    event_type: &str,
+    obj: &serde_json::Value,
+    event_id: &str,
+) {
+    use crate::affiliate::{commission_for, kind, AffiliateStore, LedgerEntry};
+    let (customer, signed_amount, entry_kind) = match event_type {
+        "invoice.paid" => (
+            obj["customer"].as_str().unwrap_or(""),
+            commission_for(obj["amount_paid"].as_i64().unwrap_or(0)),
+            kind::COMMISSION,
+        ),
+        "charge.refunded" => (
+            obj["customer"].as_str().unwrap_or(""),
+            -commission_for(obj["amount_refunded"].as_i64().unwrap_or(0)),
+            kind::CLAWBACK,
+        ),
+        _ => return,
+    };
+    if customer.is_empty() || signed_amount == 0 {
+        return;
+    }
+    let Some(referee) = state.billing_store.get_tenant_by_stripe_customer(customer) else {
+        return;
+    };
+    let affiliate = Arc::clone(&state.affiliate_store);
+    let source_ref = event_id.to_string();
+    tokio::spawn(async move {
+        if let Some(referrer) = affiliate.get_referrer(&referee).await {
+            affiliate
+                .add_entry(LedgerEntry {
+                    id: uuid::Uuid::new_v4().to_string(),
+                    referrer_tenant: referrer,
+                    referee_tenant: Some(referee),
+                    amount_cents: signed_amount,
+                    kind: entry_kind.to_string(),
+                    source_ref: Some(source_ref),
+                    created_at: crate::execution::unix_now(),
+                })
+                .await;
+        }
+    });
 }
 
 /// Applies a verified Stripe webhook event to billing state. Pure over `state`

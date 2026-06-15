@@ -6,9 +6,12 @@ import { createRoot } from 'react-dom/client'
 import './index.css'
 import { App } from './App'
 import { captureFirstTouch } from './api/attribution'
+import { captureReferral } from './api/referral'
 
-// Record first-touch acquisition attribution (UTM / referrer) before render.
+// Record first-touch acquisition attribution (UTM / referrer) and any ?ref
+// affiliate code before render.
 captureFirstTouch()
+captureReferral()
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

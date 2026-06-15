@@ -28,6 +28,7 @@ interface Props {
   onEventSubscriptions: () => void
   onOrgs: () => void
   onAccount: () => void
+  onAffiliate: () => void
   onUsers: () => void
   onSchedules: () => void
   onMonitoring: () => void
@@ -135,7 +136,7 @@ function addRecentId(id: string) {
   try { localStorage.setItem(RECENT_KEY, JSON.stringify(ids)) } catch { /* ignore */ }
 }
 
-export function WorkflowList({ onOpen, onOpenExecution, onCredentials, onAuditLog, onRuns, onAnalytics, onEnvironment, onWorkspaces, onWebhooks, onApiKeys, onSso, onKnowledge, onCustomNodes, onEventSubscriptions, onOrgs, onAccount, onUsers, onSchedules, onMonitoring, onApprovals, onWorkflowDeps }: Props) {
+export function WorkflowList({ onOpen, onOpenExecution, onCredentials, onAuditLog, onRuns, onAnalytics, onEnvironment, onWorkspaces, onWebhooks, onApiKeys, onSso, onKnowledge, onCustomNodes, onEventSubscriptions, onOrgs, onAccount, onAffiliate, onUsers, onSchedules, onMonitoring, onApprovals, onWorkflowDeps }: Props) {
   const { auth, logout } = useAuth()
   const { theme, toggle: toggleTheme } = useTheme()
   const { locale, toggle: toggleLocale, t } = useLocale()
@@ -800,6 +801,7 @@ export function WorkflowList({ onOpen, onOpenExecution, onCredentials, onAuditLo
                   { label: locale === 'zh' ? '✓ 审批队列' : '✓ Approvals', action: () => { onApprovals(); setShowNavMenu(false) }, badge: execSummaries.filter((r) => r.status === 'waiting_approval').length || undefined },
                   { label: locale === 'zh' ? '⬡ 依赖图' : '⬡ Dep Graph', action: () => { onWorkflowDeps(); setShowNavMenu(false) } },
                   { label: t('wl.btn.analytics'), action: () => { onAnalytics(); setShowNavMenu(false) } },
+                  { label: locale === 'zh' ? '🎁 推荐返佣' : '🎁 Affiliate', action: () => { onAffiliate(); setShowNavMenu(false) } },
                   { label: locale === 'zh' ? '⏱ 计划任务' : '⏱ Schedules', action: () => { onSchedules(); setShowNavMenu(false) } },
                   { label: locale === 'zh' ? '📊 监控中心' : '📊 Monitoring', action: () => { onMonitoring(); setShowNavMenu(false) } },
                   { label: t('wl.btn.audit'), action: () => { onAuditLog(); setShowNavMenu(false) } },

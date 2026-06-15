@@ -24,6 +24,7 @@ import { EventSubscriptionsPage } from './components/EventSubscriptionsPage'
 import { FormPage } from './components/FormPage'
 import { OrgPage } from './components/OrgPage'
 import { AccountPage } from './components/AccountPage'
+import { AffiliatePage } from './components/AffiliatePage'
 import { UsersPage } from './components/UsersPage'
 import { SchedulesPage } from './components/SchedulesPage'
 import { MonitoringPage } from './components/MonitoringPage'
@@ -48,6 +49,7 @@ type Page =
   | { name: 'event-subscriptions' }
   | { name: 'orgs' }
   | { name: 'account' }
+  | { name: 'affiliate' }
   | { name: 'users' }
   | { name: 'schedules' }
   | { name: 'monitoring' }
@@ -176,6 +178,10 @@ function AppInner() {
     return <AccountPage onBack={() => setPage({ name: 'list' })} />
   }
 
+  if (page.name === 'affiliate') {
+    return <AffiliatePage onBack={() => setPage({ name: 'list' })} />
+  }
+
   if (page.name === 'users') {
     return <UsersPage onBack={() => setPage({ name: 'list' })} />
   }
@@ -251,6 +257,7 @@ function AppInner() {
         onEventSubscriptions={() => setPage({ name: 'event-subscriptions' })}
         onOrgs={() => setPage({ name: 'orgs' })}
         onAccount={() => setPage({ name: 'account' })}
+        onAffiliate={() => setPage({ name: 'affiliate' })}
         onUsers={() => setPage({ name: 'users' })}
         onSchedules={() => setPage({ name: 'schedules' })}
         onMonitoring={() => setPage({ name: 'monitoring' })}

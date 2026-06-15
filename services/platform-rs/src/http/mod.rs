@@ -2,6 +2,7 @@
 // https://www.qzso.com/ · managecode@gmail.com
 
 mod admin;
+mod affiliate;
 mod analytics;
 mod auth;
 mod billing;
@@ -168,6 +169,7 @@ pub struct AppState {
     api_key_store: Arc<PlatformApiKeyStore>,
     token_usage_store: Arc<PlatformTokenUsageStore>,
     attribution_store: Arc<crate::attribution::PlatformAttributionStore>,
+    affiliate_store: Arc<crate::affiliate::PlatformAffiliateStore>,
     form_store: Arc<PlatformFormStore>,
     test_case_store: Arc<PlatformTestCaseStore>,
     comment_store: Arc<PlatformCommentStore>,
@@ -228,6 +230,7 @@ pub(crate) fn default_app_state() -> AppState {
         api_key_store: Arc::new(PlatformApiKeyStore::default()),
         token_usage_store: usage_store,
         attribution_store: Arc::new(crate::attribution::PlatformAttributionStore::default()),
+        affiliate_store: Arc::new(crate::affiliate::PlatformAffiliateStore::default()),
         form_store: Arc::new(PlatformFormStore::memory()),
         test_case_store: Arc::new(PlatformTestCaseStore::memory()),
         comment_store: Arc::new(PlatformCommentStore::default()),
@@ -756,6 +759,7 @@ async fn auth_middleware(State(state): State<AppState>, mut req: Request, next: 
 pub(crate) fn build_router(state: AppState) -> Router {
     Router::new()
         .merge(admin::routes())
+        .merge(affiliate::routes())
         .merge(analytics::routes())
         .merge(auth::routes())
         .merge(billing::routes())
@@ -830,6 +834,7 @@ pub fn router_with_services(
         api_key_store: Arc::new(PlatformApiKeyStore::default()),
         token_usage_store: Arc::new(PlatformTokenUsageStore::default()),
         attribution_store: Arc::new(crate::attribution::PlatformAttributionStore::default()),
+        affiliate_store: Arc::new(crate::affiliate::PlatformAffiliateStore::default()),
         form_store: Arc::new(PlatformFormStore::memory()),
         test_case_store: Arc::new(PlatformTestCaseStore::memory()),
         comment_store: Arc::new(PlatformCommentStore::default()),
@@ -874,6 +879,7 @@ pub fn router_with_all_stores(
     api_key_store: PlatformApiKeyStore,
     token_usage_store: PlatformTokenUsageStore,
     attribution_store: crate::attribution::PlatformAttributionStore,
+    affiliate_store: crate::affiliate::PlatformAffiliateStore,
     form_store: PlatformFormStore,
     test_case_store: PlatformTestCaseStore,
     comment_store: PlatformCommentStore,
@@ -904,6 +910,7 @@ pub fn router_with_all_stores(
         api_key_store: Arc::new(api_key_store),
         token_usage_store: Arc::new(token_usage_store),
         attribution_store: Arc::new(attribution_store),
+        affiliate_store: Arc::new(affiliate_store),
         form_store: Arc::new(form_store),
         test_case_store: Arc::new(test_case_store),
         comment_store: Arc::new(comment_store),
@@ -1616,6 +1623,9 @@ struct RegisterRequest {
     captcha_token: Option<String>,
     #[serde(default)]
     attribution: Option<AttributionInput>,
+    /// Referral code of the affiliate who referred this signup, if any.
+    #[serde(default)]
+    referral_code: Option<String>,
 }
 
 /// Acquisition-attribution fields the SPA forwards from the landing page

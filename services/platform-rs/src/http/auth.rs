@@ -206,6 +206,20 @@ async fn register_user(
         }
     }
 
+    // Referral: link the new tenant to the affiliate whose code it carried.
+    if let Some(code) = body.referral_code.filter(|c| !c.trim().is_empty()) {
+        let store = Arc::clone(&state.affiliate_store);
+        let referee = user.tenant_id.clone();
+        tokio::spawn(async move {
+            use crate::affiliate::AffiliateStore;
+            if let Some(referrer) = store.resolve_code(code.trim()).await {
+                store
+                    .record_referral(&referee, &referrer, code.trim())
+                    .await;
+            }
+        });
+    }
+
     let token = make_user_token(&user)?;
     Ok((
         StatusCode::CREATED,
