@@ -42,6 +42,39 @@ jobs:
       - name: Test
         run: cargo test --workspace
 
+  rust-postgres:
+    name: Rust (Postgres integration)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: t
+          POSTGRES_PASSWORD: t
+          POSTGRES_DB: t
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U t"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+
+      # Exercises the real Postgres store paths (migrations + type-sensitive SQL)
+      # that the in-memory unit tests can't reach. Gated on TEST_DATABASE_URL.
+      - name: Postgres integration tests
+        env:
+          TEST_DATABASE_URL: postgres://t:t@localhost:5432/t
+        run: cargo test -p trigix-platform --test postgres_integration
+
   web:
     name: Web (typecheck, build)
     runs-on: ubuntu-latest
