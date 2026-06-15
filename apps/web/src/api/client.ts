@@ -692,17 +692,38 @@ export interface AffiliateLedgerEntry {
   created_at: number
 }
 
+export interface PayoutRequest {
+  id: string
+  tenant_id: string
+  method: string
+  address: string
+  amount_cents: number
+  status: string
+  note: string | null
+  created_at: number
+  processed_at: number | null
+}
+
 export interface AffiliateInfo {
   code: string
   referral_count: number
   balance_cents: number
   commission_pct: number
   entries: AffiliateLedgerEntry[]
+  payout_requests: PayoutRequest[]
 }
 
-/** The caller's affiliate dashboard: code, referrals, balance and ledger. */
+/** The caller's affiliate dashboard: code, referrals, balance, ledger, payouts. */
 export function getAffiliate(): Promise<AffiliateInfo> {
   return request('/v1/affiliate/me')
+}
+
+/** Requests a cashout of (part of) the affiliate balance to an address. */
+export function requestPayout(address: string, amountCents: number, method = 'usdt'): Promise<PayoutRequest> {
+  return request('/v1/affiliate/payout-request', {
+    method: 'POST',
+    body: JSON.stringify({ method, address, amount_cents: amountCents }),
+  })
 }
 
 export interface NodeTypeStat {

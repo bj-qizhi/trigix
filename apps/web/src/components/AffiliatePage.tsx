@@ -10,10 +10,36 @@ export function AffiliatePage({ onBack }: { onBack: () => void }) {
   const zh = locale === 'zh'
   const [info, setInfo] = useState<api.AffiliateInfo | null>(null)
   const [copied, setCopied] = useState(false)
+  const [address, setAddress] = useState('')
+  const [amount, setAmount] = useState('')
+  const [payoutError, setPayoutError] = useState<string | null>(null)
+  const [submitting, setSubmitting] = useState(false)
 
+  const refresh = () => api.getAffiliate().then(setInfo).catch(() => {})
   useEffect(() => {
-    api.getAffiliate().then(setInfo).catch(() => {})
+    refresh()
   }, [])
+
+  const submitPayout = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setPayoutError(null)
+    const cents = Math.round(parseFloat(amount) * 100)
+    if (!address.trim() || !Number.isFinite(cents) || cents <= 0) {
+      setPayoutError(zh ? '请填写地址和有效金额' : 'Enter an address and a valid amount')
+      return
+    }
+    setSubmitting(true)
+    try {
+      await api.requestPayout(address.trim(), cents)
+      setAddress('')
+      setAmount('')
+      await refresh()
+    } catch (err) {
+      setPayoutError(err instanceof Error ? err.message : 'Request failed')
+    } finally {
+      setSubmitting(false)
+    }
+  }
 
   const money = (c: number) =>
     `$${(c / 100).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
@@ -99,6 +125,67 @@ export function AffiliatePage({ onBack }: { onBack: () => void }) {
               </div>
             ))}
           </div>
+
+          {/* Request payout (USDT) */}
+          {info.balance_cents > 0 && (
+            <div style={{ ...card, marginBottom: 16 }}>
+              <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 8 }}>
+                {zh ? '申请提现(USDT)' : 'Request payout (USDT)'}
+              </div>
+              <form onSubmit={submitPayout} style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+                <input
+                  placeholder={zh ? 'USDT 地址' : 'USDT address'}
+                  value={address}
+                  onChange={(e) => setAddress(e.target.value)}
+                  style={{ flex: 2, minWidth: 200, padding: '8px 10px', borderRadius: 4, border: '1px solid var(--border)', background: 'var(--panel)', color: 'var(--fg)', fontSize: 13 }}
+                />
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  placeholder={zh ? '金额($)' : 'Amount ($)'}
+                  value={amount}
+                  onChange={(e) => setAmount(e.target.value)}
+                  style={{ width: 120, padding: '8px 10px', borderRadius: 4, border: '1px solid var(--border)', background: 'var(--panel)', color: 'var(--fg)', fontSize: 13 }}
+                />
+                <button type="submit" className="btn btn-primary btn-sm" disabled={submitting}>
+                  {submitting ? (zh ? '提交中…' : 'Submitting…') : zh ? '申请' : 'Request'}
+                </button>
+              </form>
+              {payoutError && (
+                <p style={{ color: '#ef4444', margin: '8px 0 0', fontSize: 12 }}>{payoutError}</p>
+              )}
+            </div>
+          )}
+
+          {/* Payout requests */}
+          {info.payout_requests.length > 0 && (
+            <div style={{ marginBottom: 20 }}>
+              <h2 style={{ marginBottom: 8 }}>{zh ? '提现申请' : 'Payout requests'}</h2>
+              <table className="workflow-table" style={{ maxWidth: 600 }}>
+                <thead>
+                  <tr>
+                    <th>{zh ? '金额' : 'Amount'}</th>
+                    <th>{zh ? '地址' : 'Address'}</th>
+                    <th>{zh ? '状态' : 'Status'}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {info.payout_requests.map((p) => (
+                    <tr key={p.id}>
+                      <td style={{ fontSize: 12, fontWeight: 600 }}>{money(p.amount_cents)}</td>
+                      <td style={{ fontSize: 11, color: 'var(--muted)', fontFamily: 'monospace', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={p.address}>{p.address}</td>
+                      <td style={{ fontSize: 12 }}>
+                        {zh
+                          ? { requested: '待处理', paid: '已支付', rejected: '已拒绝' }[p.status] ?? p.status
+                          : p.status}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
 
           {/* Ledger */}
           <h2 style={{ marginBottom: 8 }}>{zh ? '账单明细' : 'Ledger'}</h2>

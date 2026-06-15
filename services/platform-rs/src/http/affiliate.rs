@@ -2,7 +2,7 @@
 // https://www.qzso.com/ · managecode@gmail.com
 
 use super::*;
-use crate::affiliate::{AccountBalance, AffiliateStore, LedgerEntry};
+use crate::affiliate::{AccountBalance, AffiliateStore, LedgerEntry, PayoutRequest};
 
 #[derive(serde::Serialize)]
 struct AffiliateInfo {
@@ -15,9 +15,10 @@ struct AffiliateInfo {
     /// Configured commission rate (percent of a referral's paid invoices).
     commission_pct: f64,
     entries: Vec<LedgerEntry>,
+    payout_requests: Vec<PayoutRequest>,
 }
 
-/// The caller's own affiliate dashboard: code, referrals, balance and ledger.
+/// The caller's own affiliate dashboard: code, referrals, balance, ledger, payouts.
 async fn affiliate_me_handler(
     State(state): State<AppState>,
     Extension(claims): Extension<Option<Claims>>,
@@ -30,7 +31,74 @@ async fn affiliate_me_handler(
         balance_cents: store.balance_cents(&tenant_id).await,
         commission_pct: crate::affiliate::commission_pct(),
         entries: store.list_entries(&tenant_id, 50).await,
+        payout_requests: store.list_payout_requests(&tenant_id).await,
     })
+}
+
+#[derive(serde::Deserialize)]
+struct PayoutRequestBody {
+    /// Payout method; defaults to `usdt`.
+    method: Option<String>,
+    /// Destination address (e.g. a USDT wallet).
+    address: String,
+    amount_cents: i64,
+}
+
+/// An affiliate requests a cashout of (part of) their balance to an address.
+async fn affiliate_request_payout_handler(
+    State(state): State<AppState>,
+    Extension(claims): Extension<Option<Claims>>,
+    Json(body): Json<PayoutRequestBody>,
+) -> Result<Json<PayoutRequest>, ApiError> {
+    let tenant_id = effective_tenant_id(&claims, "");
+    if body.amount_cents <= 0 {
+        return Err(ApiError::bad_request("amount_cents must be positive"));
+    }
+    if body.address.trim().is_empty() {
+        return Err(ApiError::bad_request("address is required"));
+    }
+    let balance = state.affiliate_store.balance_cents(&tenant_id).await;
+    if body.amount_cents > balance {
+        return Err(ApiError::bad_request("amount exceeds available balance"));
+    }
+    let method = body.method.unwrap_or_else(|| "usdt".to_string());
+    Ok(Json(
+        state
+            .affiliate_store
+            .request_payout(&tenant_id, &method, body.address.trim(), body.amount_cents)
+            .await,
+    ))
+}
+
+/// Operator queue of pending payout requests. Admin-only.
+async fn affiliate_admin_payouts_handler(
+    State(state): State<AppState>,
+    Extension(claims): Extension<Option<Claims>>,
+) -> Result<Json<Vec<PayoutRequest>>, ApiError> {
+    require_admin(&claims)?;
+    Ok(Json(state.affiliate_store.list_pending_payouts().await))
+}
+
+#[derive(serde::Deserialize)]
+struct ProcessPayoutBody {
+    id: String,
+    approve: bool,
+    note: Option<String>,
+}
+
+/// Operator approves (books the payout) or rejects a pending request. Admin-only.
+async fn affiliate_admin_process_handler(
+    State(state): State<AppState>,
+    Extension(claims): Extension<Option<Claims>>,
+    Json(body): Json<ProcessPayoutBody>,
+) -> Result<Json<PayoutRequest>, ApiError> {
+    require_admin(&claims)?;
+    state
+        .affiliate_store
+        .process_payout_request(&body.id, body.approve, body.note.as_deref())
+        .await
+        .map(Json)
+        .ok_or_else(|| ApiError::not_found("payout request not found"))
 }
 
 #[derive(serde::Deserialize)]
@@ -76,7 +144,19 @@ pub(super) fn routes() -> Router<AppState> {
     Router::new()
         .route("/v1/affiliate/me", get(affiliate_me_handler))
         .route("/v1/affiliate/payout", post(affiliate_payout_handler))
+        .route(
+            "/v1/affiliate/payout-request",
+            post(affiliate_request_payout_handler),
+        )
         .route("/v1/affiliate/admin/ledger", get(affiliate_ledger_handler))
+        .route(
+            "/v1/affiliate/admin/payouts",
+            get(affiliate_admin_payouts_handler),
+        )
+        .route(
+            "/v1/affiliate/admin/payouts/process",
+            post(affiliate_admin_process_handler),
+        )
 }
 
 #[cfg(test)]

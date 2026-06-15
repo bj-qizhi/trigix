@@ -202,6 +202,22 @@ async fn affiliate_referral_and_ledger_roundtrip() {
     store.record_payout(&referrer, 200, None).await;
     assert_eq!(store.balance_cents(&referrer).await, 500);
     assert_eq!(store.list_entries(&referrer, 10).await.len(), 3);
+
+    // Payout request → operator approval books a payout, reducing the balance.
+    let req = store
+        .request_payout(&referrer, "usdt", "TUSDTaddr", 100)
+        .await;
+    assert!(store
+        .list_pending_payouts()
+        .await
+        .iter()
+        .any(|r| r.id == req.id));
+    let done = store
+        .process_payout_request(&req.id, true, Some("sent"))
+        .await
+        .expect("request exists");
+    assert_eq!(done.status, "paid");
+    assert_eq!(store.balance_cents(&referrer).await, 400); // 500 − 100
 }
 
 /// Token-usage records persist and aggregate per model in the summary.

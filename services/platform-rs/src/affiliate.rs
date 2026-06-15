@@ -73,6 +73,28 @@ pub struct AccountBalance {
     pub balance_cents: i64,
 }
 
+/// Payout-request statuses.
+pub mod payout_status {
+    pub const REQUESTED: &str = "requested";
+    pub const PAID: &str = "paid";
+    pub const REJECTED: &str = "rejected";
+}
+
+/// An affiliate's request to cash out their balance to an address (e.g. USDT).
+#[derive(Debug, Clone, Serialize)]
+pub struct PayoutRequest {
+    pub id: String,
+    pub tenant_id: String,
+    /// Payout method, e.g. `usdt`.
+    pub method: String,
+    pub address: String,
+    pub amount_cents: i64,
+    pub status: String,
+    pub note: Option<String>,
+    pub created_at: u64,
+    pub processed_at: Option<u64>,
+}
+
 /// Deterministic 8-char uppercase referral code derived from the tenant id.
 pub fn code_for(tenant_id: &str) -> String {
     let digest = Sha256::digest(tenant_id.as_bytes());
@@ -231,6 +253,28 @@ pub trait AffiliateStore: Clone + Send + Sync + 'static {
     async fn list_entries(&self, affiliate: &str, limit: i64) -> Vec<LedgerEntry>;
     /// Operator books: every GL account's debit-positive balance (these sum to 0).
     async fn account_balances(&self) -> Vec<AccountBalance>;
+
+    /// Records an affiliate's payout request (status `requested`).
+    async fn request_payout(
+        &self,
+        tenant_id: &str,
+        method: &str,
+        address: &str,
+        amount_cents: i64,
+    ) -> PayoutRequest;
+    /// The affiliate's own payout requests, newest first.
+    async fn list_payout_requests(&self, tenant_id: &str) -> Vec<PayoutRequest>;
+    /// All pending (`requested`) payout requests, for the operator queue.
+    async fn list_pending_payouts(&self) -> Vec<PayoutRequest>;
+    /// Approves or rejects a pending request. Approval transitions it to `paid`
+    /// and books the payout transaction; both are idempotent (a request already
+    /// processed is left unchanged). Returns the updated request.
+    async fn process_payout_request(
+        &self,
+        id: &str,
+        approve: bool,
+        note: Option<&str>,
+    ) -> Option<PayoutRequest>;
 }
 
 /// Maps a payable-account posting to an affiliate-facing entry (favour sign).
@@ -252,6 +296,7 @@ pub struct MemoryAffiliateStore {
     codes: Arc<RwLock<HashMap<String, String>>>,
     referrals: Arc<RwLock<HashMap<String, (String, String)>>>,
     postings: Arc<RwLock<Vec<Posting>>>,
+    payouts: Arc<RwLock<Vec<PayoutRequest>>>,
 }
 
 impl AffiliateStore for MemoryAffiliateStore {
@@ -344,6 +389,81 @@ impl AffiliateStore for MemoryAffiliateStore {
             .collect();
         out.sort_by(|a, b| a.account.cmp(&b.account));
         out
+    }
+    async fn request_payout(
+        &self,
+        tenant_id: &str,
+        method: &str,
+        address: &str,
+        amount_cents: i64,
+    ) -> PayoutRequest {
+        let req = PayoutRequest {
+            id: uuid::Uuid::new_v4().to_string(),
+            tenant_id: tenant_id.to_string(),
+            method: method.to_string(),
+            address: address.to_string(),
+            amount_cents,
+            status: payout_status::REQUESTED.to_string(),
+            note: None,
+            created_at: now_secs(),
+            processed_at: None,
+        };
+        if let Ok(mut p) = self.payouts.write() {
+            p.push(req.clone());
+        }
+        req
+    }
+    async fn list_payout_requests(&self, tenant_id: &str) -> Vec<PayoutRequest> {
+        let Ok(p) = self.payouts.read() else {
+            return Vec::new();
+        };
+        let mut out: Vec<PayoutRequest> = p
+            .iter()
+            .filter(|r| r.tenant_id == tenant_id)
+            .cloned()
+            .collect();
+        out.sort_by_key(|r| std::cmp::Reverse(r.created_at));
+        out
+    }
+    async fn list_pending_payouts(&self) -> Vec<PayoutRequest> {
+        let Ok(p) = self.payouts.read() else {
+            return Vec::new();
+        };
+        let mut out: Vec<PayoutRequest> = p
+            .iter()
+            .filter(|r| r.status == payout_status::REQUESTED)
+            .cloned()
+            .collect();
+        out.sort_by_key(|r| r.created_at);
+        out
+    }
+    async fn process_payout_request(
+        &self,
+        id: &str,
+        approve: bool,
+        note: Option<&str>,
+    ) -> Option<PayoutRequest> {
+        let (claimed, was_requested) = {
+            let mut p = self.payouts.write().ok()?;
+            let r = p.iter_mut().find(|r| r.id == id)?;
+            let was_requested = r.status == payout_status::REQUESTED;
+            if was_requested {
+                r.status = if approve {
+                    payout_status::PAID
+                } else {
+                    payout_status::REJECTED
+                }
+                .to_string();
+                r.processed_at = Some(now_secs());
+                r.note = note.map(str::to_string);
+            }
+            (r.clone(), was_requested)
+        };
+        if was_requested && approve {
+            self.record_payout(&claimed.tenant_id, claimed.amount_cents, Some(&claimed.id))
+                .await;
+        }
+        Some(claimed)
     }
 }
 
@@ -501,6 +621,134 @@ impl AffiliateStore for PostgresAffiliateStore {
         })
         .collect()
     }
+    async fn request_payout(
+        &self,
+        tenant_id: &str,
+        method: &str,
+        address: &str,
+        amount_cents: i64,
+    ) -> PayoutRequest {
+        let req = PayoutRequest {
+            id: uuid::Uuid::new_v4().to_string(),
+            tenant_id: tenant_id.to_string(),
+            method: method.to_string(),
+            address: address.to_string(),
+            amount_cents,
+            status: payout_status::REQUESTED.to_string(),
+            note: None,
+            created_at: now_secs(),
+            processed_at: None,
+        };
+        let _ = sqlx::query(
+            "INSERT INTO af_payout_requests \
+               (id, tenant_id, method, address, amount_cents, status, created_at) \
+             VALUES ($1, $2, $3, $4, $5, $6, $7)",
+        )
+        .bind(&req.id)
+        .bind(&req.tenant_id)
+        .bind(&req.method)
+        .bind(&req.address)
+        .bind(req.amount_cents)
+        .bind(&req.status)
+        .bind(req.created_at as i64)
+        .execute(&self.pool)
+        .await;
+        req
+    }
+    async fn list_payout_requests(&self, tenant_id: &str) -> Vec<PayoutRequest> {
+        payout_rows(
+            sqlx::query_as::<_, PayoutRow>(
+                "SELECT id, tenant_id, method, address, amount_cents, status, note, created_at, processed_at \
+                 FROM af_payout_requests WHERE tenant_id = $1 ORDER BY created_at DESC",
+            )
+            .bind(tenant_id)
+            .fetch_all(&self.pool)
+            .await
+            .unwrap_or_default(),
+        )
+    }
+    async fn list_pending_payouts(&self) -> Vec<PayoutRequest> {
+        payout_rows(
+            sqlx::query_as::<_, PayoutRow>(
+                "SELECT id, tenant_id, method, address, amount_cents, status, note, created_at, processed_at \
+                 FROM af_payout_requests WHERE status = 'requested' ORDER BY created_at ASC",
+            )
+            .fetch_all(&self.pool)
+            .await
+            .unwrap_or_default(),
+        )
+    }
+    async fn process_payout_request(
+        &self,
+        id: &str,
+        approve: bool,
+        note: Option<&str>,
+    ) -> Option<PayoutRequest> {
+        let new_status = if approve {
+            payout_status::PAID
+        } else {
+            payout_status::REJECTED
+        };
+        // Atomic claim: only a still-`requested` row transitions and returns.
+        let claimed = sqlx::query_as::<_, (String, i64)>(
+            "UPDATE af_payout_requests SET status = $2, processed_at = $3, note = $4 \
+             WHERE id = $1 AND status = 'requested' RETURNING tenant_id, amount_cents",
+        )
+        .bind(id)
+        .bind(new_status)
+        .bind(now_secs() as i64)
+        .bind(note)
+        .fetch_optional(&self.pool)
+        .await
+        .ok()
+        .flatten();
+        if let Some((tenant, amount)) = claimed {
+            if approve {
+                self.record_payout(&tenant, amount, Some(id)).await;
+            }
+        }
+        payout_rows(
+            sqlx::query_as::<_, PayoutRow>(
+                "SELECT id, tenant_id, method, address, amount_cents, status, note, created_at, processed_at \
+                 FROM af_payout_requests WHERE id = $1",
+            )
+            .bind(id)
+            .fetch_all(&self.pool)
+            .await
+            .unwrap_or_default(),
+        )
+        .into_iter()
+        .next()
+    }
+}
+
+#[derive(sqlx::FromRow)]
+struct PayoutRow {
+    id: String,
+    tenant_id: String,
+    method: String,
+    address: String,
+    amount_cents: i64,
+    status: String,
+    note: Option<String>,
+    created_at: i64,
+    processed_at: Option<i64>,
+}
+
+fn payout_rows(rows: Vec<PayoutRow>) -> Vec<PayoutRequest> {
+    rows.into_iter()
+        .map(|r| PayoutRequest {
+            id: r.id,
+            tenant_id: r.tenant_id,
+            method: r.method,
+            address: r.address,
+            amount_cents: r.amount_cents,
+            status: r.status,
+            note: r.note,
+            created_at: r.created_at as u64,
+            processed_at: r.processed_at.map(|v| v as u64),
+        })
+        .collect()
 }
 
 // ── Platform enum ──────────────────────────────────────────────────────────
@@ -584,6 +832,47 @@ impl AffiliateStore for PlatformAffiliateStore {
             Self::Postgres(s) => s.account_balances().await,
         }
     }
+    async fn request_payout(
+        &self,
+        tenant_id: &str,
+        method: &str,
+        address: &str,
+        amount_cents: i64,
+    ) -> PayoutRequest {
+        match self {
+            Self::Memory(s) => {
+                s.request_payout(tenant_id, method, address, amount_cents)
+                    .await
+            }
+            Self::Postgres(s) => {
+                s.request_payout(tenant_id, method, address, amount_cents)
+                    .await
+            }
+        }
+    }
+    async fn list_payout_requests(&self, tenant_id: &str) -> Vec<PayoutRequest> {
+        match self {
+            Self::Memory(s) => s.list_payout_requests(tenant_id).await,
+            Self::Postgres(s) => s.list_payout_requests(tenant_id).await,
+        }
+    }
+    async fn list_pending_payouts(&self) -> Vec<PayoutRequest> {
+        match self {
+            Self::Memory(s) => s.list_pending_payouts().await,
+            Self::Postgres(s) => s.list_pending_payouts().await,
+        }
+    }
+    async fn process_payout_request(
+        &self,
+        id: &str,
+        approve: bool,
+        note: Option<&str>,
+    ) -> Option<PayoutRequest> {
+        match self {
+            Self::Memory(s) => s.process_payout_request(id, approve, note).await,
+            Self::Postgres(s) => s.process_payout_request(id, approve, note).await,
+        }
+    }
 }
 
 /// Commission rate (percent of a referred tenant's paid invoice) from
@@ -651,6 +940,47 @@ mod tests {
         assert_eq!(total, 0, "double-entry postings must sum to zero");
 
         assert_eq!(store.balance_cents("other").await, 0);
+    }
+
+    #[tokio::test]
+    async fn payout_request_approve_books_payout_and_is_idempotent() {
+        let store = MemoryAffiliateStore::default();
+        store.accrue_commission("r", "e", 1000, Some("evt1")).await;
+        assert_eq!(store.balance_cents("r").await, 1000);
+
+        let req = store.request_payout("r", "usdt", "TUSDTaddr", 400).await;
+        assert_eq!(req.status, payout_status::REQUESTED);
+        assert_eq!(store.list_pending_payouts().await.len(), 1);
+        assert_eq!(store.list_payout_requests("r").await.len(), 1);
+
+        let done = store
+            .process_payout_request(&req.id, true, Some("sent"))
+            .await
+            .unwrap();
+        assert_eq!(done.status, payout_status::PAID);
+        assert_eq!(store.balance_cents("r").await, 600); // 1000 − 400
+        assert!(store.list_pending_payouts().await.is_empty());
+
+        // Re-processing does not double-book.
+        let again = store
+            .process_payout_request(&req.id, true, None)
+            .await
+            .unwrap();
+        assert_eq!(again.status, payout_status::PAID);
+        assert_eq!(store.balance_cents("r").await, 600);
+    }
+
+    #[tokio::test]
+    async fn payout_request_reject_leaves_balance() {
+        let store = MemoryAffiliateStore::default();
+        store.accrue_commission("r", "e", 1000, None).await;
+        let req = store.request_payout("r", "usdt", "addr", 400).await;
+        let done = store
+            .process_payout_request(&req.id, false, Some("invalid address"))
+            .await
+            .unwrap();
+        assert_eq!(done.status, payout_status::REJECTED);
+        assert_eq!(store.balance_cents("r").await, 1000);
     }
 
     #[test]
