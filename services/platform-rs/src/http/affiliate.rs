@@ -2,7 +2,7 @@
 // https://www.qzso.com/ · managecode@gmail.com
 
 use super::*;
-use crate::affiliate::{AffiliateStore, LedgerEntry};
+use crate::affiliate::{AccountBalance, AffiliateStore, LedgerEntry};
 
 #[derive(serde::Serialize)]
 struct AffiliateInfo {
@@ -54,15 +54,7 @@ async fn affiliate_payout_handler(
     }
     state
         .affiliate_store
-        .add_entry(LedgerEntry {
-            id: uuid::Uuid::new_v4().to_string(),
-            referrer_tenant: body.tenant_id.clone(),
-            referee_tenant: None,
-            amount_cents: -body.amount_cents,
-            kind: crate::affiliate::kind::PAYOUT.to_string(),
-            source_ref: None,
-            created_at: crate::execution::unix_now(),
-        })
+        .record_payout(&body.tenant_id, body.amount_cents, None)
         .await;
     let balance = state.affiliate_store.balance_cents(&body.tenant_id).await;
     Ok(Json(
@@ -70,10 +62,21 @@ async fn affiliate_payout_handler(
     ))
 }
 
+/// Operator books: every GL account balance (these sum to zero — proof the
+/// double-entry ledger balances). Admin-only.
+async fn affiliate_ledger_handler(
+    State(state): State<AppState>,
+    Extension(claims): Extension<Option<Claims>>,
+) -> Result<Json<Vec<AccountBalance>>, ApiError> {
+    require_admin(&claims)?;
+    Ok(Json(state.affiliate_store.account_balances().await))
+}
+
 pub(super) fn routes() -> Router<AppState> {
     Router::new()
         .route("/v1/affiliate/me", get(affiliate_me_handler))
         .route("/v1/affiliate/payout", post(affiliate_payout_handler))
+        .route("/v1/affiliate/admin/ledger", get(affiliate_ledger_handler))
 }
 
 #[cfg(test)]

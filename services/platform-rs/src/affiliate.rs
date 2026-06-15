@@ -1,16 +1,19 @@
 // Copyright © 2026 北京祺智科技有限公司. All rights reserved.
 // https://www.qzso.com/ · managecode@gmail.com
 
-//! Affiliate / referral program.
+//! Affiliate / referral program with a double-entry general ledger.
 //!
 //! Each tenant has a shareable referral [`code`](AffiliateStore::get_or_create_code).
 //! A new signup can supply a referrer's code, creating a first-touch referral
-//! link. When a referred tenant pays an invoice, the referrer accrues a
-//! commission in a signed ledger; refunds claw it back, and operator payouts
-//! debit it. A referrer's balance is the sum of their ledger entries.
+//! link. Money events post **balanced** GL transactions (debit-positive; every
+//! transaction's postings sum to zero):
 //!
-//! The ledger is single-entry with signed amounts (the practical model most
-//! affiliate programs use), not strict double-entry accounting.
+//! - commission: Dr `commission_expense`, Cr `affiliate_payable[affiliate]`
+//! - clawback:   the reverse
+//! - payout:     Dr `affiliate_payable[affiliate]`, Cr `cash`
+//!
+//! An affiliate's payable account carries a credit (negative) balance; the amount
+//! owed to them is its negation, exposed by [`AffiliateStore::balance_cents`].
 
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
@@ -19,63 +22,236 @@ use serde::Serialize;
 use sha2::{Digest, Sha256};
 use sqlx::postgres::PgPool;
 
-/// Ledger entry kinds.
+/// General-ledger account names.
+pub mod account {
+    pub const AFFILIATE_PAYABLE: &str = "affiliate_payable";
+    pub const COMMISSION_EXPENSE: &str = "commission_expense";
+    pub const CASH: &str = "cash";
+}
+
+/// Business-event kind recorded on a posting (for display/filtering).
 pub mod kind {
-    /// Commission accrued from a referred tenant's paid invoice (positive).
     pub const COMMISSION: &str = "commission";
-    /// Commission reversed when the referred tenant's payment is refunded (negative).
     pub const CLAWBACK: &str = "clawback";
-    /// Operator payout of accrued balance to the affiliate (negative).
     pub const PAYOUT: &str = "payout";
 }
 
-#[derive(Debug, Clone, Serialize)]
-pub struct LedgerEntry {
+/// A single general-ledger posting (one leg of a balanced transaction).
+#[derive(Debug, Clone)]
+pub struct Posting {
     pub id: String,
-    pub referrer_tenant: String,
+    pub txn_id: String,
+    pub account: String,
+    /// Owner of the account (the affiliate, for `affiliate_payable`); `None` for
+    /// platform accounts.
+    pub tenant_id: Option<String>,
+    /// The referred tenant this posting relates to, for display context.
     pub referee_tenant: Option<String>,
-    /// Signed minor-currency amount: commissions are positive, clawbacks and
-    /// payouts are negative.
+    /// Debit-positive signed amount (minor currency unit).
     pub amount_cents: i64,
     pub kind: String,
     pub source_ref: Option<String>,
     pub created_at: u64,
 }
 
-/// Deterministic 8-char uppercase referral code derived from the tenant id, so a
-/// tenant always maps to the same code without a generation round-trip.
+/// An affiliate-facing ledger line: amounts are shown in the affiliate's favour
+/// (commission positive, clawback/payout negative).
+#[derive(Debug, Clone, Serialize)]
+pub struct LedgerEntry {
+    pub id: String,
+    pub referee_tenant: Option<String>,
+    pub amount_cents: i64,
+    pub kind: String,
+    pub source_ref: Option<String>,
+    pub created_at: u64,
+}
+
+/// A GL account's balance (debit-positive), for the operator's books view.
+#[derive(Debug, Clone, Serialize)]
+pub struct AccountBalance {
+    pub account: String,
+    pub balance_cents: i64,
+}
+
+/// Deterministic 8-char uppercase referral code derived from the tenant id.
 pub fn code_for(tenant_id: &str) -> String {
     let digest = Sha256::digest(tenant_id.as_bytes());
     hex::encode(digest)[..8].to_uppercase()
 }
 
+fn now_secs() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs()
+}
+
+/// Builds a balanced commission transaction (Dr expense, Cr payable).
+fn commission_postings(
+    affiliate: &str,
+    referee: &str,
+    amount_cents: i64,
+    source_ref: Option<&str>,
+) -> Vec<Posting> {
+    balanced(
+        account::COMMISSION_EXPENSE,
+        None,
+        account::AFFILIATE_PAYABLE,
+        Some(affiliate),
+        Some(referee),
+        amount_cents,
+        kind::COMMISSION,
+        source_ref,
+    )
+}
+
+/// Builds a balanced clawback transaction (Dr payable, Cr expense).
+fn clawback_postings(
+    affiliate: &str,
+    referee: &str,
+    amount_cents: i64,
+    source_ref: Option<&str>,
+) -> Vec<Posting> {
+    balanced(
+        account::AFFILIATE_PAYABLE,
+        Some(affiliate),
+        account::COMMISSION_EXPENSE,
+        None,
+        Some(referee),
+        amount_cents,
+        kind::CLAWBACK,
+        source_ref,
+    )
+}
+
+/// Builds a balanced payout transaction (Dr payable, Cr cash).
+fn payout_postings(affiliate: &str, amount_cents: i64, source_ref: Option<&str>) -> Vec<Posting> {
+    balanced(
+        account::AFFILIATE_PAYABLE,
+        Some(affiliate),
+        account::CASH,
+        None,
+        None,
+        amount_cents,
+        kind::PAYOUT,
+        source_ref,
+    )
+}
+
+/// Two-leg balanced transaction: debit `amount` to `debit_acct`, credit it from
+/// `credit_acct`. The postings sum to zero.
+#[allow(clippy::too_many_arguments)]
+fn balanced(
+    debit_acct: &str,
+    debit_tenant: Option<&str>,
+    credit_acct: &str,
+    credit_tenant: Option<&str>,
+    referee: Option<&str>,
+    amount_cents: i64,
+    kind: &str,
+    source_ref: Option<&str>,
+) -> Vec<Posting> {
+    let txn_id = uuid::Uuid::new_v4().to_string();
+    let created_at = now_secs();
+    let mk = |account: &str, tenant: Option<&str>, amount: i64| Posting {
+        id: uuid::Uuid::new_v4().to_string(),
+        txn_id: txn_id.clone(),
+        account: account.to_string(),
+        tenant_id: tenant.map(str::to_string),
+        referee_tenant: referee.map(str::to_string),
+        amount_cents: amount,
+        kind: kind.to_string(),
+        source_ref: source_ref.map(str::to_string),
+        created_at,
+    };
+    vec![
+        mk(debit_acct, debit_tenant, amount_cents),
+        mk(credit_acct, credit_tenant, -amount_cents),
+    ]
+}
+
 #[allow(async_fn_in_trait)]
 pub trait AffiliateStore: Clone + Send + Sync + 'static {
-    /// Returns the tenant's referral code, creating (persisting) it on first use.
     async fn get_or_create_code(&self, tenant_id: &str) -> String;
-    /// Resolves a referral code to its owning (referrer) tenant.
     async fn resolve_code(&self, code: &str) -> Option<String>;
-    /// Records a first-touch referral. No-op if the referee already has one or
-    /// the referrer is the referee.
     async fn record_referral(&self, referee_tenant: &str, referrer_tenant: &str, code: &str);
-    /// The referrer that brought in `referee_tenant`, if any.
     async fn get_referrer(&self, referee_tenant: &str) -> Option<String>;
-    async fn add_entry(&self, entry: LedgerEntry);
-    /// Sum of the referrer's ledger entries (their payable balance).
-    async fn balance_cents(&self, referrer_tenant: &str) -> i64;
     async fn referral_count(&self, referrer_tenant: &str) -> i64;
-    async fn list_entries(&self, referrer_tenant: &str, limit: i64) -> Vec<LedgerEntry>;
+
+    /// Posts a balanced GL transaction.
+    async fn post(&self, postings: Vec<Posting>);
+
+    async fn accrue_commission(
+        &self,
+        affiliate: &str,
+        referee: &str,
+        amount_cents: i64,
+        source_ref: Option<&str>,
+    ) {
+        if amount_cents == 0 {
+            return;
+        }
+        self.post(commission_postings(
+            affiliate,
+            referee,
+            amount_cents,
+            source_ref,
+        ))
+        .await;
+    }
+    async fn clawback_commission(
+        &self,
+        affiliate: &str,
+        referee: &str,
+        amount_cents: i64,
+        source_ref: Option<&str>,
+    ) {
+        if amount_cents == 0 {
+            return;
+        }
+        self.post(clawback_postings(
+            affiliate,
+            referee,
+            amount_cents,
+            source_ref,
+        ))
+        .await;
+    }
+    async fn record_payout(&self, affiliate: &str, amount_cents: i64, source_ref: Option<&str>) {
+        if amount_cents <= 0 {
+            return;
+        }
+        self.post(payout_postings(affiliate, amount_cents, source_ref))
+            .await;
+    }
+
+    /// Amount currently owed to the affiliate (negation of their payable balance).
+    async fn balance_cents(&self, affiliate: &str) -> i64;
+    /// Affiliate-facing ledger lines (commission +, clawback/payout −).
+    async fn list_entries(&self, affiliate: &str, limit: i64) -> Vec<LedgerEntry>;
+    /// Operator books: every GL account's debit-positive balance (these sum to 0).
+    async fn account_balances(&self) -> Vec<AccountBalance>;
+}
+
+/// Maps a payable-account posting to an affiliate-facing entry (favour sign).
+fn entry_from_payable(p: &Posting) -> LedgerEntry {
+    LedgerEntry {
+        id: p.id.clone(),
+        referee_tenant: p.referee_tenant.clone(),
+        amount_cents: -p.amount_cents,
+        kind: p.kind.clone(),
+        source_ref: p.source_ref.clone(),
+        created_at: p.created_at,
+    }
 }
 
 // ── Memory implementation ──────────────────────────────────────────────────
 
 #[derive(Clone, Default)]
 pub struct MemoryAffiliateStore {
-    /// tenant -> code
     codes: Arc<RwLock<HashMap<String, String>>>,
-    /// referee -> (referrer, code)
     referrals: Arc<RwLock<HashMap<String, (String, String)>>>,
-    ledger: Arc<RwLock<Vec<LedgerEntry>>>,
+    postings: Arc<RwLock<Vec<Posting>>>,
 }
 
 impl AffiliateStore for MemoryAffiliateStore {
@@ -109,40 +285,65 @@ impl AffiliateStore for MemoryAffiliateStore {
             .get(referee_tenant)
             .map(|(r, _)| r.clone())
     }
-    async fn add_entry(&self, entry: LedgerEntry) {
-        if let Ok(mut l) = self.ledger.write() {
-            l.push(entry);
-        }
-    }
-    async fn balance_cents(&self, referrer_tenant: &str) -> i64 {
-        self.ledger
-            .read()
-            .map(|l| {
-                l.iter()
-                    .filter(|e| e.referrer_tenant == referrer_tenant)
-                    .map(|e| e.amount_cents)
-                    .sum()
-            })
-            .unwrap_or(0)
-    }
     async fn referral_count(&self, referrer_tenant: &str) -> i64 {
         self.referrals
             .read()
             .map(|r| r.values().filter(|(t, _)| t == referrer_tenant).count() as i64)
             .unwrap_or(0)
     }
-    async fn list_entries(&self, referrer_tenant: &str, limit: i64) -> Vec<LedgerEntry> {
-        let Ok(l) = self.ledger.read() else {
+    async fn post(&self, postings: Vec<Posting>) {
+        if let Ok(mut l) = self.postings.write() {
+            l.extend(postings);
+        }
+    }
+    async fn balance_cents(&self, affiliate: &str) -> i64 {
+        let owed: i64 = self
+            .postings
+            .read()
+            .map(|l| {
+                l.iter()
+                    .filter(|p| {
+                        p.account == account::AFFILIATE_PAYABLE
+                            && p.tenant_id.as_deref() == Some(affiliate)
+                    })
+                    .map(|p| p.amount_cents)
+                    .sum()
+            })
+            .unwrap_or(0);
+        -owed
+    }
+    async fn list_entries(&self, affiliate: &str, limit: i64) -> Vec<LedgerEntry> {
+        let Ok(l) = self.postings.read() else {
             return Vec::new();
         };
         let mut entries: Vec<LedgerEntry> = l
             .iter()
-            .filter(|e| e.referrer_tenant == referrer_tenant)
-            .cloned()
+            .filter(|p| {
+                p.account == account::AFFILIATE_PAYABLE && p.tenant_id.as_deref() == Some(affiliate)
+            })
+            .map(entry_from_payable)
             .collect();
         entries.sort_by_key(|e| std::cmp::Reverse(e.created_at));
         entries.truncate(limit.max(0) as usize);
         entries
+    }
+    async fn account_balances(&self) -> Vec<AccountBalance> {
+        let Ok(l) = self.postings.read() else {
+            return Vec::new();
+        };
+        let mut by_acct: HashMap<String, i64> = HashMap::new();
+        for p in l.iter() {
+            *by_acct.entry(p.account.clone()).or_insert(0) += p.amount_cents;
+        }
+        let mut out: Vec<AccountBalance> = by_acct
+            .into_iter()
+            .map(|(account, balance_cents)| AccountBalance {
+                account,
+                balance_cents,
+            })
+            .collect();
+        out.sort_by(|a, b| a.account.cmp(&b.account));
+        out
     }
 }
 
@@ -159,13 +360,6 @@ impl PostgresAffiliateStore {
     }
 }
 
-fn now_secs() -> i64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs() as i64
-}
-
 impl AffiliateStore for PostgresAffiliateStore {
     async fn get_or_create_code(&self, tenant_id: &str) -> String {
         let code = code_for(tenant_id);
@@ -175,10 +369,9 @@ impl AffiliateStore for PostgresAffiliateStore {
         )
         .bind(tenant_id)
         .bind(&code)
-        .bind(now_secs())
+        .bind(now_secs() as i64)
         .execute(&self.pool)
         .await;
-        // Return the stored code (in case one already existed).
         sqlx::query_scalar::<_, String>("SELECT code FROM af_affiliate_codes WHERE tenant_id = $1")
             .bind(tenant_id)
             .fetch_optional(&self.pool)
@@ -206,7 +399,7 @@ impl AffiliateStore for PostgresAffiliateStore {
         .bind(referee_tenant)
         .bind(referrer_tenant)
         .bind(code)
-        .bind(now_secs())
+        .bind(now_secs() as i64)
         .execute(&self.pool)
         .await;
     }
@@ -220,32 +413,6 @@ impl AffiliateStore for PostgresAffiliateStore {
         .ok()
         .flatten()
     }
-    async fn add_entry(&self, entry: LedgerEntry) {
-        let _ = sqlx::query(
-            "INSERT INTO af_affiliate_ledger \
-               (id, referrer_tenant, referee_tenant, amount_cents, kind, source_ref, created_at) \
-             VALUES ($1, $2, $3, $4, $5, $6, $7)",
-        )
-        .bind(&entry.id)
-        .bind(&entry.referrer_tenant)
-        .bind(&entry.referee_tenant)
-        .bind(entry.amount_cents)
-        .bind(&entry.kind)
-        .bind(&entry.source_ref)
-        .bind(entry.created_at as i64)
-        .execute(&self.pool)
-        .await;
-    }
-    async fn balance_cents(&self, referrer_tenant: &str) -> i64 {
-        sqlx::query_scalar::<_, i64>(
-            "SELECT COALESCE(SUM(amount_cents), 0)::bigint FROM af_affiliate_ledger \
-             WHERE referrer_tenant = $1",
-        )
-        .bind(referrer_tenant)
-        .fetch_one(&self.pool)
-        .await
-        .unwrap_or(0)
-    }
     async fn referral_count(&self, referrer_tenant: &str) -> i64 {
         sqlx::query_scalar::<_, i64>(
             "SELECT COUNT(*)::bigint FROM af_referrals WHERE referrer_tenant = $1",
@@ -255,11 +422,42 @@ impl AffiliateStore for PostgresAffiliateStore {
         .await
         .unwrap_or(0)
     }
-    async fn list_entries(&self, referrer_tenant: &str, limit: i64) -> Vec<LedgerEntry> {
+    async fn post(&self, postings: Vec<Posting>) {
+        for p in postings {
+            let _ = sqlx::query(
+                "INSERT INTO af_ledger_postings \
+                   (id, txn_id, account, tenant_id, referee_tenant, amount_cents, kind, source_ref, created_at) \
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)",
+            )
+            .bind(&p.id)
+            .bind(&p.txn_id)
+            .bind(&p.account)
+            .bind(&p.tenant_id)
+            .bind(&p.referee_tenant)
+            .bind(p.amount_cents)
+            .bind(&p.kind)
+            .bind(&p.source_ref)
+            .bind(p.created_at as i64)
+            .execute(&self.pool)
+            .await;
+        }
+    }
+    async fn balance_cents(&self, affiliate: &str) -> i64 {
+        let owed = sqlx::query_scalar::<_, i64>(
+            "SELECT COALESCE(SUM(amount_cents), 0)::bigint FROM af_ledger_postings \
+             WHERE account = $1 AND tenant_id = $2",
+        )
+        .bind(account::AFFILIATE_PAYABLE)
+        .bind(affiliate)
+        .fetch_one(&self.pool)
+        .await
+        .unwrap_or(0);
+        -owed
+    }
+    async fn list_entries(&self, affiliate: &str, limit: i64) -> Vec<LedgerEntry> {
         #[derive(sqlx::FromRow)]
         struct Row {
             id: String,
-            referrer_tenant: String,
             referee_tenant: Option<String>,
             amount_cents: i64,
             kind: String,
@@ -267,10 +465,12 @@ impl AffiliateStore for PostgresAffiliateStore {
             created_at: i64,
         }
         sqlx::query_as::<_, Row>(
-            "SELECT id, referrer_tenant, referee_tenant, amount_cents, kind, source_ref, created_at \
-             FROM af_affiliate_ledger WHERE referrer_tenant = $1 ORDER BY created_at DESC LIMIT $2",
+            "SELECT id, referee_tenant, amount_cents, kind, source_ref, created_at \
+             FROM af_ledger_postings WHERE account = $1 AND tenant_id = $2 \
+             ORDER BY created_at DESC LIMIT $3",
         )
-        .bind(referrer_tenant)
+        .bind(account::AFFILIATE_PAYABLE)
+        .bind(affiliate)
         .bind(limit.max(0))
         .fetch_all(&self.pool)
         .await
@@ -278,12 +478,26 @@ impl AffiliateStore for PostgresAffiliateStore {
         .into_iter()
         .map(|r| LedgerEntry {
             id: r.id,
-            referrer_tenant: r.referrer_tenant,
             referee_tenant: r.referee_tenant,
-            amount_cents: r.amount_cents,
+            amount_cents: -r.amount_cents,
             kind: r.kind,
             source_ref: r.source_ref,
             created_at: r.created_at as u64,
+        })
+        .collect()
+    }
+    async fn account_balances(&self) -> Vec<AccountBalance> {
+        sqlx::query_as::<_, (String, i64)>(
+            "SELECT account, COALESCE(SUM(amount_cents), 0)::bigint \
+             FROM af_ledger_postings GROUP BY account ORDER BY account",
+        )
+        .fetch_all(&self.pool)
+        .await
+        .unwrap_or_default()
+        .into_iter()
+        .map(|(account, balance_cents)| AccountBalance {
+            account,
+            balance_cents,
         })
         .collect()
     }
@@ -340,28 +554,34 @@ impl AffiliateStore for PlatformAffiliateStore {
             Self::Postgres(s) => s.get_referrer(referee_tenant).await,
         }
     }
-    async fn add_entry(&self, entry: LedgerEntry) {
-        match self {
-            Self::Memory(s) => s.add_entry(entry).await,
-            Self::Postgres(s) => s.add_entry(entry).await,
-        }
-    }
-    async fn balance_cents(&self, referrer_tenant: &str) -> i64 {
-        match self {
-            Self::Memory(s) => s.balance_cents(referrer_tenant).await,
-            Self::Postgres(s) => s.balance_cents(referrer_tenant).await,
-        }
-    }
     async fn referral_count(&self, referrer_tenant: &str) -> i64 {
         match self {
             Self::Memory(s) => s.referral_count(referrer_tenant).await,
             Self::Postgres(s) => s.referral_count(referrer_tenant).await,
         }
     }
-    async fn list_entries(&self, referrer_tenant: &str, limit: i64) -> Vec<LedgerEntry> {
+    async fn post(&self, postings: Vec<Posting>) {
         match self {
-            Self::Memory(s) => s.list_entries(referrer_tenant, limit).await,
-            Self::Postgres(s) => s.list_entries(referrer_tenant, limit).await,
+            Self::Memory(s) => s.post(postings).await,
+            Self::Postgres(s) => s.post(postings).await,
+        }
+    }
+    async fn balance_cents(&self, affiliate: &str) -> i64 {
+        match self {
+            Self::Memory(s) => s.balance_cents(affiliate).await,
+            Self::Postgres(s) => s.balance_cents(affiliate).await,
+        }
+    }
+    async fn list_entries(&self, affiliate: &str, limit: i64) -> Vec<LedgerEntry> {
+        match self {
+            Self::Memory(s) => s.list_entries(affiliate, limit).await,
+            Self::Postgres(s) => s.list_entries(affiliate, limit).await,
+        }
+    }
+    async fn account_balances(&self) -> Vec<AccountBalance> {
+        match self {
+            Self::Memory(s) => s.account_balances().await,
+            Self::Postgres(s) => s.account_balances().await,
         }
     }
 }
@@ -393,7 +613,6 @@ mod tests {
         assert_eq!(code, code_for("referrer"));
         assert_eq!(store.resolve_code(&code).await.as_deref(), Some("referrer"));
 
-        // First-touch referral; a later attempt does not overwrite.
         store.record_referral("referee", "referrer", &code).await;
         store
             .record_referral("referee", "someone-else", &code)
@@ -402,35 +621,40 @@ mod tests {
             store.get_referrer("referee").await.as_deref(),
             Some("referrer")
         );
-        // Self-referral is ignored.
         store.record_referral("solo", "solo", "X").await;
         assert_eq!(store.get_referrer("solo").await, None);
         assert_eq!(store.referral_count("referrer").await, 1);
     }
 
     #[tokio::test]
-    async fn ledger_balance_sums_signed_entries() {
+    async fn double_entry_balance_and_books_stay_balanced() {
         let store = MemoryAffiliateStore::default();
-        let entry = |amount, k: &str| LedgerEntry {
-            id: uuid::Uuid::new_v4().to_string(),
-            referrer_tenant: "r".into(),
-            referee_tenant: Some("e".into()),
-            amount_cents: amount,
-            kind: k.into(),
-            source_ref: None,
-            created_at: 1,
-        };
-        store.add_entry(entry(1000, kind::COMMISSION)).await;
-        store.add_entry(entry(-300, kind::CLAWBACK)).await;
-        store.add_entry(entry(-200, kind::PAYOUT)).await;
+        store.accrue_commission("r", "e", 1000, Some("evt1")).await;
+        store.clawback_commission("r", "e", 300, Some("evt2")).await;
+        store.record_payout("r", 200, None).await;
+
+        // Amount owed = 1000 − 300 − 200 = 500.
         assert_eq!(store.balance_cents("r").await, 500);
-        assert_eq!(store.list_entries("r", 10).await.len(), 3);
+        // Affiliate-facing entries: +1000, −300, −200.
+        let entries = store.list_entries("r", 10).await;
+        assert_eq!(entries.len(), 3);
+        let sum: i64 = entries.iter().map(|e| e.amount_cents).sum();
+        assert_eq!(sum, 500);
+
+        // The books balance: every account's postings sum to zero overall.
+        let total: i64 = store
+            .account_balances()
+            .await
+            .iter()
+            .map(|a| a.balance_cents)
+            .sum();
+        assert_eq!(total, 0, "double-entry postings must sum to zero");
+
         assert_eq!(store.balance_cents("other").await, 0);
     }
 
     #[test]
     fn commission_for_uses_configured_rate() {
-        // Default (unset) → no commission.
         std::env::remove_var("AFFILIATE_COMMISSION_PCT");
         assert_eq!(commission_for(10_000), 0);
     }

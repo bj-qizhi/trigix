@@ -220,21 +220,22 @@ fn apply_affiliate_event(
     obj: &serde_json::Value,
     event_id: &str,
 ) {
-    use crate::affiliate::{commission_for, kind, AffiliateStore, LedgerEntry};
-    let (customer, signed_amount, entry_kind) = match event_type {
+    use crate::affiliate::{commission_for, AffiliateStore};
+    // `true` = commission (invoice.paid), `false` = clawback (charge.refunded).
+    let (customer, commission, is_commission) = match event_type {
         "invoice.paid" => (
             obj["customer"].as_str().unwrap_or(""),
             commission_for(obj["amount_paid"].as_i64().unwrap_or(0)),
-            kind::COMMISSION,
+            true,
         ),
         "charge.refunded" => (
             obj["customer"].as_str().unwrap_or(""),
-            -commission_for(obj["amount_refunded"].as_i64().unwrap_or(0)),
-            kind::CLAWBACK,
+            commission_for(obj["amount_refunded"].as_i64().unwrap_or(0)),
+            false,
         ),
         _ => return,
     };
-    if customer.is_empty() || signed_amount == 0 {
+    if customer.is_empty() || commission <= 0 {
         return;
     }
     let Some(referee) = state.billing_store.get_tenant_by_stripe_customer(customer) else {
@@ -244,17 +245,15 @@ fn apply_affiliate_event(
     let source_ref = event_id.to_string();
     tokio::spawn(async move {
         if let Some(referrer) = affiliate.get_referrer(&referee).await {
-            affiliate
-                .add_entry(LedgerEntry {
-                    id: uuid::Uuid::new_v4().to_string(),
-                    referrer_tenant: referrer,
-                    referee_tenant: Some(referee),
-                    amount_cents: signed_amount,
-                    kind: entry_kind.to_string(),
-                    source_ref: Some(source_ref),
-                    created_at: crate::execution::unix_now(),
-                })
-                .await;
+            if is_commission {
+                affiliate
+                    .accrue_commission(&referrer, &referee, commission, Some(&source_ref))
+                    .await;
+            } else {
+                affiliate
+                    .clawback_commission(&referrer, &referee, commission, Some(&source_ref))
+                    .await;
+            }
         }
     });
 }

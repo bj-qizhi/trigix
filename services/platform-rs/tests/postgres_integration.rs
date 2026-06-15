@@ -16,9 +16,7 @@
 //! Multi-thread flavor is required: the Postgres stores use
 //! `tokio::task::block_in_place`, which panics on the current-thread runtime.
 
-use trigix_platform::affiliate::{
-    kind, AffiliateStore, LedgerEntry, PlatformAffiliateStore, PostgresAffiliateStore,
-};
+use trigix_platform::affiliate::{AffiliateStore, PlatformAffiliateStore, PostgresAffiliateStore};
 use trigix_platform::attribution::{
     AttributionRecord, AttributionStore, PlatformAttributionStore, PostgresAttributionStore,
 };
@@ -194,19 +192,14 @@ async fn affiliate_referral_and_ledger_roundtrip() {
     );
     assert_eq!(store.referral_count(&referrer).await, 1);
 
-    // Signed ledger: commission − clawback − payout.
-    let entry = |amount, k: &str| LedgerEntry {
-        id: uuid::Uuid::new_v4().to_string(),
-        referrer_tenant: referrer.clone(),
-        referee_tenant: Some(referee.clone()),
-        amount_cents: amount,
-        kind: k.to_string(),
-        source_ref: None,
-        created_at: 1,
-    };
-    store.add_entry(entry(1000, kind::COMMISSION)).await;
-    store.add_entry(entry(-300, kind::CLAWBACK)).await;
-    store.add_entry(entry(-200, kind::PAYOUT)).await;
+    // Double-entry: commission − clawback − payout → owed 500.
+    store
+        .accrue_commission(&referrer, &referee, 1000, Some("evt1"))
+        .await;
+    store
+        .clawback_commission(&referrer, &referee, 300, Some("evt2"))
+        .await;
+    store.record_payout(&referrer, 200, None).await;
     assert_eq!(store.balance_cents(&referrer).await, 500);
     assert_eq!(store.list_entries(&referrer, 10).await.len(), 3);
 }
