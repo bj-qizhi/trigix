@@ -253,9 +253,11 @@ pub trait BillingStore: Send + Sync {
     /// slow) response, so handlers must dedupe to avoid applying an upgrade or
     /// clawback twice.
     fn mark_stripe_event_processed(&self, event_id: &str) -> bool;
-    /// Adds converted revenue (Stripe `amount_total`, minor currency unit) to the
-    /// tenant, attributed to its acquisition channel via the analytics join.
+    /// Adds paid-invoice revenue (Stripe `amount_paid`, minor currency unit) to
+    /// the tenant, attributed to its acquisition channel via the analytics join.
     fn add_revenue(&self, tenant_id: &str, cents: i64);
+    /// Total revenue recorded for the tenant (minor currency unit).
+    fn revenue_cents(&self, tenant_id: &str) -> i64;
     fn billing_status(&self, tenant_id: &str) -> BillingStatus {
         let quota = self.get_quota(tenant_id);
         let ym = current_year_month();
@@ -412,6 +414,14 @@ impl BillingStore for MemoryBillingStore {
             .unwrap()
             .entry(tenant_id.to_string())
             .or_insert(0) += cents;
+    }
+    fn revenue_cents(&self, tenant_id: &str) -> i64 {
+        self.revenue
+            .read()
+            .unwrap()
+            .get(tenant_id)
+            .copied()
+            .unwrap_or(0)
     }
 }
 
@@ -683,6 +693,23 @@ impl BillingStore for PostgresBillingStore {
             .await;
         });
     }
+    fn revenue_cents(&self, tenant_id: &str) -> i64 {
+        let pool = self.pool.clone();
+        let tid = tenant_id.to_string();
+        tokio::task::block_in_place(|| {
+            tokio::runtime::Handle::current().block_on(async move {
+                sqlx::query_scalar::<_, i64>(
+                    "SELECT revenue_cents FROM af_tenant_quotas WHERE tenant_id = $1",
+                )
+                .bind(&tid)
+                .fetch_optional(&pool)
+                .await
+                .ok()
+                .flatten()
+                .unwrap_or(0)
+            })
+        })
+    }
 }
 
 // ── Platform enum ──────────────────────────────────────────────────────────
@@ -767,6 +794,12 @@ impl BillingStore for PlatformBillingStore {
         match self {
             Self::Memory(s) => s.add_revenue(tenant_id, cents),
             Self::Postgres(s) => s.add_revenue(tenant_id, cents),
+        }
+    }
+    fn revenue_cents(&self, tenant_id: &str) -> i64 {
+        match self {
+            Self::Memory(s) => s.revenue_cents(tenant_id),
+            Self::Postgres(s) => s.revenue_cents(tenant_id),
         }
     }
 }

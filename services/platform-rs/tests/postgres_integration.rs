@@ -133,8 +133,17 @@ async fn attribution_first_touch_roundtrip() {
     assert_eq!(got.utm_campaign.as_deref(), Some("launch"));
     assert_eq!(store.get(&uniq("absent")).await.map(|_| ()), None);
 
-    // Convert the tenant to paid with revenue (fire-and-forget writes → poll).
+    // Convert the tenant to paid. set_quota and add_revenue are both
+    // fire-and-forget, and add_revenue is an UPDATE — so wait for the quota row
+    // to exist before adding revenue (in production checkout creates the row
+    // well before invoice.paid arrives).
     billing.set_quota(TenantQuota::pro(&tenant));
+    for _ in 0..30 {
+        if billing.get_quota(&tenant).tier == "pro" {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    }
     billing.add_revenue(&tenant, 4900);
 
     // channel_revenue joins attribution × quotas: our channel should show one

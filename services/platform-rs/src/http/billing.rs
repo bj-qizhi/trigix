@@ -230,17 +230,25 @@ fn apply_stripe_event(state: &AppState, event_type: &str, obj: &serde_json::Valu
                 state
                     .billing_store
                     .set_stripe_ids(tenant_id, customer, sub_id);
-                // Attribute converted revenue (minor currency unit) to the tenant
-                // so the acquisition-channel ROI view can sum it.
-                if let Some(cents) = obj["amount_total"].as_i64() {
-                    if cents > 0 {
-                        state.billing_store.add_revenue(tenant_id, cents);
-                    }
-                }
                 info!(
                     tenant_id,
                     tier, "Stripe checkout.session.completed → quota upgraded"
                 );
+            }
+        }
+        // Revenue (first + recurring) is recorded from paid invoices, by customer.
+        // `invoice.paid` fires for the subscription's first payment and every
+        // renewal — recording it here (instead of checkout's amount_total) avoids
+        // double-counting the first payment and captures recurring MRR.
+        "invoice.paid" => {
+            let customer = obj["customer"].as_str().unwrap_or("");
+            let amount = obj["amount_paid"].as_i64().unwrap_or(0);
+            if !customer.is_empty() && amount > 0 {
+                if let Some(tenant_id) = state.billing_store.get_tenant_by_stripe_customer(customer)
+                {
+                    state.billing_store.add_revenue(&tenant_id, amount);
+                    info!(tenant_id, amount, "Stripe invoice.paid → revenue recorded");
+                }
             }
         }
         "customer.subscription.updated" => {
@@ -354,6 +362,44 @@ mod tests {
         let bare = super::conversion_properties("t1", "free", None);
         assert_eq!(bare["tier"], "free");
         assert!(bare.get("utm_source").is_none());
+    }
+
+    #[test]
+    fn invoice_paid_records_revenue_without_double_counting_checkout() {
+        use crate::billing::BillingStore;
+        let state = default_app_state();
+        let tenant = "tenant-rev";
+        let customer = "cus_rev";
+
+        // Checkout upgrades the tier and sets the customer mapping, but records
+        // no revenue (otherwise the first payment would be counted twice).
+        super::apply_stripe_event(
+            &state,
+            "checkout.session.completed",
+            &json!({
+                "metadata": {"tenant_id": tenant, "tier": "pro"},
+                "customer": customer,
+                "subscription": "sub_rev",
+                "amount_total": 4900
+            }),
+        );
+        assert_eq!(state.billing_store.revenue_cents(tenant), 0);
+
+        // The first paid invoice records revenue, resolved by customer.
+        super::apply_stripe_event(
+            &state,
+            "invoice.paid",
+            &json!({"customer": customer, "amount_paid": 4900}),
+        );
+        assert_eq!(state.billing_store.revenue_cents(tenant), 4900);
+
+        // A recurring renewal accumulates (this is the MRR loop).
+        super::apply_stripe_event(
+            &state,
+            "invoice.paid",
+            &json!({"customer": customer, "amount_paid": 4900}),
+        );
+        assert_eq!(state.billing_store.revenue_cents(tenant), 9800);
     }
 
     #[test]

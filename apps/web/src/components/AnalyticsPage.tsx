@@ -1047,8 +1047,8 @@ export function AnalyticsPage({ onBack }: Props) {
                   <h2 style={{ marginBottom: 4 }}>{zh ? '获客渠道 ROI' : 'Acquisition ROI'}</h2>
                   <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 12 }}>
                     {zh
-                      ? `按首触渠道:注册 → 付费转化 → 转化收入(${totalSignups} 注册 / ${totalPaid} 付费 / ${money(totalRevenue)})`
-                      : `By first-touch channel: signup → paid → converted revenue (${totalSignups} signups / ${totalPaid} paid / ${money(totalRevenue)})`}
+                      ? `按首触渠道:注册 → 付费转化 → 收入(首单+续费)(${totalSignups} 注册 / ${totalPaid} 付费 / ${money(totalRevenue)})`
+                      : `By first-touch channel: signup → paid → revenue (initial + recurring) (${totalSignups} signups / ${totalPaid} paid / ${money(totalRevenue)})`}
                   </div>
                   <table className="workflow-table" style={{ maxWidth: 600 }}>
                     <thead>
