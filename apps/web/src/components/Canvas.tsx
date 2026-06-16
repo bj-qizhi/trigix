@@ -288,6 +288,9 @@ const NODE_LABELS: Record<NodeType, string> = {
   sqs: 'AWS SQS',
   sns: 'AWS SNS',
   bedrock: 'AWS Bedrock',
+  milvus: 'Milvus',
+  kafka: 'Kafka',
+  rabbitmq: 'RabbitMQ',
   deepseek: 'DeepSeek',
   qwen: '通义千问',
   zhipu: '智谱 GLM',
@@ -446,6 +449,9 @@ const NODE_ICONS: Record<NodeType, string> = {
   sqs: '📨',
   sns: '📢',
   bedrock: '🧱',
+  milvus: '🐦',
+  kafka: '🟧',
+  rabbitmq: '🐰',
   deepseek: '🐋',
   qwen: '🧩',
   zhipu: '🔮',
@@ -619,6 +625,9 @@ function FlowNodeComponent({ data, selected, id }: NodeProps) {
     if (nt === 'sqs') return `${String(c.operation ?? 'send')}${c.queue_url ? ' · '+String(c.queue_url).split('/').pop() : ''}`
     if (nt === 'sns') return c.topic_arn ? `publish · ${String(c.topic_arn).split(':').pop()}` : 'publish'
     if (nt === 'bedrock') return c.model_id ? String(c.model_id) : 'No model'
+    if (nt === 'milvus') return c.collection ? `${String(c.operation ?? 'search')} [${String(c.collection)}]` : String(c.operation ?? 'search')
+    if (nt === 'kafka') return c.topic ? `produce → ${String(c.topic)}` : 'No topic'
+    if (nt === 'rabbitmq') return `${String(c.operation ?? 'publish')}${c.routing_key ? ' · '+String(c.routing_key) : ''}`
     if (nt === 'deepseek') return c.model ? String(c.model) : 'deepseek-chat'
     if (nt === 'qwen') return c.model ? String(c.model) : 'qwen-max'
     if (nt === 'zhipu') return c.model ? String(c.model) : 'glm-4'
@@ -815,6 +824,9 @@ const nodeTypes = {
   sqs: FlowNodeComponent,
   sns: FlowNodeComponent,
   bedrock: FlowNodeComponent,
+  milvus: FlowNodeComponent,
+  kafka: FlowNodeComponent,
+  rabbitmq: FlowNodeComponent,
   deepseek: FlowNodeComponent,
   qwen: FlowNodeComponent,
   zhipu: FlowNodeComponent,
@@ -1237,6 +1249,9 @@ export function Canvas({
               sqs: '#ff4f8b',
               sns: '#ff9900',
               bedrock: '#ff9900',
+              milvus: '#00a1ea',
+              kafka: '#231f20',
+              rabbitmq: '#ff6600',
               deepseek: '#4d6bfe',
               qwen: '#6200ea',
               zhipu: '#00897b',

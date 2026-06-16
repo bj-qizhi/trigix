@@ -2162,6 +2162,9 @@ fn node_type_to_str(node_type: &workflow_core::NodeType) -> &'static str {
         workflow_core::NodeType::Sqs => "sqs",
         workflow_core::NodeType::Sns => "sns",
         workflow_core::NodeType::Bedrock => "bedrock",
+        workflow_core::NodeType::Milvus => "milvus",
+        workflow_core::NodeType::Kafka => "kafka",
+        workflow_core::NodeType::Rabbitmq => "rabbitmq",
         // 国内大模型
         workflow_core::NodeType::Deepseek => "deepseek",
         workflow_core::NodeType::Qwen => "qwen",

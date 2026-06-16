@@ -45,9 +45,13 @@ use nodes_storage::*;
 mod nodes_tools;
 use nodes_tools::*;
 
-// AWS nodes signed with SigV4 (SQS, SNS).
+// AWS nodes signed with SigV4 (SQS, SNS, Bedrock).
 mod nodes_aws;
 use nodes_aws::*;
+
+// Message-broker nodes over HTTP (Kafka REST Proxy, RabbitMQ Management API).
+mod nodes_messaging;
+use nodes_messaging::*;
 
 // SaaS integration nodes extracted into their own submodule.
 mod nodes_integrations;
@@ -554,6 +558,9 @@ async fn dispatch(
         NodeType::Sqs => execute_sqs(node, context, http_client).await,
         NodeType::Sns => execute_sns(node, context, http_client).await,
         NodeType::Bedrock => execute_bedrock(node, context, http_client).await,
+        NodeType::Milvus => execute_milvus(node, context, http_client).await,
+        NodeType::Kafka => execute_kafka(node, context, http_client).await,
+        NodeType::Rabbitmq => execute_rabbitmq(node, context, http_client).await,
         NodeType::Deepseek => execute_deepseek(node, context, http_client).await,
         NodeType::Qwen => execute_qwen(node, context, http_client).await,
         NodeType::Zhipu => execute_zhipu(node, context, http_client).await,

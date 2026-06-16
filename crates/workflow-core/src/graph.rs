@@ -212,6 +212,12 @@ pub enum NodeType {
     Sns,
     /// AWS Bedrock InvokeModel (SigV4-signed, model-native body).
     Bedrock,
+    /// Milvus / Zilliz vector store (REST API v2).
+    Milvus,
+    /// Kafka via the Confluent REST Proxy.
+    Kafka,
+    /// RabbitMQ via the Management HTTP API.
+    Rabbitmq,
     // ── 中国国内大模型 ───────────────────────────────────
     Deepseek,
     Qwen,

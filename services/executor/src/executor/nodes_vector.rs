@@ -247,6 +247,126 @@ pub(super) async fn execute_chroma(
     }
 }
 
+// ── Milvus / Zilliz (REST API v2) ─────────────────────────────────────────────
+pub(super) async fn execute_milvus(
+    node: &Node,
+    context: &ExecutionContext,
+    http_client: &reqwest::Client,
+) -> NodeExecutionResult {
+    let raw = node.config.clone().unwrap_or_default();
+    let cfg = resolve_config_strings(&raw, context);
+    let host = match cfg.get("host").and_then(|v| v.as_str()) {
+        Some(h) if !h.is_empty() => h.trim_end_matches('/').to_string(),
+        _ => {
+            return NodeExecutionResult::failed(
+                "Milvus requires 'host' (e.g. https://xyz.api.gcp-us-west1.zillizcloud.com or http://localhost:19530)",
+            )
+        }
+    };
+    let collection = match cfg.get("collection").and_then(|v| v.as_str()) {
+        Some(c) if !c.is_empty() => c.to_string(),
+        _ => return NodeExecutionResult::failed("Milvus requires 'collection'"),
+    };
+    let operation = cfg
+        .get("operation")
+        .and_then(|v| v.as_str())
+        .unwrap_or("search")
+        .to_string();
+    let token = cfg
+        .get("token")
+        .and_then(|v| v.as_str())
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_string());
+
+    let auth = |rb: reqwest::RequestBuilder| -> reqwest::RequestBuilder {
+        let rb = rb.header("Content-Type", "application/json");
+        match &token {
+            Some(t) => rb.header("Authorization", format!("Bearer {t}")),
+            None => rb,
+        }
+    };
+    let send = |rb: reqwest::RequestBuilder, op: &'static str| async move {
+        match rb.send().await {
+            Ok(resp) => {
+                let status = resp.status().as_u16();
+                let body: serde_json::Value = resp.json().await.unwrap_or(serde_json::Value::Null);
+                NodeExecutionResult::succeeded(
+                    serde_json::json!({ "status": status, "body": body }).to_string(),
+                )
+            }
+            Err(e) => NodeExecutionResult::failed(format!("Milvus {op} error: {e}")),
+        }
+    };
+
+    match operation.as_str() {
+        "search" => {
+            let data = match cfg.get("data") {
+                Some(v) => json_array_or_parse(v),
+                None => {
+                    return NodeExecutionResult::failed(
+                        "Milvus search requires 'data' (array of query vectors)",
+                    )
+                }
+            };
+            let limit = cfg.get("limit").and_then(|v| v.as_u64()).unwrap_or(10);
+            let mut body = serde_json::json!({
+                "collectionName": collection,
+                "data": data,
+                "limit": limit,
+            });
+            if let Some(anns) = cfg.get("anns_field").and_then(|v| v.as_str()) {
+                body["annsField"] = serde_json::json!(anns);
+            }
+            if let Some(filter) = cfg.get("filter").and_then(|v| v.as_str()) {
+                body["filter"] = serde_json::json!(filter);
+            }
+            if let Some(fields) = cfg.get("output_fields") {
+                body["outputFields"] = json_array_or_parse(fields);
+            }
+            let url = format!("{host}/v2/vectordb/entities/search");
+            send(auth(http_client.post(&url)).json(&body), "search").await
+        }
+        "insert" => {
+            let data = match cfg.get("data") {
+                Some(v) => json_array_or_parse(v),
+                None => {
+                    return NodeExecutionResult::failed(
+                        "Milvus insert requires 'data' (array of row objects)",
+                    )
+                }
+            };
+            let body = serde_json::json!({ "collectionName": collection, "data": data });
+            let url = format!("{host}/v2/vectordb/entities/insert");
+            send(auth(http_client.post(&url)).json(&body), "insert").await
+        }
+        "query" => {
+            let filter = match cfg.get("filter").and_then(|v| v.as_str()) {
+                Some(f) if !f.is_empty() => f.to_string(),
+                _ => return NodeExecutionResult::failed("Milvus query requires 'filter'"),
+            };
+            let mut body = serde_json::json!({ "collectionName": collection, "filter": filter });
+            if let Some(fields) = cfg.get("output_fields") {
+                body["outputFields"] = json_array_or_parse(fields);
+            }
+            if let Some(limit) = cfg.get("limit").and_then(|v| v.as_u64()) {
+                body["limit"] = serde_json::json!(limit);
+            }
+            let url = format!("{host}/v2/vectordb/entities/query");
+            send(auth(http_client.post(&url)).json(&body), "query").await
+        }
+        "delete" => {
+            let filter = match cfg.get("filter").and_then(|v| v.as_str()) {
+                Some(f) if !f.is_empty() => f.to_string(),
+                _ => return NodeExecutionResult::failed("Milvus delete requires 'filter'"),
+            };
+            let body = serde_json::json!({ "collectionName": collection, "filter": filter });
+            let url = format!("{host}/v2/vectordb/entities/delete");
+            send(auth(http_client.post(&url)).json(&body), "delete").await
+        }
+        other => NodeExecutionResult::failed(format!("Milvus unknown operation '{other}'")),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -344,5 +464,49 @@ mod tests {
             .as_deref()
             .unwrap_or("")
             .contains("query_embeddings"));
+    }
+
+    #[tokio::test]
+    async fn milvus_requires_host() {
+        let c = reqwest::Client::new();
+        let n = Node {
+            id: "mv1".into(),
+            node_type: NodeType::Milvus,
+            config: Some(serde_json::json!({"operation":"search","collection":"c"})),
+        };
+        let r = execute_milvus(&n, &ctx(), &c).await;
+        assert!(r.error.as_deref().unwrap_or("").contains("host"));
+    }
+
+    #[tokio::test]
+    async fn milvus_search_requires_data() {
+        let c = reqwest::Client::new();
+        let n = Node {
+            id: "mv2".into(),
+            node_type: NodeType::Milvus,
+            config: Some(serde_json::json!({
+                "host":"http://localhost:19530","collection":"c","operation":"search"
+            })),
+        };
+        let r = execute_milvus(&n, &ctx(), &c).await;
+        assert!(r.error.as_deref().unwrap_or("").contains("data"));
+    }
+
+    #[tokio::test]
+    async fn milvus_unknown_operation() {
+        let c = reqwest::Client::new();
+        let n = Node {
+            id: "mv3".into(),
+            node_type: NodeType::Milvus,
+            config: Some(serde_json::json!({
+                "host":"http://localhost:19530","collection":"c","operation":"nope"
+            })),
+        };
+        let r = execute_milvus(&n, &ctx(), &c).await;
+        assert!(r
+            .error
+            .as_deref()
+            .unwrap_or("")
+            .contains("unknown operation"));
     }
 }

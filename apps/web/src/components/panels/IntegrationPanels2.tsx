@@ -2488,6 +2488,166 @@ export function ClickhouseConfig({ set, str }: ConfigProps) {
   )
 }
 
+export function MilvusConfig({ config, set, str, num }: ConfigProps) {
+  const operation = str('operation', 'search')
+  const OPERATIONS = ['search', 'insert', 'query', 'delete']
+  const jsonField = (key: string, label: string, placeholder: string, rows = 2) => (
+    <div className="field">
+      <label>{label}</label>
+      <textarea rows={rows} placeholder={placeholder} value={typeof config[key] === 'object' ? JSON.stringify(config[key]) : str(key, '')} onChange={(e) => { try { set(key, JSON.parse(e.target.value)) } catch { set(key, e.target.value) } }} style={{ fontFamily: 'monospace', fontSize: 12 }} />
+    </div>
+  )
+  return (
+    <>
+      <div className="field">
+        <label>Host <span style={{ color: 'var(--danger)' }}>*</span></label>
+        <input placeholder="https://xyz.zillizcloud.com" value={str('host', '')} onChange={(e) => set('host', e.target.value)} style={{ fontFamily: 'monospace', fontSize: 12 }} />
+      </div>
+      <div className="field">
+        <label>Token</label>
+        <input type="password" placeholder="api-key or user:password" value={str('token', '')} onChange={(e) => set('token', e.target.value)} style={{ fontFamily: 'monospace', fontSize: 12 }} />
+      </div>
+      <div className="field">
+        <label>Collection <span style={{ color: 'var(--danger)' }}>*</span></label>
+        <input placeholder="my_collection" value={str('collection', '')} onChange={(e) => set('collection', e.target.value)} />
+      </div>
+      <div className="field">
+        <label>Operation</label>
+        <select value={operation} onChange={(e) => set('operation', e.target.value)}>
+          {OPERATIONS.map((op) => <option key={op} value={op}>{op}</option>)}
+        </select>
+      </div>
+      {operation === 'search' && (
+        <>
+          {jsonField('data', 'Query Vectors (JSON array of arrays)', '[[0.1, 0.2, 0.3, …]]')}
+          <div className="field">
+            <label>ANNS Field</label>
+            <input placeholder="vector" value={str('anns_field', '')} onChange={(e) => set('anns_field', e.target.value)} />
+          </div>
+          <div className="field">
+            <label>Limit</label>
+            <input type="number" min={1} max={100} value={num('limit', 10)} onChange={(e) => set('limit', Number(e.target.value))} />
+          </div>
+        </>
+      )}
+      {operation === 'insert' && jsonField('data', 'Rows (JSON array of objects)', '[{"id":1,"vector":[0.1,0.2]}]', 4)}
+      {(operation === 'query' || operation === 'delete') && (
+        <div className="field">
+          <label>Filter <span style={{ color: 'var(--danger)' }}>*</span></label>
+          <input placeholder='id in [1,2,3]' value={str('filter', '')} onChange={(e) => set('filter', e.target.value)} style={{ fontFamily: 'monospace', fontSize: 12 }} />
+        </div>
+      )}
+      {(operation === 'search' || operation === 'query') && jsonField('output_fields', 'Output Fields (JSON array)', '["id","title"]')}
+      <p style={{ fontSize: 11, color: 'var(--muted)', margin: '8px 0 0' }}>
+        Milvus / Zilliz REST API v2. Returns <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>{'{ status, body }'}</code>
+      </p>
+    </>
+  )
+}
+
+export function KafkaConfig({ config, set, str }: ConfigProps) {
+  return (
+    <>
+      <div className="field">
+        <label>REST Proxy URL <span style={{ color: 'var(--danger)' }}>*</span></label>
+        <input placeholder="http://localhost:8082" value={str('proxy_url', '')} onChange={(e) => set('proxy_url', e.target.value)} style={{ fontFamily: 'monospace', fontSize: 12 }} />
+      </div>
+      <div className="field">
+        <label>Topic <span style={{ color: 'var(--danger)' }}>*</span></label>
+        <input placeholder="events" value={str('topic', '')} onChange={(e) => set('topic', e.target.value)} />
+      </div>
+      <div className="field">
+        <label>Value (JSON or string) <span style={{ color: 'var(--danger)' }}>*</span></label>
+        <textarea rows={3} placeholder='{"event":"signup"}' value={typeof config.value === 'object' ? JSON.stringify(config.value) : str('value', '')} onChange={(e) => { try { set('value', JSON.parse(e.target.value)) } catch { set('value', e.target.value) } }} style={{ fontFamily: 'monospace', fontSize: 12 }} />
+      </div>
+      <div style={{ display: 'flex', gap: 8 }}>
+        <div className="field" style={{ flex: 1 }}>
+          <label>Key</label>
+          <input value={str('key', '')} onChange={(e) => set('key', e.target.value)} />
+        </div>
+        <div className="field" style={{ flex: 1 }}>
+          <label>Partition</label>
+          <input type="number" min={0} placeholder="(auto)" value={(config['partition'] as number | undefined) ?? ''} onChange={(e) => set('partition', e.target.value ? parseInt(e.target.value) : undefined)} />
+        </div>
+      </div>
+      <div className="field">
+        <label>API Key / Secret <span style={{ color: 'var(--muted)' }}>(Confluent Cloud)</span></label>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <input placeholder="api_key" value={str('api_key', '')} onChange={(e) => set('api_key', e.target.value)} style={{ flex: 1, fontFamily: 'monospace', fontSize: 12 }} />
+          <input type="password" placeholder="api_secret" value={str('api_secret', '')} onChange={(e) => set('api_secret', e.target.value)} style={{ flex: 1, fontFamily: 'monospace', fontSize: 12 }} />
+        </div>
+      </div>
+      <p style={{ fontSize: 11, color: 'var(--muted)', margin: '8px 0 0' }}>
+        Kafka via the Confluent REST Proxy. Returns <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>{'{ status, body }'}</code>
+      </p>
+    </>
+  )
+}
+
+export function RabbitmqConfig({ set, str, num }: ConfigProps) {
+  const operation = str('operation', 'publish')
+  const OPERATIONS = ['publish', 'get', 'list_queues']
+  return (
+    <>
+      <div className="field">
+        <label>Management API URL <span style={{ color: 'var(--danger)' }}>*</span></label>
+        <input placeholder="http://localhost:15672" value={str('host', '')} onChange={(e) => set('host', e.target.value)} style={{ fontFamily: 'monospace', fontSize: 12 }} />
+      </div>
+      <div style={{ display: 'flex', gap: 8 }}>
+        <div className="field" style={{ flex: 1 }}>
+          <label>Username <span style={{ color: 'var(--danger)' }}>*</span></label>
+          <input placeholder="guest" value={str('username', '')} onChange={(e) => set('username', e.target.value)} />
+        </div>
+        <div className="field" style={{ flex: 1 }}>
+          <label>Password</label>
+          <input type="password" value={str('password', '')} onChange={(e) => set('password', e.target.value)} />
+        </div>
+      </div>
+      <div className="field">
+        <label>Virtual Host</label>
+        <input placeholder="/" value={str('vhost', '')} onChange={(e) => set('vhost', e.target.value)} />
+      </div>
+      <div className="field">
+        <label>Operation</label>
+        <select value={operation} onChange={(e) => set('operation', e.target.value)}>
+          {OPERATIONS.map((op) => <option key={op} value={op}>{op}</option>)}
+        </select>
+      </div>
+      {operation === 'publish' && (
+        <>
+          <div className="field">
+            <label>Exchange</label>
+            <input placeholder="(default exchange)" value={str('exchange', '')} onChange={(e) => set('exchange', e.target.value)} />
+          </div>
+          <div className="field">
+            <label>Routing Key <span style={{ color: 'var(--muted)' }}>(queue name for default exchange)</span></label>
+            <input placeholder="my-queue" value={str('routing_key', '')} onChange={(e) => set('routing_key', e.target.value)} />
+          </div>
+          <div className="field">
+            <label>Payload <span style={{ color: 'var(--danger)' }}>*</span></label>
+            <textarea rows={3} value={str('payload', '')} onChange={(e) => set('payload', e.target.value)} />
+          </div>
+        </>
+      )}
+      {operation === 'get' && (
+        <>
+          <div className="field">
+            <label>Queue <span style={{ color: 'var(--danger)' }}>*</span></label>
+            <input placeholder="my-queue" value={str('queue', '')} onChange={(e) => set('queue', e.target.value)} />
+          </div>
+          <div className="field">
+            <label>Count</label>
+            <input type="number" min={1} max={100} value={num('count', 1)} onChange={(e) => set('count', Number(e.target.value))} />
+          </div>
+        </>
+      )}
+      <p style={{ fontSize: 11, color: 'var(--muted)', margin: '8px 0 0' }}>
+        RabbitMQ Management HTTP API. Returns <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>{'{ status, body }'}</code>
+      </p>
+    </>
+  )
+}
+
 export function BedrockConfig({ config, set, str }: ConfigProps) {
   return (
     <>
