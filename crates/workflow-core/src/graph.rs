@@ -226,6 +226,12 @@ pub enum NodeType {
     PdfExtract,
     /// OCR via the tesseract CLI (base64 image input).
     Ocr,
+    /// 飞书 / Lark (bot webhook or app message API).
+    Feishu,
+    /// 钉钉 / DingTalk custom robot (optional HMAC sign).
+    Dingtalk,
+    /// 企业微信 / WeChat Work group robot.
+    Wecom,
     // ── 中国国内大模型 ───────────────────────────────────
     Deepseek,
     Qwen,

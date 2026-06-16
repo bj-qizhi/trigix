@@ -2781,6 +2781,117 @@ export function SnsConfig({ set, str }: ConfigProps) {
   )
 }
 
+export function FeishuConfig({ config, set, str }: ConfigProps) {
+  const msgType = str('msg_type', 'text')
+  return (
+    <>
+      <div className="field">
+        <label>Webhook URL <span style={{ color: 'var(--muted)' }}>(自定义机器人)</span></label>
+        <input placeholder="https://open.feishu.cn/open-apis/bot/v2/hook/…" value={str('webhook_url', '')} onChange={(e) => set('webhook_url', e.target.value)} style={{ fontFamily: 'monospace', fontSize: 12 }} />
+        <small style={{ color: 'var(--muted)', fontSize: 10 }}>填了 webhook 用机器人;否则走 App 模式(下方 tenant_access_token + receive_id)。</small>
+      </div>
+      <div className="field">
+        <label>Message Type</label>
+        <select value={msgType} onChange={(e) => set('msg_type', e.target.value)}>
+          {['text', 'interactive'].map((m) => <option key={m} value={m}>{m}</option>)}
+        </select>
+      </div>
+      {msgType === 'text' && (
+        <div className="field">
+          <label>Text</label>
+          <textarea rows={3} value={str('text', '')} onChange={(e) => set('text', e.target.value)} />
+        </div>
+      )}
+      {msgType === 'interactive' && (
+        <div className="field">
+          <label>Card (JSON)</label>
+          <textarea rows={4} placeholder='{"config":{},"elements":[…]}' value={typeof config.card === 'object' ? JSON.stringify(config.card, null, 2) : str('card', '')} onChange={(e) => { try { set('card', JSON.parse(e.target.value)) } catch { set('card', e.target.value) } }} style={{ fontFamily: 'monospace', fontSize: 12 }} />
+        </div>
+      )}
+      <div className="field">
+        <label>Tenant Access Token <span style={{ color: 'var(--muted)' }}>(App 模式)</span></label>
+        <input type="password" value={str('tenant_access_token', '')} onChange={(e) => set('tenant_access_token', e.target.value)} style={{ fontFamily: 'monospace', fontSize: 12 }} />
+      </div>
+      <div style={{ display: 'flex', gap: 8 }}>
+        <div className="field" style={{ flex: 2 }}>
+          <label>Receive ID</label>
+          <input value={str('receive_id', '')} onChange={(e) => set('receive_id', e.target.value)} />
+        </div>
+        <div className="field" style={{ flex: 1 }}>
+          <label>ID Type</label>
+          <select value={str('receive_id_type', 'open_id')} onChange={(e) => set('receive_id_type', e.target.value)}>
+            {['open_id', 'user_id', 'union_id', 'email', 'chat_id'].map((t) => <option key={t} value={t}>{t}</option>)}
+          </select>
+        </div>
+      </div>
+      <p style={{ fontSize: 11, color: 'var(--muted)', margin: '8px 0 0' }}>
+        飞书 / Lark. Returns <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>{'{ status, body }'}</code>
+      </p>
+    </>
+  )
+}
+
+export function DingtalkConfig({ set, str }: ConfigProps) {
+  const msgType = str('msg_type', 'text')
+  return (
+    <>
+      <div className="field">
+        <label>Access Token <span style={{ color: 'var(--danger)' }}>*</span></label>
+        <input value={str('access_token', '')} onChange={(e) => set('access_token', e.target.value)} style={{ fontFamily: 'monospace', fontSize: 12 }} />
+      </div>
+      <div className="field">
+        <label>Secret <span style={{ color: 'var(--muted)' }}>(加签,可选)</span></label>
+        <input type="password" value={str('secret', '')} onChange={(e) => set('secret', e.target.value)} style={{ fontFamily: 'monospace', fontSize: 12 }} />
+      </div>
+      <div className="field">
+        <label>Message Type</label>
+        <select value={msgType} onChange={(e) => set('msg_type', e.target.value)}>
+          {['text', 'markdown'].map((m) => <option key={m} value={m}>{m}</option>)}
+        </select>
+      </div>
+      {msgType === 'markdown' && (
+        <div className="field">
+          <label>Title</label>
+          <input placeholder="notice" value={str('title', '')} onChange={(e) => set('title', e.target.value)} />
+        </div>
+      )}
+      <div className="field">
+        <label>Content <span style={{ color: 'var(--danger)' }}>*</span></label>
+        <textarea rows={3} value={str('content', '')} onChange={(e) => set('content', e.target.value)} />
+      </div>
+      <p style={{ fontSize: 11, color: 'var(--muted)', margin: '8px 0 0' }}>
+        钉钉自定义机器人. Returns <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>{'{ status, body }'}</code>
+      </p>
+    </>
+  )
+}
+
+export function WecomConfig({ set, str }: ConfigProps) {
+  const msgType = str('msg_type', 'text')
+  return (
+    <>
+      <div className="field">
+        <label>Webhook Key <span style={{ color: 'var(--danger)' }}>*</span></label>
+        <input value={str('key', '')} onChange={(e) => set('key', e.target.value)} style={{ fontFamily: 'monospace', fontSize: 12 }} />
+        <small style={{ color: 'var(--muted)', fontSize: 10 }}>群机器人 webhook URL 里 key= 后面那段。</small>
+      </div>
+      <div className="field">
+        <label>Message Type</label>
+        <select value={msgType} onChange={(e) => set('msg_type', e.target.value)}>
+          {['text', 'markdown'].map((m) => <option key={m} value={m}>{m}</option>)}
+        </select>
+      </div>
+      <div className="field">
+        <label>Content <span style={{ color: 'var(--danger)' }}>*</span></label>
+        <textarea rows={3} value={str('content', '')} onChange={(e) => set('content', e.target.value)} />
+      </div>
+      <p style={{ fontSize: 11, color: 'var(--muted)', margin: '8px 0 0' }}>
+        企业微信群机器人. Returns <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>{'{ status, body }'}</code>
+      </p>
+    </>
+  )
+}
+
 export function ZipConfig({ config, set, str }: ConfigProps) {
   const operation = str('operation', 'zip')
   return (

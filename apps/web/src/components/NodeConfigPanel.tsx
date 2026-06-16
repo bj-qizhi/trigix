@@ -43,7 +43,7 @@ import {
   GoogledriveConfig, WoocommerceConfig, PineconeConfig, Awss3Config, QdrantConfig,
   CloudinaryConfig, GcalConfig, DocusignConfig, XeroConfig, CalendlyConfig, ApifyConfig,
   GanalyticsConfig, NeonConfig, CopperConfig,
-  AzureOpenaiConfig, GrokConfig, OllamaConfig, WeaviateConfig, ChromaConfig, MongodbConfig, ClickhouseConfig, GcsConfig, AzureBlobConfig, HashConfig, JwtConfig, VertexConfig, SqsConfig, SnsConfig, BedrockConfig, MilvusConfig, KafkaConfig, RabbitmqConfig, ZipConfig, ImageConfig, PdfExtractConfig, OcrConfig,
+  AzureOpenaiConfig, GrokConfig, OllamaConfig, WeaviateConfig, ChromaConfig, MongodbConfig, ClickhouseConfig, GcsConfig, AzureBlobConfig, HashConfig, JwtConfig, VertexConfig, SqsConfig, SnsConfig, BedrockConfig, MilvusConfig, KafkaConfig, RabbitmqConfig, ZipConfig, ImageConfig, PdfExtractConfig, OcrConfig, FeishuConfig, DingtalkConfig, WecomConfig,
   DeepseekConfig, QwenConfig, ZhipuConfig, MoonshotConfig,
   DoubaoConfig, MinimaxConfig, ErnieConfig, HunyuanConfig,
 } from './panels/IntegrationPanels2'
@@ -119,6 +119,9 @@ const NODE_DESCRIPTIONS: Partial<Record<NodeType, { en: string; zh: string }>> =
   image:     { en: 'Resize / convert / inspect an image (base64 in/out).', zh: '图片缩放/格式转换/取元数据（base64 进出）。' },
   pdf_extract:{ en: 'Extract text from a base64 PDF.', zh: '从 base64 PDF 抽取文本。' },
   ocr:       { en: 'OCR an image via the tesseract CLI (must be installed on the executor host).', zh: '用 tesseract CLI 对图片做 OCR（执行机需装 tesseract）。' },
+  feishu:    { en: 'Send a Feishu/Lark message via a custom-bot webhook or the app message API.', zh: '飞书/Lark 发消息：自定义机器人 webhook 或 App 消息 API。' },
+  dingtalk:  { en: 'Send a DingTalk custom-robot message (optional HMAC sign).', zh: '钉钉自定义机器人发消息（可选加签）。' },
+  wecom:     { en: 'Send a WeChat Work group-robot message (text/markdown).', zh: '企业微信群机器人发消息（text/markdown）。' },
   deepseek:  { en: 'Calls DeepSeek API (deepseek-chat V3, deepseek-reasoner R1). Returns content and usage.', zh: '调用 DeepSeek API（deepseek-chat V3、deepseek-reasoner R1），返回内容和 Token 用量。' },
   qwen:      { en: 'Calls Alibaba Qwen via DashScope (qwen-max, qwen-plus, qwen-turbo, qwen-long). Returns content and usage.', zh: '通过 DashScope 调用通义千问，返回内容和 Token 用量。' },
   zhipu:     { en: 'Calls Zhipu AI GLM (glm-4, glm-4-air, glm-4-flash, glm-3-turbo). Returns content and usage.', zh: '调用智谱 AI GLM 系列模型，返回内容和 Token 用量。' },
@@ -180,6 +183,9 @@ const NODE_LABELS: Partial<Record<NodeType, string>> = {
   image: 'Image',
   pdf_extract: 'PDF Extract',
   ocr: 'OCR',
+  feishu: '飞书 / Lark',
+  dingtalk: '钉钉',
+  wecom: '企业微信',
   deepseek: 'DeepSeek',
   qwen: '通义千问',
   zhipu: '智谱 GLM',
@@ -242,6 +248,9 @@ const NODE_COLORS: Partial<Record<NodeType, string>> = {
   image: 'var(--node-transform)',
   pdf_extract: 'var(--node-transform)',
   ocr: 'var(--node-transform)',
+  feishu: 'var(--node-slack)',
+  dingtalk: 'var(--node-slack)',
+  wecom: 'var(--node-slack)',
   deepseek: 'var(--node-deepseek)',
   qwen: 'var(--node-qwen)',
   zhipu: 'var(--node-zhipu)',
@@ -294,6 +303,9 @@ const NODE_OUTPUTS: Partial<Record<NodeType, string[]>> = {
   image:        ['image_base64', 'width', 'height', 'format'],
   pdf_extract:  ['text', 'char_count'],
   ocr:          ['text', 'lang'],
+  feishu:       ['status', 'body'],
+  dingtalk:     ['status', 'body'],
+  wecom:        ['status', 'body'],
   deepseek:     ['content', 'model', 'usage'],
   qwen:         ['content', 'model', 'usage'],
   zhipu:        ['content', 'model', 'usage'],
@@ -722,6 +734,9 @@ export function NodeConfigPanel({ node, onUpdateConfig, recentExecutions, onSele
         {nt === 'image'           && <ImageConfig           config={config} set={set} str={str} num={num} />}
         {nt === 'pdf_extract'     && <PdfExtractConfig      config={config} set={set} str={str} num={num} />}
         {nt === 'ocr'             && <OcrConfig             config={config} set={set} str={str} num={num} />}
+        {nt === 'feishu'          && <FeishuConfig          config={config} set={set} str={str} num={num} />}
+        {nt === 'dingtalk'        && <DingtalkConfig        config={config} set={set} str={str} num={num} />}
+        {nt === 'wecom'           && <WecomConfig           config={config} set={set} str={str} num={num} />}
         {nt === 'deepseek'        && <DeepseekConfig        config={config} set={set} str={str} num={num} />}
         {nt === 'qwen'            && <QwenConfig            config={config} set={set} str={str} num={num} />}
         {nt === 'zhipu'           && <ZhipuConfig           config={config} set={set} str={str} num={num} />}

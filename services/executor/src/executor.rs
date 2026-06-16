@@ -57,6 +57,10 @@ use nodes_messaging::*;
 mod nodes_binary;
 use nodes_binary::*;
 
+// Chinese enterprise collaboration nodes (Feishu, DingTalk, WeChat Work).
+mod nodes_china;
+use nodes_china::*;
+
 // SaaS integration nodes extracted into their own submodule.
 mod nodes_integrations;
 use nodes_integrations::*;
@@ -569,6 +573,9 @@ async fn dispatch(
         NodeType::Image => execute_image(node, context).await,
         NodeType::PdfExtract => execute_pdf_extract(node, context).await,
         NodeType::Ocr => execute_ocr(node, context).await,
+        NodeType::Feishu => execute_feishu(node, context, http_client).await,
+        NodeType::Dingtalk => execute_dingtalk(node, context, http_client).await,
+        NodeType::Wecom => execute_wecom(node, context, http_client).await,
         NodeType::Deepseek => execute_deepseek(node, context, http_client).await,
         NodeType::Qwen => execute_qwen(node, context, http_client).await,
         NodeType::Zhipu => execute_zhipu(node, context, http_client).await,

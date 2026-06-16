@@ -2169,6 +2169,9 @@ fn node_type_to_str(node_type: &workflow_core::NodeType) -> &'static str {
         workflow_core::NodeType::Image => "image",
         workflow_core::NodeType::PdfExtract => "pdf_extract",
         workflow_core::NodeType::Ocr => "ocr",
+        workflow_core::NodeType::Feishu => "feishu",
+        workflow_core::NodeType::Dingtalk => "dingtalk",
+        workflow_core::NodeType::Wecom => "wecom",
         // 国内大模型
         workflow_core::NodeType::Deepseek => "deepseek",
         workflow_core::NodeType::Qwen => "qwen",

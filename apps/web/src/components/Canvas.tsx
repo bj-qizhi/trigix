@@ -295,6 +295,9 @@ const NODE_LABELS: Record<NodeType, string> = {
   image: 'Image',
   pdf_extract: 'PDF Extract',
   ocr: 'OCR',
+  feishu: '飞书 / Lark',
+  dingtalk: '钉钉',
+  wecom: '企业微信',
   deepseek: 'DeepSeek',
   qwen: '通义千问',
   zhipu: '智谱 GLM',
@@ -460,6 +463,9 @@ const NODE_ICONS: Record<NodeType, string> = {
   image: '🖼️',
   pdf_extract: '📄',
   ocr: '👁️',
+  feishu: '🛫',
+  dingtalk: '🔔',
+  wecom: '💼',
   deepseek: '🐋',
   qwen: '🧩',
   zhipu: '🔮',
@@ -640,6 +646,9 @@ function FlowNodeComponent({ data, selected, id }: NodeProps) {
     if (nt === 'image') return String(c.operation ?? 'metadata')
     if (nt === 'pdf_extract') return c.pdf_base64 ? 'extract text' : 'No PDF'
     if (nt === 'ocr') return `ocr · ${String(c.lang ?? 'eng')}`
+    if (nt === 'feishu') return c.webhook_url ? 'bot · ' + String(c.msg_type ?? 'text') : 'app · ' + String(c.msg_type ?? 'text')
+    if (nt === 'dingtalk') return `${String(c.msg_type ?? 'text')}${c.secret ? ' · signed' : ''}`
+    if (nt === 'wecom') return String(c.msg_type ?? 'text')
     if (nt === 'deepseek') return c.model ? String(c.model) : 'deepseek-chat'
     if (nt === 'qwen') return c.model ? String(c.model) : 'qwen-max'
     if (nt === 'zhipu') return c.model ? String(c.model) : 'glm-4'
@@ -843,6 +852,9 @@ const nodeTypes = {
   image: FlowNodeComponent,
   pdf_extract: FlowNodeComponent,
   ocr: FlowNodeComponent,
+  feishu: FlowNodeComponent,
+  dingtalk: FlowNodeComponent,
+  wecom: FlowNodeComponent,
   deepseek: FlowNodeComponent,
   qwen: FlowNodeComponent,
   zhipu: FlowNodeComponent,
@@ -1272,6 +1284,9 @@ export function Canvas({
               image: '#0d9488',
               pdf_extract: '#0d9488',
               ocr: '#0d9488',
+              feishu: '#00d6b9',
+              dingtalk: '#1296db',
+              wecom: '#2f90eb',
               deepseek: '#4d6bfe',
               qwen: '#6200ea',
               zhipu: '#00897b',
