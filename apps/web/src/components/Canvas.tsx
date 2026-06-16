@@ -315,6 +315,7 @@ const NODE_LABELS: Record<NodeType, string> = {
   sftp: 'SFTP',
   ssh: 'SSH',
   imap: 'IMAP',
+  wait: 'Wait',
   deepseek: 'DeepSeek',
   qwen: '通义千问',
   zhipu: '智谱 GLM',
@@ -500,6 +501,7 @@ const NODE_ICONS: Record<NodeType, string> = {
   sftp: '🔐',
   ssh: '🖥️',
   imap: '📬',
+  wait: '⏳',
   deepseek: '🐋',
   qwen: '🧩',
   zhipu: '🔮',
@@ -700,6 +702,7 @@ function FlowNodeComponent({ data, selected, id }: NodeProps) {
     if (nt === 'sftp') return c.host ? `${String(c.operation ?? 'list')} ${String(c.host)}` : 'No host'
     if (nt === 'ssh') return c.host ? `ssh ${String(c.username ?? '')}@${String(c.host)}` : 'No host'
     if (nt === 'imap') return c.host ? `${String(c.operation ?? 'list_messages')} ${String(c.mailbox ?? 'INBOX')}` : 'No host'
+    if (nt === 'wait') return String(c.mode ?? 'duration') === 'resume' ? 'until resumed' : (c.until ? `until ${String(c.until)}` : `${String(c.seconds ?? 0)}s`)
     if (nt === 'deepseek') return c.model ? String(c.model) : 'deepseek-chat'
     if (nt === 'qwen') return c.model ? String(c.model) : 'qwen-max'
     if (nt === 'zhipu') return c.model ? String(c.model) : 'glm-4'
@@ -923,6 +926,7 @@ const nodeTypes = {
   sftp: FlowNodeComponent,
   ssh: FlowNodeComponent,
   imap: FlowNodeComponent,
+  wait: FlowNodeComponent,
   deepseek: FlowNodeComponent,
   qwen: FlowNodeComponent,
   zhipu: FlowNodeComponent,
@@ -1372,6 +1376,7 @@ export function Canvas({
               sftp: '#7c3aed',
               ssh: '#334155',
               imap: '#be123c',
+              wait: '#0891b2',
               deepseek: '#4d6bfe',
               qwen: '#6200ea',
               zhipu: '#00897b',

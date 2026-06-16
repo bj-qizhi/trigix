@@ -2852,6 +2852,41 @@ function fileOpFields(operation: string, str: ConfigProps['str'], set: ConfigPro
   )
 }
 
+export function WaitConfig({ set, str, num }: ConfigProps) {
+  const mode = str('mode', 'duration')
+  return (
+    <>
+      <div className="field">
+        <label>Mode</label>
+        <select value={mode} onChange={(e) => set('mode', e.target.value)}>
+          <option value="duration">duration — pause for a time, then auto-resume</option>
+          <option value="resume">resume — suspend until externally resumed</option>
+        </select>
+      </div>
+      {mode === 'duration' && (
+        <>
+          <div className="field">
+            <label>Seconds</label>
+            <input type="number" min={0} value={num('seconds', 0)} onChange={(e) => set('seconds', Number(e.target.value))} />
+          </div>
+          <div className="field">
+            <label>Until <span style={{ color: 'var(--muted)' }}>(RFC3339, overrides seconds)</span></label>
+            <input placeholder="2026-07-01T09:00:00Z" value={str('until', '')} onChange={(e) => set('until', e.target.value)} style={{ fontFamily: 'monospace', fontSize: 12 }} />
+          </div>
+        </>
+      )}
+      {mode === 'resume' && (
+        <p style={{ fontSize: 11, color: 'var(--muted)', margin: '8px 0 0' }}>
+          The run suspends here until resumed via <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>POST /v1/executions/&#123;id&#125;/approve</code> (the shared resume gate). Inline execution mode only.
+        </p>
+      )}
+      <p style={{ fontSize: 11, color: 'var(--muted)', margin: '8px 0 0' }}>
+        Returns <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>{'{ resumed, mode, waited_secs }'}</code>
+      </p>
+    </>
+  )
+}
+
 export function FtpConfig({ config, set, str }: ConfigProps) {
   const operation = str('operation', 'list')
   return (

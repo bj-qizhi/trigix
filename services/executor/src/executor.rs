@@ -279,6 +279,12 @@ impl NodeExecutor for DispatchingNodeExecutor {
                 };
             }
 
+            // Wait nodes also bypass retry/timeout: they either sleep for a
+            // duration or suspend until resumed via the (approval) resume gate.
+            if node.node_type == NodeType::Wait {
+                return execute_wait(node, context, self.approval_gate.as_deref()).await;
+            }
+
             let max_retries = node_config_u64(node, "max_retries").unwrap_or(0).min(5) as u32;
             let timeout_secs = node_config_u64(node, "timeout_secs").filter(|&s| s > 0);
             let cache_ttl_secs = node_config_u64(node, "cache_ttl_secs").filter(|&s| s > 0);
@@ -623,6 +629,8 @@ async fn dispatch(
         NodeType::Hunyuan => execute_hunyuan(node, context, http_client).await,
         // Approval is handled before dispatch; reaching here means no gate was configured.
         NodeType::Approval => NodeExecutionResult::failed("Approval gate not configured"),
+        // Wait is handled before dispatch; reaching here means duration mode with no gate.
+        NodeType::Wait => execute_wait(node, context, None).await,
     }
 }
 
@@ -632,6 +640,64 @@ async fn execute_approval(context: &ExecutionContext, gate: &ApprovalGate) -> No
         Ok(true) => NodeExecutionResult::succeeded(r#"{"approved":true}"#.to_string()),
         Ok(false) => NodeExecutionResult::failed("Rejected by approver".to_string()),
         Err(_) => NodeExecutionResult::failed("Approval gate was closed".to_string()),
+    }
+}
+
+// Wait node: pause the run either for a fixed time ("duration" mode — sleep
+// `seconds`, or until an absolute RFC3339 `until`) or until an external resume
+// signal arrives ("resume" mode — reuses the approval gate, resolved via the
+// /v1/executions/{id}/approve endpoint).
+async fn execute_wait(
+    node: &Node,
+    context: &ExecutionContext,
+    gate: Option<&ApprovalGate>,
+) -> NodeExecutionResult {
+    let raw = node.config.clone().unwrap_or_default();
+    let cfg = resolve_config_strings(&raw, context);
+    let mode = cfg
+        .get("mode")
+        .and_then(|v| v.as_str())
+        .unwrap_or("duration");
+
+    match mode {
+        "resume" => match gate {
+            Some(gate) => {
+                let rx = gate.register(context.execution_id.clone()).await;
+                match rx.await {
+                    // Any resolution resumes the run (the signal itself is the event).
+                    Ok(_) => NodeExecutionResult::succeeded(
+                        serde_json::json!({ "resumed": true, "mode": "resume" }).to_string(),
+                    ),
+                    Err(_) => NodeExecutionResult::failed("Wait gate was closed".to_string()),
+                }
+            }
+            None => NodeExecutionResult::failed("Wait resume mode requires the resume gate"),
+        },
+        _ => {
+            // Duration mode: prefer an absolute `until`, else relative `seconds`.
+            let secs = if let Some(until) = cfg.get("until").and_then(|v| v.as_str()) {
+                match chrono::DateTime::parse_from_rfc3339(until) {
+                    Ok(dt) => {
+                        let delta = dt.with_timezone(&chrono::Utc) - chrono::Utc::now();
+                        delta.num_seconds().max(0) as u64
+                    }
+                    Err(e) => {
+                        return NodeExecutionResult::failed(format!(
+                            "Wait 'until' must be RFC3339: {e}"
+                        ))
+                    }
+                }
+            } else {
+                cfg.get("seconds").and_then(|v| v.as_u64()).unwrap_or(0)
+            };
+            // Guard against pathologically long holds (cap at 30 days).
+            let secs = secs.min(60 * 60 * 24 * 30);
+            tokio::time::sleep(Duration::from_secs(secs)).await;
+            NodeExecutionResult::succeeded(
+                serde_json::json!({ "resumed": true, "mode": "duration", "waited_secs": secs })
+                    .to_string(),
+            )
+        }
     }
 }
 
@@ -1660,6 +1726,28 @@ mod tests {
             let result = executor.execute(&node, &context).await;
             assert_eq!(result.status, execution_core::NodeStatus::Failed);
         }
+    }
+
+    #[tokio::test]
+    async fn wait_duration_zero_returns_immediately() {
+        let node = Node {
+            id: "w".to_string(),
+            node_type: NodeType::Wait,
+            config: Some(serde_json::json!({ "mode": "duration", "seconds": 0 })),
+        };
+        let r = execute_wait(&node, &make_context("{}"), None).await;
+        assert_eq!(r.status, execution_core::NodeStatus::Succeeded);
+    }
+
+    #[tokio::test]
+    async fn wait_resume_without_gate_fails() {
+        let node = Node {
+            id: "w".to_string(),
+            node_type: NodeType::Wait,
+            config: Some(serde_json::json!({ "mode": "resume" })),
+        };
+        let r = execute_wait(&node, &make_context("{}"), None).await;
+        assert_eq!(r.status, execution_core::NodeStatus::Failed);
     }
 
     #[tokio::test]

@@ -44,7 +44,7 @@ import {
   CloudinaryConfig, GcalConfig, DocusignConfig, XeroConfig, CalendlyConfig, ApifyConfig,
   GanalyticsConfig, NeonConfig, CopperConfig,
   AzureOpenaiConfig, GrokConfig, OllamaConfig, WeaviateConfig, ChromaConfig, MongodbConfig, ClickhouseConfig, GcsConfig, AzureBlobConfig, HashConfig, JwtConfig, VertexConfig, SqsConfig, SnsConfig, BedrockConfig, MilvusConfig, KafkaConfig, RabbitmqConfig, ZipConfig, ImageConfig, PdfExtractConfig, OcrConfig, FeishuConfig, DingtalkConfig, WecomConfig,
-  EmbeddingConfig, RerankerConfig, TextSplitterConfig, StructuredOutputConfig, ClassifierConfig, ImageGenConfig, SpeechToTextConfig, TtsConfig, HtmlExtractConfig, RssConfig, MysqlConfig, SnowflakeConfig, BigqueryConfig, FtpConfig, SftpConfig, SshConfig, ImapConfig,
+  EmbeddingConfig, RerankerConfig, TextSplitterConfig, StructuredOutputConfig, ClassifierConfig, ImageGenConfig, SpeechToTextConfig, TtsConfig, HtmlExtractConfig, RssConfig, MysqlConfig, SnowflakeConfig, BigqueryConfig, FtpConfig, SftpConfig, SshConfig, ImapConfig, WaitConfig,
   DeepseekConfig, QwenConfig, ZhipuConfig, MoonshotConfig,
   DoubaoConfig, MinimaxConfig, ErnieConfig, HunyuanConfig,
 } from './panels/IntegrationPanels2'
@@ -140,6 +140,7 @@ const NODE_DESCRIPTIONS: Partial<Record<NodeType, { en: string; zh: string }>> =
   sftp:      { en: 'SFTP over SSH (pure-Rust, password or private key): list/download/upload/delete.', zh: 'SFTP over SSH（纯 Rust，密码或私钥）：列目录/下载/上传/删除。' },
   ssh:       { en: 'Run a command over SSH (password or private key); returns stdout/stderr/exit.', zh: 'SSH 执行命令（密码或私钥），返回 stdout/stderr/exit。' },
   imap:      { en: 'Read an IMAP mailbox over TLS: recent messages or mailbox list.', zh: 'IMAP over TLS 读邮箱：最近邮件或邮箱列表。' },
+  wait:      { en: 'Pause the run for a duration / until a timestamp, or suspend until externally resumed.', zh: '暂停一段时间/到某时刻，或挂起直到外部恢复。' },
   deepseek:  { en: 'Calls DeepSeek API (deepseek-chat V3, deepseek-reasoner R1). Returns content and usage.', zh: '调用 DeepSeek API（deepseek-chat V3、deepseek-reasoner R1），返回内容和 Token 用量。' },
   qwen:      { en: 'Calls Alibaba Qwen via DashScope (qwen-max, qwen-plus, qwen-turbo, qwen-long). Returns content and usage.', zh: '通过 DashScope 调用通义千问，返回内容和 Token 用量。' },
   zhipu:     { en: 'Calls Zhipu AI GLM (glm-4, glm-4-air, glm-4-flash, glm-3-turbo). Returns content and usage.', zh: '调用智谱 AI GLM 系列模型，返回内容和 Token 用量。' },
@@ -221,6 +222,7 @@ const NODE_LABELS: Partial<Record<NodeType, string>> = {
   sftp: 'SFTP',
   ssh: 'SSH',
   imap: 'IMAP',
+  wait: 'Wait',
   deepseek: 'DeepSeek',
   qwen: '通义千问',
   zhipu: '智谱 GLM',
@@ -303,6 +305,7 @@ const NODE_COLORS: Partial<Record<NodeType, string>> = {
   sftp: 'var(--node-awss3)',
   ssh: 'var(--node-code)',
   imap: 'var(--node-slack)',
+  wait: 'var(--node-approval)',
   deepseek: 'var(--node-deepseek)',
   qwen: 'var(--node-qwen)',
   zhipu: 'var(--node-zhipu)',
@@ -375,6 +378,7 @@ const NODE_OUTPUTS: Partial<Record<NodeType, string[]>> = {
   sftp:         ['files', 'content_base64', 'count'],
   ssh:          ['stdout', 'stderr', 'exit_status'],
   imap:         ['messages', 'count', 'mailboxes'],
+  wait:         ['resumed', 'mode', 'waited_secs'],
   deepseek:     ['content', 'model', 'usage'],
   qwen:         ['content', 'model', 'usage'],
   zhipu:        ['content', 'model', 'usage'],
@@ -823,6 +827,7 @@ export function NodeConfigPanel({ node, onUpdateConfig, recentExecutions, onSele
         {nt === 'sftp'            && <SftpConfig            config={config} set={set} str={str} num={num} />}
         {nt === 'ssh'             && <SshConfig             config={config} set={set} str={str} num={num} />}
         {nt === 'imap'            && <ImapConfig            config={config} set={set} str={str} num={num} />}
+        {nt === 'wait'            && <WaitConfig            config={config} set={set} str={str} num={num} />}
         {nt === 'deepseek'        && <DeepseekConfig        config={config} set={set} str={str} num={num} />}
         {nt === 'qwen'            && <QwenConfig            config={config} set={set} str={str} num={num} />}
         {nt === 'zhipu'           && <ZhipuConfig           config={config} set={set} str={str} num={num} />}

@@ -266,6 +266,8 @@ pub enum NodeType {
     Ssh,
     /// IMAP mailbox reading.
     Imap,
+    /// Wait: pause for a duration, or suspend until externally resumed.
+    Wait,
     // ── 中国国内大模型 ───────────────────────────────────
     Deepseek,
     Qwen,
