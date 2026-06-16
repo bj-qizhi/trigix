@@ -29,6 +29,10 @@ use late3::*;
 mod nodes_cn_llm;
 use nodes_cn_llm::*;
 
+// Vector-store nodes (Weaviate / Chroma) over HTTP.
+mod nodes_vector;
+use nodes_vector::*;
+
 // SaaS integration nodes extracted into their own submodule.
 mod nodes_integrations;
 use nodes_integrations::*;
@@ -522,6 +526,8 @@ async fn dispatch(
         NodeType::AzureOpenai => execute_azure_openai(node, context, http_client).await,
         NodeType::Grok => execute_grok(node, context, http_client).await,
         NodeType::Ollama => execute_ollama(node, context, http_client).await,
+        NodeType::Weaviate => execute_weaviate(node, context, http_client).await,
+        NodeType::Chroma => execute_chroma(node, context, http_client).await,
         NodeType::Deepseek => execute_deepseek(node, context, http_client).await,
         NodeType::Qwen => execute_qwen(node, context, http_client).await,
         NodeType::Zhipu => execute_zhipu(node, context, http_client).await,

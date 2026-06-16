@@ -2150,6 +2150,8 @@ fn node_type_to_str(node_type: &workflow_core::NodeType) -> &'static str {
         workflow_core::NodeType::AzureOpenai => "azure_openai",
         workflow_core::NodeType::Grok => "grok",
         workflow_core::NodeType::Ollama => "ollama",
+        workflow_core::NodeType::Weaviate => "weaviate",
+        workflow_core::NodeType::Chroma => "chroma",
         // 国内大模型
         workflow_core::NodeType::Deepseek => "deepseek",
         workflow_core::NodeType::Qwen => "qwen",

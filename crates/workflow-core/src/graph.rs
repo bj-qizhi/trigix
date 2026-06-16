@@ -188,6 +188,10 @@ pub enum NodeType {
     Grok,
     /// Ollama — self-hosted OpenAI-compatible local models (configurable base URL).
     Ollama,
+    /// Weaviate vector store (REST + GraphQL search).
+    Weaviate,
+    /// Chroma vector store (REST data API).
+    Chroma,
     // ── 中国国内大模型 ───────────────────────────────────
     Deepseek,
     Qwen,

@@ -276,6 +276,8 @@ const NODE_LABELS: Record<NodeType, string> = {
   azure_openai: 'Azure OpenAI',
   grok: 'xAI Grok',
   ollama: 'Ollama',
+  weaviate: 'Weaviate',
+  chroma: 'Chroma',
   deepseek: 'DeepSeek',
   qwen: '通义千问',
   zhipu: '智谱 GLM',
@@ -422,6 +424,8 @@ const NODE_ICONS: Record<NodeType, string> = {
   azure_openai: '☁️',
   grok: '🤖',
   ollama: '🦙',
+  weaviate: '🧬',
+  chroma: '🌈',
   deepseek: '🐋',
   qwen: '🧩',
   zhipu: '🔮',
@@ -583,6 +587,8 @@ function FlowNodeComponent({ data, selected, id }: NodeProps) {
     if (nt === 'azure_openai') return c.deployment ? String(c.deployment) : 'deployment'
     if (nt === 'grok') return c.model ? String(c.model) : 'grok-2-latest'
     if (nt === 'ollama') return c.model ? String(c.model) : 'llama3.2'
+    if (nt === 'weaviate') return c.class ? `${String(c.operation ?? 'query')} [${String(c.class)}]` : String(c.operation ?? 'query')
+    if (nt === 'chroma') return c.collection ? `${String(c.operation ?? 'query')} [${String(c.collection)}]` : String(c.operation ?? 'query')
     if (nt === 'deepseek') return c.model ? String(c.model) : 'deepseek-chat'
     if (nt === 'qwen') return c.model ? String(c.model) : 'qwen-max'
     if (nt === 'zhipu') return c.model ? String(c.model) : 'glm-4'
@@ -767,6 +773,8 @@ const nodeTypes = {
   azure_openai: FlowNodeComponent,
   grok: FlowNodeComponent,
   ollama: FlowNodeComponent,
+  weaviate: FlowNodeComponent,
+  chroma: FlowNodeComponent,
   deepseek: FlowNodeComponent,
   qwen: FlowNodeComponent,
   zhipu: FlowNodeComponent,
@@ -1177,6 +1185,8 @@ export function Canvas({
               azure_openai: '#0078d4',
               grok: '#111827',
               ollama: '#0ea5e9',
+              weaviate: '#00c9a7',
+              chroma: '#ff6b6b',
               deepseek: '#4d6bfe',
               qwen: '#6200ea',
               zhipu: '#00897b',

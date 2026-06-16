@@ -2265,6 +2265,134 @@ export function QdrantConfig({ config, set, str }: ConfigProps) {
   )
 }
 
+export function WeaviateConfig({ config, set, str }: ConfigProps) {
+  const operation = str('operation', 'query')
+  const OPERATIONS = ['query', 'create_object', 'get_object', 'delete_object']
+  return (
+    <>
+      <div className="field">
+        <label>Host <span style={{ color: 'var(--danger)' }}>*</span></label>
+        <input placeholder="https://xyz.weaviate.network" value={str('host', '')} onChange={(e) => set('host', e.target.value)} style={{ fontFamily: 'monospace', fontSize: 12 }} />
+      </div>
+      <div className="field">
+        <label>API Key</label>
+        <input type="password" value={str('api_key', '')} onChange={(e) => set('api_key', e.target.value)} style={{ fontFamily: 'monospace', fontSize: 12 }} />
+      </div>
+      <div className="field">
+        <label>Operation</label>
+        <select value={operation} onChange={(e) => set('operation', e.target.value)}>
+          {OPERATIONS.map((op) => <option key={op} value={op}>{op}</option>)}
+        </select>
+      </div>
+      {operation === 'query' && (
+        <div className="field">
+          <label>GraphQL Query <span style={{ color: 'var(--danger)' }}>*</span></label>
+          <textarea rows={5} placeholder={'{ Get { Article(nearVector: {vector: [0.1, 0.2]}) { title } } }'} value={str('query', '')} onChange={(e) => set('query', e.target.value)} style={{ fontFamily: 'monospace', fontSize: 12 }} />
+        </div>
+      )}
+      {(operation === 'create_object' || operation === 'get_object' || operation === 'delete_object') && (
+        <div className="field">
+          <label>Class <span style={{ color: 'var(--danger)' }}>*</span></label>
+          <input placeholder="Article" value={str('class', '')} onChange={(e) => set('class', e.target.value)} />
+        </div>
+      )}
+      {operation === 'create_object' && (
+        <>
+          <div className="field">
+            <label>Properties (JSON object)</label>
+            <textarea rows={3} placeholder='{"title":"…","body":"…"}' value={typeof config.properties === 'object' ? JSON.stringify(config.properties, null, 2) : str('properties', '')} onChange={(e) => { try { set('properties', JSON.parse(e.target.value)) } catch { set('properties', e.target.value) } }} style={{ fontFamily: 'monospace', fontSize: 12 }} />
+          </div>
+          <div className="field">
+            <label>Vector (JSON array, optional)</label>
+            <textarea rows={2} placeholder="[0.1, 0.2, 0.3, …]" value={typeof config.vector === 'object' ? JSON.stringify(config.vector) : str('vector', '')} onChange={(e) => { try { set('vector', JSON.parse(e.target.value)) } catch { set('vector', e.target.value) } }} style={{ fontFamily: 'monospace', fontSize: 12 }} />
+          </div>
+        </>
+      )}
+      {(operation === 'get_object' || operation === 'delete_object' || operation === 'create_object') && (
+        <div className="field">
+          <label>Object ID {operation !== 'create_object' && <span style={{ color: 'var(--danger)' }}>*</span>}{operation === 'create_object' && ' (optional)'}</label>
+          <input placeholder="uuid" value={str('id', '')} onChange={(e) => set('id', e.target.value)} style={{ fontFamily: 'monospace', fontSize: 12 }} />
+        </div>
+      )}
+      <p style={{ fontSize: 11, color: 'var(--muted)', margin: '8px 0 0' }}>
+        Weaviate vector store (REST + GraphQL). Returns <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>{'{ status, body }'}</code>
+      </p>
+    </>
+  )
+}
+
+export function ChromaConfig({ config, set, str }: ConfigProps) {
+  const operation = str('operation', 'query')
+  const OPERATIONS = ['query', 'add', 'delete', 'get_collection']
+  return (
+    <>
+      <div className="field">
+        <label>Host <span style={{ color: 'var(--danger)' }}>*</span></label>
+        <input placeholder="http://localhost:8000" value={str('host', '')} onChange={(e) => set('host', e.target.value)} style={{ fontFamily: 'monospace', fontSize: 12 }} />
+      </div>
+      <div className="field">
+        <label>API Key</label>
+        <input type="password" value={str('api_key', '')} onChange={(e) => set('api_key', e.target.value)} style={{ fontFamily: 'monospace', fontSize: 12 }} />
+      </div>
+      <div className="field">
+        <label>Operation</label>
+        <select value={operation} onChange={(e) => set('operation', e.target.value)}>
+          {OPERATIONS.map((op) => <option key={op} value={op}>{op}</option>)}
+        </select>
+      </div>
+      {operation === 'get_collection' && (
+        <div className="field">
+          <label>Collection Name <span style={{ color: 'var(--danger)' }}>*</span></label>
+          <input placeholder="my_collection" value={str('collection', '')} onChange={(e) => set('collection', e.target.value)} />
+        </div>
+      )}
+      {(operation === 'query' || operation === 'add' || operation === 'delete') && (
+        <div className="field">
+          <label>Collection ID <span style={{ color: 'var(--danger)' }}>*</span></label>
+          <input placeholder="resolve via get_collection" value={str('collection_id', '')} onChange={(e) => set('collection_id', e.target.value)} style={{ fontFamily: 'monospace', fontSize: 12 }} />
+        </div>
+      )}
+      {operation === 'query' && (
+        <>
+          <div className="field">
+            <label>Query Embeddings (JSON array)</label>
+            <textarea rows={2} placeholder="[[0.1, 0.2, 0.3, …]]" value={typeof config.query_embeddings === 'object' ? JSON.stringify(config.query_embeddings) : str('query_embeddings', '')} onChange={(e) => { try { set('query_embeddings', JSON.parse(e.target.value)) } catch { set('query_embeddings', e.target.value) } }} style={{ fontFamily: 'monospace', fontSize: 12 }} />
+          </div>
+          <div className="field">
+            <label>N Results</label>
+            <input type="number" min={1} max={100} placeholder="10" value={(config['n_results'] as number | undefined) ?? ''} onChange={(e) => set('n_results', e.target.value ? parseInt(e.target.value) : undefined)} />
+          </div>
+        </>
+      )}
+      {operation === 'add' && (
+        <>
+          <div className="field">
+            <label>IDs (JSON array)</label>
+            <textarea rows={2} placeholder='["id1", "id2"]' value={typeof config.ids === 'object' ? JSON.stringify(config.ids) : str('ids', '')} onChange={(e) => { try { set('ids', JSON.parse(e.target.value)) } catch { set('ids', e.target.value) } }} style={{ fontFamily: 'monospace', fontSize: 12 }} />
+          </div>
+          <div className="field">
+            <label>Embeddings (JSON array)</label>
+            <textarea rows={2} placeholder="[[0.1, 0.2], [0.3, 0.4]]" value={typeof config.embeddings === 'object' ? JSON.stringify(config.embeddings) : str('embeddings', '')} onChange={(e) => { try { set('embeddings', JSON.parse(e.target.value)) } catch { set('embeddings', e.target.value) } }} style={{ fontFamily: 'monospace', fontSize: 12 }} />
+          </div>
+          <div className="field">
+            <label>Documents (JSON array, optional)</label>
+            <textarea rows={2} placeholder='["text one", "text two"]' value={typeof config.documents === 'object' ? JSON.stringify(config.documents) : str('documents', '')} onChange={(e) => { try { set('documents', JSON.parse(e.target.value)) } catch { set('documents', e.target.value) } }} style={{ fontFamily: 'monospace', fontSize: 12 }} />
+          </div>
+        </>
+      )}
+      {operation === 'delete' && (
+        <div className="field">
+          <label>IDs (JSON array)</label>
+          <textarea rows={2} placeholder='["id1", "id2"]' value={typeof config.ids === 'object' ? JSON.stringify(config.ids) : str('ids', '')} onChange={(e) => { try { set('ids', JSON.parse(e.target.value)) } catch { set('ids', e.target.value) } }} style={{ fontFamily: 'monospace', fontSize: 12 }} />
+        </div>
+      )}
+      <p style={{ fontSize: 11, color: 'var(--muted)', margin: '8px 0 0' }}>
+        Chroma vector store (REST data API). Returns <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>{'{ status, body }'}</code>
+      </p>
+    </>
+  )
+}
+
 export function CloudinaryConfig({ set, str }: ConfigProps) {
   const operation = str('operation', 'upload')
   const OPERATIONS = ['upload', 'transform_url', 'get_resource', 'delete']

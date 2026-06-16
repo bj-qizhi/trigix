@@ -43,7 +43,7 @@ import {
   GoogledriveConfig, WoocommerceConfig, PineconeConfig, Awss3Config, QdrantConfig,
   CloudinaryConfig, GcalConfig, DocusignConfig, XeroConfig, CalendlyConfig, ApifyConfig,
   GanalyticsConfig, NeonConfig, CopperConfig,
-  AzureOpenaiConfig, GrokConfig, OllamaConfig,
+  AzureOpenaiConfig, GrokConfig, OllamaConfig, WeaviateConfig, ChromaConfig,
   DeepseekConfig, QwenConfig, ZhipuConfig, MoonshotConfig,
   DoubaoConfig, MinimaxConfig, ErnieConfig, HunyuanConfig,
 } from './panels/IntegrationPanels2'
@@ -100,6 +100,8 @@ const NODE_DESCRIPTIONS: Partial<Record<NodeType, { en: string; zh: string }>> =
   azure_openai: { en: 'Calls Azure OpenAI (deployment-based, api-key header). Returns content and usage.', zh: '调用 Azure OpenAI（按 deployment、api-key 头），返回内容和 Token 用量。' },
   grok:      { en: 'Calls xAI Grok (OpenAI-compatible). Returns content and usage.', zh: '调用 xAI Grok（OpenAI 兼容），返回内容和 Token 用量。' },
   ollama:    { en: 'Calls a self-hosted Ollama server (OpenAI-compatible) at a configurable base URL.', zh: '调用自托管 Ollama 服务（OpenAI 兼容，可配置 base URL）。' },
+  weaviate:  { en: 'Weaviate vector store: GraphQL search or object create/get/delete over REST.', zh: 'Weaviate 向量库：GraphQL 检索或对象增删查（REST）。' },
+  chroma:    { en: 'Chroma vector store: query/add/delete embeddings or resolve a collection over REST.', zh: 'Chroma 向量库：查询/添加/删除向量或解析 collection（REST）。' },
   deepseek:  { en: 'Calls DeepSeek API (deepseek-chat V3, deepseek-reasoner R1). Returns content and usage.', zh: '调用 DeepSeek API（deepseek-chat V3、deepseek-reasoner R1），返回内容和 Token 用量。' },
   qwen:      { en: 'Calls Alibaba Qwen via DashScope (qwen-max, qwen-plus, qwen-turbo, qwen-long). Returns content and usage.', zh: '通过 DashScope 调用通义千问，返回内容和 Token 用量。' },
   zhipu:     { en: 'Calls Zhipu AI GLM (glm-4, glm-4-air, glm-4-flash, glm-3-turbo). Returns content and usage.', zh: '调用智谱 AI GLM 系列模型，返回内容和 Token 用量。' },
@@ -142,6 +144,8 @@ const NODE_LABELS: Partial<Record<NodeType, string>> = {
   azure_openai: 'Azure OpenAI',
   grok: 'xAI Grok',
   ollama: 'Ollama',
+  weaviate: 'Weaviate',
+  chroma: 'Chroma',
   deepseek: 'DeepSeek',
   qwen: '通义千问',
   zhipu: '智谱 GLM',
@@ -185,6 +189,8 @@ const NODE_COLORS: Partial<Record<NodeType, string>> = {
   azure_openai: 'var(--node-openai)',
   grok: 'var(--node-claude)',
   ollama: 'var(--node-openai)',
+  weaviate: 'var(--node-qdrant)',
+  chroma: 'var(--node-qdrant)',
   deepseek: 'var(--node-deepseek)',
   qwen: 'var(--node-qwen)',
   zhipu: 'var(--node-zhipu)',
@@ -218,6 +224,8 @@ const NODE_OUTPUTS: Partial<Record<NodeType, string[]>> = {
   azure_openai: ['content', 'model', 'usage'],
   grok:         ['content', 'model', 'usage'],
   ollama:       ['content', 'model', 'usage'],
+  weaviate:     ['status', 'body'],
+  chroma:       ['status', 'body'],
   deepseek:     ['content', 'model', 'usage'],
   qwen:         ['content', 'model', 'usage'],
   zhipu:        ['content', 'model', 'usage'],
@@ -627,6 +635,8 @@ export function NodeConfigPanel({ node, onUpdateConfig, recentExecutions, onSele
         {nt === 'azure_openai'    && <AzureOpenaiConfig    config={config} set={set} str={str} num={num} />}
         {nt === 'grok'            && <GrokConfig            config={config} set={set} str={str} num={num} />}
         {nt === 'ollama'          && <OllamaConfig          config={config} set={set} str={str} num={num} />}
+        {nt === 'weaviate'        && <WeaviateConfig        config={config} set={set} str={str} num={num} />}
+        {nt === 'chroma'          && <ChromaConfig          config={config} set={set} str={str} num={num} />}
         {nt === 'deepseek'        && <DeepseekConfig        config={config} set={set} str={str} num={num} />}
         {nt === 'qwen'            && <QwenConfig            config={config} set={set} str={str} num={num} />}
         {nt === 'zhipu'           && <ZhipuConfig           config={config} set={set} str={str} num={num} />}
