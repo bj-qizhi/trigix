@@ -2781,6 +2781,204 @@ export function SnsConfig({ set, str }: ConfigProps) {
   )
 }
 
+function llmEndpointFields(str: ConfigProps['str'], set: ConfigProps['set'], defModel: string) {
+  return (
+    <>
+      <div className="field">
+        <label>API Key <span style={{ color: 'var(--danger)' }}>*</span></label>
+        <input type="password" value={str('api_key', '')} onChange={(e) => set('api_key', e.target.value)} style={{ fontFamily: 'monospace', fontSize: 12 }} />
+      </div>
+      <div style={{ display: 'flex', gap: 8 }}>
+        <div className="field" style={{ flex: 2 }}>
+          <label>Base URL</label>
+          <input placeholder="(OpenAI-compatible default)" value={str('base_url', '')} onChange={(e) => set('base_url', e.target.value)} style={{ fontFamily: 'monospace', fontSize: 12 }} />
+        </div>
+        <div className="field" style={{ flex: 1 }}>
+          <label>Model</label>
+          <input placeholder={defModel} value={str('model', '')} onChange={(e) => set('model', e.target.value)} />
+        </div>
+      </div>
+    </>
+  )
+}
+
+export function EmbeddingConfig({ config, set, str }: ConfigProps) {
+  return (
+    <>
+      {llmEndpointFields(str, set, 'text-embedding-3-small')}
+      <div className="field">
+        <label>Input (text or JSON array) <span style={{ color: 'var(--danger)' }}>*</span></label>
+        <textarea rows={3} placeholder='"hello" 或 ["a","b"]' value={typeof config.input === 'object' ? JSON.stringify(config.input) : str('input', '')} onChange={(e) => { try { set('input', JSON.parse(e.target.value)) } catch { set('input', e.target.value) } }} style={{ fontFamily: 'monospace', fontSize: 12 }} />
+      </div>
+      <p style={{ fontSize: 11, color: 'var(--muted)', margin: '8px 0 0' }}>
+        Returns <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>{'{ embeddings, model, usage }'}</code>
+      </p>
+    </>
+  )
+}
+
+export function RerankerConfig({ config, set, str }: ConfigProps) {
+  return (
+    <>
+      {llmEndpointFields(str, set, 'rerank-english-v3.0')}
+      <div className="field">
+        <label>Query <span style={{ color: 'var(--danger)' }}>*</span></label>
+        <input value={str('query', '')} onChange={(e) => set('query', e.target.value)} />
+      </div>
+      <div className="field">
+        <label>Documents (JSON array) <span style={{ color: 'var(--danger)' }}>*</span></label>
+        <textarea rows={3} placeholder='["doc one","doc two"]' value={typeof config.documents === 'object' ? JSON.stringify(config.documents) : str('documents', '')} onChange={(e) => { try { set('documents', JSON.parse(e.target.value)) } catch { set('documents', e.target.value) } }} style={{ fontFamily: 'monospace', fontSize: 12 }} />
+      </div>
+      <div className="field">
+        <label>Top N</label>
+        <input type="number" min={1} placeholder="(all)" value={(config['top_n'] as number | undefined) ?? ''} onChange={(e) => set('top_n', e.target.value ? parseInt(e.target.value) : undefined)} />
+      </div>
+      <p style={{ fontSize: 11, color: 'var(--muted)', margin: '8px 0 0' }}>
+        Cohere/Jina-style rerank. Returns <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>{'{ status, body }'}</code>
+      </p>
+    </>
+  )
+}
+
+export function TextSplitterConfig({ set, str, num }: ConfigProps) {
+  return (
+    <>
+      <div className="field">
+        <label>Text <span style={{ color: 'var(--danger)' }}>*</span></label>
+        <textarea rows={4} value={str('text', '')} onChange={(e) => set('text', e.target.value)} />
+      </div>
+      <div style={{ display: 'flex', gap: 8 }}>
+        <div className="field" style={{ flex: 1 }}>
+          <label>Chunk Size</label>
+          <input type="number" min={1} value={num('chunk_size', 1000)} onChange={(e) => set('chunk_size', Number(e.target.value))} />
+        </div>
+        <div className="field" style={{ flex: 1 }}>
+          <label>Overlap</label>
+          <input type="number" min={0} value={num('chunk_overlap', 200)} onChange={(e) => set('chunk_overlap', Number(e.target.value))} />
+        </div>
+      </div>
+      <p style={{ fontSize: 11, color: 'var(--muted)', margin: '8px 0 0' }}>
+        Char-boundary chunking (UTF-8 safe). Returns <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>{'{ chunks, count }'}</code>
+      </p>
+    </>
+  )
+}
+
+export function StructuredOutputConfig({ config, set, str }: ConfigProps) {
+  return (
+    <>
+      {llmEndpointFields(str, set, 'gpt-4o-mini')}
+      <div className="field">
+        <label>Prompt Template <span style={{ color: 'var(--danger)' }}>*</span></label>
+        <textarea rows={3} placeholder="Extract fields from: {{input.text}}" value={str('prompt_template', '')} onChange={(e) => set('prompt_template', e.target.value)} />
+      </div>
+      <div className="field">
+        <label>JSON Schema (optional)</label>
+        <textarea rows={3} placeholder='{"type":"object","properties":{…}}' value={typeof config.schema === 'object' ? JSON.stringify(config.schema, null, 2) : str('schema', '')} onChange={(e) => { try { set('schema', JSON.parse(e.target.value)) } catch { set('schema', e.target.value) } }} style={{ fontFamily: 'monospace', fontSize: 12 }} />
+      </div>
+      <p style={{ fontSize: 11, color: 'var(--muted)', margin: '8px 0 0' }}>
+        LLM JSON output. Returns <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>{'{ data, raw, model }'}</code>
+      </p>
+    </>
+  )
+}
+
+export function ClassifierConfig({ config, set, str }: ConfigProps) {
+  return (
+    <>
+      {llmEndpointFields(str, set, 'gpt-4o-mini')}
+      <div className="field">
+        <label>Input <span style={{ color: 'var(--danger)' }}>*</span></label>
+        <textarea rows={2} value={str('input', '')} onChange={(e) => set('input', e.target.value)} />
+      </div>
+      <div className="field">
+        <label>Categories (JSON array) <span style={{ color: 'var(--danger)' }}>*</span></label>
+        <textarea rows={2} placeholder='["positive","neutral","negative"]' value={typeof config.categories === 'object' ? JSON.stringify(config.categories) : str('categories', '')} onChange={(e) => { try { set('categories', JSON.parse(e.target.value)) } catch { set('categories', e.target.value) } }} style={{ fontFamily: 'monospace', fontSize: 12 }} />
+      </div>
+      <p style={{ fontSize: 11, color: 'var(--muted)', margin: '8px 0 0' }}>
+        Returns <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>{'{ category, raw }'}</code>
+      </p>
+    </>
+  )
+}
+
+export function ImageGenConfig({ set, str, num }: ConfigProps) {
+  return (
+    <>
+      {llmEndpointFields(str, set, 'dall-e-3')}
+      <div className="field">
+        <label>Prompt <span style={{ color: 'var(--danger)' }}>*</span></label>
+        <textarea rows={3} value={str('prompt', '')} onChange={(e) => set('prompt', e.target.value)} />
+      </div>
+      <div style={{ display: 'flex', gap: 8 }}>
+        <div className="field" style={{ flex: 1 }}>
+          <label>Size</label>
+          <input placeholder="1024x1024" value={str('size', '')} onChange={(e) => set('size', e.target.value)} />
+        </div>
+        <div className="field" style={{ flex: 1 }}>
+          <label>N</label>
+          <input type="number" min={1} value={num('n', 1)} onChange={(e) => set('n', Number(e.target.value))} />
+        </div>
+      </div>
+      <p style={{ fontSize: 11, color: 'var(--muted)', margin: '8px 0 0' }}>
+        Returns <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>{'{ status, body }'}</code>
+      </p>
+    </>
+  )
+}
+
+export function SpeechToTextConfig({ set, str }: ConfigProps) {
+  return (
+    <>
+      {llmEndpointFields(str, set, 'whisper-1')}
+      <div className="field">
+        <label>Audio (base64) <span style={{ color: 'var(--danger)' }}>*</span></label>
+        <textarea rows={3} placeholder="SUQzBAAAA…" value={str('audio_base64', '')} onChange={(e) => set('audio_base64', e.target.value)} style={{ fontFamily: 'monospace', fontSize: 12 }} />
+      </div>
+      <div style={{ display: 'flex', gap: 8 }}>
+        <div className="field" style={{ flex: 1 }}>
+          <label>Filename</label>
+          <input placeholder="audio.mp3" value={str('filename', '')} onChange={(e) => set('filename', e.target.value)} />
+        </div>
+        <div className="field" style={{ flex: 1 }}>
+          <label>Language</label>
+          <input placeholder="(auto)" value={str('language', '')} onChange={(e) => set('language', e.target.value)} />
+        </div>
+      </div>
+      <p style={{ fontSize: 11, color: 'var(--muted)', margin: '8px 0 0' }}>
+        Whisper transcription. Returns <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>{'{ status, text }'}</code>
+      </p>
+    </>
+  )
+}
+
+export function TtsConfig({ set, str }: ConfigProps) {
+  return (
+    <>
+      {llmEndpointFields(str, set, 'tts-1')}
+      <div className="field">
+        <label>Input <span style={{ color: 'var(--danger)' }}>*</span></label>
+        <textarea rows={3} value={str('input', '')} onChange={(e) => set('input', e.target.value)} />
+      </div>
+      <div style={{ display: 'flex', gap: 8 }}>
+        <div className="field" style={{ flex: 1 }}>
+          <label>Voice</label>
+          <input placeholder="alloy" value={str('voice', '')} onChange={(e) => set('voice', e.target.value)} />
+        </div>
+        <div className="field" style={{ flex: 1 }}>
+          <label>Format</label>
+          <select value={str('format', 'mp3')} onChange={(e) => set('format', e.target.value)}>
+            {['mp3', 'opus', 'aac', 'flac', 'wav'].map((f) => <option key={f} value={f}>{f}</option>)}
+          </select>
+        </div>
+      </div>
+      <p style={{ fontSize: 11, color: 'var(--muted)', margin: '8px 0 0' }}>
+        Returns <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>{'{ audio_base64, format }'}</code>
+      </p>
+    </>
+  )
+}
+
 export function FeishuConfig({ config, set, str }: ConfigProps) {
   const msgType = str('msg_type', 'text')
   return (

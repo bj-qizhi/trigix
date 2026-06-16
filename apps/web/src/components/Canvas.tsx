@@ -298,6 +298,14 @@ const NODE_LABELS: Record<NodeType, string> = {
   feishu: '飞书 / Lark',
   dingtalk: '钉钉',
   wecom: '企业微信',
+  embedding: 'Embedding',
+  reranker: 'Reranker',
+  text_splitter: 'Text Splitter',
+  structured_output: 'Structured Output',
+  classifier: 'Classifier',
+  image_gen: 'Image Gen',
+  speech_to_text: 'Speech → Text',
+  tts: 'Text → Speech',
   deepseek: 'DeepSeek',
   qwen: '通义千问',
   zhipu: '智谱 GLM',
@@ -466,6 +474,14 @@ const NODE_ICONS: Record<NodeType, string> = {
   feishu: '🛫',
   dingtalk: '🔔',
   wecom: '💼',
+  embedding: '🧮',
+  reranker: '🎚️',
+  text_splitter: '✂️',
+  structured_output: '🧾',
+  classifier: '🏷️',
+  image_gen: '🎨',
+  speech_to_text: '🎙️',
+  tts: '🔊',
   deepseek: '🐋',
   qwen: '🧩',
   zhipu: '🔮',
@@ -649,6 +665,14 @@ function FlowNodeComponent({ data, selected, id }: NodeProps) {
     if (nt === 'feishu') return c.webhook_url ? 'bot · ' + String(c.msg_type ?? 'text') : 'app · ' + String(c.msg_type ?? 'text')
     if (nt === 'dingtalk') return `${String(c.msg_type ?? 'text')}${c.secret ? ' · signed' : ''}`
     if (nt === 'wecom') return String(c.msg_type ?? 'text')
+    if (nt === 'embedding') return String(c.model ?? 'text-embedding-3-small')
+    if (nt === 'reranker') return String(c.model ?? 'rerank-english-v3.0')
+    if (nt === 'text_splitter') return `chunk ${String(c.chunk_size ?? 1000)}/${String(c.chunk_overlap ?? 200)}`
+    if (nt === 'structured_output') return String(c.model ?? 'gpt-4o-mini')
+    if (nt === 'classifier') return Array.isArray(c.categories) ? `${(c.categories as unknown[]).length} 类` : String(c.model ?? 'gpt-4o-mini')
+    if (nt === 'image_gen') return String(c.model ?? 'dall-e-3')
+    if (nt === 'speech_to_text') return String(c.model ?? 'whisper-1')
+    if (nt === 'tts') return `${String(c.model ?? 'tts-1')} · ${String(c.voice ?? 'alloy')}`
     if (nt === 'deepseek') return c.model ? String(c.model) : 'deepseek-chat'
     if (nt === 'qwen') return c.model ? String(c.model) : 'qwen-max'
     if (nt === 'zhipu') return c.model ? String(c.model) : 'glm-4'
@@ -855,6 +879,14 @@ const nodeTypes = {
   feishu: FlowNodeComponent,
   dingtalk: FlowNodeComponent,
   wecom: FlowNodeComponent,
+  embedding: FlowNodeComponent,
+  reranker: FlowNodeComponent,
+  text_splitter: FlowNodeComponent,
+  structured_output: FlowNodeComponent,
+  classifier: FlowNodeComponent,
+  image_gen: FlowNodeComponent,
+  speech_to_text: FlowNodeComponent,
+  tts: FlowNodeComponent,
   deepseek: FlowNodeComponent,
   qwen: FlowNodeComponent,
   zhipu: FlowNodeComponent,
@@ -1287,6 +1319,14 @@ export function Canvas({
               feishu: '#00d6b9',
               dingtalk: '#1296db',
               wecom: '#2f90eb',
+              embedding: '#10a37f',
+              reranker: '#d4b896',
+              text_splitter: '#0d9488',
+              structured_output: '#10a37f',
+              classifier: '#10a37f',
+              image_gen: '#10a37f',
+              speech_to_text: '#10a37f',
+              tts: '#10a37f',
               deepseek: '#4d6bfe',
               qwen: '#6200ea',
               zhipu: '#00897b',

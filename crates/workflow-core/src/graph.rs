@@ -232,6 +232,22 @@ pub enum NodeType {
     Dingtalk,
     /// 企业微信 / WeChat Work group robot.
     Wecom,
+    /// Text embeddings (OpenAI-compatible).
+    Embedding,
+    /// Document reranking (Cohere/Jina-compatible).
+    Reranker,
+    /// Text splitting / chunking (pure compute).
+    TextSplitter,
+    /// LLM structured (JSON) output.
+    StructuredOutput,
+    /// LLM classification into one of N categories.
+    Classifier,
+    /// Image generation (OpenAI-compatible images).
+    ImageGen,
+    /// Speech-to-text transcription (Whisper-compatible).
+    SpeechToText,
+    /// Text-to-speech synthesis (OpenAI-compatible).
+    Tts,
     // ── 中国国内大模型 ───────────────────────────────────
     Deepseek,
     Qwen,

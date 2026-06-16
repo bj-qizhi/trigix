@@ -44,6 +44,7 @@ import {
   CloudinaryConfig, GcalConfig, DocusignConfig, XeroConfig, CalendlyConfig, ApifyConfig,
   GanalyticsConfig, NeonConfig, CopperConfig,
   AzureOpenaiConfig, GrokConfig, OllamaConfig, WeaviateConfig, ChromaConfig, MongodbConfig, ClickhouseConfig, GcsConfig, AzureBlobConfig, HashConfig, JwtConfig, VertexConfig, SqsConfig, SnsConfig, BedrockConfig, MilvusConfig, KafkaConfig, RabbitmqConfig, ZipConfig, ImageConfig, PdfExtractConfig, OcrConfig, FeishuConfig, DingtalkConfig, WecomConfig,
+  EmbeddingConfig, RerankerConfig, TextSplitterConfig, StructuredOutputConfig, ClassifierConfig, ImageGenConfig, SpeechToTextConfig, TtsConfig,
   DeepseekConfig, QwenConfig, ZhipuConfig, MoonshotConfig,
   DoubaoConfig, MinimaxConfig, ErnieConfig, HunyuanConfig,
 } from './panels/IntegrationPanels2'
@@ -122,6 +123,14 @@ const NODE_DESCRIPTIONS: Partial<Record<NodeType, { en: string; zh: string }>> =
   feishu:    { en: 'Send a Feishu/Lark message via a custom-bot webhook or the app message API.', zh: '飞书/Lark 发消息：自定义机器人 webhook 或 App 消息 API。' },
   dingtalk:  { en: 'Send a DingTalk custom-robot message (optional HMAC sign).', zh: '钉钉自定义机器人发消息（可选加签）。' },
   wecom:     { en: 'Send a WeChat Work group-robot message (text/markdown).', zh: '企业微信群机器人发消息（text/markdown）。' },
+  embedding: { en: 'Embed text via an OpenAI-compatible embeddings endpoint.', zh: '调用 OpenAI 兼容嵌入接口做文本向量化。' },
+  reranker:  { en: 'Rerank documents against a query (Cohere/Jina-style).', zh: '按 query 对文档重排（Cohere/Jina 风格）。' },
+  text_splitter: { en: 'Split text into overlapping chunks (UTF-8 safe).', zh: '把文本切成带重叠的块（UTF-8 安全）。' },
+  structured_output: { en: 'Get a JSON object from an LLM (json_object mode).', zh: '让 LLM 输出 JSON 对象（json_object 模式）。' },
+  classifier:{ en: 'Classify input into one of N categories via an LLM.', zh: '用 LLM 把输入分到 N 个类别之一。' },
+  image_gen: { en: 'Generate images via an OpenAI-compatible images endpoint.', zh: '调用 OpenAI 兼容图像接口生成图片。' },
+  speech_to_text: { en: 'Transcribe audio (Whisper-compatible).', zh: '语音转文字（Whisper 兼容）。' },
+  tts:       { en: 'Synthesize speech from text; returns base64 audio.', zh: '文字转语音，返回 base64 音频。' },
   deepseek:  { en: 'Calls DeepSeek API (deepseek-chat V3, deepseek-reasoner R1). Returns content and usage.', zh: '调用 DeepSeek API（deepseek-chat V3、deepseek-reasoner R1），返回内容和 Token 用量。' },
   qwen:      { en: 'Calls Alibaba Qwen via DashScope (qwen-max, qwen-plus, qwen-turbo, qwen-long). Returns content and usage.', zh: '通过 DashScope 调用通义千问，返回内容和 Token 用量。' },
   zhipu:     { en: 'Calls Zhipu AI GLM (glm-4, glm-4-air, glm-4-flash, glm-3-turbo). Returns content and usage.', zh: '调用智谱 AI GLM 系列模型，返回内容和 Token 用量。' },
@@ -186,6 +195,14 @@ const NODE_LABELS: Partial<Record<NodeType, string>> = {
   feishu: '飞书 / Lark',
   dingtalk: '钉钉',
   wecom: '企业微信',
+  embedding: 'Embedding',
+  reranker: 'Reranker',
+  text_splitter: 'Text Splitter',
+  structured_output: 'Structured Output',
+  classifier: 'Classifier',
+  image_gen: 'Image Gen',
+  speech_to_text: 'Speech → Text',
+  tts: 'Text → Speech',
   deepseek: 'DeepSeek',
   qwen: '通义千问',
   zhipu: '智谱 GLM',
@@ -251,6 +268,14 @@ const NODE_COLORS: Partial<Record<NodeType, string>> = {
   feishu: 'var(--node-slack)',
   dingtalk: 'var(--node-slack)',
   wecom: 'var(--node-slack)',
+  embedding: 'var(--node-openai)',
+  reranker: 'var(--node-cohere)',
+  text_splitter: 'var(--node-transform)',
+  structured_output: 'var(--node-openai)',
+  classifier: 'var(--node-openai)',
+  image_gen: 'var(--node-openai)',
+  speech_to_text: 'var(--node-openai)',
+  tts: 'var(--node-openai)',
   deepseek: 'var(--node-deepseek)',
   qwen: 'var(--node-qwen)',
   zhipu: 'var(--node-zhipu)',
@@ -306,6 +331,14 @@ const NODE_OUTPUTS: Partial<Record<NodeType, string[]>> = {
   feishu:       ['status', 'body'],
   dingtalk:     ['status', 'body'],
   wecom:        ['status', 'body'],
+  embedding:    ['embeddings', 'model', 'usage'],
+  reranker:     ['status', 'body'],
+  text_splitter:['chunks', 'count'],
+  structured_output: ['data', 'raw', 'model'],
+  classifier:   ['category', 'raw'],
+  image_gen:    ['status', 'body'],
+  speech_to_text: ['status', 'text'],
+  tts:          ['audio_base64', 'format'],
   deepseek:     ['content', 'model', 'usage'],
   qwen:         ['content', 'model', 'usage'],
   zhipu:        ['content', 'model', 'usage'],
@@ -737,6 +770,14 @@ export function NodeConfigPanel({ node, onUpdateConfig, recentExecutions, onSele
         {nt === 'feishu'          && <FeishuConfig          config={config} set={set} str={str} num={num} />}
         {nt === 'dingtalk'        && <DingtalkConfig        config={config} set={set} str={str} num={num} />}
         {nt === 'wecom'           && <WecomConfig           config={config} set={set} str={str} num={num} />}
+        {nt === 'embedding'       && <EmbeddingConfig       config={config} set={set} str={str} num={num} />}
+        {nt === 'reranker'        && <RerankerConfig        config={config} set={set} str={str} num={num} />}
+        {nt === 'text_splitter'   && <TextSplitterConfig    config={config} set={set} str={str} num={num} />}
+        {nt === 'structured_output' && <StructuredOutputConfig config={config} set={set} str={str} num={num} />}
+        {nt === 'classifier'      && <ClassifierConfig      config={config} set={set} str={str} num={num} />}
+        {nt === 'image_gen'       && <ImageGenConfig        config={config} set={set} str={str} num={num} />}
+        {nt === 'speech_to_text'  && <SpeechToTextConfig    config={config} set={set} str={str} num={num} />}
+        {nt === 'tts'             && <TtsConfig             config={config} set={set} str={str} num={num} />}
         {nt === 'deepseek'        && <DeepseekConfig        config={config} set={set} str={str} num={num} />}
         {nt === 'qwen'            && <QwenConfig            config={config} set={set} str={str} num={num} />}
         {nt === 'zhipu'           && <ZhipuConfig           config={config} set={set} str={str} num={num} />}

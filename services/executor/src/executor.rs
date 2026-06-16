@@ -61,6 +61,10 @@ use nodes_binary::*;
 mod nodes_china;
 use nodes_china::*;
 
+// AI-native building blocks (embedding, reranker, splitter, structured output, …).
+mod nodes_ai_blocks;
+use nodes_ai_blocks::*;
+
 // SaaS integration nodes extracted into their own submodule.
 mod nodes_integrations;
 use nodes_integrations::*;
@@ -576,6 +580,14 @@ async fn dispatch(
         NodeType::Feishu => execute_feishu(node, context, http_client).await,
         NodeType::Dingtalk => execute_dingtalk(node, context, http_client).await,
         NodeType::Wecom => execute_wecom(node, context, http_client).await,
+        NodeType::Embedding => execute_embedding(node, context, http_client).await,
+        NodeType::Reranker => execute_reranker(node, context, http_client).await,
+        NodeType::TextSplitter => execute_text_splitter(node, context).await,
+        NodeType::StructuredOutput => execute_structured_output(node, context, http_client).await,
+        NodeType::Classifier => execute_classifier(node, context, http_client).await,
+        NodeType::ImageGen => execute_image_gen(node, context, http_client).await,
+        NodeType::SpeechToText => execute_speech_to_text(node, context, http_client).await,
+        NodeType::Tts => execute_tts(node, context, http_client).await,
         NodeType::Deepseek => execute_deepseek(node, context, http_client).await,
         NodeType::Qwen => execute_qwen(node, context, http_client).await,
         NodeType::Zhipu => execute_zhipu(node, context, http_client).await,
