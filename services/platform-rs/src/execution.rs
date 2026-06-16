@@ -2182,6 +2182,9 @@ fn node_type_to_str(node_type: &workflow_core::NodeType) -> &'static str {
         workflow_core::NodeType::Tts => "tts",
         workflow_core::NodeType::HtmlExtract => "html_extract",
         workflow_core::NodeType::Rss => "rss",
+        workflow_core::NodeType::Mysql => "mysql",
+        workflow_core::NodeType::Snowflake => "snowflake",
+        workflow_core::NodeType::Bigquery => "bigquery",
         // 国内大模型
         workflow_core::NodeType::Deepseek => "deepseek",
         workflow_core::NodeType::Qwen => "qwen",

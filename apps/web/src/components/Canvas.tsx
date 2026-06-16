@@ -308,6 +308,9 @@ const NODE_LABELS: Record<NodeType, string> = {
   tts: 'Text → Speech',
   html_extract: 'HTML Extract',
   rss: 'RSS Feed',
+  mysql: 'MySQL',
+  snowflake: 'Snowflake',
+  bigquery: 'BigQuery',
   deepseek: 'DeepSeek',
   qwen: '通义千问',
   zhipu: '智谱 GLM',
@@ -486,6 +489,9 @@ const NODE_ICONS: Record<NodeType, string> = {
   tts: '🔊',
   html_extract: '🔖',
   rss: '📡',
+  mysql: '🐬',
+  snowflake: '❄️',
+  bigquery: '🔍',
   deepseek: '🐋',
   qwen: '🧩',
   zhipu: '🔮',
@@ -679,6 +685,9 @@ function FlowNodeComponent({ data, selected, id }: NodeProps) {
     if (nt === 'tts') return `${String(c.model ?? 'tts-1')} · ${String(c.voice ?? 'alloy')}`
     if (nt === 'html_extract') return c.selector ? `${String(c.extract ?? 'text')} · ${String(c.selector)}` : 'No selector'
     if (nt === 'rss') return c.url ? String(c.url).replace(/^https?:\/\//, '').slice(0, 28) : 'No URL'
+    if (nt === 'mysql') return c.query ? 'SQL query' : 'No query'
+    if (nt === 'snowflake') return c.account ? String(c.account) : 'No account'
+    if (nt === 'bigquery') return c.project ? String(c.project) : 'No project'
     if (nt === 'deepseek') return c.model ? String(c.model) : 'deepseek-chat'
     if (nt === 'qwen') return c.model ? String(c.model) : 'qwen-max'
     if (nt === 'zhipu') return c.model ? String(c.model) : 'glm-4'
@@ -895,6 +904,9 @@ const nodeTypes = {
   tts: FlowNodeComponent,
   html_extract: FlowNodeComponent,
   rss: FlowNodeComponent,
+  mysql: FlowNodeComponent,
+  snowflake: FlowNodeComponent,
+  bigquery: FlowNodeComponent,
   deepseek: FlowNodeComponent,
   qwen: FlowNodeComponent,
   zhipu: FlowNodeComponent,
@@ -1337,6 +1349,9 @@ export function Canvas({
               tts: '#10a37f',
               html_extract: '#0d9488',
               rss: '#0d9488',
+              mysql: '#00758f',
+              snowflake: '#29b5e8',
+              bigquery: '#4285f4',
               deepseek: '#4d6bfe',
               qwen: '#6200ea',
               zhipu: '#00897b',

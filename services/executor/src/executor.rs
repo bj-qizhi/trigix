@@ -69,6 +69,10 @@ use nodes_ai_blocks::*;
 mod nodes_core;
 use nodes_core::*;
 
+// Data-warehouse / extra DB nodes (MySQL, Snowflake, BigQuery).
+mod nodes_warehouse;
+use nodes_warehouse::*;
+
 // SaaS integration nodes extracted into their own submodule.
 mod nodes_integrations;
 use nodes_integrations::*;
@@ -594,6 +598,9 @@ async fn dispatch(
         NodeType::Tts => execute_tts(node, context, http_client).await,
         NodeType::HtmlExtract => execute_html_extract(node, context).await,
         NodeType::Rss => execute_rss(node, context, http_client).await,
+        NodeType::Mysql => execute_mysql(node, context).await,
+        NodeType::Snowflake => execute_snowflake(node, context, http_client).await,
+        NodeType::Bigquery => execute_bigquery(node, context, http_client).await,
         NodeType::Deepseek => execute_deepseek(node, context, http_client).await,
         NodeType::Qwen => execute_qwen(node, context, http_client).await,
         NodeType::Zhipu => execute_zhipu(node, context, http_client).await,

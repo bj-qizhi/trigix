@@ -252,6 +252,12 @@ pub enum NodeType {
     HtmlExtract,
     /// RSS / Atom feed reading.
     Rss,
+    /// MySQL (sqlx).
+    Mysql,
+    /// Snowflake (SQL API v2 over HTTP).
+    Snowflake,
+    /// BigQuery (jobs.query REST).
+    Bigquery,
     // ── 中国国内大模型 ───────────────────────────────────
     Deepseek,
     Qwen,

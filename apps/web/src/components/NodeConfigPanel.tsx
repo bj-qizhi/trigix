@@ -44,7 +44,7 @@ import {
   CloudinaryConfig, GcalConfig, DocusignConfig, XeroConfig, CalendlyConfig, ApifyConfig,
   GanalyticsConfig, NeonConfig, CopperConfig,
   AzureOpenaiConfig, GrokConfig, OllamaConfig, WeaviateConfig, ChromaConfig, MongodbConfig, ClickhouseConfig, GcsConfig, AzureBlobConfig, HashConfig, JwtConfig, VertexConfig, SqsConfig, SnsConfig, BedrockConfig, MilvusConfig, KafkaConfig, RabbitmqConfig, ZipConfig, ImageConfig, PdfExtractConfig, OcrConfig, FeishuConfig, DingtalkConfig, WecomConfig,
-  EmbeddingConfig, RerankerConfig, TextSplitterConfig, StructuredOutputConfig, ClassifierConfig, ImageGenConfig, SpeechToTextConfig, TtsConfig, HtmlExtractConfig, RssConfig,
+  EmbeddingConfig, RerankerConfig, TextSplitterConfig, StructuredOutputConfig, ClassifierConfig, ImageGenConfig, SpeechToTextConfig, TtsConfig, HtmlExtractConfig, RssConfig, MysqlConfig, SnowflakeConfig, BigqueryConfig,
   DeepseekConfig, QwenConfig, ZhipuConfig, MoonshotConfig,
   DoubaoConfig, MinimaxConfig, ErnieConfig, HunyuanConfig,
 } from './panels/IntegrationPanels2'
@@ -133,6 +133,9 @@ const NODE_DESCRIPTIONS: Partial<Record<NodeType, { en: string; zh: string }>> =
   tts:       { en: 'Synthesize speech from text; returns base64 audio.', zh: '文字转语音，返回 base64 音频。' },
   html_extract: { en: 'Extract content from HTML by CSS selector (text/html/attr).', zh: '按 CSS 选择器从 HTML 抽取内容（text/html/attr）。' },
   rss:       { en: 'Read an RSS/Atom/JSON feed and return its entries.', zh: '读取 RSS/Atom/JSON 订阅源并返回条目。' },
+  mysql:     { en: 'Run a SQL query against MySQL (sqlx).', zh: '对 MySQL 执行 SQL 查询（sqlx）。' },
+  snowflake: { en: 'Run SQL via the Snowflake SQL API v2 (bearer token).', zh: '通过 Snowflake SQL API v2 执行 SQL（bearer token）。' },
+  bigquery:  { en: 'Run a query via the BigQuery jobs.query REST API (OAuth2 token).', zh: '通过 BigQuery jobs.query REST 执行查询（OAuth2 token）。' },
   deepseek:  { en: 'Calls DeepSeek API (deepseek-chat V3, deepseek-reasoner R1). Returns content and usage.', zh: '调用 DeepSeek API（deepseek-chat V3、deepseek-reasoner R1），返回内容和 Token 用量。' },
   qwen:      { en: 'Calls Alibaba Qwen via DashScope (qwen-max, qwen-plus, qwen-turbo, qwen-long). Returns content and usage.', zh: '通过 DashScope 调用通义千问，返回内容和 Token 用量。' },
   zhipu:     { en: 'Calls Zhipu AI GLM (glm-4, glm-4-air, glm-4-flash, glm-3-turbo). Returns content and usage.', zh: '调用智谱 AI GLM 系列模型，返回内容和 Token 用量。' },
@@ -207,6 +210,9 @@ const NODE_LABELS: Partial<Record<NodeType, string>> = {
   tts: 'Text → Speech',
   html_extract: 'HTML Extract',
   rss: 'RSS Feed',
+  mysql: 'MySQL',
+  snowflake: 'Snowflake',
+  bigquery: 'BigQuery',
   deepseek: 'DeepSeek',
   qwen: '通义千问',
   zhipu: '智谱 GLM',
@@ -282,6 +288,9 @@ const NODE_COLORS: Partial<Record<NodeType, string>> = {
   tts: 'var(--node-openai)',
   html_extract: 'var(--node-transform)',
   rss: 'var(--node-transform)',
+  mysql: 'var(--node-database)',
+  snowflake: 'var(--node-database)',
+  bigquery: 'var(--node-database)',
   deepseek: 'var(--node-deepseek)',
   qwen: 'var(--node-qwen)',
   zhipu: 'var(--node-zhipu)',
@@ -347,6 +356,9 @@ const NODE_OUTPUTS: Partial<Record<NodeType, string[]>> = {
   tts:          ['audio_base64', 'format'],
   html_extract: ['matches', 'count', 'first'],
   rss:          ['feed_title', 'items', 'count'],
+  mysql:        ['rows', 'count'],
+  snowflake:    ['status', 'body'],
+  bigquery:     ['status', 'body'],
   deepseek:     ['content', 'model', 'usage'],
   qwen:         ['content', 'model', 'usage'],
   zhipu:        ['content', 'model', 'usage'],
@@ -788,6 +800,9 @@ export function NodeConfigPanel({ node, onUpdateConfig, recentExecutions, onSele
         {nt === 'tts'             && <TtsConfig             config={config} set={set} str={str} num={num} />}
         {nt === 'html_extract'    && <HtmlExtractConfig     config={config} set={set} str={str} num={num} />}
         {nt === 'rss'             && <RssConfig             config={config} set={set} str={str} num={num} />}
+        {nt === 'mysql'           && <MysqlConfig           config={config} set={set} str={str} num={num} />}
+        {nt === 'snowflake'       && <SnowflakeConfig       config={config} set={set} str={str} num={num} />}
+        {nt === 'bigquery'        && <BigqueryConfig        config={config} set={set} str={str} num={num} />}
         {nt === 'deepseek'        && <DeepseekConfig        config={config} set={set} str={str} num={num} />}
         {nt === 'qwen'            && <QwenConfig            config={config} set={set} str={str} num={num} />}
         {nt === 'zhipu'           && <ZhipuConfig           config={config} set={set} str={str} num={num} />}

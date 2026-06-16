@@ -2802,6 +2802,98 @@ function llmEndpointFields(str: ConfigProps['str'], set: ConfigProps['set'], def
   )
 }
 
+export function MysqlConfig({ set, str }: ConfigProps) {
+  return (
+    <>
+      <div className="field">
+        <label>Connection URL <span style={{ color: 'var(--danger)' }}>*</span></label>
+        <input placeholder="mysql://user:pass@host:3306/db" value={str('url', '')} onChange={(e) => set('url', e.target.value)} style={{ fontFamily: 'monospace', fontSize: 12 }} />
+      </div>
+      <div className="field">
+        <label>Query <span style={{ color: 'var(--danger)' }}>*</span></label>
+        <textarea rows={4} placeholder="SELECT * FROM users LIMIT 10" value={str('query', '')} onChange={(e) => set('query', e.target.value)} style={{ fontFamily: 'monospace', fontSize: 12 }} />
+      </div>
+      <p style={{ fontSize: 11, color: 'var(--muted)', margin: '8px 0 0' }}>
+        SELECT/WITH → <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>{'{ rows, count }'}</code>; DML → <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>{'{ rows_affected }'}</code>
+      </p>
+    </>
+  )
+}
+
+export function SnowflakeConfig({ set, str }: ConfigProps) {
+  return (
+    <>
+      <div className="field">
+        <label>Account <span style={{ color: 'var(--danger)' }}>*</span></label>
+        <input placeholder="myorg-myacct" value={str('account', '')} onChange={(e) => set('account', e.target.value)} style={{ fontFamily: 'monospace', fontSize: 12 }} />
+      </div>
+      <div className="field">
+        <label>Token <span style={{ color: 'var(--danger)' }}>*</span></label>
+        <input type="password" placeholder="OAuth / key-pair JWT bearer" value={str('token', '')} onChange={(e) => set('token', e.target.value)} style={{ fontFamily: 'monospace', fontSize: 12 }} />
+      </div>
+      <div className="field">
+        <label>Token Type</label>
+        <select value={str('token_type', 'OAUTH')} onChange={(e) => set('token_type', e.target.value)}>
+          {['OAUTH', 'KEYPAIR_JWT'].map((t) => <option key={t} value={t}>{t}</option>)}
+        </select>
+      </div>
+      <div className="field">
+        <label>Statement (SQL) <span style={{ color: 'var(--danger)' }}>*</span></label>
+        <textarea rows={3} placeholder="SELECT CURRENT_VERSION()" value={str('statement', '')} onChange={(e) => set('statement', e.target.value)} style={{ fontFamily: 'monospace', fontSize: 12 }} />
+      </div>
+      <div style={{ display: 'flex', gap: 8 }}>
+        <div className="field" style={{ flex: 1 }}>
+          <label>Warehouse</label>
+          <input value={str('warehouse', '')} onChange={(e) => set('warehouse', e.target.value)} />
+        </div>
+        <div className="field" style={{ flex: 1 }}>
+          <label>Database</label>
+          <input value={str('database', '')} onChange={(e) => set('database', e.target.value)} />
+        </div>
+        <div className="field" style={{ flex: 1 }}>
+          <label>Schema</label>
+          <input value={str('schema', '')} onChange={(e) => set('schema', e.target.value)} />
+        </div>
+      </div>
+      <p style={{ fontSize: 11, color: 'var(--muted)', margin: '8px 0 0' }}>
+        Snowflake SQL API v2. Returns <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>{'{ status, body }'}</code>
+      </p>
+    </>
+  )
+}
+
+export function BigqueryConfig({ config, set, str }: ConfigProps) {
+  return (
+    <>
+      <div className="field">
+        <label>Project <span style={{ color: 'var(--danger)' }}>*</span></label>
+        <input placeholder="my-gcp-project" value={str('project', '')} onChange={(e) => set('project', e.target.value)} style={{ fontFamily: 'monospace', fontSize: 12 }} />
+      </div>
+      <div className="field">
+        <label>Access Token <span style={{ color: 'var(--danger)' }}>*</span></label>
+        <input type="password" placeholder="OAuth2 bearer (bigquery scope)" value={str('access_token', '')} onChange={(e) => set('access_token', e.target.value)} style={{ fontFamily: 'monospace', fontSize: 12 }} />
+      </div>
+      <div className="field">
+        <label>Query (SQL) <span style={{ color: 'var(--danger)' }}>*</span></label>
+        <textarea rows={4} placeholder="SELECT name FROM `proj.ds.table` LIMIT 10" value={str('query', '')} onChange={(e) => set('query', e.target.value)} style={{ fontFamily: 'monospace', fontSize: 12 }} />
+      </div>
+      <div style={{ display: 'flex', gap: 8 }}>
+        <div className="field" style={{ flex: 1 }}>
+          <label>Max Results</label>
+          <input type="number" min={1} placeholder="(default)" value={(config['max_results'] as number | undefined) ?? ''} onChange={(e) => set('max_results', e.target.value ? parseInt(e.target.value) : undefined)} />
+        </div>
+        <div className="field" style={{ flex: 1 }}>
+          <label>Location</label>
+          <input placeholder="US" value={str('location', '')} onChange={(e) => set('location', e.target.value)} />
+        </div>
+      </div>
+      <p style={{ fontSize: 11, color: 'var(--muted)', margin: '8px 0 0' }}>
+        BigQuery jobs.query. Returns <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>{'{ status, body }'}</code>
+      </p>
+    </>
+  )
+}
+
 export function HtmlExtractConfig({ set, str }: ConfigProps) {
   const mode = str('extract', 'text')
   return (
