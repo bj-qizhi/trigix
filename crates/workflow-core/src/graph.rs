@@ -196,6 +196,10 @@ pub enum NodeType {
     Mongodb,
     /// ClickHouse via its HTTP interface.
     Clickhouse,
+    /// Google Cloud Storage (JSON API, OAuth2 bearer token).
+    Gcs,
+    /// Azure Blob Storage (REST + SAS token).
+    AzureBlob,
     // ── 中国国内大模型 ───────────────────────────────────
     Deepseek,
     Qwen,

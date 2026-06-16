@@ -37,6 +37,10 @@ use nodes_vector::*;
 mod nodes_db_queue;
 use nodes_db_queue::*;
 
+// Object-storage nodes over HTTP (Google Cloud Storage, Azure Blob).
+mod nodes_storage;
+use nodes_storage::*;
+
 // SaaS integration nodes extracted into their own submodule.
 mod nodes_integrations;
 use nodes_integrations::*;
@@ -534,6 +538,8 @@ async fn dispatch(
         NodeType::Chroma => execute_chroma(node, context, http_client).await,
         NodeType::Mongodb => execute_mongodb(node, context, http_client).await,
         NodeType::Clickhouse => execute_clickhouse(node, context, http_client).await,
+        NodeType::Gcs => execute_gcs(node, context, http_client).await,
+        NodeType::AzureBlob => execute_azure_blob(node, context, http_client).await,
         NodeType::Deepseek => execute_deepseek(node, context, http_client).await,
         NodeType::Qwen => execute_qwen(node, context, http_client).await,
         NodeType::Zhipu => execute_zhipu(node, context, http_client).await,

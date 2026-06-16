@@ -43,7 +43,7 @@ import {
   GoogledriveConfig, WoocommerceConfig, PineconeConfig, Awss3Config, QdrantConfig,
   CloudinaryConfig, GcalConfig, DocusignConfig, XeroConfig, CalendlyConfig, ApifyConfig,
   GanalyticsConfig, NeonConfig, CopperConfig,
-  AzureOpenaiConfig, GrokConfig, OllamaConfig, WeaviateConfig, ChromaConfig, MongodbConfig, ClickhouseConfig,
+  AzureOpenaiConfig, GrokConfig, OllamaConfig, WeaviateConfig, ChromaConfig, MongodbConfig, ClickhouseConfig, GcsConfig, AzureBlobConfig,
   DeepseekConfig, QwenConfig, ZhipuConfig, MoonshotConfig,
   DoubaoConfig, MinimaxConfig, ErnieConfig, HunyuanConfig,
 } from './panels/IntegrationPanels2'
@@ -104,6 +104,8 @@ const NODE_DESCRIPTIONS: Partial<Record<NodeType, { en: string; zh: string }>> =
   chroma:    { en: 'Chroma vector store: query/add/delete embeddings or resolve a collection over REST.', zh: 'Chroma 向量库：查询/添加/删除向量或解析 collection（REST）。' },
   mongodb:   { en: 'MongoDB via the Atlas Data API: find/insert/update/delete/aggregate over HTTP.', zh: 'MongoDB（Atlas Data API）：HTTP 增删改查与聚合。' },
   clickhouse:{ en: 'Runs SQL against ClickHouse over its HTTP interface; FORMAT appended to SELECTs.', zh: '通过 HTTP 接口对 ClickHouse 执行 SQL；SELECT 自动追加 FORMAT。' },
+  gcs:       { en: 'Google Cloud Storage (JSON API): list/get/download/upload/delete objects with an OAuth2 token.', zh: 'Google Cloud Storage（JSON API）：用 OAuth2 令牌增删查对象与上传下载。' },
+  azure_blob:{ en: 'Azure Blob Storage (REST + SAS): list/get/put/delete blobs.', zh: 'Azure Blob 存储（REST + SAS）：增删查 Blob。' },
   deepseek:  { en: 'Calls DeepSeek API (deepseek-chat V3, deepseek-reasoner R1). Returns content and usage.', zh: '调用 DeepSeek API（deepseek-chat V3、deepseek-reasoner R1），返回内容和 Token 用量。' },
   qwen:      { en: 'Calls Alibaba Qwen via DashScope (qwen-max, qwen-plus, qwen-turbo, qwen-long). Returns content and usage.', zh: '通过 DashScope 调用通义千问，返回内容和 Token 用量。' },
   zhipu:     { en: 'Calls Zhipu AI GLM (glm-4, glm-4-air, glm-4-flash, glm-3-turbo). Returns content and usage.', zh: '调用智谱 AI GLM 系列模型，返回内容和 Token 用量。' },
@@ -150,6 +152,8 @@ const NODE_LABELS: Partial<Record<NodeType, string>> = {
   chroma: 'Chroma',
   mongodb: 'MongoDB',
   clickhouse: 'ClickHouse',
+  gcs: 'Google Cloud Storage',
+  azure_blob: 'Azure Blob',
   deepseek: 'DeepSeek',
   qwen: '通义千问',
   zhipu: '智谱 GLM',
@@ -197,6 +201,8 @@ const NODE_COLORS: Partial<Record<NodeType, string>> = {
   chroma: 'var(--node-qdrant)',
   mongodb: 'var(--node-database)',
   clickhouse: 'var(--node-database)',
+  gcs: 'var(--node-awss3)',
+  azure_blob: 'var(--node-awss3)',
   deepseek: 'var(--node-deepseek)',
   qwen: 'var(--node-qwen)',
   zhipu: 'var(--node-zhipu)',
@@ -234,6 +240,8 @@ const NODE_OUTPUTS: Partial<Record<NodeType, string[]>> = {
   chroma:       ['status', 'body'],
   mongodb:      ['status', 'body'],
   clickhouse:   ['status', 'body'],
+  gcs:          ['status', 'body'],
+  azure_blob:   ['status', 'body'],
   deepseek:     ['content', 'model', 'usage'],
   qwen:         ['content', 'model', 'usage'],
   zhipu:        ['content', 'model', 'usage'],
@@ -647,6 +655,8 @@ export function NodeConfigPanel({ node, onUpdateConfig, recentExecutions, onSele
         {nt === 'chroma'          && <ChromaConfig          config={config} set={set} str={str} num={num} />}
         {nt === 'mongodb'         && <MongodbConfig         config={config} set={set} str={str} num={num} />}
         {nt === 'clickhouse'      && <ClickhouseConfig      config={config} set={set} str={str} num={num} />}
+        {nt === 'gcs'             && <GcsConfig             config={config} set={set} str={str} num={num} />}
+        {nt === 'azure_blob'      && <AzureBlobConfig       config={config} set={set} str={str} num={num} />}
         {nt === 'deepseek'        && <DeepseekConfig        config={config} set={set} str={str} num={num} />}
         {nt === 'qwen'            && <QwenConfig            config={config} set={set} str={str} num={num} />}
         {nt === 'zhipu'           && <ZhipuConfig           config={config} set={set} str={str} num={num} />}

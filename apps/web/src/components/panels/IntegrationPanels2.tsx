@@ -2488,6 +2488,104 @@ export function ClickhouseConfig({ set, str }: ConfigProps) {
   )
 }
 
+export function GcsConfig({ set, str }: ConfigProps) {
+  const operation = str('operation', 'list')
+  const OPERATIONS = ['list', 'get', 'download', 'upload', 'delete']
+  return (
+    <>
+      <div className="field">
+        <label>Access Token <span style={{ color: 'var(--danger)' }}>*</span></label>
+        <input type="password" placeholder="OAuth2 bearer (storage scope)" value={str('access_token', '')} onChange={(e) => set('access_token', e.target.value)} style={{ fontFamily: 'monospace', fontSize: 12 }} />
+      </div>
+      <div className="field">
+        <label>Bucket <span style={{ color: 'var(--danger)' }}>*</span></label>
+        <input placeholder="my-bucket" value={str('bucket', '')} onChange={(e) => set('bucket', e.target.value)} />
+      </div>
+      <div className="field">
+        <label>Operation</label>
+        <select value={operation} onChange={(e) => set('operation', e.target.value)}>
+          {OPERATIONS.map((op) => <option key={op} value={op}>{op}</option>)}
+        </select>
+      </div>
+      {operation === 'list' && (
+        <div className="field">
+          <label>Prefix</label>
+          <input placeholder="folder/" value={str('prefix', '')} onChange={(e) => set('prefix', e.target.value)} />
+        </div>
+      )}
+      {operation !== 'list' && (
+        <div className="field">
+          <label>Object <span style={{ color: 'var(--danger)' }}>*</span></label>
+          <input placeholder="path/to/file.txt" value={str('object', '')} onChange={(e) => set('object', e.target.value)} style={{ fontFamily: 'monospace', fontSize: 12 }} />
+        </div>
+      )}
+      {operation === 'upload' && (
+        <>
+          <div className="field">
+            <label>Content</label>
+            <textarea rows={3} value={str('content', '')} onChange={(e) => set('content', e.target.value)} style={{ fontFamily: 'monospace', fontSize: 12 }} />
+          </div>
+          <div className="field">
+            <label>Content Type</label>
+            <input placeholder="text/plain" value={str('content_type', '')} onChange={(e) => set('content_type', e.target.value)} />
+          </div>
+        </>
+      )}
+      <p style={{ fontSize: 11, color: 'var(--muted)', margin: '8px 0 0' }}>
+        Google Cloud Storage JSON API. Returns <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>{'{ status, body }'}</code>
+      </p>
+    </>
+  )
+}
+
+export function AzureBlobConfig({ set, str }: ConfigProps) {
+  const operation = str('operation', 'list')
+  const OPERATIONS = ['list', 'get', 'put', 'delete']
+  return (
+    <>
+      <div className="field">
+        <label>Account <span style={{ color: 'var(--danger)' }}>*</span></label>
+        <input placeholder="mystorageacct" value={str('account', '')} onChange={(e) => set('account', e.target.value)} />
+      </div>
+      <div className="field">
+        <label>Container <span style={{ color: 'var(--danger)' }}>*</span></label>
+        <input placeholder="my-container" value={str('container', '')} onChange={(e) => set('container', e.target.value)} />
+      </div>
+      <div className="field">
+        <label>SAS Token <span style={{ color: 'var(--danger)' }}>*</span></label>
+        <input type="password" placeholder="sv=2022-11-02&ss=b&srt=…" value={str('sas_token', '')} onChange={(e) => set('sas_token', e.target.value)} style={{ fontFamily: 'monospace', fontSize: 12 }} />
+      </div>
+      <div className="field">
+        <label>Operation</label>
+        <select value={operation} onChange={(e) => set('operation', e.target.value)}>
+          {OPERATIONS.map((op) => <option key={op} value={op}>{op}</option>)}
+        </select>
+      </div>
+      {operation !== 'list' && (
+        <div className="field">
+          <label>Blob <span style={{ color: 'var(--danger)' }}>*</span></label>
+          <input placeholder="path/to/blob.txt" value={str('blob', '')} onChange={(e) => set('blob', e.target.value)} style={{ fontFamily: 'monospace', fontSize: 12 }} />
+        </div>
+      )}
+      {operation === 'put' && (
+        <>
+          <div className="field">
+            <label>Content</label>
+            <textarea rows={3} value={str('content', '')} onChange={(e) => set('content', e.target.value)} style={{ fontFamily: 'monospace', fontSize: 12 }} />
+          </div>
+          <div className="field">
+            <label>Content Type</label>
+            <input placeholder="application/octet-stream" value={str('content_type', '')} onChange={(e) => set('content_type', e.target.value)} />
+          </div>
+        </>
+      )}
+      <p style={{ fontSize: 11, color: 'var(--muted)', margin: '8px 0 0' }}>
+        Azure Blob Storage REST API (SAS auth). Returns <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>{'{ status, body }'}</code>
+      </p>
+    </>
+  )
+}
+
 export function CloudinaryConfig({ set, str }: ConfigProps) {
   const operation = str('operation', 'upload')
   const OPERATIONS = ['upload', 'transform_url', 'get_resource', 'delete']
