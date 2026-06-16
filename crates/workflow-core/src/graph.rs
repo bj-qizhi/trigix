@@ -218,6 +218,14 @@ pub enum NodeType {
     Kafka,
     /// RabbitMQ via the Management HTTP API.
     Rabbitmq,
+    /// Zip archive create / extract (base64 payloads).
+    Zip,
+    /// Image resize / convert / metadata (base64 payloads).
+    Image,
+    /// PDF text extraction (base64 input).
+    PdfExtract,
+    /// OCR via the tesseract CLI (base64 image input).
+    Ocr,
     // ── 中国国内大模型 ───────────────────────────────────
     Deepseek,
     Qwen,

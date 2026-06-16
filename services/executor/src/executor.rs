@@ -53,6 +53,10 @@ use nodes_aws::*;
 mod nodes_messaging;
 use nodes_messaging::*;
 
+// Binary-processing nodes (zip, image, pdf, ocr).
+mod nodes_binary;
+use nodes_binary::*;
+
 // SaaS integration nodes extracted into their own submodule.
 mod nodes_integrations;
 use nodes_integrations::*;
@@ -561,6 +565,10 @@ async fn dispatch(
         NodeType::Milvus => execute_milvus(node, context, http_client).await,
         NodeType::Kafka => execute_kafka(node, context, http_client).await,
         NodeType::Rabbitmq => execute_rabbitmq(node, context, http_client).await,
+        NodeType::Zip => execute_zip(node, context).await,
+        NodeType::Image => execute_image(node, context).await,
+        NodeType::PdfExtract => execute_pdf_extract(node, context).await,
+        NodeType::Ocr => execute_ocr(node, context).await,
         NodeType::Deepseek => execute_deepseek(node, context, http_client).await,
         NodeType::Qwen => execute_qwen(node, context, http_client).await,
         NodeType::Zhipu => execute_zhipu(node, context, http_client).await,

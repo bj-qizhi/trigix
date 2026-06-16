@@ -291,6 +291,10 @@ const NODE_LABELS: Record<NodeType, string> = {
   milvus: 'Milvus',
   kafka: 'Kafka',
   rabbitmq: 'RabbitMQ',
+  zip: 'Zip',
+  image: 'Image',
+  pdf_extract: 'PDF Extract',
+  ocr: 'OCR',
   deepseek: 'DeepSeek',
   qwen: '通义千问',
   zhipu: '智谱 GLM',
@@ -452,6 +456,10 @@ const NODE_ICONS: Record<NodeType, string> = {
   milvus: '🐦',
   kafka: '🟧',
   rabbitmq: '🐰',
+  zip: '🗜️',
+  image: '🖼️',
+  pdf_extract: '📄',
+  ocr: '👁️',
   deepseek: '🐋',
   qwen: '🧩',
   zhipu: '🔮',
@@ -628,6 +636,10 @@ function FlowNodeComponent({ data, selected, id }: NodeProps) {
     if (nt === 'milvus') return c.collection ? `${String(c.operation ?? 'search')} [${String(c.collection)}]` : String(c.operation ?? 'search')
     if (nt === 'kafka') return c.topic ? `produce → ${String(c.topic)}` : 'No topic'
     if (nt === 'rabbitmq') return `${String(c.operation ?? 'publish')}${c.routing_key ? ' · '+String(c.routing_key) : ''}`
+    if (nt === 'zip') return String(c.operation ?? 'zip')
+    if (nt === 'image') return String(c.operation ?? 'metadata')
+    if (nt === 'pdf_extract') return c.pdf_base64 ? 'extract text' : 'No PDF'
+    if (nt === 'ocr') return `ocr · ${String(c.lang ?? 'eng')}`
     if (nt === 'deepseek') return c.model ? String(c.model) : 'deepseek-chat'
     if (nt === 'qwen') return c.model ? String(c.model) : 'qwen-max'
     if (nt === 'zhipu') return c.model ? String(c.model) : 'glm-4'
@@ -827,6 +839,10 @@ const nodeTypes = {
   milvus: FlowNodeComponent,
   kafka: FlowNodeComponent,
   rabbitmq: FlowNodeComponent,
+  zip: FlowNodeComponent,
+  image: FlowNodeComponent,
+  pdf_extract: FlowNodeComponent,
+  ocr: FlowNodeComponent,
   deepseek: FlowNodeComponent,
   qwen: FlowNodeComponent,
   zhipu: FlowNodeComponent,
@@ -1252,6 +1268,10 @@ export function Canvas({
               milvus: '#00a1ea',
               kafka: '#231f20',
               rabbitmq: '#ff6600',
+              zip: '#0d9488',
+              image: '#0d9488',
+              pdf_extract: '#0d9488',
+              ocr: '#0d9488',
               deepseek: '#4d6bfe',
               qwen: '#6200ea',
               zhipu: '#00897b',

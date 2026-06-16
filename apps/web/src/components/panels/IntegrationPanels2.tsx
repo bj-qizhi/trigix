@@ -2781,6 +2781,114 @@ export function SnsConfig({ set, str }: ConfigProps) {
   )
 }
 
+export function ZipConfig({ config, set, str }: ConfigProps) {
+  const operation = str('operation', 'zip')
+  return (
+    <>
+      <div className="field">
+        <label>Operation</label>
+        <select value={operation} onChange={(e) => set('operation', e.target.value)}>
+          {['zip', 'unzip'].map((op) => <option key={op} value={op}>{op}</option>)}
+        </select>
+      </div>
+      {operation === 'zip' && (
+        <div className="field">
+          <label>Files (JSON array) <span style={{ color: 'var(--danger)' }}>*</span></label>
+          <textarea rows={5} placeholder='[{"name":"a.txt","content":"hello"},{"name":"img.png","content":"<base64>","base64":true}]' value={typeof config.files === 'object' ? JSON.stringify(config.files, null, 2) : str('files', '')} onChange={(e) => { try { set('files', JSON.parse(e.target.value)) } catch { set('files', e.target.value) } }} style={{ fontFamily: 'monospace', fontSize: 12 }} />
+          <small style={{ color: 'var(--muted)', fontSize: 10 }}>Each entry: {'{ name, content }'}; set base64:true if content is base64.</small>
+        </div>
+      )}
+      {operation === 'unzip' && (
+        <div className="field">
+          <label>Zip (base64) <span style={{ color: 'var(--danger)' }}>*</span></label>
+          <textarea rows={4} placeholder="UEsDBBQ…" value={str('zip_base64', '')} onChange={(e) => set('zip_base64', e.target.value)} style={{ fontFamily: 'monospace', fontSize: 12 }} />
+        </div>
+      )}
+      <p style={{ fontSize: 11, color: 'var(--muted)', margin: '8px 0 0' }}>
+        {operation === 'zip'
+          ? <>Returns <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>{'{ zip_base64, file_count, size }'}</code></>
+          : <>Returns <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>{'{ files: [{name, content_base64, size}] }'}</code></>}
+      </p>
+    </>
+  )
+}
+
+export function ImageConfig({ set, str }: ConfigProps) {
+  const operation = str('operation', 'metadata')
+  return (
+    <>
+      <div className="field">
+        <label>Operation</label>
+        <select value={operation} onChange={(e) => set('operation', e.target.value)}>
+          {['metadata', 'resize', 'convert'].map((op) => <option key={op} value={op}>{op}</option>)}
+        </select>
+      </div>
+      <div className="field">
+        <label>Image (base64) <span style={{ color: 'var(--danger)' }}>*</span></label>
+        <textarea rows={4} placeholder="iVBORw0KGgo…" value={str('image_base64', '')} onChange={(e) => set('image_base64', e.target.value)} style={{ fontFamily: 'monospace', fontSize: 12 }} />
+      </div>
+      {operation === 'resize' && (
+        <div style={{ display: 'flex', gap: 8 }}>
+          <div className="field" style={{ flex: 1 }}>
+            <label>Width</label>
+            <input type="number" min={1} placeholder="(auto)" value={str('width', '')} onChange={(e) => set('width', e.target.value ? parseInt(e.target.value) : undefined)} />
+          </div>
+          <div className="field" style={{ flex: 1 }}>
+            <label>Height</label>
+            <input type="number" min={1} placeholder="(auto)" value={str('height', '')} onChange={(e) => set('height', e.target.value ? parseInt(e.target.value) : undefined)} />
+          </div>
+        </div>
+      )}
+      {(operation === 'resize' || operation === 'convert') && (
+        <div className="field">
+          <label>Format {operation === 'convert' && <span style={{ color: 'var(--danger)' }}>*</span>}</label>
+          <select value={str('format', operation === 'resize' ? 'png' : '')} onChange={(e) => set('format', e.target.value)}>
+            {(operation === 'convert' ? [''] : []).concat(['png', 'jpeg', 'gif', 'bmp', 'webp']).map((f) => <option key={f} value={f}>{f || '— choose —'}</option>)}
+          </select>
+        </div>
+      )}
+      <p style={{ fontSize: 11, color: 'var(--muted)', margin: '8px 0 0' }}>
+        {operation === 'metadata'
+          ? <>Returns <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>{'{ width, height, color }'}</code></>
+          : <>Returns <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>{'{ image_base64, format, width, height }'}</code></>}
+      </p>
+    </>
+  )
+}
+
+export function PdfExtractConfig({ set, str }: ConfigProps) {
+  return (
+    <>
+      <div className="field">
+        <label>PDF (base64) <span style={{ color: 'var(--danger)' }}>*</span></label>
+        <textarea rows={5} placeholder="JVBERi0xLjc…" value={str('pdf_base64', '')} onChange={(e) => set('pdf_base64', e.target.value)} style={{ fontFamily: 'monospace', fontSize: 12 }} />
+      </div>
+      <p style={{ fontSize: 11, color: 'var(--muted)', margin: '8px 0 0' }}>
+        Extracts text from a PDF. Returns <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>{'{ text, char_count }'}</code>
+      </p>
+    </>
+  )
+}
+
+export function OcrConfig({ set, str }: ConfigProps) {
+  return (
+    <>
+      <div className="field">
+        <label>Image (base64) <span style={{ color: 'var(--danger)' }}>*</span></label>
+        <textarea rows={4} placeholder="iVBORw0KGgo…" value={str('image_base64', '')} onChange={(e) => set('image_base64', e.target.value)} style={{ fontFamily: 'monospace', fontSize: 12 }} />
+      </div>
+      <div className="field">
+        <label>Language</label>
+        <input placeholder="eng" value={str('lang', '')} onChange={(e) => set('lang', e.target.value)} />
+        <small style={{ color: 'var(--muted)', fontSize: 10 }}>tesseract lang code(s), e.g. eng, chi_sim, eng+fra. Requires the tesseract CLI on the executor host.</small>
+      </div>
+      <p style={{ fontSize: 11, color: 'var(--muted)', margin: '8px 0 0' }}>
+        OCR via tesseract. Returns <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>{'{ text, lang }'}</code>
+      </p>
+    </>
+  )
+}
+
 export function HashConfig({ set, str }: ConfigProps) {
   const operation = str('operation', 'sha256')
   const OPERATIONS = ['sha256', 'sha384', 'sha512', 'hmac_sha256', 'hmac_sha384', 'hmac_sha512']
