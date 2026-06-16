@@ -546,6 +546,7 @@ async fn dispatch(
         NodeType::AzureBlob => execute_azure_blob(node, context, http_client).await,
         NodeType::Hash => execute_hash(node, context).await,
         NodeType::Jwt => execute_jwt(node, context).await,
+        NodeType::Vertex => execute_vertex(node, context, http_client).await,
         NodeType::Deepseek => execute_deepseek(node, context, http_client).await,
         NodeType::Qwen => execute_qwen(node, context, http_client).await,
         NodeType::Zhipu => execute_zhipu(node, context, http_client).await,
@@ -1579,7 +1580,12 @@ mod tests {
     async fn grok_and_ollama_nodes_require_config() {
         let executor = DispatchingNodeExecutor::new(None);
         let context = make_context("{}");
-        for nt in [NodeType::Grok, NodeType::Ollama, NodeType::AzureOpenai] {
+        for nt in [
+            NodeType::Grok,
+            NodeType::Ollama,
+            NodeType::AzureOpenai,
+            NodeType::Vertex,
+        ] {
             let node = Node {
                 id: "llm".to_string(),
                 node_type: nt,

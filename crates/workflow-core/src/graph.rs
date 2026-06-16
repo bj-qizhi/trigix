@@ -204,6 +204,8 @@ pub enum NodeType {
     Hash,
     /// HMAC-signed JWT (HS256/384/512) sign & verify.
     Jwt,
+    /// Google Vertex AI (Gemini generateContent, OAuth2 bearer token).
+    Vertex,
     // ── 中国国内大模型 ───────────────────────────────────
     Deepseek,
     Qwen,

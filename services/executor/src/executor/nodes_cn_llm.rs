@@ -313,6 +313,105 @@ pub(super) async fn execute_azure_openai(
     )
 }
 
+// ── Google Vertex AI (Gemini, generateContent) ────────────────────────────────
+// Stays fully HTTP by taking a caller-supplied OAuth2 access token (same model
+// as the GCS node) instead of signing a service-account JWT.
+pub(super) async fn execute_vertex(
+    node: &Node,
+    context: &ExecutionContext,
+    http_client: &reqwest::Client,
+) -> NodeExecutionResult {
+    let config = match node.config.as_ref() {
+        Some(c) => c,
+        None => return NodeExecutionResult::failed("Vertex AI node requires config"),
+    };
+    let field = |k: &str| {
+        config
+            .get(k)
+            .and_then(|v| v.as_str())
+            .map(|s| resolve_template(s, context))
+    };
+    let access_token =
+        match field("access_token") {
+            Some(t) if !t.is_empty() => t,
+            _ => return NodeExecutionResult::failed(
+                "Vertex AI requires 'access_token' (OAuth2 bearer for the cloud-platform scope)",
+            ),
+        };
+    let project = match field("project") {
+        Some(p) if !p.is_empty() => p,
+        _ => return NodeExecutionResult::failed("Vertex AI requires 'project'"),
+    };
+    let location = field("location")
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| "us-central1".to_string());
+    let model = field("model")
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| "gemini-1.5-flash".to_string());
+    let prompt = match field("prompt_template") {
+        Some(p) if !p.is_empty() => p,
+        _ => return NodeExecutionResult::failed("Vertex AI requires 'prompt_template'"),
+    };
+    let max_tokens = config
+        .get("max_tokens")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(1024);
+    let temperature = config
+        .get("temperature")
+        .and_then(|v| v.as_f64())
+        .unwrap_or(0.7);
+
+    let mut payload = serde_json::json!({
+        "contents": [{ "role": "user", "parts": [{ "text": prompt }] }],
+        "generationConfig": { "maxOutputTokens": max_tokens, "temperature": temperature },
+    });
+    if let Some(sys) = field("system_prompt").filter(|s| !s.is_empty()) {
+        payload["systemInstruction"] = serde_json::json!({ "parts": [{ "text": sys }] });
+    }
+
+    let url = format!(
+        "https://{location}-aiplatform.googleapis.com/v1/projects/{project}/locations/{location}/publishers/google/models/{model}:generateContent"
+    );
+    let resp = match http_client
+        .post(&url)
+        .header("Authorization", format!("Bearer {access_token}"))
+        .header("Content-Type", "application/json")
+        .json(&payload)
+        .send()
+        .await
+    {
+        Ok(r) => r,
+        Err(e) => return NodeExecutionResult::failed(format!("Vertex AI request error: {e}")),
+    };
+    let status = resp.status();
+    let body = resp.text().await.unwrap_or_default();
+    if !status.is_success() {
+        return NodeExecutionResult::failed(format!("Vertex AI API {}: {}", status.as_u16(), body));
+    }
+    let parsed: serde_json::Value = match serde_json::from_str(&body) {
+        Ok(v) => v,
+        Err(e) => return NodeExecutionResult::failed(format!("Vertex AI parse error: {e}")),
+    };
+    // Concatenate all text parts of the first candidate.
+    let content = parsed["candidates"][0]["content"]["parts"]
+        .as_array()
+        .map(|parts| {
+            parts
+                .iter()
+                .filter_map(|p| p.get("text").and_then(|t| t.as_str()))
+                .collect::<Vec<_>>()
+                .join("")
+        })
+        .unwrap_or_default();
+    let usage = parsed
+        .get("usageMetadata")
+        .cloned()
+        .unwrap_or(serde_json::Value::Null);
+    NodeExecutionResult::succeeded(
+        serde_json::json!({ "content": content, "model": model, "usage": usage }).to_string(),
+    )
+}
+
 // ── DeepSeek ─────────────────────────────────────────────────────────────────
 pub(super) async fn execute_deepseek(
     node: &Node,

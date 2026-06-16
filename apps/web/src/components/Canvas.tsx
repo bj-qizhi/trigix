@@ -284,6 +284,7 @@ const NODE_LABELS: Record<NodeType, string> = {
   azure_blob: 'Azure Blob',
   hash: 'Hash / HMAC',
   jwt: 'JWT',
+  vertex: 'Vertex AI',
   deepseek: 'DeepSeek',
   qwen: '通义千问',
   zhipu: '智谱 GLM',
@@ -438,6 +439,7 @@ const NODE_ICONS: Record<NodeType, string> = {
   azure_blob: '📦',
   hash: '#️⃣',
   jwt: '🔑',
+  vertex: '🔷',
   deepseek: '🐋',
   qwen: '🧩',
   zhipu: '🔮',
@@ -607,6 +609,7 @@ function FlowNodeComponent({ data, selected, id }: NodeProps) {
     if (nt === 'azure_blob') return c.container ? `${String(c.operation ?? 'list')} ${String(c.container)}${c.blob ? '/'+String(c.blob) : ''}` : 'No container'
     if (nt === 'hash') return String(c.operation ?? 'sha256')
     if (nt === 'jwt') return `${String(c.operation ?? 'sign')} · ${String(c.algorithm ?? 'HS256')}`
+    if (nt === 'vertex') return String(c.model ?? 'gemini-1.5-flash')
     if (nt === 'deepseek') return c.model ? String(c.model) : 'deepseek-chat'
     if (nt === 'qwen') return c.model ? String(c.model) : 'qwen-max'
     if (nt === 'zhipu') return c.model ? String(c.model) : 'glm-4'
@@ -799,6 +802,7 @@ const nodeTypes = {
   azure_blob: FlowNodeComponent,
   hash: FlowNodeComponent,
   jwt: FlowNodeComponent,
+  vertex: FlowNodeComponent,
   deepseek: FlowNodeComponent,
   qwen: FlowNodeComponent,
   zhipu: FlowNodeComponent,
@@ -1217,6 +1221,7 @@ export function Canvas({
               azure_blob: '#0078d4',
               hash: '#134e4a',
               jwt: '#134e4a',
+              vertex: '#4285f4',
               deepseek: '#4d6bfe',
               qwen: '#6200ea',
               zhipu: '#00897b',

@@ -3139,6 +3139,35 @@ function CnLlmCommonFields({ str, set, num }: Pick<ConfigProps, 'str' | 'set' | 
   )
 }
 
+export function VertexConfig({ set, str, num }: ConfigProps) {
+  return (
+    <>
+      <div className="field">
+        <label>Access Token *</label>
+        <input type="password" placeholder="OAuth2 bearer (cloud-platform scope)" value={str('access_token', '')} onChange={(e) => set('access_token', e.target.value)} style={{ fontFamily: 'monospace', fontSize: 12 }} />
+      </div>
+      <div className="field">
+        <label>Project *</label>
+        <input placeholder="my-gcp-project" value={str('project', '')} onChange={(e) => set('project', e.target.value)} style={{ fontFamily: 'monospace', fontSize: 12 }} />
+      </div>
+      <div style={{ display: 'flex', gap: 8 }}>
+        <div className="field" style={{ flex: 1 }}>
+          <label>Location</label>
+          <input placeholder="us-central1" value={str('location', '')} onChange={(e) => set('location', e.target.value)} />
+        </div>
+        <div className="field" style={{ flex: 1 }}>
+          <label>Model</label>
+          <input placeholder="gemini-1.5-flash" value={str('model', '')} onChange={(e) => set('model', e.target.value)} />
+        </div>
+      </div>
+      <CnLlmCommonFields str={str} set={set} num={num} />
+      <p style={{ fontSize: 11, color: 'var(--muted)', margin: '8px 0 0' }}>
+        Vertex AI generateContent. Returns <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>{'{ content, model, usage }'}</code>
+      </p>
+    </>
+  )
+}
+
 export function AzureOpenaiConfig({ set, str, num }: ConfigProps) {
   return (
     <>
