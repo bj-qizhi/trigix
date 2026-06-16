@@ -2488,6 +2488,88 @@ export function ClickhouseConfig({ set, str }: ConfigProps) {
   )
 }
 
+export function HashConfig({ set, str }: ConfigProps) {
+  const operation = str('operation', 'sha256')
+  const OPERATIONS = ['sha256', 'sha384', 'sha512', 'hmac_sha256', 'hmac_sha384', 'hmac_sha512']
+  const isHmac = operation.startsWith('hmac')
+  return (
+    <>
+      <div className="field">
+        <label>Algorithm</label>
+        <select value={operation} onChange={(e) => set('operation', e.target.value)}>
+          {OPERATIONS.map((op) => <option key={op} value={op}>{op}</option>)}
+        </select>
+      </div>
+      <div className="field">
+        <label>Input</label>
+        <textarea rows={3} placeholder="text to hash" value={str('input', '')} onChange={(e) => set('input', e.target.value)} style={{ fontFamily: 'monospace', fontSize: 12 }} />
+      </div>
+      {isHmac && (
+        <div className="field">
+          <label>Key <span style={{ color: 'var(--danger)' }}>*</span></label>
+          <input type="password" value={str('key', '')} onChange={(e) => set('key', e.target.value)} style={{ fontFamily: 'monospace', fontSize: 12 }} />
+        </div>
+      )}
+      <div className="field">
+        <label>Encoding</label>
+        <select value={str('encoding', 'hex')} onChange={(e) => set('encoding', e.target.value)}>
+          {['hex', 'base64', 'base64url'].map((enc) => <option key={enc} value={enc}>{enc}</option>)}
+        </select>
+      </div>
+      <p style={{ fontSize: 11, color: 'var(--muted)', margin: '8px 0 0' }}>
+        Hash / HMAC digest. Returns <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>{'{ hash, algorithm, encoding }'}</code>
+      </p>
+    </>
+  )
+}
+
+export function JwtConfig({ config, set, str }: ConfigProps) {
+  const operation = str('operation', 'sign')
+  return (
+    <>
+      <div className="field">
+        <label>Operation</label>
+        <select value={operation} onChange={(e) => set('operation', e.target.value)}>
+          {['sign', 'verify'].map((op) => <option key={op} value={op}>{op}</option>)}
+        </select>
+      </div>
+      <div className="field">
+        <label>Algorithm</label>
+        <select value={str('algorithm', 'HS256')} onChange={(e) => set('algorithm', e.target.value)}>
+          {['HS256', 'HS384', 'HS512'].map((a) => <option key={a} value={a}>{a}</option>)}
+        </select>
+      </div>
+      <div className="field">
+        <label>Secret <span style={{ color: 'var(--danger)' }}>*</span></label>
+        <input type="password" value={str('secret', '')} onChange={(e) => set('secret', e.target.value)} style={{ fontFamily: 'monospace', fontSize: 12 }} />
+      </div>
+      {operation === 'sign' && (
+        <>
+          <div className="field">
+            <label>Payload (JSON object)</label>
+            <textarea rows={3} placeholder='{"sub":"123","name":"Ada"}' value={typeof config.payload === 'object' ? JSON.stringify(config.payload, null, 2) : str('payload', '')} onChange={(e) => { try { set('payload', JSON.parse(e.target.value)) } catch { set('payload', e.target.value) } }} style={{ fontFamily: 'monospace', fontSize: 12 }} />
+          </div>
+          <div className="field">
+            <label>Expires In (seconds)</label>
+            <input type="number" min={1} placeholder="3600" value={(config['expires_in_secs'] as number | undefined) ?? ''} onChange={(e) => set('expires_in_secs', e.target.value ? parseInt(e.target.value) : undefined)} />
+          </div>
+        </>
+      )}
+      {operation === 'verify' && (
+        <div className="field">
+          <label>Token <span style={{ color: 'var(--danger)' }}>*</span></label>
+          <textarea rows={3} placeholder="eyJhbGciOi…" value={str('token', '')} onChange={(e) => set('token', e.target.value)} style={{ fontFamily: 'monospace', fontSize: 12 }} />
+        </div>
+      )}
+      <p style={{ fontSize: 11, color: 'var(--muted)', margin: '8px 0 0' }}>
+        {operation === 'sign'
+          ? <>Signs an HMAC JWT. Returns <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>{'{ token }'}</code></>
+          : <>Verifies signature + exp. Returns <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>{'{ valid, payload }'}</code></>}
+      </p>
+    </>
+  )
+}
+
 export function GcsConfig({ set, str }: ConfigProps) {
   const operation = str('operation', 'list')
   const OPERATIONS = ['list', 'get', 'download', 'upload', 'delete']

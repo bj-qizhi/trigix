@@ -200,6 +200,10 @@ pub enum NodeType {
     Gcs,
     /// Azure Blob Storage (REST + SAS token).
     AzureBlob,
+    /// Cryptographic hashing / HMAC (SHA-256/384/512).
+    Hash,
+    /// HMAC-signed JWT (HS256/384/512) sign & verify.
+    Jwt,
     // ── 中国国内大模型 ───────────────────────────────────
     Deepseek,
     Qwen,

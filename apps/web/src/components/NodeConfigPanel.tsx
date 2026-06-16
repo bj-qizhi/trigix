@@ -43,7 +43,7 @@ import {
   GoogledriveConfig, WoocommerceConfig, PineconeConfig, Awss3Config, QdrantConfig,
   CloudinaryConfig, GcalConfig, DocusignConfig, XeroConfig, CalendlyConfig, ApifyConfig,
   GanalyticsConfig, NeonConfig, CopperConfig,
-  AzureOpenaiConfig, GrokConfig, OllamaConfig, WeaviateConfig, ChromaConfig, MongodbConfig, ClickhouseConfig, GcsConfig, AzureBlobConfig,
+  AzureOpenaiConfig, GrokConfig, OllamaConfig, WeaviateConfig, ChromaConfig, MongodbConfig, ClickhouseConfig, GcsConfig, AzureBlobConfig, HashConfig, JwtConfig,
   DeepseekConfig, QwenConfig, ZhipuConfig, MoonshotConfig,
   DoubaoConfig, MinimaxConfig, ErnieConfig, HunyuanConfig,
 } from './panels/IntegrationPanels2'
@@ -106,6 +106,8 @@ const NODE_DESCRIPTIONS: Partial<Record<NodeType, { en: string; zh: string }>> =
   clickhouse:{ en: 'Runs SQL against ClickHouse over its HTTP interface; FORMAT appended to SELECTs.', zh: '通过 HTTP 接口对 ClickHouse 执行 SQL；SELECT 自动追加 FORMAT。' },
   gcs:       { en: 'Google Cloud Storage (JSON API): list/get/download/upload/delete objects with an OAuth2 token.', zh: 'Google Cloud Storage（JSON API）：用 OAuth2 令牌增删查对象与上传下载。' },
   azure_blob:{ en: 'Azure Blob Storage (REST + SAS): list/get/put/delete blobs.', zh: 'Azure Blob 存储（REST + SAS）：增删查 Blob。' },
+  hash:      { en: 'Computes a SHA-256/384/512 or HMAC digest, output as hex/base64/base64url.', zh: '计算 SHA-256/384/512 或 HMAC 摘要，输出 hex/base64/base64url。' },
+  jwt:       { en: 'Signs or verifies an HMAC JWT (HS256/384/512), with exp handling.', zh: '签发或校验 HMAC JWT（HS256/384/512），支持过期校验。' },
   deepseek:  { en: 'Calls DeepSeek API (deepseek-chat V3, deepseek-reasoner R1). Returns content and usage.', zh: '调用 DeepSeek API（deepseek-chat V3、deepseek-reasoner R1），返回内容和 Token 用量。' },
   qwen:      { en: 'Calls Alibaba Qwen via DashScope (qwen-max, qwen-plus, qwen-turbo, qwen-long). Returns content and usage.', zh: '通过 DashScope 调用通义千问，返回内容和 Token 用量。' },
   zhipu:     { en: 'Calls Zhipu AI GLM (glm-4, glm-4-air, glm-4-flash, glm-3-turbo). Returns content and usage.', zh: '调用智谱 AI GLM 系列模型，返回内容和 Token 用量。' },
@@ -154,6 +156,8 @@ const NODE_LABELS: Partial<Record<NodeType, string>> = {
   clickhouse: 'ClickHouse',
   gcs: 'Google Cloud Storage',
   azure_blob: 'Azure Blob',
+  hash: 'Hash / HMAC',
+  jwt: 'JWT',
   deepseek: 'DeepSeek',
   qwen: '通义千问',
   zhipu: '智谱 GLM',
@@ -203,6 +207,8 @@ const NODE_COLORS: Partial<Record<NodeType, string>> = {
   clickhouse: 'var(--node-database)',
   gcs: 'var(--node-awss3)',
   azure_blob: 'var(--node-awss3)',
+  hash: 'var(--node-crypto)',
+  jwt: 'var(--node-crypto)',
   deepseek: 'var(--node-deepseek)',
   qwen: 'var(--node-qwen)',
   zhipu: 'var(--node-zhipu)',
@@ -242,6 +248,8 @@ const NODE_OUTPUTS: Partial<Record<NodeType, string[]>> = {
   clickhouse:   ['status', 'body'],
   gcs:          ['status', 'body'],
   azure_blob:   ['status', 'body'],
+  hash:         ['hash', 'algorithm', 'encoding'],
+  jwt:          ['token', 'valid', 'payload'],
   deepseek:     ['content', 'model', 'usage'],
   qwen:         ['content', 'model', 'usage'],
   zhipu:        ['content', 'model', 'usage'],
@@ -657,6 +665,8 @@ export function NodeConfigPanel({ node, onUpdateConfig, recentExecutions, onSele
         {nt === 'clickhouse'      && <ClickhouseConfig      config={config} set={set} str={str} num={num} />}
         {nt === 'gcs'             && <GcsConfig             config={config} set={set} str={str} num={num} />}
         {nt === 'azure_blob'      && <AzureBlobConfig       config={config} set={set} str={str} num={num} />}
+        {nt === 'hash'            && <HashConfig            config={config} set={set} str={str} num={num} />}
+        {nt === 'jwt'             && <JwtConfig             config={config} set={set} str={str} num={num} />}
         {nt === 'deepseek'        && <DeepseekConfig        config={config} set={set} str={str} num={num} />}
         {nt === 'qwen'            && <QwenConfig            config={config} set={set} str={str} num={num} />}
         {nt === 'zhipu'           && <ZhipuConfig           config={config} set={set} str={str} num={num} />}

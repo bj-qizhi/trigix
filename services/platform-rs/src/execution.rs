@@ -2156,6 +2156,8 @@ fn node_type_to_str(node_type: &workflow_core::NodeType) -> &'static str {
         workflow_core::NodeType::Clickhouse => "clickhouse",
         workflow_core::NodeType::Gcs => "gcs",
         workflow_core::NodeType::AzureBlob => "azure_blob",
+        workflow_core::NodeType::Hash => "hash",
+        workflow_core::NodeType::Jwt => "jwt",
         // 国内大模型
         workflow_core::NodeType::Deepseek => "deepseek",
         workflow_core::NodeType::Qwen => "qwen",

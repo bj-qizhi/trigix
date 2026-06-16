@@ -41,6 +41,10 @@ use nodes_db_queue::*;
 mod nodes_storage;
 use nodes_storage::*;
 
+// Pure-compute crypto utility nodes (Hash/HMAC, JWT).
+mod nodes_tools;
+use nodes_tools::*;
+
 // SaaS integration nodes extracted into their own submodule.
 mod nodes_integrations;
 use nodes_integrations::*;
@@ -540,6 +544,8 @@ async fn dispatch(
         NodeType::Clickhouse => execute_clickhouse(node, context, http_client).await,
         NodeType::Gcs => execute_gcs(node, context, http_client).await,
         NodeType::AzureBlob => execute_azure_blob(node, context, http_client).await,
+        NodeType::Hash => execute_hash(node, context).await,
+        NodeType::Jwt => execute_jwt(node, context).await,
         NodeType::Deepseek => execute_deepseek(node, context, http_client).await,
         NodeType::Qwen => execute_qwen(node, context, http_client).await,
         NodeType::Zhipu => execute_zhipu(node, context, http_client).await,
