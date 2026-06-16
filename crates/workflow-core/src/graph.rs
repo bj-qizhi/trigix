@@ -206,6 +206,10 @@ pub enum NodeType {
     Jwt,
     /// Google Vertex AI (Gemini generateContent, OAuth2 bearer token).
     Vertex,
+    /// AWS SQS (query protocol, SigV4-signed).
+    Sqs,
+    /// AWS SNS (query protocol, SigV4-signed).
+    Sns,
     // ── 中国国内大模型 ───────────────────────────────────
     Deepseek,
     Qwen,

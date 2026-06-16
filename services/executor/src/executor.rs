@@ -45,6 +45,10 @@ use nodes_storage::*;
 mod nodes_tools;
 use nodes_tools::*;
 
+// AWS nodes signed with SigV4 (SQS, SNS).
+mod nodes_aws;
+use nodes_aws::*;
+
 // SaaS integration nodes extracted into their own submodule.
 mod nodes_integrations;
 use nodes_integrations::*;
@@ -547,6 +551,8 @@ async fn dispatch(
         NodeType::Hash => execute_hash(node, context).await,
         NodeType::Jwt => execute_jwt(node, context).await,
         NodeType::Vertex => execute_vertex(node, context, http_client).await,
+        NodeType::Sqs => execute_sqs(node, context, http_client).await,
+        NodeType::Sns => execute_sns(node, context, http_client).await,
         NodeType::Deepseek => execute_deepseek(node, context, http_client).await,
         NodeType::Qwen => execute_qwen(node, context, http_client).await,
         NodeType::Zhipu => execute_zhipu(node, context, http_client).await,

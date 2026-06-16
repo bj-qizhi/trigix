@@ -2488,6 +2488,108 @@ export function ClickhouseConfig({ set, str }: ConfigProps) {
   )
 }
 
+export function SqsConfig({ set, str, num }: ConfigProps) {
+  const operation = str('operation', 'send')
+  const OPERATIONS = ['send', 'receive', 'delete']
+  return (
+    <>
+      <div className="field">
+        <label>Access Key ID <span style={{ color: 'var(--danger)' }}>*</span></label>
+        <input value={str('access_key_id', '')} onChange={(e) => set('access_key_id', e.target.value)} style={{ fontFamily: 'monospace', fontSize: 12 }} />
+      </div>
+      <div className="field">
+        <label>Secret Access Key <span style={{ color: 'var(--danger)' }}>*</span></label>
+        <input type="password" value={str('secret_access_key', '')} onChange={(e) => set('secret_access_key', e.target.value)} style={{ fontFamily: 'monospace', fontSize: 12 }} />
+      </div>
+      <div className="field">
+        <label>Region</label>
+        <input placeholder="us-east-1" value={str('region', '')} onChange={(e) => set('region', e.target.value)} />
+      </div>
+      <div className="field">
+        <label>Queue URL <span style={{ color: 'var(--danger)' }}>*</span></label>
+        <input placeholder="https://sqs.us-east-1.amazonaws.com/123/my-queue" value={str('queue_url', '')} onChange={(e) => set('queue_url', e.target.value)} style={{ fontFamily: 'monospace', fontSize: 12 }} />
+      </div>
+      <div className="field">
+        <label>Operation</label>
+        <select value={operation} onChange={(e) => set('operation', e.target.value)}>
+          {OPERATIONS.map((op) => <option key={op} value={op}>{op}</option>)}
+        </select>
+      </div>
+      {operation === 'send' && (
+        <>
+          <div className="field">
+            <label>Message Body <span style={{ color: 'var(--danger)' }}>*</span></label>
+            <textarea rows={3} value={str('message_body', '')} onChange={(e) => set('message_body', e.target.value)} />
+          </div>
+          <div className="field">
+            <label>Message Group ID <span style={{ color: 'var(--muted)' }}>(FIFO)</span></label>
+            <input value={str('message_group_id', '')} onChange={(e) => set('message_group_id', e.target.value)} />
+          </div>
+        </>
+      )}
+      {operation === 'receive' && (
+        <div className="field">
+          <label>Max Messages</label>
+          <input type="number" min={1} max={10} value={num('max_messages', 1)} onChange={(e) => set('max_messages', Number(e.target.value))} />
+        </div>
+      )}
+      {operation === 'delete' && (
+        <div className="field">
+          <label>Receipt Handle <span style={{ color: 'var(--danger)' }}>*</span></label>
+          <textarea rows={2} value={str('receipt_handle', '')} onChange={(e) => set('receipt_handle', e.target.value)} style={{ fontFamily: 'monospace', fontSize: 12 }} />
+        </div>
+      )}
+      <p style={{ fontSize: 11, color: 'var(--muted)', margin: '8px 0 0' }}>
+        AWS SQS (SigV4-signed). Returns <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>{'{ status, body }'}</code>
+      </p>
+    </>
+  )
+}
+
+export function SnsConfig({ set, str }: ConfigProps) {
+  return (
+    <>
+      <div className="field">
+        <label>Access Key ID <span style={{ color: 'var(--danger)' }}>*</span></label>
+        <input value={str('access_key_id', '')} onChange={(e) => set('access_key_id', e.target.value)} style={{ fontFamily: 'monospace', fontSize: 12 }} />
+      </div>
+      <div className="field">
+        <label>Secret Access Key <span style={{ color: 'var(--danger)' }}>*</span></label>
+        <input type="password" value={str('secret_access_key', '')} onChange={(e) => set('secret_access_key', e.target.value)} style={{ fontFamily: 'monospace', fontSize: 12 }} />
+      </div>
+      <div className="field">
+        <label>Region</label>
+        <input placeholder="us-east-1" value={str('region', '')} onChange={(e) => set('region', e.target.value)} />
+      </div>
+      <div className="field">
+        <label>Topic ARN <span style={{ color: 'var(--muted)' }}>(or Target ARN / Phone)</span></label>
+        <input placeholder="arn:aws:sns:us-east-1:123:my-topic" value={str('topic_arn', '')} onChange={(e) => set('topic_arn', e.target.value)} style={{ fontFamily: 'monospace', fontSize: 12 }} />
+      </div>
+      <div style={{ display: 'flex', gap: 8 }}>
+        <div className="field" style={{ flex: 1 }}>
+          <label>Target ARN</label>
+          <input value={str('target_arn', '')} onChange={(e) => set('target_arn', e.target.value)} style={{ fontFamily: 'monospace', fontSize: 12 }} />
+        </div>
+        <div className="field" style={{ flex: 1 }}>
+          <label>Phone Number</label>
+          <input placeholder="+15551234567" value={str('phone_number', '')} onChange={(e) => set('phone_number', e.target.value)} />
+        </div>
+      </div>
+      <div className="field">
+        <label>Subject</label>
+        <input value={str('subject', '')} onChange={(e) => set('subject', e.target.value)} />
+      </div>
+      <div className="field">
+        <label>Message <span style={{ color: 'var(--danger)' }}>*</span></label>
+        <textarea rows={3} value={str('message', '')} onChange={(e) => set('message', e.target.value)} />
+      </div>
+      <p style={{ fontSize: 11, color: 'var(--muted)', margin: '8px 0 0' }}>
+        AWS SNS Publish (SigV4-signed). Returns <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>{'{ status, body }'}</code>
+      </p>
+    </>
+  )
+}
+
 export function HashConfig({ set, str }: ConfigProps) {
   const operation = str('operation', 'sha256')
   const OPERATIONS = ['sha256', 'sha384', 'sha512', 'hmac_sha256', 'hmac_sha384', 'hmac_sha512']
