@@ -7,7 +7,7 @@
 
 use super::*;
 use crate::runtime::{ExecutionContext, NodeExecutionResult};
-use sqlx::{Column as _, Row as _};
+// sqlx's Column/Row traits are already in scope via `use super::*`.
 use std::time::Duration;
 use workflow_core::Node;
 

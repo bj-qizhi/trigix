@@ -94,6 +94,7 @@ fn form_encode(params: &[(String, String)]) -> String {
 }
 
 // Shared driver for the SQS/SNS query protocol.
+#[allow(clippy::too_many_arguments)]
 async fn aws_query_call(
     http_client: &reqwest::Client,
     service: &str,
