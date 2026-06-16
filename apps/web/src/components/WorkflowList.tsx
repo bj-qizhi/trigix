@@ -29,6 +29,7 @@ interface Props {
   onOrgs: () => void
   onAccount: () => void
   onAffiliate: () => void
+  onPayouts: () => void
   onUsers: () => void
   onSchedules: () => void
   onMonitoring: () => void
@@ -136,7 +137,7 @@ function addRecentId(id: string) {
   try { localStorage.setItem(RECENT_KEY, JSON.stringify(ids)) } catch { /* ignore */ }
 }
 
-export function WorkflowList({ onOpen, onOpenExecution, onCredentials, onAuditLog, onRuns, onAnalytics, onEnvironment, onWorkspaces, onWebhooks, onApiKeys, onSso, onKnowledge, onCustomNodes, onEventSubscriptions, onOrgs, onAccount, onAffiliate, onUsers, onSchedules, onMonitoring, onApprovals, onWorkflowDeps }: Props) {
+export function WorkflowList({ onOpen, onOpenExecution, onCredentials, onAuditLog, onRuns, onAnalytics, onEnvironment, onWorkspaces, onWebhooks, onApiKeys, onSso, onKnowledge, onCustomNodes, onEventSubscriptions, onOrgs, onAccount, onAffiliate, onPayouts, onUsers, onSchedules, onMonitoring, onApprovals, onWorkflowDeps }: Props) {
   const { auth, logout } = useAuth()
   const { theme, toggle: toggleTheme } = useTheme()
   const { locale, toggle: toggleLocale, t } = useLocale()
@@ -1153,6 +1154,26 @@ export function WorkflowList({ onOpen, onOpenExecution, onCredentials, onAuditLo
                     onMouseLeave={(e) => (e.currentTarget.style.background = 'none')}
                   >
                     {t('wl.btn.users')}
+                  </button>
+                )}
+                {auth?.role === 'admin' && (
+                  <button
+                    onClick={() => { onPayouts(); setShowUserMenu(false) }}
+                    style={{
+                      display: 'block',
+                      width: '100%',
+                      padding: '8px 16px',
+                      background: 'none',
+                      border: 'none',
+                      cursor: 'pointer',
+                      fontSize: '0.875rem',
+                      color: 'var(--text)',
+                      textAlign: 'left',
+                    }}
+                    onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--hover)')}
+                    onMouseLeave={(e) => (e.currentTarget.style.background = 'none')}
+                  >
+                    {locale === 'zh' ? '💸 提现审批' : '💸 Payout approvals'}
                   </button>
                 )}
                 <div style={{ borderTop: '1px solid var(--border)', margin: '4px 0' }} />

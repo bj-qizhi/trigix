@@ -74,6 +74,34 @@ test('affiliate can request a USDT payout', async ({ page }) => {
   expect((body as { currency?: string } | null)?.currency).toBe('usd')
 })
 
+test('admin can approve a payout request', async ({ page }) => {
+  await page.addInitScript((auth) => localStorage.setItem('af_auth', JSON.stringify(auth)), AUTH)
+  await page.route('**/v1/**', (r) => r.fulfill({ status: 403, json: {} }))
+  await page.route('**/v1/affiliate/admin/payouts', (r) =>
+    r.fulfill({
+      json: [
+        { id: 'pr1', tenant_id: 't-aff', method: 'usdt', address: 'TWallet', currency: 'usd', amount_cents: 5000, status: 'requested', note: null, created_at: 1, processed_at: null },
+      ],
+    }),
+  )
+  let processed: { id?: string; approve?: boolean } | null = null
+  await page.route('**/v1/affiliate/admin/payouts/process', async (r) => {
+    processed = JSON.parse(r.request().postData() || '{}')
+    await r.fulfill({
+      json: { id: 'pr1', tenant_id: 't-aff', method: 'usdt', address: 'TWallet', currency: 'usd', amount_cents: 5000, status: 'paid', note: null, created_at: 1, processed_at: 2 },
+    })
+  })
+
+  await page.goto('/')
+  await page.locator('button[title^="Signed in as"]').click()
+  await page.getByText('提现审批', { exact: false }).click()
+
+  await expect(page.getByText('t-aff')).toBeVisible()
+  await expect(page.getByText('50.00 USD')).toBeVisible()
+  await page.getByRole('button', { name: '批准' }).click()
+  await expect.poll(() => (processed as { approve?: boolean } | null)?.approve).toBe(true)
+})
+
 test('referral code from ?ref is forwarded on register', async ({ page }) => {
   const sysinfo = {
     version: 'test', node_types: 1, auth_required: false, rust_edition: '2021', features: [],

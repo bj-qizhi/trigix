@@ -738,6 +738,19 @@ export function requestPayout(address: string, currency: string, amountCents: nu
   })
 }
 
+/** Operator (admin): pending payout requests awaiting approval. */
+export function listPendingPayouts(): Promise<PayoutRequest[]> {
+  return request('/v1/affiliate/admin/payouts')
+}
+
+/** Operator (admin): approve (books the payout) or reject a request. */
+export function processPayout(id: string, approve: boolean, note?: string): Promise<PayoutRequest> {
+  return request('/v1/affiliate/admin/payouts/process', {
+    method: 'POST',
+    body: JSON.stringify({ id, approve, note }),
+  })
+}
+
 export interface NodeTypeStat {
   node_type: string
   total: number
