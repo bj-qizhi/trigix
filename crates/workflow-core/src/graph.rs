@@ -248,6 +248,10 @@ pub enum NodeType {
     SpeechToText,
     /// Text-to-speech synthesis (OpenAI-compatible).
     Tts,
+    /// HTML extraction via CSS selectors.
+    HtmlExtract,
+    /// RSS / Atom feed reading.
+    Rss,
     // ── 中国国内大模型 ───────────────────────────────────
     Deepseek,
     Qwen,

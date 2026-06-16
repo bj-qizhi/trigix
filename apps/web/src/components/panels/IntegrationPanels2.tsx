@@ -2802,6 +2802,55 @@ function llmEndpointFields(str: ConfigProps['str'], set: ConfigProps['set'], def
   )
 }
 
+export function HtmlExtractConfig({ set, str }: ConfigProps) {
+  const mode = str('extract', 'text')
+  return (
+    <>
+      <div className="field">
+        <label>HTML <span style={{ color: 'var(--danger)' }}>*</span></label>
+        <textarea rows={4} placeholder="{{http.body}}" value={str('html', '')} onChange={(e) => set('html', e.target.value)} style={{ fontFamily: 'monospace', fontSize: 12 }} />
+      </div>
+      <div className="field">
+        <label>CSS Selector <span style={{ color: 'var(--danger)' }}>*</span></label>
+        <input placeholder="div.article h2 a" value={str('selector', '')} onChange={(e) => set('selector', e.target.value)} style={{ fontFamily: 'monospace', fontSize: 12 }} />
+      </div>
+      <div className="field">
+        <label>Extract</label>
+        <select value={mode} onChange={(e) => set('extract', e.target.value)}>
+          {['text', 'html', 'attr'].map((m) => <option key={m} value={m}>{m}</option>)}
+        </select>
+      </div>
+      {mode === 'attr' && (
+        <div className="field">
+          <label>Attribute <span style={{ color: 'var(--danger)' }}>*</span></label>
+          <input placeholder="href" value={str('attr', '')} onChange={(e) => set('attr', e.target.value)} />
+        </div>
+      )}
+      <p style={{ fontSize: 11, color: 'var(--muted)', margin: '8px 0 0' }}>
+        Returns <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>{'{ matches, count, first }'}</code>
+      </p>
+    </>
+  )
+}
+
+export function RssConfig({ set, str, num }: ConfigProps) {
+  return (
+    <>
+      <div className="field">
+        <label>Feed URL <span style={{ color: 'var(--danger)' }}>*</span></label>
+        <input placeholder="https://example.com/feed.xml" value={str('url', '')} onChange={(e) => set('url', e.target.value)} style={{ fontFamily: 'monospace', fontSize: 12 }} />
+      </div>
+      <div className="field">
+        <label>Limit</label>
+        <input type="number" min={1} max={200} value={num('limit', 20)} onChange={(e) => set('limit', Number(e.target.value))} />
+      </div>
+      <p style={{ fontSize: 11, color: 'var(--muted)', margin: '8px 0 0' }}>
+        Parses RSS 2.0 / RSS 1.0 / Atom / JSON Feed. Returns <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>{'{ feed_title, items, count }'}</code>
+      </p>
+    </>
+  )
+}
+
 export function EmbeddingConfig({ config, set, str }: ConfigProps) {
   return (
     <>

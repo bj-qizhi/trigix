@@ -10,6 +10,7 @@ export type NodeType = 'trigger' | 'http' | 'agent' | 'condition' | 'approval' |
  | 'apify' | 'ganalytics' | 'neon' | 'copper'
  | 'azure_openai' | 'grok' | 'ollama' | 'weaviate' | 'chroma' | 'mongodb' | 'clickhouse' | 'gcs' | 'azure_blob' | 'hash' | 'jwt' | 'vertex' | 'sqs' | 'sns' | 'bedrock' | 'milvus' | 'kafka' | 'rabbitmq' | 'zip' | 'image' | 'pdf_extract' | 'ocr' | 'feishu' | 'dingtalk' | 'wecom'
  | 'embedding' | 'reranker' | 'text_splitter' | 'structured_output' | 'classifier' | 'image_gen' | 'speech_to_text' | 'tts'
+ | 'html_extract' | 'rss'
  | 'deepseek' | 'qwen' | 'zhipu' | 'moonshot'
  | 'doubao' | 'minimax' | 'ernie' | 'hunyuan'
  | 'rag' | 'rag_ingest' | 'custom'

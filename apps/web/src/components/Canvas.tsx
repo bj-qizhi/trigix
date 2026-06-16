@@ -306,6 +306,8 @@ const NODE_LABELS: Record<NodeType, string> = {
   image_gen: 'Image Gen',
   speech_to_text: 'Speech → Text',
   tts: 'Text → Speech',
+  html_extract: 'HTML Extract',
+  rss: 'RSS Feed',
   deepseek: 'DeepSeek',
   qwen: '通义千问',
   zhipu: '智谱 GLM',
@@ -482,6 +484,8 @@ const NODE_ICONS: Record<NodeType, string> = {
   image_gen: '🎨',
   speech_to_text: '🎙️',
   tts: '🔊',
+  html_extract: '🔖',
+  rss: '📡',
   deepseek: '🐋',
   qwen: '🧩',
   zhipu: '🔮',
@@ -673,6 +677,8 @@ function FlowNodeComponent({ data, selected, id }: NodeProps) {
     if (nt === 'image_gen') return String(c.model ?? 'dall-e-3')
     if (nt === 'speech_to_text') return String(c.model ?? 'whisper-1')
     if (nt === 'tts') return `${String(c.model ?? 'tts-1')} · ${String(c.voice ?? 'alloy')}`
+    if (nt === 'html_extract') return c.selector ? `${String(c.extract ?? 'text')} · ${String(c.selector)}` : 'No selector'
+    if (nt === 'rss') return c.url ? String(c.url).replace(/^https?:\/\//, '').slice(0, 28) : 'No URL'
     if (nt === 'deepseek') return c.model ? String(c.model) : 'deepseek-chat'
     if (nt === 'qwen') return c.model ? String(c.model) : 'qwen-max'
     if (nt === 'zhipu') return c.model ? String(c.model) : 'glm-4'
@@ -887,6 +893,8 @@ const nodeTypes = {
   image_gen: FlowNodeComponent,
   speech_to_text: FlowNodeComponent,
   tts: FlowNodeComponent,
+  html_extract: FlowNodeComponent,
+  rss: FlowNodeComponent,
   deepseek: FlowNodeComponent,
   qwen: FlowNodeComponent,
   zhipu: FlowNodeComponent,
@@ -1327,6 +1335,8 @@ export function Canvas({
               image_gen: '#10a37f',
               speech_to_text: '#10a37f',
               tts: '#10a37f',
+              html_extract: '#0d9488',
+              rss: '#0d9488',
               deepseek: '#4d6bfe',
               qwen: '#6200ea',
               zhipu: '#00897b',

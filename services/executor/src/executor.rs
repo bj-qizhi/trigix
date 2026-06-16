@@ -65,6 +65,10 @@ use nodes_china::*;
 mod nodes_ai_blocks;
 use nodes_ai_blocks::*;
 
+// Core workflow primitives (HTML extract, RSS).
+mod nodes_core;
+use nodes_core::*;
+
 // SaaS integration nodes extracted into their own submodule.
 mod nodes_integrations;
 use nodes_integrations::*;
@@ -588,6 +592,8 @@ async fn dispatch(
         NodeType::ImageGen => execute_image_gen(node, context, http_client).await,
         NodeType::SpeechToText => execute_speech_to_text(node, context, http_client).await,
         NodeType::Tts => execute_tts(node, context, http_client).await,
+        NodeType::HtmlExtract => execute_html_extract(node, context).await,
+        NodeType::Rss => execute_rss(node, context, http_client).await,
         NodeType::Deepseek => execute_deepseek(node, context, http_client).await,
         NodeType::Qwen => execute_qwen(node, context, http_client).await,
         NodeType::Zhipu => execute_zhipu(node, context, http_client).await,

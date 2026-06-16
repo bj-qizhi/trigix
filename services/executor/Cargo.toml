@@ -26,6 +26,8 @@ chrono = { version = "0.4", features = ["serde"] }
 redis = { version = "0.26", features = ["tokio-comp"] }
 handlebars = "6"
 lru = "0.12"
+scraper = "0.21"
+feed-rs = "2"
 zip = { version = "2", default-features = false, features = ["deflate"] }
 image = { version = "0.25", default-features = false, features = ["png", "jpeg", "gif", "bmp", "webp"] }
 pdf-extract = "0.7"

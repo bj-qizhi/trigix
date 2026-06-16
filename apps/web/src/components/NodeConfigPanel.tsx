@@ -44,7 +44,7 @@ import {
   CloudinaryConfig, GcalConfig, DocusignConfig, XeroConfig, CalendlyConfig, ApifyConfig,
   GanalyticsConfig, NeonConfig, CopperConfig,
   AzureOpenaiConfig, GrokConfig, OllamaConfig, WeaviateConfig, ChromaConfig, MongodbConfig, ClickhouseConfig, GcsConfig, AzureBlobConfig, HashConfig, JwtConfig, VertexConfig, SqsConfig, SnsConfig, BedrockConfig, MilvusConfig, KafkaConfig, RabbitmqConfig, ZipConfig, ImageConfig, PdfExtractConfig, OcrConfig, FeishuConfig, DingtalkConfig, WecomConfig,
-  EmbeddingConfig, RerankerConfig, TextSplitterConfig, StructuredOutputConfig, ClassifierConfig, ImageGenConfig, SpeechToTextConfig, TtsConfig,
+  EmbeddingConfig, RerankerConfig, TextSplitterConfig, StructuredOutputConfig, ClassifierConfig, ImageGenConfig, SpeechToTextConfig, TtsConfig, HtmlExtractConfig, RssConfig,
   DeepseekConfig, QwenConfig, ZhipuConfig, MoonshotConfig,
   DoubaoConfig, MinimaxConfig, ErnieConfig, HunyuanConfig,
 } from './panels/IntegrationPanels2'
@@ -131,6 +131,8 @@ const NODE_DESCRIPTIONS: Partial<Record<NodeType, { en: string; zh: string }>> =
   image_gen: { en: 'Generate images via an OpenAI-compatible images endpoint.', zh: '调用 OpenAI 兼容图像接口生成图片。' },
   speech_to_text: { en: 'Transcribe audio (Whisper-compatible).', zh: '语音转文字（Whisper 兼容）。' },
   tts:       { en: 'Synthesize speech from text; returns base64 audio.', zh: '文字转语音，返回 base64 音频。' },
+  html_extract: { en: 'Extract content from HTML by CSS selector (text/html/attr).', zh: '按 CSS 选择器从 HTML 抽取内容（text/html/attr）。' },
+  rss:       { en: 'Read an RSS/Atom/JSON feed and return its entries.', zh: '读取 RSS/Atom/JSON 订阅源并返回条目。' },
   deepseek:  { en: 'Calls DeepSeek API (deepseek-chat V3, deepseek-reasoner R1). Returns content and usage.', zh: '调用 DeepSeek API（deepseek-chat V3、deepseek-reasoner R1），返回内容和 Token 用量。' },
   qwen:      { en: 'Calls Alibaba Qwen via DashScope (qwen-max, qwen-plus, qwen-turbo, qwen-long). Returns content and usage.', zh: '通过 DashScope 调用通义千问，返回内容和 Token 用量。' },
   zhipu:     { en: 'Calls Zhipu AI GLM (glm-4, glm-4-air, glm-4-flash, glm-3-turbo). Returns content and usage.', zh: '调用智谱 AI GLM 系列模型，返回内容和 Token 用量。' },
@@ -203,6 +205,8 @@ const NODE_LABELS: Partial<Record<NodeType, string>> = {
   image_gen: 'Image Gen',
   speech_to_text: 'Speech → Text',
   tts: 'Text → Speech',
+  html_extract: 'HTML Extract',
+  rss: 'RSS Feed',
   deepseek: 'DeepSeek',
   qwen: '通义千问',
   zhipu: '智谱 GLM',
@@ -276,6 +280,8 @@ const NODE_COLORS: Partial<Record<NodeType, string>> = {
   image_gen: 'var(--node-openai)',
   speech_to_text: 'var(--node-openai)',
   tts: 'var(--node-openai)',
+  html_extract: 'var(--node-transform)',
+  rss: 'var(--node-transform)',
   deepseek: 'var(--node-deepseek)',
   qwen: 'var(--node-qwen)',
   zhipu: 'var(--node-zhipu)',
@@ -339,6 +345,8 @@ const NODE_OUTPUTS: Partial<Record<NodeType, string[]>> = {
   image_gen:    ['status', 'body'],
   speech_to_text: ['status', 'text'],
   tts:          ['audio_base64', 'format'],
+  html_extract: ['matches', 'count', 'first'],
+  rss:          ['feed_title', 'items', 'count'],
   deepseek:     ['content', 'model', 'usage'],
   qwen:         ['content', 'model', 'usage'],
   zhipu:        ['content', 'model', 'usage'],
@@ -778,6 +786,8 @@ export function NodeConfigPanel({ node, onUpdateConfig, recentExecutions, onSele
         {nt === 'image_gen'       && <ImageGenConfig        config={config} set={set} str={str} num={num} />}
         {nt === 'speech_to_text'  && <SpeechToTextConfig    config={config} set={set} str={str} num={num} />}
         {nt === 'tts'             && <TtsConfig             config={config} set={set} str={str} num={num} />}
+        {nt === 'html_extract'    && <HtmlExtractConfig     config={config} set={set} str={str} num={num} />}
+        {nt === 'rss'             && <RssConfig             config={config} set={set} str={str} num={num} />}
         {nt === 'deepseek'        && <DeepseekConfig        config={config} set={set} str={str} num={num} />}
         {nt === 'qwen'            && <QwenConfig            config={config} set={set} str={str} num={num} />}
         {nt === 'zhipu'           && <ZhipuConfig           config={config} set={set} str={str} num={num} />}
