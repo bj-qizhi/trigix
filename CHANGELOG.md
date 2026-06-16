@@ -2,6 +2,73 @@
 
 All notable changes to Trigix will be documented in this file.
 
+## [Unreleased]
+
+A large expansion of the workflow node catalog — **44 new node types
+(136 → 180)** — covering the gaps against comparable workflow/automation
+tools and deepening the AI-native and Chinese-enterprise coverage. Each node
+is full-stack (engine + config UI) and backward compatible. Most are plain
+HTTP; the few that aren't were deliberately implemented in pure Rust (or via a
+runtime CLI) so the default `cargo build` needs no extra system library.
+
+### Added
+
+**LLM providers**
+- `azure_openai` (deployment-based, `api-key` header), `vertex` (Google Vertex
+  AI / Gemini `generateContent` with a caller-supplied OAuth2 token), `bedrock`
+  (AWS Bedrock `InvokeModel`, model-native body), `grok` (xAI), and `ollama`
+  (self-hosted, OpenAI-compatible).
+
+**AI-native building blocks** (OpenAI-/Cohere-compatible, configurable base URL)
+- `embedding`, `reranker`, `text_splitter` (pure-compute, UTF-8-safe chunking),
+  `structured_output` (LLM JSON mode), `classifier`, `image_gen`,
+  `speech_to_text` (Whisper, multipart upload), and `tts`.
+
+**Vector stores**
+- `weaviate` (REST + GraphQL), `chroma` (REST data API), and `milvus` / Zilliz
+  (REST API v2).
+
+**Databases & data warehouses**
+- `mongodb` (Atlas Data API), `clickhouse` (HTTP), `mysql` (sqlx), `snowflake`
+  (SQL API v2, bearer token), `bigquery` (jobs.query REST), and `sqlserver`
+  (Microsoft SQL Server over the pure-Rust tiberius TDS driver — no native
+  client needed).
+
+**Object storage**
+- `gcs` (Google Cloud Storage JSON API) and `azure_blob` (REST + SAS token),
+  both using caller-supplied credentials.
+
+**AWS** (a from-scratch Signature V4 signer — no AWS SDK — validated against
+AWS's published `get-vanilla` test vector)
+- `sqs`, `sns`, and `bedrock`.
+
+**Message brokers**
+- `kafka` (Confluent REST Proxy) and `rabbitmq` (Management HTTP API).
+
+**Chinese enterprise collaboration**
+- `feishu` / Lark (custom-bot webhook or app message API), `dingtalk` (custom
+  robot with optional HMAC sign), and `wecom` (WeChat Work group robot).
+
+**Network file / shell / mail** (pure-Rust clients — no libssh2/system library)
+- `ftp` / FTPS (suppaftp), `sftp` and `ssh` (russh / russh-sftp, password or
+  private-key auth), and `imap` (TLS mailbox reads).
+
+**Utilities & core primitives**
+- `hash` (SHA-256/384/512 + HMAC), `jwt` (HS256/384/512 sign & verify),
+  `zip` (create/extract), `image` (resize/convert/metadata), `pdf_extract`
+  (text extraction), `ocr` (via the `tesseract` CLI), `html_extract` (CSS
+  selectors), `rss` (RSS/Atom/JSON feeds), and `wait` (pause for a duration /
+  until a timestamp, or suspend until externally resumed via the existing
+  approve/resume endpoint).
+
+### Notes
+
+- The `ocr` node needs the `tesseract` CLI on the executor host; all other
+  nodes have no extra runtime dependency.
+- The `wait` (resume mode) and `snowflake`/`bigquery`/`vertex`/`gcs`/`azure_blob`
+  nodes take a caller-supplied token rather than performing their own
+  credential exchange.
+
 ## [1.2.0] - 2026-06-09
 
 Deeper AI-native capabilities — the agent runs on Chinese / self-hosted models,
