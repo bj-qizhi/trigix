@@ -2736,6 +2736,48 @@ function CnLlmCommonFields({ str, set, num }: Pick<ConfigProps, 'str' | 'set' | 
   )
 }
 
+export function GrokConfig({ set, str, num }: ConfigProps) {
+  return (
+    <>
+      <div className="field">
+        <label>Model</label>
+        <input placeholder="grok-2-latest" value={str('model', 'grok-2-latest')} onChange={(e) => set('model', e.target.value)} style={{ fontFamily: 'monospace', fontSize: 12 }} />
+      </div>
+      <div className="field">
+        <label>API Key *</label>
+        <input type="password" placeholder="xai-..." value={str('api_key', '')} onChange={(e) => set('api_key', e.target.value)} />
+      </div>
+      <CnLlmCommonFields str={str} set={set} num={num} />
+      <p style={{ fontSize: 11, color: 'var(--muted)', margin: '8px 0 0' }}>
+        xAI Grok (OpenAI-compatible). Returns <code>{'{ content, model, usage }'}</code>
+      </p>
+    </>
+  )
+}
+
+export function OllamaConfig({ set, str, num }: ConfigProps) {
+  return (
+    <>
+      <div className="field">
+        <label>Base URL</label>
+        <input placeholder="http://localhost:11434/v1/chat/completions" value={str('base_url', '')} onChange={(e) => set('base_url', e.target.value)} style={{ fontFamily: 'monospace', fontSize: 12 }} />
+      </div>
+      <div className="field">
+        <label>Model</label>
+        <input placeholder="llama3.2" value={str('model', 'llama3.2')} onChange={(e) => set('model', e.target.value)} style={{ fontFamily: 'monospace', fontSize: 12 }} />
+      </div>
+      <div className="field">
+        <label>API Key</label>
+        <input type="password" placeholder="(optional, ignored by local Ollama)" value={str('api_key', '')} onChange={(e) => set('api_key', e.target.value)} />
+      </div>
+      <CnLlmCommonFields str={str} set={set} num={num} />
+      <p style={{ fontSize: 11, color: 'var(--muted)', margin: '8px 0 0' }}>
+        Self-hosted Ollama (OpenAI-compatible). Returns <code>{'{ content, model, usage }'}</code>
+      </p>
+    </>
+  )
+}
+
 export function DeepseekConfig({ set, str, num }: ConfigProps) {
   return (
     <>

@@ -43,6 +43,7 @@ import {
   GoogledriveConfig, WoocommerceConfig, PineconeConfig, Awss3Config, QdrantConfig,
   CloudinaryConfig, GcalConfig, DocusignConfig, XeroConfig, CalendlyConfig, ApifyConfig,
   GanalyticsConfig, NeonConfig, CopperConfig,
+  GrokConfig, OllamaConfig,
   DeepseekConfig, QwenConfig, ZhipuConfig, MoonshotConfig,
   DoubaoConfig, MinimaxConfig, ErnieConfig, HunyuanConfig,
 } from './panels/IntegrationPanels2'
@@ -96,6 +97,8 @@ const NODE_DESCRIPTIONS: Partial<Record<NodeType, { en: string; zh: string }>> =
   xml:          { en: 'Parses an XML string into a JSON object.', zh: '将 XML 字符串解析为 JSON 对象。' },
   yaml:         { en: 'Parses YAML to JSON or serializes JSON to YAML.', zh: '在 YAML 和 JSON 之间相互转换。' },
   array_utils:  { en: 'Array utilities: chunk, flatten, compact, zip, reverse, shuffle, sample, range, pluck, first_n, last_n.', zh: '数组工具：分块、展平、去空值、合并、反转、随机打乱、采样、范围生成、字段提取、首/末 N 个。' },
+  grok:      { en: 'Calls xAI Grok (OpenAI-compatible). Returns content and usage.', zh: '调用 xAI Grok（OpenAI 兼容），返回内容和 Token 用量。' },
+  ollama:    { en: 'Calls a self-hosted Ollama server (OpenAI-compatible) at a configurable base URL.', zh: '调用自托管 Ollama 服务（OpenAI 兼容，可配置 base URL）。' },
   deepseek:  { en: 'Calls DeepSeek API (deepseek-chat V3, deepseek-reasoner R1). Returns content and usage.', zh: '调用 DeepSeek API（deepseek-chat V3、deepseek-reasoner R1），返回内容和 Token 用量。' },
   qwen:      { en: 'Calls Alibaba Qwen via DashScope (qwen-max, qwen-plus, qwen-turbo, qwen-long). Returns content and usage.', zh: '通过 DashScope 调用通义千问，返回内容和 Token 用量。' },
   zhipu:     { en: 'Calls Zhipu AI GLM (glm-4, glm-4-air, glm-4-flash, glm-3-turbo). Returns content and usage.', zh: '调用智谱 AI GLM 系列模型，返回内容和 Token 用量。' },
@@ -135,6 +138,8 @@ const NODE_LABELS: Partial<Record<NodeType, string>> = {
   graphql: 'GraphQL',
   validate: 'Validate',
   note: 'Note',
+  grok: 'xAI Grok',
+  ollama: 'Ollama',
   deepseek: 'DeepSeek',
   qwen: '通义千问',
   zhipu: '智谱 GLM',
@@ -175,6 +180,8 @@ const NODE_COLORS: Partial<Record<NodeType, string>> = {
   validate: 'var(--node-validate)',
   note: 'var(--node-note)',
   claude: 'var(--node-claude)',
+  grok: 'var(--node-claude)',
+  ollama: 'var(--node-openai)',
   deepseek: 'var(--node-deepseek)',
   qwen: 'var(--node-qwen)',
   zhipu: 'var(--node-zhipu)',
@@ -205,6 +212,8 @@ const NODE_OUTPUTS: Partial<Record<NodeType, string[]>> = {
   openai:       ['content', 'model', 'usage'],
   gemini:       ['content', 'model', 'usage'],
   claude:       ['content', 'model', 'usage'],
+  grok:         ['content', 'model', 'usage'],
+  ollama:       ['content', 'model', 'usage'],
   deepseek:     ['content', 'model', 'usage'],
   qwen:         ['content', 'model', 'usage'],
   zhipu:        ['content', 'model', 'usage'],
@@ -611,6 +620,8 @@ export function NodeConfigPanel({ node, onUpdateConfig, recentExecutions, onSele
         {nt === 'ganalytics'      && <GanalyticsConfig      config={config} set={set} str={str} num={num} />}
         {nt === 'neon'            && <NeonConfig            config={config} set={set} str={str} num={num} />}
         {nt === 'copper'          && <CopperConfig          config={config} set={set} str={str} num={num} />}
+        {nt === 'grok'            && <GrokConfig            config={config} set={set} str={str} num={num} />}
+        {nt === 'ollama'          && <OllamaConfig          config={config} set={set} str={str} num={num} />}
         {nt === 'deepseek'        && <DeepseekConfig        config={config} set={set} str={str} num={num} />}
         {nt === 'qwen'            && <QwenConfig            config={config} set={set} str={str} num={num} />}
         {nt === 'zhipu'           && <ZhipuConfig           config={config} set={set} str={str} num={num} />}

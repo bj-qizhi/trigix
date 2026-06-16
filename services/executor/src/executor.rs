@@ -519,6 +519,8 @@ async fn dispatch(
         NodeType::Ganalytics => execute_ganalytics(node, context, http_client).await,
         NodeType::Neon => execute_neon(node, context, http_client).await,
         NodeType::Copper => execute_copper(node, context, http_client).await,
+        NodeType::Grok => execute_grok(node, context, http_client).await,
+        NodeType::Ollama => execute_ollama(node, context, http_client).await,
         NodeType::Deepseek => execute_deepseek(node, context, http_client).await,
         NodeType::Qwen => execute_qwen(node, context, http_client).await,
         NodeType::Zhipu => execute_zhipu(node, context, http_client).await,
@@ -1546,6 +1548,21 @@ mod tests {
         let result = executor.execute(&node, &context).await;
 
         assert_eq!(result.status, execution_core::NodeStatus::Failed);
+    }
+
+    #[tokio::test]
+    async fn grok_and_ollama_nodes_require_config() {
+        let executor = DispatchingNodeExecutor::new(None);
+        let context = make_context("{}");
+        for nt in [NodeType::Grok, NodeType::Ollama] {
+            let node = Node {
+                id: "llm".to_string(),
+                node_type: nt,
+                config: None,
+            };
+            let result = executor.execute(&node, &context).await;
+            assert_eq!(result.status, execution_core::NodeStatus::Failed);
+        }
     }
 
     #[tokio::test]

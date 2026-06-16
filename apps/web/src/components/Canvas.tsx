@@ -273,6 +273,8 @@ const NODE_LABELS: Record<NodeType, string> = {
   ganalytics: 'Google Analytics',
   neon: 'Neon',
   copper: 'Copper CRM',
+  grok: 'xAI Grok',
+  ollama: 'Ollama',
   deepseek: 'DeepSeek',
   qwen: '通义千问',
   zhipu: '智谱 GLM',
@@ -416,6 +418,8 @@ const NODE_ICONS: Record<NodeType, string> = {
   ganalytics: '📊',
   neon: '🌀',
   copper: '🔶',
+  grok: '🤖',
+  ollama: '🦙',
   deepseek: '🐋',
   qwen: '🧩',
   zhipu: '🔮',
@@ -574,6 +578,8 @@ function FlowNodeComponent({ data, selected, id }: NodeProps) {
     if (nt === 'ganalytics') return c.property_id ? `${String(c.operation ?? 'run_report')} · ${String(c.property_id)}` : 'No property ID'
     if (nt === 'neon') return `${String(c.operation ?? 'list_projects')}${c.project_id ? ' · '+String(c.project_id).slice(0, 10)+'…' : ''}`
     if (nt === 'copper') return `${String(c.operation ?? 'list')} ${String(c.resource ?? 'people')}`
+    if (nt === 'grok') return c.model ? String(c.model) : 'grok-2-latest'
+    if (nt === 'ollama') return c.model ? String(c.model) : 'llama3.2'
     if (nt === 'deepseek') return c.model ? String(c.model) : 'deepseek-chat'
     if (nt === 'qwen') return c.model ? String(c.model) : 'qwen-max'
     if (nt === 'zhipu') return c.model ? String(c.model) : 'glm-4'
@@ -755,6 +761,8 @@ const nodeTypes = {
   ganalytics: FlowNodeComponent,
   neon: FlowNodeComponent,
   copper: FlowNodeComponent,
+  grok: FlowNodeComponent,
+  ollama: FlowNodeComponent,
   deepseek: FlowNodeComponent,
   qwen: FlowNodeComponent,
   zhipu: FlowNodeComponent,
@@ -1162,6 +1170,8 @@ export function Canvas({
               ganalytics: '#e37400',
               neon: '#00e599',
               copper: '#e8762b',
+              grok: '#111827',
+              ollama: '#0ea5e9',
               deepseek: '#4d6bfe',
               qwen: '#6200ea',
               zhipu: '#00897b',

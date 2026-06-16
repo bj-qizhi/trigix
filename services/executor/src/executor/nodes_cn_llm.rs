@@ -124,6 +124,97 @@ fn extract_chat_fields(
     ))
 }
 
+// ── xAI Grok ─────────────────────────────────────────────────────────────────
+pub(super) async fn execute_grok(
+    node: &Node,
+    context: &ExecutionContext,
+    http_client: &reqwest::Client,
+) -> NodeExecutionResult {
+    let config = match node.config.as_ref() {
+        Some(c) => c,
+        None => return NodeExecutionResult::failed("Grok node requires config"),
+    };
+    let (api_key, model, messages, max_tokens, temperature) =
+        match extract_chat_fields("Grok", config, context, "grok-2-latest") {
+            Ok(v) => v,
+            Err(e) => return e,
+        };
+    openai_compat_chat(
+        "Grok",
+        &api_key,
+        "https://api.x.ai/v1/chat/completions",
+        &model,
+        messages,
+        max_tokens,
+        temperature,
+        http_client,
+    )
+    .await
+}
+
+// ── Ollama (self-hosted, OpenAI-compatible) ───────────────────────────────────
+pub(super) async fn execute_ollama(
+    node: &Node,
+    context: &ExecutionContext,
+    http_client: &reqwest::Client,
+) -> NodeExecutionResult {
+    let config = match node.config.as_ref() {
+        Some(c) => c,
+        None => return NodeExecutionResult::failed("Ollama node requires config"),
+    };
+    // Self-hosted: base URL is configurable and the API key is optional.
+    let base_url = config
+        .get("base_url")
+        .and_then(|v| v.as_str())
+        .map(|s| resolve_template(s, context))
+        .unwrap_or_else(|| "http://localhost:11434/v1/chat/completions".to_string());
+    let api_key = config
+        .get("api_key")
+        .and_then(|v| v.as_str())
+        .map(|k| resolve_template(k, context))
+        .unwrap_or_else(|| "ollama".to_string());
+    // Reuse the shared field extraction, but the api_key is optional here so we
+    // only need model/prompt/system/max_tokens/temperature from it.
+    let model = config
+        .get("model")
+        .and_then(|v| v.as_str())
+        .unwrap_or("llama3.2")
+        .to_string();
+    let prompt = match config.get("prompt_template").and_then(|v| v.as_str()) {
+        Some(t) => resolve_template(t, context),
+        None => return NodeExecutionResult::failed("Ollama missing 'prompt_template'"),
+    };
+    let system_prompt = config
+        .get("system_prompt")
+        .and_then(|v| v.as_str())
+        .map(|s| resolve_template(s, context))
+        .unwrap_or_default();
+    let max_tokens: u64 = config
+        .get("max_tokens")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(1024);
+    let temperature: f64 = config
+        .get("temperature")
+        .and_then(|v| v.as_f64())
+        .unwrap_or(0.7);
+    let mut messages = Vec::new();
+    if !system_prompt.is_empty() {
+        messages.push(serde_json::json!({ "role": "system", "content": system_prompt }));
+    }
+    messages.push(serde_json::json!({ "role": "user", "content": prompt }));
+    openai_compat_chat(
+        "Ollama",
+        &api_key,
+        &base_url,
+        &model,
+        serde_json::Value::Array(messages),
+        max_tokens,
+        temperature,
+        http_client,
+    )
+    .await
+}
+
 // ── DeepSeek ─────────────────────────────────────────────────────────────────
 pub(super) async fn execute_deepseek(
     node: &Node,

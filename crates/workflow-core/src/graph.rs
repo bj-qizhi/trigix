@@ -182,6 +182,10 @@ pub enum NodeType {
     Ganalytics,
     Neon,
     Copper,
+    /// xAI Grok (OpenAI-compatible chat completions).
+    Grok,
+    /// Ollama — self-hosted OpenAI-compatible local models (configurable base URL).
+    Ollama,
     // ── 中国国内大模型 ───────────────────────────────────
     Deepseek,
     Qwen,
