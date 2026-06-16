@@ -202,6 +202,126 @@ pub(super) async fn execute_bigquery(
     }
 }
 
+// ── Microsoft SQL Server (tiberius, pure Rust) ────────────────────────────────
+pub(super) async fn execute_sqlserver(
+    node: &Node,
+    context: &ExecutionContext,
+) -> NodeExecutionResult {
+    use tiberius::{AuthMethod, Client, Config};
+    use tokio::net::TcpStream;
+    use tokio_util::compat::TokioAsyncWriteCompatExt;
+
+    let raw = node.config.clone().unwrap_or_default();
+    let cfg = resolve_config_strings(&raw, context);
+    let host = match cfg.get("host").and_then(|v| v.as_str()) {
+        Some(h) if !h.is_empty() => h.to_string(),
+        _ => return NodeExecutionResult::failed("SQL Server requires 'host'"),
+    };
+    let user = match cfg.get("username").and_then(|v| v.as_str()) {
+        Some(u) if !u.is_empty() => u.to_string(),
+        _ => return NodeExecutionResult::failed("SQL Server requires 'username'"),
+    };
+    let query_str = match cfg.get("query").and_then(|v| v.as_str()) {
+        Some(q) if !q.is_empty() => q.to_string(),
+        _ => return NodeExecutionResult::failed("SQL Server requires 'query'"),
+    };
+    let port = cfg.get("port").and_then(|v| v.as_u64()).unwrap_or(1433) as u16;
+    let pass = cfg
+        .get("password")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+
+    let mut config = Config::new();
+    config.host(&host);
+    config.port(port);
+    config.authentication(AuthMethod::sql_server(&user, &pass));
+    if let Some(db) = cfg.get("database").and_then(|v| v.as_str()) {
+        if !db.is_empty() {
+            config.database(db);
+        }
+    }
+    // Accept self-signed certs (common for internal SQL Server instances).
+    config.trust_cert();
+
+    let tcp = match TcpStream::connect(config.get_addr()).await {
+        Ok(t) => t,
+        Err(e) => return NodeExecutionResult::failed(format!("SQL Server connect error: {e}")),
+    };
+    let _ = tcp.set_nodelay(true);
+    let mut client = match Client::connect(config, tcp.compat_write()).await {
+        Ok(c) => c,
+        Err(e) => return NodeExecutionResult::failed(format!("SQL Server handshake error: {e}")),
+    };
+
+    let trimmed = query_str.trim().to_ascii_uppercase();
+    let is_select = trimmed.starts_with("SELECT") || trimmed.starts_with("WITH");
+    if is_select {
+        let stream = match client.query(query_str.as_str(), &[]).await {
+            Ok(s) => s,
+            Err(e) => return NodeExecutionResult::failed(format!("SQL Server query error: {e}")),
+        };
+        let rows = match stream.into_first_result().await {
+            Ok(r) => r,
+            Err(e) => return NodeExecutionResult::failed(format!("SQL Server result error: {e}")),
+        };
+        let json_rows: Vec<serde_json::Value> = rows
+            .iter()
+            .map(|row| {
+                let mut obj = serde_json::Map::new();
+                let cols: Vec<String> =
+                    row.columns().iter().map(|c| c.name().to_string()).collect();
+                for (i, name) in cols.iter().enumerate() {
+                    // Mismatched types return Err → treated as absent; first match wins.
+                    let val: serde_json::Value = row
+                        .try_get::<&str, _>(i)
+                        .ok()
+                        .flatten()
+                        .map(|s| serde_json::json!(s))
+                        .or_else(|| {
+                            row.try_get::<i32, _>(i)
+                                .ok()
+                                .flatten()
+                                .map(|n| serde_json::json!(n))
+                        })
+                        .or_else(|| {
+                            row.try_get::<i64, _>(i)
+                                .ok()
+                                .flatten()
+                                .map(|n| serde_json::json!(n))
+                        })
+                        .or_else(|| {
+                            row.try_get::<f64, _>(i)
+                                .ok()
+                                .flatten()
+                                .map(|n| serde_json::json!(n))
+                        })
+                        .or_else(|| {
+                            row.try_get::<bool, _>(i)
+                                .ok()
+                                .flatten()
+                                .map(|b| serde_json::json!(b))
+                        })
+                        .unwrap_or(serde_json::Value::Null);
+                    obj.insert(name.clone(), val);
+                }
+                serde_json::Value::Object(obj)
+            })
+            .collect();
+        let count = json_rows.len();
+        NodeExecutionResult::succeeded(
+            serde_json::json!({ "rows": json_rows, "count": count }).to_string(),
+        )
+    } else {
+        match client.execute(query_str.as_str(), &[]).await {
+            Ok(res) => NodeExecutionResult::succeeded(
+                serde_json::json!({ "rows_affected": res.total() }).to_string(),
+            ),
+            Err(e) => NodeExecutionResult::failed(format!("SQL Server execute error: {e}")),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -250,6 +370,28 @@ mod tests {
         };
         let r = execute_snowflake(&n, &ctx(), &c).await;
         assert!(r.error.as_deref().unwrap_or("").contains("statement"));
+    }
+
+    #[tokio::test]
+    async fn sqlserver_requires_host() {
+        let n = Node {
+            id: "ms1".into(),
+            node_type: NodeType::Sqlserver,
+            config: Some(serde_json::json!({"username":"sa","query":"SELECT 1"})),
+        };
+        let r = execute_sqlserver(&n, &ctx()).await;
+        assert!(r.error.as_deref().unwrap_or("").contains("host"));
+    }
+
+    #[tokio::test]
+    async fn sqlserver_requires_query() {
+        let n = Node {
+            id: "ms2".into(),
+            node_type: NodeType::Sqlserver,
+            config: Some(serde_json::json!({"host":"db","username":"sa"})),
+        };
+        let r = execute_sqlserver(&n, &ctx()).await;
+        assert!(r.error.as_deref().unwrap_or("").contains("query"));
     }
 
     #[tokio::test]

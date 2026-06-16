@@ -2999,6 +2999,44 @@ export function MysqlConfig({ set, str }: ConfigProps) {
   )
 }
 
+export function SqlserverConfig({ set, str, num }: ConfigProps) {
+  return (
+    <>
+      <div style={{ display: 'flex', gap: 8 }}>
+        <div className="field" style={{ flex: 2 }}>
+          <label>Host <span style={{ color: 'var(--danger)' }}>*</span></label>
+          <input value={str('host', '')} onChange={(e) => set('host', e.target.value)} style={{ fontFamily: 'monospace', fontSize: 12 }} />
+        </div>
+        <div className="field" style={{ flex: 1 }}>
+          <label>Port</label>
+          <input type="number" placeholder="1433" value={num('port', 1433)} onChange={(e) => set('port', Number(e.target.value))} />
+        </div>
+      </div>
+      <div style={{ display: 'flex', gap: 8 }}>
+        <div className="field" style={{ flex: 1 }}>
+          <label>Username <span style={{ color: 'var(--danger)' }}>*</span></label>
+          <input placeholder="sa" value={str('username', '')} onChange={(e) => set('username', e.target.value)} />
+        </div>
+        <div className="field" style={{ flex: 1 }}>
+          <label>Password</label>
+          <input type="password" value={str('password', '')} onChange={(e) => set('password', e.target.value)} />
+        </div>
+      </div>
+      <div className="field">
+        <label>Database</label>
+        <input value={str('database', '')} onChange={(e) => set('database', e.target.value)} />
+      </div>
+      <div className="field">
+        <label>Query <span style={{ color: 'var(--danger)' }}>*</span></label>
+        <textarea rows={4} placeholder="SELECT TOP 10 * FROM dbo.Users" value={str('query', '')} onChange={(e) => set('query', e.target.value)} style={{ fontFamily: 'monospace', fontSize: 12 }} />
+      </div>
+      <p style={{ fontSize: 11, color: 'var(--muted)', margin: '8px 0 0' }}>
+        SQL Server (TDS, trusts self-signed certs). SELECT → <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>{'{ rows, count }'}</code>; DML → <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>{'{ rows_affected }'}</code>
+      </p>
+    </>
+  )
+}
+
 export function SnowflakeConfig({ set, str }: ConfigProps) {
   return (
     <>

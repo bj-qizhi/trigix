@@ -615,6 +615,7 @@ async fn dispatch(
         NodeType::Mysql => execute_mysql(node, context).await,
         NodeType::Snowflake => execute_snowflake(node, context, http_client).await,
         NodeType::Bigquery => execute_bigquery(node, context, http_client).await,
+        NodeType::Sqlserver => execute_sqlserver(node, context).await,
         NodeType::Ftp => execute_ftp(node, context).await,
         NodeType::Sftp => execute_sftp(node, context).await,
         NodeType::Ssh => execute_ssh(node, context).await,

@@ -268,6 +268,8 @@ pub enum NodeType {
     Imap,
     /// Wait: pause for a duration, or suspend until externally resumed.
     Wait,
+    /// Microsoft SQL Server (tiberius).
+    Sqlserver,
     // ── 中国国内大模型 ───────────────────────────────────
     Deepseek,
     Qwen,

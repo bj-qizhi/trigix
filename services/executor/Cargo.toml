@@ -34,6 +34,8 @@ native-tls = "0.2"
 russh = "0.45"
 russh-sftp = "2"
 async-trait = "0.1"
+tiberius = { version = "0.12", default-features = false, features = ["tds73", "native-tls", "chrono"] }
+tokio-util = { version = "0.7", features = ["compat"] }
 zip = { version = "2", default-features = false, features = ["deflate"] }
 image = { version = "0.25", default-features = false, features = ["png", "jpeg", "gif", "bmp", "webp"] }
 pdf-extract = "0.7"

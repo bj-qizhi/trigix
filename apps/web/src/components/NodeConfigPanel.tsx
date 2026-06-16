@@ -44,7 +44,7 @@ import {
   CloudinaryConfig, GcalConfig, DocusignConfig, XeroConfig, CalendlyConfig, ApifyConfig,
   GanalyticsConfig, NeonConfig, CopperConfig,
   AzureOpenaiConfig, GrokConfig, OllamaConfig, WeaviateConfig, ChromaConfig, MongodbConfig, ClickhouseConfig, GcsConfig, AzureBlobConfig, HashConfig, JwtConfig, VertexConfig, SqsConfig, SnsConfig, BedrockConfig, MilvusConfig, KafkaConfig, RabbitmqConfig, ZipConfig, ImageConfig, PdfExtractConfig, OcrConfig, FeishuConfig, DingtalkConfig, WecomConfig,
-  EmbeddingConfig, RerankerConfig, TextSplitterConfig, StructuredOutputConfig, ClassifierConfig, ImageGenConfig, SpeechToTextConfig, TtsConfig, HtmlExtractConfig, RssConfig, MysqlConfig, SnowflakeConfig, BigqueryConfig, FtpConfig, SftpConfig, SshConfig, ImapConfig, WaitConfig,
+  EmbeddingConfig, RerankerConfig, TextSplitterConfig, StructuredOutputConfig, ClassifierConfig, ImageGenConfig, SpeechToTextConfig, TtsConfig, HtmlExtractConfig, RssConfig, MysqlConfig, SnowflakeConfig, BigqueryConfig, SqlserverConfig, FtpConfig, SftpConfig, SshConfig, ImapConfig, WaitConfig,
   DeepseekConfig, QwenConfig, ZhipuConfig, MoonshotConfig,
   DoubaoConfig, MinimaxConfig, ErnieConfig, HunyuanConfig,
 } from './panels/IntegrationPanels2'
@@ -136,6 +136,7 @@ const NODE_DESCRIPTIONS: Partial<Record<NodeType, { en: string; zh: string }>> =
   mysql:     { en: 'Run a SQL query against MySQL (sqlx).', zh: '对 MySQL 执行 SQL 查询（sqlx）。' },
   snowflake: { en: 'Run SQL via the Snowflake SQL API v2 (bearer token).', zh: '通过 Snowflake SQL API v2 执行 SQL（bearer token）。' },
   bigquery:  { en: 'Run a query via the BigQuery jobs.query REST API (OAuth2 token).', zh: '通过 BigQuery jobs.query REST 执行查询（OAuth2 token）。' },
+  sqlserver: { en: 'Run a SQL query against Microsoft SQL Server (pure-Rust TDS).', zh: '对 Microsoft SQL Server 执行 SQL（纯 Rust TDS）。' },
   ftp:       { en: 'FTP / FTPS: list/download/upload/delete files (base64 payloads).', zh: 'FTP / FTPS：列目录/下载/上传/删除（base64 载荷）。' },
   sftp:      { en: 'SFTP over SSH (pure-Rust, password or private key): list/download/upload/delete.', zh: 'SFTP over SSH（纯 Rust，密码或私钥）：列目录/下载/上传/删除。' },
   ssh:       { en: 'Run a command over SSH (password or private key); returns stdout/stderr/exit.', zh: 'SSH 执行命令（密码或私钥），返回 stdout/stderr/exit。' },
@@ -218,6 +219,7 @@ const NODE_LABELS: Partial<Record<NodeType, string>> = {
   mysql: 'MySQL',
   snowflake: 'Snowflake',
   bigquery: 'BigQuery',
+  sqlserver: 'SQL Server',
   ftp: 'FTP',
   sftp: 'SFTP',
   ssh: 'SSH',
@@ -301,6 +303,7 @@ const NODE_COLORS: Partial<Record<NodeType, string>> = {
   mysql: 'var(--node-database)',
   snowflake: 'var(--node-database)',
   bigquery: 'var(--node-database)',
+  sqlserver: 'var(--node-database)',
   ftp: 'var(--node-awss3)',
   sftp: 'var(--node-awss3)',
   ssh: 'var(--node-code)',
@@ -374,6 +377,7 @@ const NODE_OUTPUTS: Partial<Record<NodeType, string[]>> = {
   mysql:        ['rows', 'count'],
   snowflake:    ['status', 'body'],
   bigquery:     ['status', 'body'],
+  sqlserver:    ['rows', 'count'],
   ftp:          ['files', 'content_base64', 'count'],
   sftp:         ['files', 'content_base64', 'count'],
   ssh:          ['stdout', 'stderr', 'exit_status'],
@@ -823,6 +827,7 @@ export function NodeConfigPanel({ node, onUpdateConfig, recentExecutions, onSele
         {nt === 'mysql'           && <MysqlConfig           config={config} set={set} str={str} num={num} />}
         {nt === 'snowflake'       && <SnowflakeConfig       config={config} set={set} str={str} num={num} />}
         {nt === 'bigquery'        && <BigqueryConfig        config={config} set={set} str={str} num={num} />}
+        {nt === 'sqlserver'       && <SqlserverConfig       config={config} set={set} str={str} num={num} />}
         {nt === 'ftp'             && <FtpConfig             config={config} set={set} str={str} num={num} />}
         {nt === 'sftp'            && <SftpConfig            config={config} set={set} str={str} num={num} />}
         {nt === 'ssh'             && <SshConfig             config={config} set={set} str={str} num={num} />}
