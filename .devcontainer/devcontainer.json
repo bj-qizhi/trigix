@@ -1,0 +1,36 @@
+{
+  // One-click full-stack demo of the latest code in GitHub Codespaces.
+  //
+  // Open the repo on GitHub → Code → Codespaces → "Create codespace on master".
+  // The container builds and starts the POC stack (Postgres+pgvector, Redis,
+  // MinIO, the AI runtime, and the platform/console) from source, then forwards
+  // the console (8080) and AI runtime (8000). First build compiles the Rust
+  // workspace, so allow a few minutes; watch progress in the Codespaces terminal.
+  "name": "Trigix POC (full stack)",
+  "image": "mcr.microsoft.com/devcontainers/base:bookworm",
+
+  // Give the container its own Docker daemon so `docker compose` works.
+  "features": {
+    "ghcr.io/devcontainers/features/docker-in-docker:2": {}
+  },
+
+  // A 2-core/8GB machine builds the Rust image slowly; ask for more if offered.
+  "hostRequirements": {
+    "cpus": 4,
+    "memory": "8gb"
+  },
+
+  "forwardPorts": [8080, 8000],
+  "portsAttributes": {
+    "8080": { "label": "Trigix Console / API", "onAutoForward": "openPreview" },
+    "8000": { "label": "AI Runtime" }
+  },
+
+  // Build + start the whole stack once the container is created.
+  "postCreateCommand": "docker compose -f docker-compose.poc.yml up -d --build",
+
+  // Print how to reach the demo every time you attach.
+  "postAttachCommand": {
+    "hint": "bash -lc 'echo; echo \"Trigix POC is starting (docker compose -f docker-compose.poc.yml ps to check).\"; echo \"  Console / API : forwarded port 8080  (API key: changeme)\"; echo \"  AI Runtime    : forwarded port 8000\"; echo \"  Logs          : docker compose -f docker-compose.poc.yml logs -f app\"; echo'"
+  }
+}
