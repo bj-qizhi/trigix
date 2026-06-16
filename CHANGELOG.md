@@ -2,7 +2,7 @@
 
 All notable changes to Trigix will be documented in this file.
 
-## [Unreleased]
+## [1.3.0] - 2026-06-16
 
 A large expansion of the workflow node catalog — **44 new node types
 (136 → 180)** — covering the gaps against comparable workflow/automation
