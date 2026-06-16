@@ -1233,7 +1233,7 @@ async fn copilot_handler(
     let system = format!(
         "You are an expert assistant for Trigix, an AI-powered workflow automation platform.\
 \n\nYou help users understand, debug, and improve their workflows. You have deep knowledge of:\
-\n- All 136 node types (trigger, http, claude, openai, gemini, slack, github, database, code, condition, loop, etc.)\
+\n- All 180 node types (trigger, http, claude, openai, gemini, slack, github, database, code, condition, loop, etc.)\
 \n- Template variables: {{{{input.field}}}}, {{{{node_id.field}}}}, {{{{credential.name}}}}, {{{{env.KEY}}}}\
 \n- Best practices for workflow design (error handling with catch nodes, validation, retry logic)\
 \n- Integration patterns (webhooks, scheduled triggers, fan-out/fan-in parallelism)\

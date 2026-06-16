@@ -21,7 +21,7 @@ Trigix 是一个企业级 AI 原生工作流自动化平台。
 通过可视化拖拽画布，连接 AI 大模型、API、数据库和 SaaS 工具，构建、运行和监控复杂的业务工作流。
 
 **核心优势：**
-- **136 种节点类型** — AI 大模型（Claude、GPT-4、Gemini、Groq、Mistral、国内大模型…）、SaaS 集成（Slack、Jira、Notion、Salesforce…）、数据处理、流程控制
+- **180 种节点类型** — AI 大模型（Claude、GPT-4、Gemini、Vertex AI、Bedrock、Groq、Mistral、国内大模型…）、SaaS 集成（Slack、Jira、Notion、Salesforce、飞书、钉钉、企业微信…）、数据处理、流程控制
 - **Rust 执行引擎** — DAG 调度、并行分支、重试、超时、取消，吞吐量 5-10x Node.js
 - **AI 原生** — 8 个内置大模型节点，支持 pgvector，MCP 协议原生集成
 - **企业级** — JWT + RBAC、多租户、审计日志、Webhook 签名验证、Kubernetes Helm Chart

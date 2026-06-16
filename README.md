@@ -9,7 +9,7 @@
 
 [English] · [中文](README.zh.md) · [Website](https://bj-qizhi.github.io/trigix/)
 
-> Open-source, **AI-native workflow automation** — a Rust execution engine, 140+ node types, RAG, agents, MCP, and a visual canvas. A self-hosted [n8n](https://github.com/n8n-io/n8n) alternative built for AI-first automation.
+> Open-source, **AI-native workflow automation** — a Rust execution engine, 180+ node types, RAG, agents, MCP, and a visual canvas. A self-hosted [n8n](https://github.com/n8n-io/n8n) alternative built for AI-first automation.
 
 > © 2026 [北京祺智科技有限公司](https://www.qzso.com/) · managecode@gmail.com
 
@@ -21,7 +21,7 @@ Trigix is an enterprise-grade, AI-native workflow automation platform.
 Build, run, and monitor complex workflows visually — connecting AI models, APIs, databases, and SaaS tools with a drag-and-drop canvas editor.
 
 **Key differentiators:**
-- **140 node types** — AI models (Claude, GPT-4, Gemini, Groq, Mistral…), SaaS integrations (Slack, Jira, Notion, Salesforce…), data transforms, control flow — plus your own via the [node SDK](#extend-with-custom-nodes-node-sdk)
+- **180 node types** — AI models (Claude, GPT-4, Gemini, Vertex AI, Bedrock, Groq, Mistral…), SaaS integrations (Slack, Jira, Notion, Salesforce, Feishu, DingTalk, WeChat Work…), data transforms, control flow — plus your own via the [node SDK](#extend-with-custom-nodes-node-sdk)
 - **Rust execution engine** — DAG scheduling, parallel fan-out, retries, timeouts, cancellation
 - **AI-native** — built-in LLM nodes, RAG over pgvector, an agent tool-use loop, MCP protocol support
 - **Enterprise-ready** — SSO (OIDC), JWT + RBAC, multi-tenant, encrypted secrets, audit log, webhook signatures, Kubernetes Helm chart
