@@ -73,7 +73,7 @@ cd apps/web && npm install && npm run dev
 **Kubernetes（Helm chart，已发布到 GHCR）：**
 
 ```bash
-helm install trigix oci://ghcr.io/bj-qizhi/charts/trigix --version 0.3.2 \
+helm install trigix oci://ghcr.io/bj-qizhi/charts/trigix --version 0.3.3 \
   --namespace trigix --create-namespace
 ```
 
