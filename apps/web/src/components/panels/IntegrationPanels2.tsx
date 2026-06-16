@@ -2852,15 +2852,36 @@ function fileOpFields(operation: string, str: ConfigProps['str'], set: ConfigPro
   )
 }
 
-export function FtpConfig({ set, str }: ConfigProps) {
+export function FtpConfig({ config, set, str }: ConfigProps) {
   const operation = str('operation', 'list')
   return (
     <>
       {hostAuthFields(str, set, 21)}
+      <div className="field">
+        <label style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <input type="checkbox" checked={config.secure === true} onChange={(e) => set('secure', e.target.checked)} />
+          FTPS (explicit AUTH TLS)
+        </label>
+      </div>
       {fileOpFields(operation, str, set)}
       <p style={{ fontSize: 11, color: 'var(--muted)', margin: '8px 0 0' }}>
-        Plain FTP. list → <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>{'{ files, count }'}</code>; download → <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>{'{ content_base64, size }'}</code>
+        Plain FTP or FTPS. list → <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>{'{ files, count }'}</code>; download → <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>{'{ content_base64, size }'}</code>
       </p>
+    </>
+  )
+}
+
+function sshKeyFields(str: ConfigProps['str'], set: ConfigProps['set']) {
+  return (
+    <>
+      <div className="field">
+        <label>Private Key <span style={{ color: 'var(--muted)' }}>(PEM — overrides password)</span></label>
+        <textarea rows={3} placeholder="-----BEGIN OPENSSH PRIVATE KEY-----…" value={str('private_key', '')} onChange={(e) => set('private_key', e.target.value)} style={{ fontFamily: 'monospace', fontSize: 11 }} />
+      </div>
+      <div className="field">
+        <label>Key Passphrase</label>
+        <input type="password" value={str('passphrase', '')} onChange={(e) => set('passphrase', e.target.value)} />
+      </div>
     </>
   )
 }
@@ -2870,9 +2891,10 @@ export function SftpConfig({ set, str }: ConfigProps) {
   return (
     <>
       {hostAuthFields(str, set, 22)}
+      {sshKeyFields(str, set)}
       {fileOpFields(operation, str, set)}
       <p style={{ fontSize: 11, color: 'var(--muted)', margin: '8px 0 0' }}>
-        SFTP over SSH (password auth). Returns file listings / base64 content.
+        SFTP over SSH (password or private key). Returns file listings / base64 content.
       </p>
     </>
   )
@@ -2882,12 +2904,13 @@ export function SshConfig({ set, str }: ConfigProps) {
   return (
     <>
       {hostAuthFields(str, set, 22)}
+      {sshKeyFields(str, set)}
       <div className="field">
         <label>Command <span style={{ color: 'var(--danger)' }}>*</span></label>
         <textarea rows={2} placeholder="uname -a && df -h" value={str('command', '')} onChange={(e) => set('command', e.target.value)} style={{ fontFamily: 'monospace', fontSize: 12 }} />
       </div>
       <p style={{ fontSize: 11, color: 'var(--muted)', margin: '8px 0 0' }}>
-        Runs a command over SSH (password auth). Returns <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>{'{ stdout, stderr, exit_status }'}</code>
+        Runs a command over SSH (password or private key). Returns <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>{'{ stdout, stderr, exit_status }'}</code>
       </p>
     </>
   )

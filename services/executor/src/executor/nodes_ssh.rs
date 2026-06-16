@@ -33,6 +33,8 @@ struct Conn {
     port: u16,
     user: String,
     pass: String,
+    private_key: Option<String>,
+    passphrase: Option<String>,
 }
 
 fn read_conn(cfg: &serde_json::Value, node: &str) -> Result<Conn, NodeExecutionResult> {
@@ -52,6 +54,12 @@ fn read_conn(cfg: &serde_json::Value, node: &str) -> Result<Conn, NodeExecutionR
             )))
         }
     };
+    let opt = |k: &str| {
+        cfg.get(k)
+            .and_then(|v| v.as_str())
+            .filter(|s| !s.is_empty())
+            .map(|s| s.to_string())
+    };
     Ok(Conn {
         host,
         port: cfg.get("port").and_then(|v| v.as_u64()).unwrap_or(22) as u16,
@@ -61,20 +69,46 @@ fn read_conn(cfg: &serde_json::Value, node: &str) -> Result<Conn, NodeExecutionR
             .and_then(|v| v.as_str())
             .unwrap_or("")
             .to_string(),
+        private_key: opt("private_key"),
+        passphrase: opt("passphrase"),
     })
 }
 
 async fn connect(conn: &Conn) -> Result<client::Handle<AcceptAll>, String> {
+    // Decode the key (if any) up front so a malformed key fails before any socket.
+    let keypair = match &conn.private_key {
+        Some(pem) => Some(
+            russh::keys::decode_secret_key(pem, conn.passphrase.as_deref())
+                .map_err(|e| format!("private key error: {e}"))?,
+        ),
+        None => None,
+    };
+
     let config = Arc::new(client::Config::default());
     let mut handle = client::connect(config, (conn.host.as_str(), conn.port), AcceptAll)
         .await
         .map_err(|e| format!("connect error: {e}"))?;
-    let authed = handle
-        .authenticate_password(conn.user.clone(), conn.pass.clone())
-        .await
-        .map_err(|e| format!("auth error: {e}"))?;
+
+    let authed = match keypair {
+        // Public-key auth when a private key is supplied, else password.
+        Some(key) => handle
+            .authenticate_publickey(conn.user.clone(), Arc::new(key))
+            .await
+            .map_err(|e| format!("auth error: {e}"))?,
+        None => handle
+            .authenticate_password(conn.user.clone(), conn.pass.clone())
+            .await
+            .map_err(|e| format!("auth error: {e}"))?,
+    };
     if !authed {
-        return Err("authentication failed (password)".into());
+        return Err(format!(
+            "authentication failed ({})",
+            if conn.private_key.is_some() {
+                "public key"
+            } else {
+                "password"
+            }
+        ));
     }
     Ok(handle)
 }
@@ -257,6 +291,21 @@ mod tests {
         };
         let r = execute_ssh(&n, &ctx()).await;
         assert!(r.error.as_deref().unwrap_or("").contains("command"));
+    }
+
+    #[tokio::test]
+    async fn ssh_rejects_malformed_private_key() {
+        // A bad key is rejected before any socket is opened.
+        let n = Node {
+            id: "s3".into(),
+            node_type: NodeType::Ssh,
+            config: Some(serde_json::json!({
+                "host":"192.0.2.1","username":"u","command":"ls",
+                "private_key":"not-a-real-key"
+            })),
+        };
+        let r = execute_ssh(&n, &ctx()).await;
+        assert!(r.error.as_deref().unwrap_or("").contains("private key"));
     }
 
     #[tokio::test]
