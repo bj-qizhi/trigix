@@ -215,6 +215,104 @@ pub(super) async fn execute_ollama(
     .await
 }
 
+// ── Azure OpenAI ─────────────────────────────────────────────────────────────
+pub(super) async fn execute_azure_openai(
+    node: &Node,
+    context: &ExecutionContext,
+    http_client: &reqwest::Client,
+) -> NodeExecutionResult {
+    let config = match node.config.as_ref() {
+        Some(c) => c,
+        None => return NodeExecutionResult::failed("Azure OpenAI node requires config"),
+    };
+    let field = |k: &str| {
+        config
+            .get(k)
+            .and_then(|v| v.as_str())
+            .map(|s| resolve_template(s, context))
+    };
+    let endpoint = match field("endpoint") {
+        Some(e) if !e.is_empty() => e.trim_end_matches('/').to_string(),
+        _ => {
+            return NodeExecutionResult::failed(
+                "Azure OpenAI requires 'endpoint' (e.g. https://my-res.openai.azure.com)",
+            )
+        }
+    };
+    let deployment = match field("deployment") {
+        Some(d) if !d.is_empty() => d,
+        _ => return NodeExecutionResult::failed("Azure OpenAI requires 'deployment'"),
+    };
+    let api_key = match field("api_key") {
+        Some(k) if !k.is_empty() => k,
+        _ => return NodeExecutionResult::failed("Azure OpenAI requires 'api_key'"),
+    };
+    let api_version = field("api_version").unwrap_or_else(|| "2024-02-01".to_string());
+    let prompt = match field("prompt_template") {
+        Some(p) => p,
+        None => return NodeExecutionResult::failed("Azure OpenAI missing 'prompt_template'"),
+    };
+    let system_prompt = field("system_prompt").unwrap_or_default();
+    let max_tokens: u64 = config
+        .get("max_tokens")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(1024);
+    let temperature: f64 = config
+        .get("temperature")
+        .and_then(|v| v.as_f64())
+        .unwrap_or(0.7);
+
+    let mut messages = Vec::new();
+    if !system_prompt.is_empty() {
+        messages.push(serde_json::json!({ "role": "system", "content": system_prompt }));
+    }
+    messages.push(serde_json::json!({ "role": "user", "content": prompt }));
+    let url = format!(
+        "{endpoint}/openai/deployments/{deployment}/chat/completions?api-version={api_version}"
+    );
+    let payload = serde_json::json!({
+        "messages": messages,
+        "max_tokens": max_tokens,
+        "temperature": temperature,
+    });
+
+    let resp = match http_client
+        .post(&url)
+        .header("api-key", api_key)
+        .header("Content-Type", "application/json")
+        .json(&payload)
+        .send()
+        .await
+    {
+        Ok(r) => r,
+        Err(e) => return NodeExecutionResult::failed(format!("Azure OpenAI request error: {e}")),
+    };
+    let status = resp.status();
+    let body = resp.text().await.unwrap_or_default();
+    if !status.is_success() {
+        return NodeExecutionResult::failed(format!(
+            "Azure OpenAI API {}: {}",
+            status.as_u16(),
+            body
+        ));
+    }
+    let parsed: serde_json::Value = match serde_json::from_str(&body) {
+        Ok(v) => v,
+        Err(e) => return NodeExecutionResult::failed(format!("Azure OpenAI parse error: {e}")),
+    };
+    let content = parsed["choices"][0]["message"]["content"]
+        .as_str()
+        .unwrap_or("")
+        .to_string();
+    let usage = parsed
+        .get("usage")
+        .cloned()
+        .unwrap_or(serde_json::Value::Null);
+    NodeExecutionResult::succeeded(
+        serde_json::json!({ "content": content, "model": deployment, "usage": usage }).to_string(),
+    )
+}
+
 // ── DeepSeek ─────────────────────────────────────────────────────────────────
 pub(super) async fn execute_deepseek(
     node: &Node,

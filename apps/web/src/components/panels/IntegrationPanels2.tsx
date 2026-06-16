@@ -2736,6 +2736,33 @@ function CnLlmCommonFields({ str, set, num }: Pick<ConfigProps, 'str' | 'set' | 
   )
 }
 
+export function AzureOpenaiConfig({ set, str, num }: ConfigProps) {
+  return (
+    <>
+      <div className="field">
+        <label>Endpoint *</label>
+        <input placeholder="https://my-res.openai.azure.com" value={str('endpoint', '')} onChange={(e) => set('endpoint', e.target.value)} style={{ fontFamily: 'monospace', fontSize: 12 }} />
+      </div>
+      <div className="field">
+        <label>Deployment *</label>
+        <input placeholder="gpt-4o" value={str('deployment', '')} onChange={(e) => set('deployment', e.target.value)} style={{ fontFamily: 'monospace', fontSize: 12 }} />
+      </div>
+      <div className="field">
+        <label>API Version</label>
+        <input placeholder="2024-02-01" value={str('api_version', '')} onChange={(e) => set('api_version', e.target.value)} style={{ fontFamily: 'monospace', fontSize: 12 }} />
+      </div>
+      <div className="field">
+        <label>API Key *</label>
+        <input type="password" placeholder="azure key" value={str('api_key', '')} onChange={(e) => set('api_key', e.target.value)} />
+      </div>
+      <CnLlmCommonFields str={str} set={set} num={num} />
+      <p style={{ fontSize: 11, color: 'var(--muted)', margin: '8px 0 0' }}>
+        Azure OpenAI (deployment-based). Returns <code>{'{ content, model, usage }'}</code>
+      </p>
+    </>
+  )
+}
+
 export function GrokConfig({ set, str, num }: ConfigProps) {
   return (
     <>

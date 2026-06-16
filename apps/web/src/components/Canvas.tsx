@@ -273,6 +273,7 @@ const NODE_LABELS: Record<NodeType, string> = {
   ganalytics: 'Google Analytics',
   neon: 'Neon',
   copper: 'Copper CRM',
+  azure_openai: 'Azure OpenAI',
   grok: 'xAI Grok',
   ollama: 'Ollama',
   deepseek: 'DeepSeek',
@@ -418,6 +419,7 @@ const NODE_ICONS: Record<NodeType, string> = {
   ganalytics: '📊',
   neon: '🌀',
   copper: '🔶',
+  azure_openai: '☁️',
   grok: '🤖',
   ollama: '🦙',
   deepseek: '🐋',
@@ -578,6 +580,7 @@ function FlowNodeComponent({ data, selected, id }: NodeProps) {
     if (nt === 'ganalytics') return c.property_id ? `${String(c.operation ?? 'run_report')} · ${String(c.property_id)}` : 'No property ID'
     if (nt === 'neon') return `${String(c.operation ?? 'list_projects')}${c.project_id ? ' · '+String(c.project_id).slice(0, 10)+'…' : ''}`
     if (nt === 'copper') return `${String(c.operation ?? 'list')} ${String(c.resource ?? 'people')}`
+    if (nt === 'azure_openai') return c.deployment ? String(c.deployment) : 'deployment'
     if (nt === 'grok') return c.model ? String(c.model) : 'grok-2-latest'
     if (nt === 'ollama') return c.model ? String(c.model) : 'llama3.2'
     if (nt === 'deepseek') return c.model ? String(c.model) : 'deepseek-chat'
@@ -761,6 +764,7 @@ const nodeTypes = {
   ganalytics: FlowNodeComponent,
   neon: FlowNodeComponent,
   copper: FlowNodeComponent,
+  azure_openai: FlowNodeComponent,
   grok: FlowNodeComponent,
   ollama: FlowNodeComponent,
   deepseek: FlowNodeComponent,
@@ -1170,6 +1174,7 @@ export function Canvas({
               ganalytics: '#e37400',
               neon: '#00e599',
               copper: '#e8762b',
+              azure_openai: '#0078d4',
               grok: '#111827',
               ollama: '#0ea5e9',
               deepseek: '#4d6bfe',

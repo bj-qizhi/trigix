@@ -182,6 +182,8 @@ pub enum NodeType {
     Ganalytics,
     Neon,
     Copper,
+    /// Azure OpenAI (deployment-based chat completions, api-key header).
+    AzureOpenai,
     /// xAI Grok (OpenAI-compatible chat completions).
     Grok,
     /// Ollama — self-hosted OpenAI-compatible local models (configurable base URL).

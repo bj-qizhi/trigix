@@ -519,6 +519,7 @@ async fn dispatch(
         NodeType::Ganalytics => execute_ganalytics(node, context, http_client).await,
         NodeType::Neon => execute_neon(node, context, http_client).await,
         NodeType::Copper => execute_copper(node, context, http_client).await,
+        NodeType::AzureOpenai => execute_azure_openai(node, context, http_client).await,
         NodeType::Grok => execute_grok(node, context, http_client).await,
         NodeType::Ollama => execute_ollama(node, context, http_client).await,
         NodeType::Deepseek => execute_deepseek(node, context, http_client).await,
@@ -1554,7 +1555,7 @@ mod tests {
     async fn grok_and_ollama_nodes_require_config() {
         let executor = DispatchingNodeExecutor::new(None);
         let context = make_context("{}");
-        for nt in [NodeType::Grok, NodeType::Ollama] {
+        for nt in [NodeType::Grok, NodeType::Ollama, NodeType::AzureOpenai] {
             let node = Node {
                 id: "llm".to_string(),
                 node_type: nt,
