@@ -287,6 +287,7 @@ const NODE_LABELS: Record<NodeType, string> = {
   vertex: 'Vertex AI',
   sqs: 'AWS SQS',
   sns: 'AWS SNS',
+  bedrock: 'AWS Bedrock',
   deepseek: 'DeepSeek',
   qwen: '通义千问',
   zhipu: '智谱 GLM',
@@ -444,6 +445,7 @@ const NODE_ICONS: Record<NodeType, string> = {
   vertex: '🔷',
   sqs: '📨',
   sns: '📢',
+  bedrock: '🧱',
   deepseek: '🐋',
   qwen: '🧩',
   zhipu: '🔮',
@@ -616,6 +618,7 @@ function FlowNodeComponent({ data, selected, id }: NodeProps) {
     if (nt === 'vertex') return String(c.model ?? 'gemini-1.5-flash')
     if (nt === 'sqs') return `${String(c.operation ?? 'send')}${c.queue_url ? ' · '+String(c.queue_url).split('/').pop() : ''}`
     if (nt === 'sns') return c.topic_arn ? `publish · ${String(c.topic_arn).split(':').pop()}` : 'publish'
+    if (nt === 'bedrock') return c.model_id ? String(c.model_id) : 'No model'
     if (nt === 'deepseek') return c.model ? String(c.model) : 'deepseek-chat'
     if (nt === 'qwen') return c.model ? String(c.model) : 'qwen-max'
     if (nt === 'zhipu') return c.model ? String(c.model) : 'glm-4'
@@ -811,6 +814,7 @@ const nodeTypes = {
   vertex: FlowNodeComponent,
   sqs: FlowNodeComponent,
   sns: FlowNodeComponent,
+  bedrock: FlowNodeComponent,
   deepseek: FlowNodeComponent,
   qwen: FlowNodeComponent,
   zhipu: FlowNodeComponent,
@@ -1232,6 +1236,7 @@ export function Canvas({
               vertex: '#4285f4',
               sqs: '#ff4f8b',
               sns: '#ff9900',
+              bedrock: '#ff9900',
               deepseek: '#4d6bfe',
               qwen: '#6200ea',
               zhipu: '#00897b',

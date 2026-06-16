@@ -303,6 +303,89 @@ pub(super) async fn execute_sns(
     .await
 }
 
+// ── AWS Bedrock (InvokeModel) ─────────────────────────────────────────────────
+// Reuses the SigV4 signer with a JSON body. The request body is model-native
+// (the caller supplies the schema their model expects), so this stays a thin,
+// faithful pass-through rather than guessing per-model payloads.
+pub(super) async fn execute_bedrock(
+    node: &Node,
+    context: &ExecutionContext,
+    http_client: &reqwest::Client,
+) -> NodeExecutionResult {
+    let raw = node.config.clone().unwrap_or_default();
+    let cfg = resolve_config_strings(&raw, context);
+
+    let access_key = match cfg.get("access_key_id").and_then(|v| v.as_str()) {
+        Some(k) if !k.is_empty() => k.to_string(),
+        _ => return NodeExecutionResult::failed("Bedrock requires 'access_key_id'"),
+    };
+    let secret_key = match cfg.get("secret_access_key").and_then(|v| v.as_str()) {
+        Some(k) if !k.is_empty() => k.to_string(),
+        _ => return NodeExecutionResult::failed("Bedrock requires 'secret_access_key'"),
+    };
+    let region = cfg
+        .get("region")
+        .and_then(|v| v.as_str())
+        .filter(|s| !s.is_empty())
+        .unwrap_or("us-east-1")
+        .to_string();
+    let model_id = match cfg.get("model_id").and_then(|v| v.as_str()) {
+        Some(m) if !m.is_empty() => m.to_string(),
+        _ => {
+            return NodeExecutionResult::failed(
+                "Bedrock requires 'model_id' (e.g. anthropic.claude-3-5-sonnet-20240620-v1:0)",
+            )
+        }
+    };
+    // Model-native request body (JSON object/string accepted).
+    let body_value = match cfg.get("body") {
+        Some(b) => json_array_or_parse(b),
+        None => return NodeExecutionResult::failed("Bedrock requires 'body' (model-native JSON)"),
+    };
+    let body = body_value.to_string();
+
+    let host = format!("bedrock-runtime.{region}.amazonaws.com");
+    // Path segment for the model id must be percent-encoded (it contains ':').
+    let canonical_uri = format!("/model/{}/invoke", urlencoding::encode(&model_id));
+    let amz_date = Utc::now().format("%Y%m%dT%H%M%SZ").to_string();
+    let authorization = sigv4_authorization(
+        "POST",
+        &host,
+        &canonical_uri,
+        "",
+        &[("content-type".to_string(), "application/json".to_string())],
+        body.as_bytes(),
+        &access_key,
+        &secret_key,
+        &region,
+        "bedrock",
+        &amz_date,
+    );
+
+    let url = format!("https://{host}{canonical_uri}");
+    match http_client
+        .post(&url)
+        .header("Content-Type", "application/json")
+        .header("Accept", "application/json")
+        .header("X-Amz-Date", &amz_date)
+        .header("Authorization", authorization)
+        .body(body)
+        .send()
+        .await
+    {
+        Ok(resp) => {
+            let status = resp.status().as_u16();
+            let text = resp.text().await.unwrap_or_default();
+            let parsed = serde_json::from_str::<serde_json::Value>(&text)
+                .unwrap_or(serde_json::Value::String(text));
+            NodeExecutionResult::succeeded(
+                serde_json::json!({ "status": status, "body": parsed }).to_string(),
+            )
+        }
+        Err(e) => NodeExecutionResult::failed(format!("Bedrock request error: {e}")),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -405,5 +488,32 @@ mod tests {
             .as_deref()
             .unwrap_or("")
             .contains("unknown operation"));
+    }
+
+    #[tokio::test]
+    async fn bedrock_requires_credentials() {
+        let c = reqwest::Client::new();
+        let n = Node {
+            id: "b1".into(),
+            node_type: NodeType::Bedrock,
+            config: Some(serde_json::json!({"model_id":"anthropic.claude","body":{}})),
+        };
+        let r = execute_bedrock(&n, &ctx(), &c).await;
+        assert!(r.error.as_deref().unwrap_or("").contains("access_key_id"));
+    }
+
+    #[tokio::test]
+    async fn bedrock_requires_body() {
+        let c = reqwest::Client::new();
+        let n = Node {
+            id: "b2".into(),
+            node_type: NodeType::Bedrock,
+            config: Some(serde_json::json!({
+                "access_key_id":"AK","secret_access_key":"sk",
+                "model_id":"anthropic.claude-3-5-sonnet-20240620-v1:0"
+            })),
+        };
+        let r = execute_bedrock(&n, &ctx(), &c).await;
+        assert!(r.error.as_deref().unwrap_or("").contains("body"));
     }
 }

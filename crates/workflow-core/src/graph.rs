@@ -210,6 +210,8 @@ pub enum NodeType {
     Sqs,
     /// AWS SNS (query protocol, SigV4-signed).
     Sns,
+    /// AWS Bedrock InvokeModel (SigV4-signed, model-native body).
+    Bedrock,
     // ── 中国国内大模型 ───────────────────────────────────
     Deepseek,
     Qwen,

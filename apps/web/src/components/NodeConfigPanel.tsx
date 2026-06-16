@@ -43,7 +43,7 @@ import {
   GoogledriveConfig, WoocommerceConfig, PineconeConfig, Awss3Config, QdrantConfig,
   CloudinaryConfig, GcalConfig, DocusignConfig, XeroConfig, CalendlyConfig, ApifyConfig,
   GanalyticsConfig, NeonConfig, CopperConfig,
-  AzureOpenaiConfig, GrokConfig, OllamaConfig, WeaviateConfig, ChromaConfig, MongodbConfig, ClickhouseConfig, GcsConfig, AzureBlobConfig, HashConfig, JwtConfig, VertexConfig, SqsConfig, SnsConfig,
+  AzureOpenaiConfig, GrokConfig, OllamaConfig, WeaviateConfig, ChromaConfig, MongodbConfig, ClickhouseConfig, GcsConfig, AzureBlobConfig, HashConfig, JwtConfig, VertexConfig, SqsConfig, SnsConfig, BedrockConfig,
   DeepseekConfig, QwenConfig, ZhipuConfig, MoonshotConfig,
   DoubaoConfig, MinimaxConfig, ErnieConfig, HunyuanConfig,
 } from './panels/IntegrationPanels2'
@@ -111,6 +111,7 @@ const NODE_DESCRIPTIONS: Partial<Record<NodeType, { en: string; zh: string }>> =
   vertex:    { en: 'Google Vertex AI (Gemini generateContent) via a caller-supplied OAuth2 token.', zh: 'Google Vertex AI（Gemini generateContent），用调用方提供的 OAuth2 令牌。' },
   sqs:       { en: 'AWS SQS (SigV4-signed): send/receive/delete messages.', zh: 'AWS SQS（SigV4 签名）：发送/接收/删除消息。' },
   sns:       { en: 'AWS SNS Publish (SigV4-signed) to a topic, target ARN, or phone number.', zh: 'AWS SNS Publish（SigV4 签名）：发到 topic / target ARN / 手机号。' },
+  bedrock:   { en: 'AWS Bedrock InvokeModel (SigV4-signed) with a model-native request body.', zh: 'AWS Bedrock InvokeModel（SigV4 签名），请求体按模型原生 schema。' },
   deepseek:  { en: 'Calls DeepSeek API (deepseek-chat V3, deepseek-reasoner R1). Returns content and usage.', zh: '调用 DeepSeek API（deepseek-chat V3、deepseek-reasoner R1），返回内容和 Token 用量。' },
   qwen:      { en: 'Calls Alibaba Qwen via DashScope (qwen-max, qwen-plus, qwen-turbo, qwen-long). Returns content and usage.', zh: '通过 DashScope 调用通义千问，返回内容和 Token 用量。' },
   zhipu:     { en: 'Calls Zhipu AI GLM (glm-4, glm-4-air, glm-4-flash, glm-3-turbo). Returns content and usage.', zh: '调用智谱 AI GLM 系列模型，返回内容和 Token 用量。' },
@@ -164,6 +165,7 @@ const NODE_LABELS: Partial<Record<NodeType, string>> = {
   vertex: 'Vertex AI',
   sqs: 'AWS SQS',
   sns: 'AWS SNS',
+  bedrock: 'AWS Bedrock',
   deepseek: 'DeepSeek',
   qwen: '通义千问',
   zhipu: '智谱 GLM',
@@ -218,6 +220,7 @@ const NODE_COLORS: Partial<Record<NodeType, string>> = {
   vertex: 'var(--node-gemini)',
   sqs: 'var(--node-awss3)',
   sns: 'var(--node-awss3)',
+  bedrock: 'var(--node-awss3)',
   deepseek: 'var(--node-deepseek)',
   qwen: 'var(--node-qwen)',
   zhipu: 'var(--node-zhipu)',
@@ -262,6 +265,7 @@ const NODE_OUTPUTS: Partial<Record<NodeType, string[]>> = {
   vertex:       ['content', 'model', 'usage'],
   sqs:          ['status', 'body'],
   sns:          ['status', 'body'],
+  bedrock:      ['status', 'body'],
   deepseek:     ['content', 'model', 'usage'],
   qwen:         ['content', 'model', 'usage'],
   zhipu:        ['content', 'model', 'usage'],
@@ -682,6 +686,7 @@ export function NodeConfigPanel({ node, onUpdateConfig, recentExecutions, onSele
         {nt === 'vertex'          && <VertexConfig          config={config} set={set} str={str} num={num} />}
         {nt === 'sqs'             && <SqsConfig             config={config} set={set} str={str} num={num} />}
         {nt === 'sns'             && <SnsConfig             config={config} set={set} str={str} num={num} />}
+        {nt === 'bedrock'         && <BedrockConfig         config={config} set={set} str={str} num={num} />}
         {nt === 'deepseek'        && <DeepseekConfig        config={config} set={set} str={str} num={num} />}
         {nt === 'qwen'            && <QwenConfig            config={config} set={set} str={str} num={num} />}
         {nt === 'zhipu'           && <ZhipuConfig           config={config} set={set} str={str} num={num} />}

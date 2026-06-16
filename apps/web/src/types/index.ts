@@ -8,7 +8,7 @@ export type NodeType = 'trigger' | 'http' | 'agent' | 'condition' | 'approval' |
  | 'groq' | 'openrouter' | 'qdrant' | 'cloudinary'
  | 'gcal' | 'docusign' | 'xero' | 'calendly'
  | 'apify' | 'ganalytics' | 'neon' | 'copper'
- | 'azure_openai' | 'grok' | 'ollama' | 'weaviate' | 'chroma' | 'mongodb' | 'clickhouse' | 'gcs' | 'azure_blob' | 'hash' | 'jwt' | 'vertex' | 'sqs' | 'sns'
+ | 'azure_openai' | 'grok' | 'ollama' | 'weaviate' | 'chroma' | 'mongodb' | 'clickhouse' | 'gcs' | 'azure_blob' | 'hash' | 'jwt' | 'vertex' | 'sqs' | 'sns' | 'bedrock'
  | 'deepseek' | 'qwen' | 'zhipu' | 'moonshot'
  | 'doubao' | 'minimax' | 'ernie' | 'hunyuan'
  | 'rag' | 'rag_ingest' | 'custom'

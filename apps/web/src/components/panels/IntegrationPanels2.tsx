@@ -2488,6 +2488,37 @@ export function ClickhouseConfig({ set, str }: ConfigProps) {
   )
 }
 
+export function BedrockConfig({ config, set, str }: ConfigProps) {
+  return (
+    <>
+      <div className="field">
+        <label>Access Key ID <span style={{ color: 'var(--danger)' }}>*</span></label>
+        <input value={str('access_key_id', '')} onChange={(e) => set('access_key_id', e.target.value)} style={{ fontFamily: 'monospace', fontSize: 12 }} />
+      </div>
+      <div className="field">
+        <label>Secret Access Key <span style={{ color: 'var(--danger)' }}>*</span></label>
+        <input type="password" value={str('secret_access_key', '')} onChange={(e) => set('secret_access_key', e.target.value)} style={{ fontFamily: 'monospace', fontSize: 12 }} />
+      </div>
+      <div className="field">
+        <label>Region</label>
+        <input placeholder="us-east-1" value={str('region', '')} onChange={(e) => set('region', e.target.value)} />
+      </div>
+      <div className="field">
+        <label>Model ID <span style={{ color: 'var(--danger)' }}>*</span></label>
+        <input placeholder="anthropic.claude-3-5-sonnet-20240620-v1:0" value={str('model_id', '')} onChange={(e) => set('model_id', e.target.value)} style={{ fontFamily: 'monospace', fontSize: 12 }} />
+      </div>
+      <div className="field">
+        <label>Body (model-native JSON) <span style={{ color: 'var(--danger)' }}>*</span></label>
+        <textarea rows={6} placeholder={'{\n  "anthropic_version": "bedrock-2023-05-31",\n  "max_tokens": 1024,\n  "messages": [{"role":"user","content":"Hi"}]\n}'} value={typeof config.body === 'object' ? JSON.stringify(config.body, null, 2) : str('body', '')} onChange={(e) => { try { set('body', JSON.parse(e.target.value)) } catch { set('body', e.target.value) } }} style={{ fontFamily: 'monospace', fontSize: 12 }} />
+        <small style={{ color: 'var(--muted)', fontSize: 10 }}>Schema depends on the model family (Anthropic / Titan / Llama / …).</small>
+      </div>
+      <p style={{ fontSize: 11, color: 'var(--muted)', margin: '8px 0 0' }}>
+        AWS Bedrock InvokeModel (SigV4-signed). Returns <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>{'{ status, body }'}</code>
+      </p>
+    </>
+  )
+}
+
 export function SqsConfig({ set, str, num }: ConfigProps) {
   const operation = str('operation', 'send')
   const OPERATIONS = ['send', 'receive', 'delete']

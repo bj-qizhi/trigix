@@ -553,6 +553,7 @@ async fn dispatch(
         NodeType::Vertex => execute_vertex(node, context, http_client).await,
         NodeType::Sqs => execute_sqs(node, context, http_client).await,
         NodeType::Sns => execute_sns(node, context, http_client).await,
+        NodeType::Bedrock => execute_bedrock(node, context, http_client).await,
         NodeType::Deepseek => execute_deepseek(node, context, http_client).await,
         NodeType::Qwen => execute_qwen(node, context, http_client).await,
         NodeType::Zhipu => execute_zhipu(node, context, http_client).await,
