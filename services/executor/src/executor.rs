@@ -33,6 +33,10 @@ use nodes_cn_llm::*;
 mod nodes_vector;
 use nodes_vector::*;
 
+// Database / warehouse nodes over HTTP (MongoDB Atlas Data API, ClickHouse).
+mod nodes_db_queue;
+use nodes_db_queue::*;
+
 // SaaS integration nodes extracted into their own submodule.
 mod nodes_integrations;
 use nodes_integrations::*;
@@ -528,6 +532,8 @@ async fn dispatch(
         NodeType::Ollama => execute_ollama(node, context, http_client).await,
         NodeType::Weaviate => execute_weaviate(node, context, http_client).await,
         NodeType::Chroma => execute_chroma(node, context, http_client).await,
+        NodeType::Mongodb => execute_mongodb(node, context, http_client).await,
+        NodeType::Clickhouse => execute_clickhouse(node, context, http_client).await,
         NodeType::Deepseek => execute_deepseek(node, context, http_client).await,
         NodeType::Qwen => execute_qwen(node, context, http_client).await,
         NodeType::Zhipu => execute_zhipu(node, context, http_client).await,

@@ -2393,6 +2393,101 @@ export function ChromaConfig({ config, set, str }: ConfigProps) {
   )
 }
 
+export function MongodbConfig({ config, set, str }: ConfigProps) {
+  const operation = str('operation', 'find')
+  const OPERATIONS = ['find', 'findOne', 'insertOne', 'insertMany', 'updateOne', 'updateMany', 'deleteOne', 'deleteMany', 'aggregate']
+  const jsonField = (key: string, label: string, placeholder: string, rows = 2) => (
+    <div className="field">
+      <label>{label}</label>
+      <textarea rows={rows} placeholder={placeholder} value={typeof config[key] === 'object' ? JSON.stringify(config[key], null, 2) : str(key, '')} onChange={(e) => { try { set(key, JSON.parse(e.target.value)) } catch { set(key, e.target.value) } }} style={{ fontFamily: 'monospace', fontSize: 12 }} />
+    </div>
+  )
+  return (
+    <>
+      <div className="field">
+        <label>Data API URL <span style={{ color: 'var(--danger)' }}>*</span></label>
+        <input placeholder="https://<region>.data.mongodb-api.com/app/<app-id>/endpoint/data/v1" value={str('data_api_url', '')} onChange={(e) => set('data_api_url', e.target.value)} style={{ fontFamily: 'monospace', fontSize: 12 }} />
+      </div>
+      <div className="field">
+        <label>API Key <span style={{ color: 'var(--danger)' }}>*</span></label>
+        <input type="password" value={str('api_key', '')} onChange={(e) => set('api_key', e.target.value)} style={{ fontFamily: 'monospace', fontSize: 12 }} />
+      </div>
+      <div className="field">
+        <label>Data Source (cluster) <span style={{ color: 'var(--danger)' }}>*</span></label>
+        <input placeholder="Cluster0" value={str('data_source', '')} onChange={(e) => set('data_source', e.target.value)} />
+      </div>
+      <div className="field">
+        <label>Database <span style={{ color: 'var(--danger)' }}>*</span></label>
+        <input placeholder="mydb" value={str('database', '')} onChange={(e) => set('database', e.target.value)} />
+      </div>
+      <div className="field">
+        <label>Collection <span style={{ color: 'var(--danger)' }}>*</span></label>
+        <input placeholder="users" value={str('collection', '')} onChange={(e) => set('collection', e.target.value)} />
+      </div>
+      <div className="field">
+        <label>Operation</label>
+        <select value={operation} onChange={(e) => set('operation', e.target.value)}>
+          {OPERATIONS.map((op) => <option key={op} value={op}>{op}</option>)}
+        </select>
+      </div>
+      {(operation === 'find' || operation === 'findOne' || operation === 'updateOne' || operation === 'updateMany' || operation === 'deleteOne' || operation === 'deleteMany') &&
+        jsonField('filter', 'Filter (JSON)', '{"status":"active"}')}
+      {operation === 'find' && (
+        <>
+          {jsonField('sort', 'Sort (JSON)', '{"createdAt":-1}')}
+          <div className="field">
+            <label>Limit</label>
+            <input type="number" min={1} placeholder="100" value={(config['limit'] as number | undefined) ?? ''} onChange={(e) => set('limit', e.target.value ? parseInt(e.target.value) : undefined)} />
+          </div>
+        </>
+      )}
+      {operation === 'insertOne' && jsonField('document', 'Document (JSON)', '{"name":"Ada"}', 3)}
+      {operation === 'insertMany' && jsonField('documents', 'Documents (JSON array)', '[{"name":"Ada"},{"name":"Lin"}]', 3)}
+      {(operation === 'updateOne' || operation === 'updateMany') && jsonField('update', 'Update (JSON)', '{"$set":{"status":"done"}}', 3)}
+      {operation === 'aggregate' && jsonField('pipeline', 'Pipeline (JSON array)', '[{"$match":{"x":1}},{"$group":{"_id":"$y"}}]', 4)}
+      <p style={{ fontSize: 11, color: 'var(--muted)', margin: '8px 0 0' }}>
+        MongoDB Atlas Data API. Returns <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>{'{ status, body }'}</code>
+      </p>
+    </>
+  )
+}
+
+export function ClickhouseConfig({ set, str }: ConfigProps) {
+  return (
+    <>
+      <div className="field">
+        <label>Host <span style={{ color: 'var(--danger)' }}>*</span></label>
+        <input placeholder="https://abc.clickhouse.cloud:8443" value={str('host', '')} onChange={(e) => set('host', e.target.value)} style={{ fontFamily: 'monospace', fontSize: 12 }} />
+      </div>
+      <div className="field">
+        <label>User</label>
+        <input placeholder="default" value={str('user', '')} onChange={(e) => set('user', e.target.value)} />
+      </div>
+      <div className="field">
+        <label>Password</label>
+        <input type="password" value={str('password', '')} onChange={(e) => set('password', e.target.value)} style={{ fontFamily: 'monospace', fontSize: 12 }} />
+      </div>
+      <div className="field">
+        <label>Database</label>
+        <input placeholder="default" value={str('database', '')} onChange={(e) => set('database', e.target.value)} />
+      </div>
+      <div className="field">
+        <label>Query (SQL) <span style={{ color: 'var(--danger)' }}>*</span></label>
+        <textarea rows={4} placeholder="SELECT * FROM events LIMIT 10" value={str('query', '')} onChange={(e) => set('query', e.target.value)} style={{ fontFamily: 'monospace', fontSize: 12 }} />
+      </div>
+      <div className="field">
+        <label>Format</label>
+        <select value={str('format', 'JSON')} onChange={(e) => set('format', e.target.value)}>
+          {['JSON', 'JSONEachRow', 'TabSeparated', 'CSV'].map((f) => <option key={f} value={f}>{f}</option>)}
+        </select>
+      </div>
+      <p style={{ fontSize: 11, color: 'var(--muted)', margin: '8px 0 0' }}>
+        ClickHouse HTTP interface. A <code>FORMAT</code> clause is appended to SELECTs automatically. Returns <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>{'{ status, body }'}</code>
+      </p>
+    </>
+  )
+}
+
 export function CloudinaryConfig({ set, str }: ConfigProps) {
   const operation = str('operation', 'upload')
   const OPERATIONS = ['upload', 'transform_url', 'get_resource', 'delete']

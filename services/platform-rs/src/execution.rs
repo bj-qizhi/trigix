@@ -2152,6 +2152,8 @@ fn node_type_to_str(node_type: &workflow_core::NodeType) -> &'static str {
         workflow_core::NodeType::Ollama => "ollama",
         workflow_core::NodeType::Weaviate => "weaviate",
         workflow_core::NodeType::Chroma => "chroma",
+        workflow_core::NodeType::Mongodb => "mongodb",
+        workflow_core::NodeType::Clickhouse => "clickhouse",
         // 国内大模型
         workflow_core::NodeType::Deepseek => "deepseek",
         workflow_core::NodeType::Qwen => "qwen",

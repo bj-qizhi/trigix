@@ -192,6 +192,10 @@ pub enum NodeType {
     Weaviate,
     /// Chroma vector store (REST data API).
     Chroma,
+    /// MongoDB via the Atlas Data API (HTTP).
+    Mongodb,
+    /// ClickHouse via its HTTP interface.
+    Clickhouse,
     // ── 中国国内大模型 ───────────────────────────────────
     Deepseek,
     Qwen,
