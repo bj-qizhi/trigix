@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <title>Trigix — AI-Native Workflow Automation Platform (Rust, Self-Hosted)</title>
-  <meta name="description" content="Trigix is an open-source, AI-native workflow automation platform with a Rust execution engine and 140+ node types. Visual canvas, LLM &amp; agent nodes, RAG over pgvector, MCP support, multi-tenant, Kubernetes Helm chart. A self-hosted n8n alternative." />
+  <meta name="description" content="Trigix is an open-source, AI-native workflow automation platform with a Rust execution engine and 180+ node types. Visual canvas, LLM &amp; agent nodes, RAG over pgvector, MCP support, multi-tenant, Kubernetes Helm chart. A self-hosted n8n alternative." />
   <meta name="keywords" content="workflow automation, AI workflow, low-code, Rust workflow engine, LLM, RAG, AI agent, MCP, n8n alternative, self-hosted automation, DAG, pgvector, Kubernetes, open source" />
   <meta name="author" content="北京祺智科技有限公司 (Beijing Qizhi Technology)" />
   <link rel="canonical" href="https://bj-qizhi.github.io/trigix/" />
@@ -15,14 +15,14 @@
   <meta property="og:type" content="website" />
   <meta property="og:site_name" content="Trigix" />
   <meta property="og:title" content="Trigix — AI-Native Workflow Automation Platform" />
-  <meta property="og:description" content="Open-source, AI-native workflow automation. Rust execution engine, 140+ node types, visual canvas, LLM/agent nodes, RAG, MCP, Kubernetes Helm chart. A self-hosted n8n alternative." />
+  <meta property="og:description" content="Open-source, AI-native workflow automation. Rust execution engine, 180+ node types, visual canvas, LLM/agent nodes, RAG, MCP, Kubernetes Helm chart. A self-hosted n8n alternative." />
   <meta property="og:url" content="https://bj-qizhi.github.io/trigix/" />
   <meta property="og:image" content="https://bj-qizhi.github.io/trigix/og.png" />
 
   <!-- Twitter -->
   <meta name="twitter:card" content="summary_large_image" />
   <meta name="twitter:title" content="Trigix — AI-Native Workflow Automation Platform" />
-  <meta name="twitter:description" content="Open-source, AI-native workflow automation. Rust engine, 140+ nodes, LLM/agent, RAG, MCP, Helm chart. Self-hosted n8n alternative." />
+  <meta name="twitter:description" content="Open-source, AI-native workflow automation. Rust engine, 180+ nodes, LLM/agent, RAG, MCP, Helm chart. Self-hosted n8n alternative." />
   <meta name="twitter:image" content="https://bj-qizhi.github.io/trigix/og.png" />
 
   <!-- Structured data: SoftwareApplication -->
@@ -33,7 +33,7 @@
     "name": "Trigix",
     "applicationCategory": "DeveloperApplication",
     "operatingSystem": "Linux, Docker, Kubernetes",
-    "description": "Open-source, AI-native workflow automation platform with a Rust execution engine, 140+ node types, visual canvas, LLM and agent nodes, RAG over pgvector, and MCP support.",
+    "description": "Open-source, AI-native workflow automation platform with a Rust execution engine, 180+ node types, visual canvas, LLM and agent nodes, RAG over pgvector, and MCP support.",
     "url": "https://bj-qizhi.github.io/trigix/",
     "downloadUrl": "https://github.com/bj-qizhi/trigix",
     "license": "https://opensource.org/licenses/MIT",
@@ -65,6 +65,8 @@
     .cta .ghost { border:1px solid var(--line); color:var(--fg); }
     .badges { margin:20px 0 0; }
     .badges img { height:20px; margin:3px; vertical-align:middle; }
+    .announce { display:inline-block; margin:26px auto 0; padding:9px 18px; border:1px solid var(--accent); border-radius:999px; background:rgba(255,106,61,0.08); color:var(--fg); font-size:0.95rem; }
+    .announce a { font-weight:600; }
     section { padding:36px 0; border-top:1px solid var(--line); }
     h2 { font-size:1.5rem; margin:0 0 18px; }
     .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); gap:16px; }
@@ -82,7 +84,7 @@
   <div class="wrap">
     <header>
       <h1>Trigix</h1>
-      <p class="tagline">An open-source, <strong>AI-native workflow automation platform</strong> — a Rust execution engine, 140+ node types, and a visual drag-and-drop canvas. Self-hosted, multi-tenant, Kubernetes-ready.</p>
+      <p class="tagline">An open-source, <strong>AI-native workflow automation platform</strong> — a Rust execution engine, 180+ node types, and a visual drag-and-drop canvas. Self-hosted, multi-tenant, Kubernetes-ready.</p>
       <p class="cta">
         <a class="primary" href="https://github.com/bj-qizhi/trigix">⭐ Star on GitHub</a>
         <a class="ghost" href="#quickstart">Quick Start</a>
@@ -93,6 +95,7 @@
         <img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="MIT License" />
         <img src="https://img.shields.io/badge/Rust-2021-orange.svg" alt="Rust" />
       </p>
+      <p class="announce">🎉 <strong>v1.3.0 is out</strong> — 44 new node types (now 180), including Vertex AI, Bedrock, Snowflake, Feishu/DingTalk/WeChat Work, and SSH/SFTP/IMAP. <a href="https://github.com/bj-qizhi/trigix/releases/tag/v1.3.0">Read the release notes →</a></p>
     </header>
 
     <section>
@@ -101,7 +104,7 @@
       <div class="grid">
         <div class="card"><h3>🦀 Rust Execution Engine</h3><p>Async DAG scheduling, parallel fan-out/fan-in, retries, timeouts, and cancellation.</p></div>
         <div class="card"><h3>🤖 AI-Native</h3><p>Built-in LLM nodes, an agent tool-use loop, RAG over pgvector, and MCP protocol support.</p></div>
-        <div class="card"><h3>🧩 140+ Node Types</h3><p>AI models, 100+ SaaS integrations, data transforms, and control flow — extend with the node SDK.</p></div>
+        <div class="card"><h3>🧩 180+ Node Types</h3><p>AI models, 100+ SaaS integrations, data transforms, and control flow — extend with the node SDK.</p></div>
         <div class="card"><h3>🏢 Enterprise-Ready</h3><p>SSO (OIDC), JWT + RBAC, multi-tenant, encrypted secrets, audit log, Kubernetes Helm chart.</p></div>
       </div>
     </section>
@@ -111,10 +114,12 @@
       <ul class="feat">
         <li>Visual canvas editor (React Flow): minimap, snap-to-grid, undo/redo</li>
         <li>Async DAG engine: parallel branches, sub-workflows, ForEach, loop</li>
-        <li>AI nodes: Claude, OpenAI, Gemini, Groq, Mistral, Cohere + Chinese LLMs</li>
-        <li>RAG over pgvector with hybrid search, rerank, and HNSW indexing</li>
+        <li>AI nodes: Claude, OpenAI, Gemini, Vertex AI, Bedrock, Groq, Mistral, Cohere + Chinese LLMs</li>
+        <li>AI building blocks: embedding, rerank, classifier, structured output, image gen, speech↔text</li>
+        <li>Vector stores: pgvector, Pinecone, Qdrant, Weaviate, Chroma, Milvus — with hybrid search, rerank, HNSW</li>
         <li>Agent tool-use loop with sandboxed egress</li>
-        <li>100+ integrations: GitHub, Jira, Notion, Slack, Stripe, Salesforce…</li>
+        <li>100+ integrations: GitHub, Jira, Notion, Slack, Stripe, Feishu, DingTalk, WeChat Work…</li>
+        <li>Data &amp; protocols: MySQL, SQL Server, Snowflake, BigQuery, MongoDB, Kafka, RabbitMQ, SSH/SFTP/FTP, IMAP</li>
         <li>Triggers: Webhook (HMAC-SHA256), Cron, Interval, Manual, Form</li>
         <li>Auth &amp; security: JWT, RBAC, API keys, encrypted secrets</li>
         <li>Observability: audit log, Prometheus metrics, OpenTelemetry tracing</li>
@@ -125,7 +130,7 @@
     <section id="quickstart">
       <h2>Quick Start</h2>
       <p>Deploy on Kubernetes with the Helm chart (published to GHCR):</p>
-      <pre><code>helm install trigix oci://ghcr.io/bj-qizhi/charts/trigix --version 0.3.2 \
+      <pre><code>helm install trigix oci://ghcr.io/bj-qizhi/charts/trigix --version 0.3.3 \
   --namespace trigix --create-namespace</code></pre>
       <p>Or run on a single host with Docker Compose:</p>
       <pre><code>docker compose -f docker-compose.prod.yml up -d --build</code></pre>
