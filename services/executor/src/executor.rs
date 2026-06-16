@@ -73,6 +73,14 @@ use nodes_core::*;
 mod nodes_warehouse;
 use nodes_warehouse::*;
 
+// Network file / shell / mail clients (FTP, SFTP, SSH, IMAP).
+mod nodes_ftp;
+use nodes_ftp::*;
+mod nodes_ssh;
+use nodes_ssh::*;
+mod nodes_mail;
+use nodes_mail::*;
+
 // SaaS integration nodes extracted into their own submodule.
 mod nodes_integrations;
 use nodes_integrations::*;
@@ -601,6 +609,10 @@ async fn dispatch(
         NodeType::Mysql => execute_mysql(node, context).await,
         NodeType::Snowflake => execute_snowflake(node, context, http_client).await,
         NodeType::Bigquery => execute_bigquery(node, context, http_client).await,
+        NodeType::Ftp => execute_ftp(node, context).await,
+        NodeType::Sftp => execute_sftp(node, context).await,
+        NodeType::Ssh => execute_ssh(node, context).await,
+        NodeType::Imap => execute_imap(node, context).await,
         NodeType::Deepseek => execute_deepseek(node, context, http_client).await,
         NodeType::Qwen => execute_qwen(node, context, http_client).await,
         NodeType::Zhipu => execute_zhipu(node, context, http_client).await,

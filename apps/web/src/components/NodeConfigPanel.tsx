@@ -44,7 +44,7 @@ import {
   CloudinaryConfig, GcalConfig, DocusignConfig, XeroConfig, CalendlyConfig, ApifyConfig,
   GanalyticsConfig, NeonConfig, CopperConfig,
   AzureOpenaiConfig, GrokConfig, OllamaConfig, WeaviateConfig, ChromaConfig, MongodbConfig, ClickhouseConfig, GcsConfig, AzureBlobConfig, HashConfig, JwtConfig, VertexConfig, SqsConfig, SnsConfig, BedrockConfig, MilvusConfig, KafkaConfig, RabbitmqConfig, ZipConfig, ImageConfig, PdfExtractConfig, OcrConfig, FeishuConfig, DingtalkConfig, WecomConfig,
-  EmbeddingConfig, RerankerConfig, TextSplitterConfig, StructuredOutputConfig, ClassifierConfig, ImageGenConfig, SpeechToTextConfig, TtsConfig, HtmlExtractConfig, RssConfig, MysqlConfig, SnowflakeConfig, BigqueryConfig,
+  EmbeddingConfig, RerankerConfig, TextSplitterConfig, StructuredOutputConfig, ClassifierConfig, ImageGenConfig, SpeechToTextConfig, TtsConfig, HtmlExtractConfig, RssConfig, MysqlConfig, SnowflakeConfig, BigqueryConfig, FtpConfig, SftpConfig, SshConfig, ImapConfig,
   DeepseekConfig, QwenConfig, ZhipuConfig, MoonshotConfig,
   DoubaoConfig, MinimaxConfig, ErnieConfig, HunyuanConfig,
 } from './panels/IntegrationPanels2'
@@ -136,6 +136,10 @@ const NODE_DESCRIPTIONS: Partial<Record<NodeType, { en: string; zh: string }>> =
   mysql:     { en: 'Run a SQL query against MySQL (sqlx).', zh: '对 MySQL 执行 SQL 查询（sqlx）。' },
   snowflake: { en: 'Run SQL via the Snowflake SQL API v2 (bearer token).', zh: '通过 Snowflake SQL API v2 执行 SQL（bearer token）。' },
   bigquery:  { en: 'Run a query via the BigQuery jobs.query REST API (OAuth2 token).', zh: '通过 BigQuery jobs.query REST 执行查询（OAuth2 token）。' },
+  ftp:       { en: 'Plain FTP: list/download/upload/delete files (base64 payloads).', zh: '普通 FTP：列目录/下载/上传/删除（base64 载荷）。' },
+  sftp:      { en: 'SFTP over SSH (pure-Rust, password auth): list/download/upload/delete.', zh: 'SFTP over SSH（纯 Rust，密码认证）：列目录/下载/上传/删除。' },
+  ssh:       { en: 'Run a command over SSH (password auth); returns stdout/stderr/exit.', zh: 'SSH 执行命令（密码认证），返回 stdout/stderr/exit。' },
+  imap:      { en: 'Read an IMAP mailbox over TLS: recent messages or mailbox list.', zh: 'IMAP over TLS 读邮箱：最近邮件或邮箱列表。' },
   deepseek:  { en: 'Calls DeepSeek API (deepseek-chat V3, deepseek-reasoner R1). Returns content and usage.', zh: '调用 DeepSeek API（deepseek-chat V3、deepseek-reasoner R1），返回内容和 Token 用量。' },
   qwen:      { en: 'Calls Alibaba Qwen via DashScope (qwen-max, qwen-plus, qwen-turbo, qwen-long). Returns content and usage.', zh: '通过 DashScope 调用通义千问，返回内容和 Token 用量。' },
   zhipu:     { en: 'Calls Zhipu AI GLM (glm-4, glm-4-air, glm-4-flash, glm-3-turbo). Returns content and usage.', zh: '调用智谱 AI GLM 系列模型，返回内容和 Token 用量。' },
@@ -213,6 +217,10 @@ const NODE_LABELS: Partial<Record<NodeType, string>> = {
   mysql: 'MySQL',
   snowflake: 'Snowflake',
   bigquery: 'BigQuery',
+  ftp: 'FTP',
+  sftp: 'SFTP',
+  ssh: 'SSH',
+  imap: 'IMAP',
   deepseek: 'DeepSeek',
   qwen: '通义千问',
   zhipu: '智谱 GLM',
@@ -291,6 +299,10 @@ const NODE_COLORS: Partial<Record<NodeType, string>> = {
   mysql: 'var(--node-database)',
   snowflake: 'var(--node-database)',
   bigquery: 'var(--node-database)',
+  ftp: 'var(--node-awss3)',
+  sftp: 'var(--node-awss3)',
+  ssh: 'var(--node-code)',
+  imap: 'var(--node-slack)',
   deepseek: 'var(--node-deepseek)',
   qwen: 'var(--node-qwen)',
   zhipu: 'var(--node-zhipu)',
@@ -359,6 +371,10 @@ const NODE_OUTPUTS: Partial<Record<NodeType, string[]>> = {
   mysql:        ['rows', 'count'],
   snowflake:    ['status', 'body'],
   bigquery:     ['status', 'body'],
+  ftp:          ['files', 'content_base64', 'count'],
+  sftp:         ['files', 'content_base64', 'count'],
+  ssh:          ['stdout', 'stderr', 'exit_status'],
+  imap:         ['messages', 'count', 'mailboxes'],
   deepseek:     ['content', 'model', 'usage'],
   qwen:         ['content', 'model', 'usage'],
   zhipu:        ['content', 'model', 'usage'],
@@ -803,6 +819,10 @@ export function NodeConfigPanel({ node, onUpdateConfig, recentExecutions, onSele
         {nt === 'mysql'           && <MysqlConfig           config={config} set={set} str={str} num={num} />}
         {nt === 'snowflake'       && <SnowflakeConfig       config={config} set={set} str={str} num={num} />}
         {nt === 'bigquery'        && <BigqueryConfig        config={config} set={set} str={str} num={num} />}
+        {nt === 'ftp'             && <FtpConfig             config={config} set={set} str={str} num={num} />}
+        {nt === 'sftp'            && <SftpConfig            config={config} set={set} str={str} num={num} />}
+        {nt === 'ssh'             && <SshConfig             config={config} set={set} str={str} num={num} />}
+        {nt === 'imap'            && <ImapConfig            config={config} set={set} str={str} num={num} />}
         {nt === 'deepseek'        && <DeepseekConfig        config={config} set={set} str={str} num={num} />}
         {nt === 'qwen'            && <QwenConfig            config={config} set={set} str={str} num={num} />}
         {nt === 'zhipu'           && <ZhipuConfig           config={config} set={set} str={str} num={num} />}

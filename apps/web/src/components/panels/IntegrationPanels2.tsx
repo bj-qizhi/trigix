@@ -2802,6 +2802,127 @@ function llmEndpointFields(str: ConfigProps['str'], set: ConfigProps['set'], def
   )
 }
 
+function hostAuthFields(str: ConfigProps['str'], set: ConfigProps['set'], defPort: number, userLabel = 'Username') {
+  return (
+    <>
+      <div style={{ display: 'flex', gap: 8 }}>
+        <div className="field" style={{ flex: 2 }}>
+          <label>Host <span style={{ color: 'var(--danger)' }}>*</span></label>
+          <input value={str('host', '')} onChange={(e) => set('host', e.target.value)} style={{ fontFamily: 'monospace', fontSize: 12 }} />
+        </div>
+        <div className="field" style={{ flex: 1 }}>
+          <label>Port</label>
+          <input placeholder={String(defPort)} value={str('port', '')} onChange={(e) => set('port', e.target.value ? parseInt(e.target.value) : undefined)} />
+        </div>
+      </div>
+      <div style={{ display: 'flex', gap: 8 }}>
+        <div className="field" style={{ flex: 1 }}>
+          <label>{userLabel}</label>
+          <input value={str('username', '')} onChange={(e) => set('username', e.target.value)} />
+        </div>
+        <div className="field" style={{ flex: 1 }}>
+          <label>Password</label>
+          <input type="password" value={str('password', '')} onChange={(e) => set('password', e.target.value)} />
+        </div>
+      </div>
+    </>
+  )
+}
+
+function fileOpFields(operation: string, str: ConfigProps['str'], set: ConfigProps['set']) {
+  return (
+    <>
+      <div className="field">
+        <label>Operation</label>
+        <select value={operation} onChange={(e) => set('operation', e.target.value)}>
+          {['list', 'download', 'upload', 'delete'].map((op) => <option key={op} value={op}>{op}</option>)}
+        </select>
+      </div>
+      <div className="field">
+        <label>Path {operation !== 'list' && <span style={{ color: 'var(--danger)' }}>*</span>}</label>
+        <input placeholder={operation === 'list' ? '(directory, optional)' : '/path/to/file'} value={str('path', '')} onChange={(e) => set('path', e.target.value)} style={{ fontFamily: 'monospace', fontSize: 12 }} />
+      </div>
+      {operation === 'upload' && (
+        <div className="field">
+          <label>Content (base64) <span style={{ color: 'var(--danger)' }}>*</span></label>
+          <textarea rows={3} value={str('content', '')} onChange={(e) => set('content', e.target.value)} style={{ fontFamily: 'monospace', fontSize: 12 }} />
+        </div>
+      )}
+    </>
+  )
+}
+
+export function FtpConfig({ set, str }: ConfigProps) {
+  const operation = str('operation', 'list')
+  return (
+    <>
+      {hostAuthFields(str, set, 21)}
+      {fileOpFields(operation, str, set)}
+      <p style={{ fontSize: 11, color: 'var(--muted)', margin: '8px 0 0' }}>
+        Plain FTP. list → <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>{'{ files, count }'}</code>; download → <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>{'{ content_base64, size }'}</code>
+      </p>
+    </>
+  )
+}
+
+export function SftpConfig({ set, str }: ConfigProps) {
+  const operation = str('operation', 'list')
+  return (
+    <>
+      {hostAuthFields(str, set, 22)}
+      {fileOpFields(operation, str, set)}
+      <p style={{ fontSize: 11, color: 'var(--muted)', margin: '8px 0 0' }}>
+        SFTP over SSH (password auth). Returns file listings / base64 content.
+      </p>
+    </>
+  )
+}
+
+export function SshConfig({ set, str }: ConfigProps) {
+  return (
+    <>
+      {hostAuthFields(str, set, 22)}
+      <div className="field">
+        <label>Command <span style={{ color: 'var(--danger)' }}>*</span></label>
+        <textarea rows={2} placeholder="uname -a && df -h" value={str('command', '')} onChange={(e) => set('command', e.target.value)} style={{ fontFamily: 'monospace', fontSize: 12 }} />
+      </div>
+      <p style={{ fontSize: 11, color: 'var(--muted)', margin: '8px 0 0' }}>
+        Runs a command over SSH (password auth). Returns <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>{'{ stdout, stderr, exit_status }'}</code>
+      </p>
+    </>
+  )
+}
+
+export function ImapConfig({ set, str, num }: ConfigProps) {
+  const operation = str('operation', 'list_messages')
+  return (
+    <>
+      {hostAuthFields(str, set, 993)}
+      <div className="field">
+        <label>Operation</label>
+        <select value={operation} onChange={(e) => set('operation', e.target.value)}>
+          {['list_messages', 'list_mailboxes'].map((op) => <option key={op} value={op}>{op}</option>)}
+        </select>
+      </div>
+      {operation === 'list_messages' && (
+        <div style={{ display: 'flex', gap: 8 }}>
+          <div className="field" style={{ flex: 2 }}>
+            <label>Mailbox</label>
+            <input placeholder="INBOX" value={str('mailbox', '')} onChange={(e) => set('mailbox', e.target.value)} />
+          </div>
+          <div className="field" style={{ flex: 1 }}>
+            <label>Limit</label>
+            <input type="number" min={1} max={100} value={num('limit', 10)} onChange={(e) => set('limit', Number(e.target.value))} />
+          </div>
+        </div>
+      )}
+      <p style={{ fontSize: 11, color: 'var(--muted)', margin: '8px 0 0' }}>
+        IMAP over TLS. Returns recent message envelopes <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>{'{ messages, count }'}</code>
+      </p>
+    </>
+  )
+}
+
 export function MysqlConfig({ set, str }: ConfigProps) {
   return (
     <>

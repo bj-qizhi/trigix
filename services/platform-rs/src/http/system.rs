@@ -59,7 +59,7 @@ async fn system_info() -> Json<SystemInfo> {
     let (captcha_provider, captcha_site_key) = captcha_public_config();
     Json(SystemInfo {
         version: env!("CARGO_PKG_VERSION"),
-        node_types: 174,
+        node_types: 178,
         auth_required: std::env::var("AUTH_REQUIRED").as_deref() == Ok("true"),
         captcha_provider,
         captcha_site_key,

@@ -258,6 +258,14 @@ pub enum NodeType {
     Snowflake,
     /// BigQuery (jobs.query REST).
     Bigquery,
+    /// FTP (plain) file transfer.
+    Ftp,
+    /// SFTP over SSH (pure-Rust russh).
+    Sftp,
+    /// SSH command execution (pure-Rust russh).
+    Ssh,
+    /// IMAP mailbox reading.
+    Imap,
     // ── 中国国内大模型 ───────────────────────────────────
     Deepseek,
     Qwen,

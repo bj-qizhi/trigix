@@ -2185,6 +2185,10 @@ fn node_type_to_str(node_type: &workflow_core::NodeType) -> &'static str {
         workflow_core::NodeType::Mysql => "mysql",
         workflow_core::NodeType::Snowflake => "snowflake",
         workflow_core::NodeType::Bigquery => "bigquery",
+        workflow_core::NodeType::Ftp => "ftp",
+        workflow_core::NodeType::Sftp => "sftp",
+        workflow_core::NodeType::Ssh => "ssh",
+        workflow_core::NodeType::Imap => "imap",
         // 国内大模型
         workflow_core::NodeType::Deepseek => "deepseek",
         workflow_core::NodeType::Qwen => "qwen",

@@ -311,6 +311,10 @@ const NODE_LABELS: Record<NodeType, string> = {
   mysql: 'MySQL',
   snowflake: 'Snowflake',
   bigquery: 'BigQuery',
+  ftp: 'FTP',
+  sftp: 'SFTP',
+  ssh: 'SSH',
+  imap: 'IMAP',
   deepseek: 'DeepSeek',
   qwen: '通义千问',
   zhipu: '智谱 GLM',
@@ -492,6 +496,10 @@ const NODE_ICONS: Record<NodeType, string> = {
   mysql: '🐬',
   snowflake: '❄️',
   bigquery: '🔍',
+  ftp: '📁',
+  sftp: '🔐',
+  ssh: '🖥️',
+  imap: '📬',
   deepseek: '🐋',
   qwen: '🧩',
   zhipu: '🔮',
@@ -688,6 +696,10 @@ function FlowNodeComponent({ data, selected, id }: NodeProps) {
     if (nt === 'mysql') return c.query ? 'SQL query' : 'No query'
     if (nt === 'snowflake') return c.account ? String(c.account) : 'No account'
     if (nt === 'bigquery') return c.project ? String(c.project) : 'No project'
+    if (nt === 'ftp') return c.host ? `${String(c.operation ?? 'list')} ${String(c.host)}` : 'No host'
+    if (nt === 'sftp') return c.host ? `${String(c.operation ?? 'list')} ${String(c.host)}` : 'No host'
+    if (nt === 'ssh') return c.host ? `ssh ${String(c.username ?? '')}@${String(c.host)}` : 'No host'
+    if (nt === 'imap') return c.host ? `${String(c.operation ?? 'list_messages')} ${String(c.mailbox ?? 'INBOX')}` : 'No host'
     if (nt === 'deepseek') return c.model ? String(c.model) : 'deepseek-chat'
     if (nt === 'qwen') return c.model ? String(c.model) : 'qwen-max'
     if (nt === 'zhipu') return c.model ? String(c.model) : 'glm-4'
@@ -907,6 +919,10 @@ const nodeTypes = {
   mysql: FlowNodeComponent,
   snowflake: FlowNodeComponent,
   bigquery: FlowNodeComponent,
+  ftp: FlowNodeComponent,
+  sftp: FlowNodeComponent,
+  ssh: FlowNodeComponent,
+  imap: FlowNodeComponent,
   deepseek: FlowNodeComponent,
   qwen: FlowNodeComponent,
   zhipu: FlowNodeComponent,
@@ -1352,6 +1368,10 @@ export function Canvas({
               mysql: '#00758f',
               snowflake: '#29b5e8',
               bigquery: '#4285f4',
+              ftp: '#8b5cf6',
+              sftp: '#7c3aed',
+              ssh: '#334155',
+              imap: '#be123c',
               deepseek: '#4d6bfe',
               qwen: '#6200ea',
               zhipu: '#00897b',
