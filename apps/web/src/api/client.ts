@@ -688,9 +688,15 @@ export function getAcquisitionChannels(): Promise<AcquisitionChannel[]> {
   return request('/v1/analytics/attribution')
 }
 
+export interface CurrencyAmount {
+  currency: string
+  cents: number
+}
+
 export interface AffiliateLedgerEntry {
   id: string
   referee_tenant: string | null
+  currency: string
   amount_cents: number
   kind: string
   source_ref: string | null
@@ -702,6 +708,7 @@ export interface PayoutRequest {
   tenant_id: string
   method: string
   address: string
+  currency: string
   amount_cents: number
   status: string
   note: string | null
@@ -712,22 +719,22 @@ export interface PayoutRequest {
 export interface AffiliateInfo {
   code: string
   referral_count: number
-  balance_cents: number
+  balances: CurrencyAmount[]
   commission_pct: number
   entries: AffiliateLedgerEntry[]
   payout_requests: PayoutRequest[]
 }
 
-/** The caller's affiliate dashboard: code, referrals, balance, ledger, payouts. */
+/** The caller's affiliate dashboard: code, referrals, balances, ledger, payouts. */
 export function getAffiliate(): Promise<AffiliateInfo> {
   return request('/v1/affiliate/me')
 }
 
 /** Requests a cashout of (part of) the affiliate balance to an address. */
-export function requestPayout(address: string, amountCents: number, method = 'usdt'): Promise<PayoutRequest> {
+export function requestPayout(address: string, currency: string, amountCents: number, method = 'usdt'): Promise<PayoutRequest> {
   return request('/v1/affiliate/payout-request', {
     method: 'POST',
-    body: JSON.stringify({ method, address, amount_cents: amountCents }),
+    body: JSON.stringify({ method, address, currency, amount_cents: amountCents }),
   })
 }
 

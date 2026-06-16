@@ -12,6 +12,7 @@ export function AffiliatePage({ onBack }: { onBack: () => void }) {
   const [copied, setCopied] = useState(false)
   const [address, setAddress] = useState('')
   const [amount, setAmount] = useState('')
+  const [currency, setCurrency] = useState('')
   const [payoutError, setPayoutError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
 
@@ -23,6 +24,7 @@ export function AffiliatePage({ onBack }: { onBack: () => void }) {
   const submitPayout = async (e: React.FormEvent) => {
     e.preventDefault()
     setPayoutError(null)
+    const cur = currency || info?.balances[0]?.currency || 'usd'
     const cents = Math.round(parseFloat(amount) * 100)
     if (!address.trim() || !Number.isFinite(cents) || cents <= 0) {
       setPayoutError(zh ? '请填写地址和有效金额' : 'Enter an address and a valid amount')
@@ -30,7 +32,7 @@ export function AffiliatePage({ onBack }: { onBack: () => void }) {
     }
     setSubmitting(true)
     try {
-      await api.requestPayout(address.trim(), cents)
+      await api.requestPayout(address.trim(), cur, cents)
       setAddress('')
       setAmount('')
       await refresh()
@@ -41,8 +43,8 @@ export function AffiliatePage({ onBack }: { onBack: () => void }) {
     }
   }
 
-  const money = (c: number) =>
-    `$${(c / 100).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+  const fmtCur = (cents: number, cur: string) =>
+    `${(cents / 100).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${cur.toUpperCase()}`
   const link = info ? `${window.location.origin}/?ref=${info.code}` : ''
   const copy = () => {
     navigator.clipboard
@@ -114,20 +116,26 @@ export function AffiliatePage({ onBack }: { onBack: () => void }) {
 
           {/* Stats */}
           <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 20 }}>
-            {[
-              { label: zh ? '推荐用户' : 'Referrals', value: info.referral_count.toLocaleString() },
-              { label: zh ? '可结算余额' : 'Balance', value: money(info.balance_cents) },
-              { label: zh ? '佣金比例' : 'Commission', value: `${info.commission_pct}%` },
-            ].map((s) => (
-              <div key={s.label} style={{ ...card, minWidth: 150 }}>
-                <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 4 }}>{s.label}</div>
-                <div style={{ fontSize: 22, fontWeight: 700 }}>{s.value}</div>
+            <div style={{ ...card, minWidth: 150 }}>
+              <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 4 }}>{zh ? '推荐用户' : 'Referrals'}</div>
+              <div style={{ fontSize: 22, fontWeight: 700 }}>{info.referral_count.toLocaleString()}</div>
+            </div>
+            <div style={{ ...card, minWidth: 150 }}>
+              <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 4 }}>{zh ? '可结算余额' : 'Balance'}</div>
+              <div style={{ fontSize: 18, fontWeight: 700 }}>
+                {info.balances.length === 0
+                  ? fmtCur(0, 'usd')
+                  : info.balances.map((b) => <div key={b.currency}>{fmtCur(b.cents, b.currency)}</div>)}
               </div>
-            ))}
+            </div>
+            <div style={{ ...card, minWidth: 150 }}>
+              <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 4 }}>{zh ? '佣金比例' : 'Commission'}</div>
+              <div style={{ fontSize: 22, fontWeight: 700 }}>{`${info.commission_pct}%`}</div>
+            </div>
           </div>
 
           {/* Request payout (USDT) */}
-          {info.balance_cents > 0 && (
+          {info.balances.length > 0 && (
             <div style={{ ...card, marginBottom: 16 }}>
               <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 8 }}>
                 {zh ? '申请提现(USDT)' : 'Request payout (USDT)'}
@@ -139,11 +147,20 @@ export function AffiliatePage({ onBack }: { onBack: () => void }) {
                   onChange={(e) => setAddress(e.target.value)}
                   style={{ flex: 2, minWidth: 200, padding: '8px 10px', borderRadius: 4, border: '1px solid var(--border)', background: 'var(--panel)', color: 'var(--fg)', fontSize: 13 }}
                 />
+                <select
+                  value={currency || info.balances[0]?.currency || 'usd'}
+                  onChange={(e) => setCurrency(e.target.value)}
+                  style={{ padding: '8px 10px', borderRadius: 4, border: '1px solid var(--border)', background: 'var(--panel)', color: 'var(--fg)', fontSize: 13 }}
+                >
+                  {info.balances.map((b) => (
+                    <option key={b.currency} value={b.currency}>{b.currency.toUpperCase()}</option>
+                  ))}
+                </select>
                 <input
                   type="number"
                   step="0.01"
                   min="0"
-                  placeholder={zh ? '金额($)' : 'Amount ($)'}
+                  placeholder={zh ? '金额' : 'Amount'}
                   value={amount}
                   onChange={(e) => setAmount(e.target.value)}
                   style={{ width: 120, padding: '8px 10px', borderRadius: 4, border: '1px solid var(--border)', background: 'var(--panel)', color: 'var(--fg)', fontSize: 13 }}
@@ -173,7 +190,7 @@ export function AffiliatePage({ onBack }: { onBack: () => void }) {
                 <tbody>
                   {info.payout_requests.map((p) => (
                     <tr key={p.id}>
-                      <td style={{ fontSize: 12, fontWeight: 600 }}>{money(p.amount_cents)}</td>
+                      <td style={{ fontSize: 12, fontWeight: 600 }}>{fmtCur(p.amount_cents, p.currency)}</td>
                       <td style={{ fontSize: 11, color: 'var(--muted)', fontFamily: 'monospace', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={p.address}>{p.address}</td>
                       <td style={{ fontSize: 12 }}>
                         {zh
@@ -214,7 +231,7 @@ export function AffiliatePage({ onBack }: { onBack: () => void }) {
                       }}
                     >
                       {e.amount_cents >= 0 ? '+' : ''}
-                      {money(e.amount_cents)}
+                      {fmtCur(e.amount_cents, e.currency)}
                     </td>
                     <td style={{ fontSize: 11, color: 'var(--muted)', fontFamily: 'monospace' }}>
                       {e.referee_tenant ?? e.source_ref ?? '—'}

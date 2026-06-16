@@ -208,20 +208,25 @@ async fn affiliate_referral_and_ledger_roundtrip() {
     );
     assert_eq!(store.referral_count(&referrer).await, 1);
 
-    // Double-entry: commission − clawback − payout → owed 500.
+    // Double-entry, per currency: USD commission − clawback − payout → owed 500.
     store
-        .accrue_commission(&referrer, &referee, 1000, Some("evt1"))
+        .accrue_commission(&referrer, &referee, "usd", 1000, Some("evt1"))
         .await;
     store
-        .clawback_commission(&referrer, &referee, 300, Some("evt2"))
+        .clawback_commission(&referrer, &referee, "usd", 300, Some("evt2"))
         .await;
-    store.record_payout(&referrer, 200, None).await;
-    assert_eq!(store.balance_cents(&referrer).await, 500);
-    assert_eq!(store.list_entries(&referrer, 10).await.len(), 3);
+    store.record_payout(&referrer, "usd", 200, None).await;
+    // An EUR commission is tracked separately.
+    store
+        .accrue_commission(&referrer, &referee, "eur", 700, Some("evt3"))
+        .await;
+    assert_eq!(store.balance_for(&referrer, "usd").await, 500);
+    assert_eq!(store.balance_for(&referrer, "eur").await, 700);
+    assert_eq!(store.list_entries(&referrer, 10).await.len(), 4);
 
-    // Payout request → operator approval books a payout, reducing the balance.
+    // Payout request (USD) → operator approval books a payout, reducing balance.
     let req = store
-        .request_payout(&referrer, "usdt", "TUSDTaddr", 100)
+        .request_payout(&referrer, "usdt", "TUSDTaddr", "usd", 100)
         .await;
     assert!(store
         .list_pending_payouts()
@@ -233,7 +238,9 @@ async fn affiliate_referral_and_ledger_roundtrip() {
         .await
         .expect("request exists");
     assert_eq!(done.status, "paid");
-    assert_eq!(store.balance_cents(&referrer).await, 400); // 500 − 100
+    assert_eq!(done.currency, "usd");
+    assert_eq!(store.balance_for(&referrer, "usd").await, 400); // 500 − 100
+    assert_eq!(store.balance_for(&referrer, "eur").await, 700); // unaffected
 }
 
 /// Token-usage records persist and aggregate per model in the summary.

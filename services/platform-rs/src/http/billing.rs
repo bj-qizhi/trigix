@@ -238,6 +238,7 @@ fn apply_affiliate_event(
     if customer.is_empty() || commission <= 0 {
         return;
     }
+    let currency = obj["currency"].as_str().unwrap_or("usd").to_string();
     let Some(referee) = state.billing_store.get_tenant_by_stripe_customer(customer) else {
         return;
     };
@@ -247,11 +248,23 @@ fn apply_affiliate_event(
         if let Some(referrer) = affiliate.get_referrer(&referee).await {
             if is_commission {
                 affiliate
-                    .accrue_commission(&referrer, &referee, commission, Some(&source_ref))
+                    .accrue_commission(
+                        &referrer,
+                        &referee,
+                        &currency,
+                        commission,
+                        Some(&source_ref),
+                    )
                     .await;
             } else {
                 affiliate
-                    .clawback_commission(&referrer, &referee, commission, Some(&source_ref))
+                    .clawback_commission(
+                        &referrer,
+                        &referee,
+                        &currency,
+                        commission,
+                        Some(&source_ref),
+                    )
                     .await;
             }
         }

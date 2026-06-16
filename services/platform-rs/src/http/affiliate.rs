@@ -2,7 +2,9 @@
 // https://www.qzso.com/ · managecode@gmail.com
 
 use super::*;
-use crate::affiliate::{AccountBalance, AffiliateStore, LedgerEntry, PayoutRequest};
+use crate::affiliate::{
+    AccountBalance, AffiliateStore, CurrencyAmount, LedgerEntry, PayoutRequest,
+};
 
 #[derive(serde::Serialize)]
 struct AffiliateInfo {
@@ -10,15 +12,15 @@ struct AffiliateInfo {
     code: String,
     /// How many tenants this affiliate has referred.
     referral_count: i64,
-    /// Accrued balance (commissions − clawbacks − payouts), minor currency unit.
-    balance_cents: i64,
+    /// Owed balance per currency (commissions − clawbacks − payouts).
+    balances: Vec<CurrencyAmount>,
     /// Configured commission rate (percent of a referral's paid invoices).
     commission_pct: f64,
     entries: Vec<LedgerEntry>,
     payout_requests: Vec<PayoutRequest>,
 }
 
-/// The caller's own affiliate dashboard: code, referrals, balance, ledger, payouts.
+/// The caller's own affiliate dashboard: code, referrals, balances, ledger, payouts.
 async fn affiliate_me_handler(
     State(state): State<AppState>,
     Extension(claims): Extension<Option<Claims>>,
@@ -28,7 +30,7 @@ async fn affiliate_me_handler(
     Json(AffiliateInfo {
         code: store.get_or_create_code(&tenant_id).await,
         referral_count: store.referral_count(&tenant_id).await,
-        balance_cents: store.balance_cents(&tenant_id).await,
+        balances: store.balances(&tenant_id).await,
         commission_pct: crate::affiliate::commission_pct(),
         entries: store.list_entries(&tenant_id, 50).await,
         payout_requests: store.list_payout_requests(&tenant_id).await,
@@ -41,6 +43,8 @@ struct PayoutRequestBody {
     method: Option<String>,
     /// Destination address (e.g. a USDT wallet).
     address: String,
+    /// Currency to cash out; defaults to `usd`.
+    currency: Option<String>,
     amount_cents: i64,
 }
 
@@ -57,7 +61,11 @@ async fn affiliate_request_payout_handler(
     if body.address.trim().is_empty() {
         return Err(ApiError::bad_request("address is required"));
     }
-    let balance = state.affiliate_store.balance_cents(&tenant_id).await;
+    let currency = body.currency.unwrap_or_else(|| "usd".to_string());
+    let balance = state
+        .affiliate_store
+        .balance_for(&tenant_id, &currency)
+        .await;
     if body.amount_cents > balance {
         return Err(ApiError::bad_request("amount exceeds available balance"));
     }
@@ -65,7 +73,13 @@ async fn affiliate_request_payout_handler(
     Ok(Json(
         state
             .affiliate_store
-            .request_payout(&tenant_id, &method, body.address.trim(), body.amount_cents)
+            .request_payout(
+                &tenant_id,
+                &method,
+                body.address.trim(),
+                &currency,
+                body.amount_cents,
+            )
             .await,
     ))
 }
@@ -105,6 +119,8 @@ async fn affiliate_admin_process_handler(
 struct PayoutBody {
     /// The affiliate (referrer) tenant being paid out.
     tenant_id: String,
+    /// Currency being paid out; defaults to `usd`.
+    currency: Option<String>,
     /// Positive amount to disburse (minor currency unit); recorded as a debit.
     amount_cents: i64,
 }
@@ -120,11 +136,15 @@ async fn affiliate_payout_handler(
     if body.amount_cents <= 0 {
         return Err(ApiError::bad_request("amount_cents must be positive"));
     }
+    let currency = body.currency.unwrap_or_else(|| "usd".to_string());
     state
         .affiliate_store
-        .record_payout(&body.tenant_id, body.amount_cents, None)
+        .record_payout(&body.tenant_id, &currency, body.amount_cents, None)
         .await;
-    let balance = state.affiliate_store.balance_cents(&body.tenant_id).await;
+    let balance = state
+        .affiliate_store
+        .balance_for(&body.tenant_id, &currency)
+        .await;
     Ok(Json(
         serde_json::json!({ "ok": true, "balance_cents": balance }),
     ))
@@ -183,7 +203,7 @@ mod tests {
         let bytes = to_bytes(resp.into_body(), usize::MAX).await.unwrap();
         let v: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
         assert!(v["code"].as_str().is_some_and(|c| !c.is_empty()));
-        assert_eq!(v["balance_cents"], 0);
+        assert_eq!(v["balances"].as_array().map(|a| a.len()), Some(0));
         assert_eq!(v["referral_count"], 0);
     }
 }

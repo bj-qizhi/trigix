@@ -25,10 +25,10 @@ test('affiliate dashboard shows code, balance and referral link', async ({ page 
       json: {
         code: 'ABCD1234',
         referral_count: 3,
-        balance_cents: 12345,
+        balances: [{ currency: 'usd', cents: 12345 }],
         commission_pct: 20,
         entries: [
-          { id: 'e1', referee_tenant: 't2', amount_cents: 12345, kind: 'commission', source_ref: null, created_at: 1 },
+          { id: 'e1', referee_tenant: 't2', currency: 'usd', amount_cents: 12345, kind: 'commission', source_ref: null, created_at: 1 },
         ],
         payout_requests: [],
       },
@@ -39,7 +39,7 @@ test('affiliate dashboard shows code, balance and referral link', async ({ page 
   await page.getByText('推荐返佣', { exact: false }).first().click()
 
   await expect(page.getByText('ABCD1234').first()).toBeVisible()
-  await expect(page.getByText('$123.45').first()).toBeVisible()
+  await expect(page.getByText('123.45 USD').first()).toBeVisible()
   await expect(page.locator('input[readonly]')).toHaveValue(/ref=ABCD1234/)
 })
 
@@ -49,16 +49,16 @@ test('affiliate can request a USDT payout', async ({ page }) => {
   await page.route('**/v1/affiliate/me', (r) =>
     r.fulfill({
       json: {
-        code: 'ABCD1234', referral_count: 1, balance_cents: 50000, commission_pct: 20,
+        code: 'ABCD1234', referral_count: 1, balances: [{ currency: 'usd', cents: 50000 }], commission_pct: 20,
         entries: [], payout_requests: [],
       },
     }),
   )
-  let body: { address?: string; amount_cents?: number } | null = null
+  let body: { address?: string; amount_cents?: number; currency?: string } | null = null
   await page.route('**/v1/affiliate/payout-request', async (r) => {
     body = JSON.parse(r.request().postData() || '{}')
     await r.fulfill({
-      json: { id: 'p1', tenant_id: 't', method: 'usdt', address: 'TWallet', amount_cents: 10000, status: 'requested', note: null, created_at: 1, processed_at: null },
+      json: { id: 'p1', tenant_id: 't', method: 'usdt', address: 'TWallet', currency: 'usd', amount_cents: 10000, status: 'requested', note: null, created_at: 1, processed_at: null },
     })
   })
 
@@ -66,11 +66,12 @@ test('affiliate can request a USDT payout', async ({ page }) => {
   await page.locator('button[title="Navigation"]').click()
   await page.getByText('推荐返佣', { exact: false }).first().click()
   await page.getByPlaceholder('USDT 地址').fill('TWallet')
-  await page.getByPlaceholder('金额($)').fill('100')
+  await page.getByPlaceholder('金额', { exact: true }).fill('100')
   await page.getByRole('button', { name: '申请' }).click()
 
   await expect.poll(() => (body as { amount_cents?: number } | null)?.amount_cents).toBe(10000)
   expect((body as { address?: string } | null)?.address).toBe('TWallet')
+  expect((body as { currency?: string } | null)?.currency).toBe('usd')
 })
 
 test('referral code from ?ref is forwarded on register', async ({ page }) => {

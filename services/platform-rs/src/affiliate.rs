@@ -13,7 +13,8 @@
 //! - payout:     Dr `affiliate_payable[affiliate]`, Cr `cash`
 //!
 //! An affiliate's payable account carries a credit (negative) balance; the amount
-//! owed to them is its negation, exposed by [`AffiliateStore::balance_cents`].
+//! owed to them — per currency — is its negation, exposed by
+//! [`AffiliateStore::balance_for`] / [`AffiliateStore::balances`].
 
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
@@ -47,6 +48,7 @@ pub struct Posting {
     pub tenant_id: Option<String>,
     /// The referred tenant this posting relates to, for display context.
     pub referee_tenant: Option<String>,
+    pub currency: String,
     /// Debit-positive signed amount (minor currency unit).
     pub amount_cents: i64,
     pub kind: String,
@@ -60,16 +62,25 @@ pub struct Posting {
 pub struct LedgerEntry {
     pub id: String,
     pub referee_tenant: Option<String>,
+    pub currency: String,
     pub amount_cents: i64,
     pub kind: String,
     pub source_ref: Option<String>,
     pub created_at: u64,
 }
 
-/// A GL account's balance (debit-positive), for the operator's books view.
+/// An owed balance in one currency.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct CurrencyAmount {
+    pub currency: String,
+    pub cents: i64,
+}
+
+/// A GL account's balance (debit-positive) in one currency, for the books view.
 #[derive(Debug, Clone, Serialize)]
 pub struct AccountBalance {
     pub account: String,
+    pub currency: String,
     pub balance_cents: i64,
 }
 
@@ -88,6 +99,7 @@ pub struct PayoutRequest {
     /// Payout method, e.g. `usdt`.
     pub method: String,
     pub address: String,
+    pub currency: String,
     pub amount_cents: i64,
     pub status: String,
     pub note: Option<String>,
@@ -112,6 +124,7 @@ fn now_secs() -> u64 {
 fn commission_postings(
     affiliate: &str,
     referee: &str,
+    currency: &str,
     amount_cents: i64,
     source_ref: Option<&str>,
 ) -> Vec<Posting> {
@@ -121,6 +134,7 @@ fn commission_postings(
         account::AFFILIATE_PAYABLE,
         Some(affiliate),
         Some(referee),
+        currency,
         amount_cents,
         kind::COMMISSION,
         source_ref,
@@ -131,6 +145,7 @@ fn commission_postings(
 fn clawback_postings(
     affiliate: &str,
     referee: &str,
+    currency: &str,
     amount_cents: i64,
     source_ref: Option<&str>,
 ) -> Vec<Posting> {
@@ -140,6 +155,7 @@ fn clawback_postings(
         account::COMMISSION_EXPENSE,
         None,
         Some(referee),
+        currency,
         amount_cents,
         kind::CLAWBACK,
         source_ref,
@@ -147,13 +163,19 @@ fn clawback_postings(
 }
 
 /// Builds a balanced payout transaction (Dr payable, Cr cash).
-fn payout_postings(affiliate: &str, amount_cents: i64, source_ref: Option<&str>) -> Vec<Posting> {
+fn payout_postings(
+    affiliate: &str,
+    currency: &str,
+    amount_cents: i64,
+    source_ref: Option<&str>,
+) -> Vec<Posting> {
     balanced(
         account::AFFILIATE_PAYABLE,
         Some(affiliate),
         account::CASH,
         None,
         None,
+        currency,
         amount_cents,
         kind::PAYOUT,
         source_ref,
@@ -161,7 +183,7 @@ fn payout_postings(affiliate: &str, amount_cents: i64, source_ref: Option<&str>)
 }
 
 /// Two-leg balanced transaction: debit `amount` to `debit_acct`, credit it from
-/// `credit_acct`. The postings sum to zero.
+/// `credit_acct`. The postings sum to zero (within the currency).
 #[allow(clippy::too_many_arguments)]
 fn balanced(
     debit_acct: &str,
@@ -169,6 +191,7 @@ fn balanced(
     credit_acct: &str,
     credit_tenant: Option<&str>,
     referee: Option<&str>,
+    currency: &str,
     amount_cents: i64,
     kind: &str,
     source_ref: Option<&str>,
@@ -181,6 +204,7 @@ fn balanced(
         account: account.to_string(),
         tenant_id: tenant.map(str::to_string),
         referee_tenant: referee.map(str::to_string),
+        currency: currency.to_string(),
         amount_cents: amount,
         kind: kind.to_string(),
         source_ref: source_ref.map(str::to_string),
@@ -207,6 +231,7 @@ pub trait AffiliateStore: Clone + Send + Sync + 'static {
         &self,
         affiliate: &str,
         referee: &str,
+        currency: &str,
         amount_cents: i64,
         source_ref: Option<&str>,
     ) {
@@ -216,6 +241,7 @@ pub trait AffiliateStore: Clone + Send + Sync + 'static {
         self.post(commission_postings(
             affiliate,
             referee,
+            currency,
             amount_cents,
             source_ref,
         ))
@@ -225,6 +251,7 @@ pub trait AffiliateStore: Clone + Send + Sync + 'static {
         &self,
         affiliate: &str,
         referee: &str,
+        currency: &str,
         amount_cents: i64,
         source_ref: Option<&str>,
     ) {
@@ -234,24 +261,38 @@ pub trait AffiliateStore: Clone + Send + Sync + 'static {
         self.post(clawback_postings(
             affiliate,
             referee,
+            currency,
             amount_cents,
             source_ref,
         ))
         .await;
     }
-    async fn record_payout(&self, affiliate: &str, amount_cents: i64, source_ref: Option<&str>) {
+    async fn record_payout(
+        &self,
+        affiliate: &str,
+        currency: &str,
+        amount_cents: i64,
+        source_ref: Option<&str>,
+    ) {
         if amount_cents <= 0 {
             return;
         }
-        self.post(payout_postings(affiliate, amount_cents, source_ref))
-            .await;
+        self.post(payout_postings(
+            affiliate,
+            currency,
+            amount_cents,
+            source_ref,
+        ))
+        .await;
     }
 
-    /// Amount currently owed to the affiliate (negation of their payable balance).
-    async fn balance_cents(&self, affiliate: &str) -> i64;
+    /// Amount owed to the affiliate in `currency` (negation of payable balance).
+    async fn balance_for(&self, affiliate: &str, currency: &str) -> i64;
+    /// Amounts owed to the affiliate, per currency (largest first).
+    async fn balances(&self, affiliate: &str) -> Vec<CurrencyAmount>;
     /// Affiliate-facing ledger lines (commission +, clawback/payout −).
     async fn list_entries(&self, affiliate: &str, limit: i64) -> Vec<LedgerEntry>;
-    /// Operator books: every GL account's debit-positive balance (these sum to 0).
+    /// Operator books: every GL account/currency debit-positive balance (sum to 0).
     async fn account_balances(&self) -> Vec<AccountBalance>;
 
     /// Records an affiliate's payout request (status `requested`).
@@ -260,6 +301,7 @@ pub trait AffiliateStore: Clone + Send + Sync + 'static {
         tenant_id: &str,
         method: &str,
         address: &str,
+        currency: &str,
         amount_cents: i64,
     ) -> PayoutRequest;
     /// The affiliate's own payout requests, newest first.
@@ -282,6 +324,7 @@ fn entry_from_payable(p: &Posting) -> LedgerEntry {
     LedgerEntry {
         id: p.id.clone(),
         referee_tenant: p.referee_tenant.clone(),
+        currency: p.currency.clone(),
         amount_cents: -p.amount_cents,
         kind: p.kind.clone(),
         source_ref: p.source_ref.clone(),
@@ -341,7 +384,7 @@ impl AffiliateStore for MemoryAffiliateStore {
             l.extend(postings);
         }
     }
-    async fn balance_cents(&self, affiliate: &str) -> i64 {
+    async fn balance_for(&self, affiliate: &str, currency: &str) -> i64 {
         let owed: i64 = self
             .postings
             .read()
@@ -350,12 +393,34 @@ impl AffiliateStore for MemoryAffiliateStore {
                     .filter(|p| {
                         p.account == account::AFFILIATE_PAYABLE
                             && p.tenant_id.as_deref() == Some(affiliate)
+                            && p.currency == currency
                     })
                     .map(|p| p.amount_cents)
                     .sum()
             })
             .unwrap_or(0);
         -owed
+    }
+    async fn balances(&self, affiliate: &str) -> Vec<CurrencyAmount> {
+        let Ok(l) = self.postings.read() else {
+            return Vec::new();
+        };
+        let mut by_cur: HashMap<String, i64> = HashMap::new();
+        for p in l.iter().filter(|p| {
+            p.account == account::AFFILIATE_PAYABLE && p.tenant_id.as_deref() == Some(affiliate)
+        }) {
+            *by_cur.entry(p.currency.clone()).or_insert(0) += p.amount_cents;
+        }
+        let mut out: Vec<CurrencyAmount> = by_cur
+            .into_iter()
+            .map(|(currency, owed)| CurrencyAmount {
+                currency,
+                cents: -owed,
+            })
+            .filter(|c| c.cents != 0)
+            .collect();
+        out.sort_by(|a, b| b.cents.cmp(&a.cents).then(a.currency.cmp(&b.currency)));
+        out
     }
     async fn list_entries(&self, affiliate: &str, limit: i64) -> Vec<LedgerEntry> {
         let Ok(l) = self.postings.read() else {
@@ -376,18 +441,21 @@ impl AffiliateStore for MemoryAffiliateStore {
         let Ok(l) = self.postings.read() else {
             return Vec::new();
         };
-        let mut by_acct: HashMap<String, i64> = HashMap::new();
+        let mut by_acct: HashMap<(String, String), i64> = HashMap::new();
         for p in l.iter() {
-            *by_acct.entry(p.account.clone()).or_insert(0) += p.amount_cents;
+            *by_acct
+                .entry((p.account.clone(), p.currency.clone()))
+                .or_insert(0) += p.amount_cents;
         }
         let mut out: Vec<AccountBalance> = by_acct
             .into_iter()
-            .map(|(account, balance_cents)| AccountBalance {
+            .map(|((account, currency), balance_cents)| AccountBalance {
                 account,
+                currency,
                 balance_cents,
             })
             .collect();
-        out.sort_by(|a, b| a.account.cmp(&b.account));
+        out.sort_by(|a, b| a.account.cmp(&b.account).then(a.currency.cmp(&b.currency)));
         out
     }
     async fn request_payout(
@@ -395,6 +463,7 @@ impl AffiliateStore for MemoryAffiliateStore {
         tenant_id: &str,
         method: &str,
         address: &str,
+        currency: &str,
         amount_cents: i64,
     ) -> PayoutRequest {
         let req = PayoutRequest {
@@ -402,6 +471,7 @@ impl AffiliateStore for MemoryAffiliateStore {
             tenant_id: tenant_id.to_string(),
             method: method.to_string(),
             address: address.to_string(),
+            currency: currency.to_string(),
             amount_cents,
             status: payout_status::REQUESTED.to_string(),
             note: None,
@@ -460,8 +530,13 @@ impl AffiliateStore for MemoryAffiliateStore {
             (r.clone(), was_requested)
         };
         if was_requested && approve {
-            self.record_payout(&claimed.tenant_id, claimed.amount_cents, Some(&claimed.id))
-                .await;
+            self.record_payout(
+                &claimed.tenant_id,
+                &claimed.currency,
+                claimed.amount_cents,
+                Some(&claimed.id),
+            )
+            .await;
         }
         Some(claimed)
     }
@@ -546,14 +621,15 @@ impl AffiliateStore for PostgresAffiliateStore {
         for p in postings {
             let _ = sqlx::query(
                 "INSERT INTO af_ledger_postings \
-                   (id, txn_id, account, tenant_id, referee_tenant, amount_cents, kind, source_ref, created_at) \
-                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)",
+                   (id, txn_id, account, tenant_id, referee_tenant, currency, amount_cents, kind, source_ref, created_at) \
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)",
             )
             .bind(&p.id)
             .bind(&p.txn_id)
             .bind(&p.account)
             .bind(&p.tenant_id)
             .bind(&p.referee_tenant)
+            .bind(&p.currency)
             .bind(p.amount_cents)
             .bind(&p.kind)
             .bind(&p.source_ref)
@@ -562,30 +638,51 @@ impl AffiliateStore for PostgresAffiliateStore {
             .await;
         }
     }
-    async fn balance_cents(&self, affiliate: &str) -> i64 {
+    async fn balance_for(&self, affiliate: &str, currency: &str) -> i64 {
         let owed = sqlx::query_scalar::<_, i64>(
             "SELECT COALESCE(SUM(amount_cents), 0)::bigint FROM af_ledger_postings \
-             WHERE account = $1 AND tenant_id = $2",
+             WHERE account = $1 AND tenant_id = $2 AND currency = $3",
         )
         .bind(account::AFFILIATE_PAYABLE)
         .bind(affiliate)
+        .bind(currency)
         .fetch_one(&self.pool)
         .await
         .unwrap_or(0);
         -owed
+    }
+    async fn balances(&self, affiliate: &str) -> Vec<CurrencyAmount> {
+        sqlx::query_as::<_, (String, i64)>(
+            "SELECT currency, COALESCE(SUM(amount_cents), 0)::bigint AS owed \
+             FROM af_ledger_postings WHERE account = $1 AND tenant_id = $2 \
+             GROUP BY currency HAVING COALESCE(SUM(amount_cents), 0) <> 0 \
+             ORDER BY owed ASC, currency ASC",
+        )
+        .bind(account::AFFILIATE_PAYABLE)
+        .bind(affiliate)
+        .fetch_all(&self.pool)
+        .await
+        .unwrap_or_default()
+        .into_iter()
+        .map(|(currency, owed)| CurrencyAmount {
+            currency,
+            cents: -owed,
+        })
+        .collect()
     }
     async fn list_entries(&self, affiliate: &str, limit: i64) -> Vec<LedgerEntry> {
         #[derive(sqlx::FromRow)]
         struct Row {
             id: String,
             referee_tenant: Option<String>,
+            currency: String,
             amount_cents: i64,
             kind: String,
             source_ref: Option<String>,
             created_at: i64,
         }
         sqlx::query_as::<_, Row>(
-            "SELECT id, referee_tenant, amount_cents, kind, source_ref, created_at \
+            "SELECT id, referee_tenant, currency, amount_cents, kind, source_ref, created_at \
              FROM af_ledger_postings WHERE account = $1 AND tenant_id = $2 \
              ORDER BY created_at DESC LIMIT $3",
         )
@@ -599,6 +696,7 @@ impl AffiliateStore for PostgresAffiliateStore {
         .map(|r| LedgerEntry {
             id: r.id,
             referee_tenant: r.referee_tenant,
+            currency: r.currency,
             amount_cents: -r.amount_cents,
             kind: r.kind,
             source_ref: r.source_ref,
@@ -607,16 +705,17 @@ impl AffiliateStore for PostgresAffiliateStore {
         .collect()
     }
     async fn account_balances(&self) -> Vec<AccountBalance> {
-        sqlx::query_as::<_, (String, i64)>(
-            "SELECT account, COALESCE(SUM(amount_cents), 0)::bigint \
-             FROM af_ledger_postings GROUP BY account ORDER BY account",
+        sqlx::query_as::<_, (String, String, i64)>(
+            "SELECT account, currency, COALESCE(SUM(amount_cents), 0)::bigint \
+             FROM af_ledger_postings GROUP BY account, currency ORDER BY account, currency",
         )
         .fetch_all(&self.pool)
         .await
         .unwrap_or_default()
         .into_iter()
-        .map(|(account, balance_cents)| AccountBalance {
+        .map(|(account, currency, balance_cents)| AccountBalance {
             account,
+            currency,
             balance_cents,
         })
         .collect()
@@ -626,6 +725,7 @@ impl AffiliateStore for PostgresAffiliateStore {
         tenant_id: &str,
         method: &str,
         address: &str,
+        currency: &str,
         amount_cents: i64,
     ) -> PayoutRequest {
         let req = PayoutRequest {
@@ -633,6 +733,7 @@ impl AffiliateStore for PostgresAffiliateStore {
             tenant_id: tenant_id.to_string(),
             method: method.to_string(),
             address: address.to_string(),
+            currency: currency.to_string(),
             amount_cents,
             status: payout_status::REQUESTED.to_string(),
             note: None,
@@ -641,13 +742,14 @@ impl AffiliateStore for PostgresAffiliateStore {
         };
         let _ = sqlx::query(
             "INSERT INTO af_payout_requests \
-               (id, tenant_id, method, address, amount_cents, status, created_at) \
-             VALUES ($1, $2, $3, $4, $5, $6, $7)",
+               (id, tenant_id, method, address, currency, amount_cents, status, created_at) \
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
         )
         .bind(&req.id)
         .bind(&req.tenant_id)
         .bind(&req.method)
         .bind(&req.address)
+        .bind(&req.currency)
         .bind(req.amount_cents)
         .bind(&req.status)
         .bind(req.created_at as i64)
@@ -658,7 +760,7 @@ impl AffiliateStore for PostgresAffiliateStore {
     async fn list_payout_requests(&self, tenant_id: &str) -> Vec<PayoutRequest> {
         payout_rows(
             sqlx::query_as::<_, PayoutRow>(
-                "SELECT id, tenant_id, method, address, amount_cents, status, note, created_at, processed_at \
+                "SELECT id, tenant_id, method, address, currency, amount_cents, status, note, created_at, processed_at \
                  FROM af_payout_requests WHERE tenant_id = $1 ORDER BY created_at DESC",
             )
             .bind(tenant_id)
@@ -670,7 +772,7 @@ impl AffiliateStore for PostgresAffiliateStore {
     async fn list_pending_payouts(&self) -> Vec<PayoutRequest> {
         payout_rows(
             sqlx::query_as::<_, PayoutRow>(
-                "SELECT id, tenant_id, method, address, amount_cents, status, note, created_at, processed_at \
+                "SELECT id, tenant_id, method, address, currency, amount_cents, status, note, created_at, processed_at \
                  FROM af_payout_requests WHERE status = 'requested' ORDER BY created_at ASC",
             )
             .fetch_all(&self.pool)
@@ -690,9 +792,9 @@ impl AffiliateStore for PostgresAffiliateStore {
             payout_status::REJECTED
         };
         // Atomic claim: only a still-`requested` row transitions and returns.
-        let claimed = sqlx::query_as::<_, (String, i64)>(
+        let claimed = sqlx::query_as::<_, (String, String, i64)>(
             "UPDATE af_payout_requests SET status = $2, processed_at = $3, note = $4 \
-             WHERE id = $1 AND status = 'requested' RETURNING tenant_id, amount_cents",
+             WHERE id = $1 AND status = 'requested' RETURNING tenant_id, currency, amount_cents",
         )
         .bind(id)
         .bind(new_status)
@@ -702,14 +804,15 @@ impl AffiliateStore for PostgresAffiliateStore {
         .await
         .ok()
         .flatten();
-        if let Some((tenant, amount)) = claimed {
+        if let Some((tenant, currency, amount)) = claimed {
             if approve {
-                self.record_payout(&tenant, amount, Some(id)).await;
+                self.record_payout(&tenant, &currency, amount, Some(id))
+                    .await;
             }
         }
         payout_rows(
             sqlx::query_as::<_, PayoutRow>(
-                "SELECT id, tenant_id, method, address, amount_cents, status, note, created_at, processed_at \
+                "SELECT id, tenant_id, method, address, currency, amount_cents, status, note, created_at, processed_at \
                  FROM af_payout_requests WHERE id = $1",
             )
             .bind(id)
@@ -728,6 +831,7 @@ struct PayoutRow {
     tenant_id: String,
     method: String,
     address: String,
+    currency: String,
     amount_cents: i64,
     status: String,
     note: Option<String>,
@@ -742,6 +846,7 @@ fn payout_rows(rows: Vec<PayoutRow>) -> Vec<PayoutRequest> {
             tenant_id: r.tenant_id,
             method: r.method,
             address: r.address,
+            currency: r.currency,
             amount_cents: r.amount_cents,
             status: r.status,
             note: r.note,
@@ -814,10 +919,16 @@ impl AffiliateStore for PlatformAffiliateStore {
             Self::Postgres(s) => s.post(postings).await,
         }
     }
-    async fn balance_cents(&self, affiliate: &str) -> i64 {
+    async fn balance_for(&self, affiliate: &str, currency: &str) -> i64 {
         match self {
-            Self::Memory(s) => s.balance_cents(affiliate).await,
-            Self::Postgres(s) => s.balance_cents(affiliate).await,
+            Self::Memory(s) => s.balance_for(affiliate, currency).await,
+            Self::Postgres(s) => s.balance_for(affiliate, currency).await,
+        }
+    }
+    async fn balances(&self, affiliate: &str) -> Vec<CurrencyAmount> {
+        match self {
+            Self::Memory(s) => s.balances(affiliate).await,
+            Self::Postgres(s) => s.balances(affiliate).await,
         }
     }
     async fn list_entries(&self, affiliate: &str, limit: i64) -> Vec<LedgerEntry> {
@@ -837,15 +948,16 @@ impl AffiliateStore for PlatformAffiliateStore {
         tenant_id: &str,
         method: &str,
         address: &str,
+        currency: &str,
         amount_cents: i64,
     ) -> PayoutRequest {
         match self {
             Self::Memory(s) => {
-                s.request_payout(tenant_id, method, address, amount_cents)
+                s.request_payout(tenant_id, method, address, currency, amount_cents)
                     .await
             }
             Self::Postgres(s) => {
-                s.request_payout(tenant_id, method, address, amount_cents)
+                s.request_payout(tenant_id, method, address, currency, amount_cents)
                     .await
             }
         }
@@ -918,19 +1030,36 @@ mod tests {
     #[tokio::test]
     async fn double_entry_balance_and_books_stay_balanced() {
         let store = MemoryAffiliateStore::default();
-        store.accrue_commission("r", "e", 1000, Some("evt1")).await;
-        store.clawback_commission("r", "e", 300, Some("evt2")).await;
-        store.record_payout("r", 200, None).await;
+        store
+            .accrue_commission("r", "e", "usd", 1000, Some("evt1"))
+            .await;
+        store
+            .clawback_commission("r", "e", "usd", 300, Some("evt2"))
+            .await;
+        store.record_payout("r", "usd", 200, None).await;
+        // A separate EUR commission is tracked independently.
+        store
+            .accrue_commission("r", "e", "eur", 700, Some("evt3"))
+            .await;
 
-        // Amount owed = 1000 − 300 − 200 = 500.
-        assert_eq!(store.balance_cents("r").await, 500);
-        // Affiliate-facing entries: +1000, −300, −200.
-        let entries = store.list_entries("r", 10).await;
-        assert_eq!(entries.len(), 3);
-        let sum: i64 = entries.iter().map(|e| e.amount_cents).sum();
-        assert_eq!(sum, 500);
+        // Owed per currency: USD 1000 − 300 − 200 = 500; EUR 700.
+        assert_eq!(store.balance_for("r", "usd").await, 500);
+        assert_eq!(store.balance_for("r", "eur").await, 700);
+        assert_eq!(
+            store.balances("r").await,
+            vec![
+                CurrencyAmount {
+                    currency: "eur".into(),
+                    cents: 700
+                },
+                CurrencyAmount {
+                    currency: "usd".into(),
+                    cents: 500
+                },
+            ]
+        );
 
-        // The books balance: every account's postings sum to zero overall.
+        // The books balance within every currency (and overall).
         let total: i64 = store
             .account_balances()
             .await
@@ -939,17 +1068,23 @@ mod tests {
             .sum();
         assert_eq!(total, 0, "double-entry postings must sum to zero");
 
-        assert_eq!(store.balance_cents("other").await, 0);
+        assert_eq!(store.balance_for("other", "usd").await, 0);
+        assert!(store.balances("other").await.is_empty());
     }
 
     #[tokio::test]
     async fn payout_request_approve_books_payout_and_is_idempotent() {
         let store = MemoryAffiliateStore::default();
-        store.accrue_commission("r", "e", 1000, Some("evt1")).await;
-        assert_eq!(store.balance_cents("r").await, 1000);
+        store
+            .accrue_commission("r", "e", "usd", 1000, Some("evt1"))
+            .await;
+        assert_eq!(store.balance_for("r", "usd").await, 1000);
 
-        let req = store.request_payout("r", "usdt", "TUSDTaddr", 400).await;
+        let req = store
+            .request_payout("r", "usdt", "TUSDTaddr", "usd", 400)
+            .await;
         assert_eq!(req.status, payout_status::REQUESTED);
+        assert_eq!(req.currency, "usd");
         assert_eq!(store.list_pending_payouts().await.len(), 1);
         assert_eq!(store.list_payout_requests("r").await.len(), 1);
 
@@ -958,7 +1093,7 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(done.status, payout_status::PAID);
-        assert_eq!(store.balance_cents("r").await, 600); // 1000 − 400
+        assert_eq!(store.balance_for("r", "usd").await, 600); // 1000 − 400
         assert!(store.list_pending_payouts().await.is_empty());
 
         // Re-processing does not double-book.
@@ -967,20 +1102,20 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(again.status, payout_status::PAID);
-        assert_eq!(store.balance_cents("r").await, 600);
+        assert_eq!(store.balance_for("r", "usd").await, 600);
     }
 
     #[tokio::test]
     async fn payout_request_reject_leaves_balance() {
         let store = MemoryAffiliateStore::default();
-        store.accrue_commission("r", "e", 1000, None).await;
-        let req = store.request_payout("r", "usdt", "addr", 400).await;
+        store.accrue_commission("r", "e", "usd", 1000, None).await;
+        let req = store.request_payout("r", "usdt", "addr", "usd", 400).await;
         let done = store
             .process_payout_request(&req.id, false, Some("invalid address"))
             .await
             .unwrap();
         assert_eq!(done.status, payout_status::REJECTED);
-        assert_eq!(store.balance_cents("r").await, 1000);
+        assert_eq!(store.balance_for("r", "usd").await, 1000);
     }
 
     #[test]
