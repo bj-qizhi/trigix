@@ -1364,6 +1364,27 @@ struct GenerateWorkflowRequest {
     api_key: Option<String>,
     #[serde(default)]
     model: Option<String>,
+    /// Generation LLM provider: "anthropic" (default) or any OpenAI-compatible
+    /// provider key ("openai", "deepseek", "qwen", "zhipu", "moonshot", "custom").
+    #[serde(default)]
+    provider: Option<String>,
+    /// Override the OpenAI-compatible chat-completions endpoint (required for "custom").
+    #[serde(default)]
+    base_url: Option<String>,
+    #[serde(default)]
+    temperature: Option<f64>,
+    /// Cap the number of generated nodes.
+    #[serde(default)]
+    max_nodes: Option<u32>,
+    /// Restrict the workflow to only these node types (empty = unrestricted).
+    #[serde(default)]
+    allowed_modules: Vec<String>,
+    /// Ask the model to include error-handling (catch) nodes.
+    #[serde(default)]
+    error_handling: Option<bool>,
+    /// Language for the generated name/description: "zh" or "en".
+    #[serde(default)]
+    language: Option<String>,
     /// If true, auto-creates and returns a WorkflowRecord; otherwise returns just the graph JSON.
     #[serde(default)]
     create: bool,

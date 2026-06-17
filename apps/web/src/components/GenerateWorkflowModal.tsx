@@ -29,6 +29,27 @@ const EXAMPLE_PROMPTS_ZH = [
   '并行调用 3 个 API，合并结果，校验 Schema，存入数据库',
 ]
 
+// Generation LLM providers. `anthropic` uses the Anthropic Messages API; the
+// rest are OpenAI-compatible (the backend resolves their /chat/completions URL).
+const GEN_PROVIDERS: { value: string; label: string; models: string[]; keyHint: string; needsBaseUrl?: boolean }[] = [
+  { value: 'anthropic', label: 'Anthropic Claude', models: ['claude-sonnet-4-6', 'claude-opus-4-7', 'claude-haiku-4-5-20251001'], keyHint: 'sk-ant-...' },
+  { value: 'openai', label: 'OpenAI', models: ['gpt-5.4-mini', 'gpt-5.5', 'gpt-4.1'], keyHint: 'sk-...' },
+  { value: 'deepseek', label: 'DeepSeek', models: ['deepseek-v4-flash', 'deepseek-v4-pro'], keyHint: 'sk-...' },
+  { value: 'qwen', label: 'Qwen 通义千问', models: ['qwen-max', 'qwen3-max', 'qwen3.5-plus'], keyHint: 'sk-...' },
+  { value: 'zhipu', label: 'Zhipu GLM 智谱', models: ['glm-4.6', 'glm-4.7'], keyHint: 'API Key' },
+  { value: 'moonshot', label: 'Moonshot (Kimi)', models: ['kimi-latest', 'kimi-k2.6'], keyHint: 'sk-...' },
+  { value: 'grok', label: 'xAI Grok', models: ['grok-4.3'], keyHint: 'xai-...' },
+  { value: 'custom', label: 'OpenAI-compatible (custom)', models: [], keyHint: 'API Key', needsBaseUrl: true },
+]
+
+// Node modules the generated workflow may use (empty selection = unrestricted).
+const GEN_MODULES = [
+  'http', 'condition', 'transform', 'filter', 'aggregate', 'delay', 'code', 'loop',
+  'extract', 'merge', 'assert', 'validate', 'fan_out', 'fan_in', 'catch', 'note',
+  'claude', 'openai', 'gemini', 'deepseek', 'qwen', 'zhipu', 'moonshot', 'grok',
+  'slack', 'github', 'jira', 'notion', 'database', 'email', 'webhook',
+]
+
 export function GenerateWorkflowModal({ onClose, onImport, onCreated }: Props) {
   const { auth } = useAuth()
   const { locale } = useLocale()
@@ -36,7 +57,35 @@ export function GenerateWorkflowModal({ onClose, onImport, onCreated }: Props) {
   const [prompt, setPrompt] = useState('')
   const [apiKey, setApiKey] = useState('')
   const [model, setModel] = useState('claude-sonnet-4-6')
+  const [provider, setProvider] = useState('anthropic')
+  const [baseUrl, setBaseUrl] = useState('')
+  const [temperature, setTemperature] = useState(0.4)
+  const [maxNodes, setMaxNodes] = useState<number | ''>('')
+  const [errorHandling, setErrorHandling] = useState<'auto' | 'yes' | 'no'>('auto')
+  const [allowedModules, setAllowedModules] = useState<string[]>([])
   const [loading, setLoading] = useState(false)
+
+  const providerDef = GEN_PROVIDERS.find((p) => p.value === provider) ?? GEN_PROVIDERS[0]
+  function changeProvider(p: string) {
+    setProvider(p)
+    const def = GEN_PROVIDERS.find((x) => x.value === p)
+    if (def && def.models.length) setModel(def.models[0])
+  }
+  function toggleModule(m: string) {
+    setAllowedModules((prev) => (prev.includes(m) ? prev.filter((x) => x !== m) : [...prev, m]))
+  }
+  // Shared advanced-option payload for both preview and create requests.
+  const genOpts = () => ({
+    apiKey: apiKey || undefined,
+    model,
+    provider,
+    baseUrl: baseUrl || undefined,
+    temperature,
+    maxNodes: typeof maxNodes === 'number' ? maxNodes : undefined,
+    allowedModules,
+    errorHandling: errorHandling === 'auto' ? undefined : errorHandling === 'yes',
+    language: zh ? 'zh' : 'en',
+  })
   const [error, setError] = useState<string | null>(null)
   const [preview, setPreview] = useState<api.GenerateWorkflowResult | null>(null)
   const [mode, setMode] = useState<'generate' | 'preview'>('generate')
@@ -50,8 +99,7 @@ export function GenerateWorkflowModal({ onClose, onImport, onCreated }: Props) {
         tenantId: auth?.tenantId,
         workspaceId: auth?.workspaceId,
         projectId: auth?.projectId,
-        apiKey: apiKey || undefined,
-        model,
+        ...genOpts(),
         create: false,
       })
       setPreview(result)
@@ -72,8 +120,7 @@ export function GenerateWorkflowModal({ onClose, onImport, onCreated }: Props) {
         tenantId: auth?.tenantId,
         workspaceId: auth?.workspaceId,
         projectId: auth?.projectId,
-        apiKey: apiKey || undefined,
-        model,
+        ...genOpts(),
         create: true,
       })
       if (result.workflow && onCreated) {
@@ -149,28 +196,106 @@ export function GenerateWorkflowModal({ onClose, onImport, onCreated }: Props) {
               <summary style={{ cursor: 'pointer', color: 'var(--muted)', userSelect: 'none' }}>
                 {zh ? '高级选项' : 'Advanced options'}
               </summary>
-              <div style={{ marginTop: '0.5rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                <div className="field">
-                  <label>
-                    Claude API Key{' '}
-                    <span style={{ color: 'var(--muted)', fontWeight: 400 }}>
-                      {zh ? '（留空使用 ANTHROPIC_API_KEY 环境变量）' : '(uses ANTHROPIC_API_KEY env if blank)'}
-                    </span>
-                  </label>
-                  <input
-                    type="password"
-                    value={apiKey}
-                    onChange={(e) => setApiKey(e.target.value)}
-                    placeholder="sk-ant-..."
-                  />
+              <div style={{ marginTop: '0.5rem', display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+                {/* ── Generation model ── */}
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <div className="field" style={{ flex: 1 }}>
+                    <label>{zh ? '生成提供商' : 'Provider'}</label>
+                    <select value={provider} onChange={(e) => changeProvider(e.target.value)}>
+                      {GEN_PROVIDERS.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
+                    </select>
+                  </div>
+                  <div className="field" style={{ flex: 1 }}>
+                    <label>{zh ? '模型' : 'Model'}</label>
+                    <input
+                      list="gen-models"
+                      value={model}
+                      onChange={(e) => setModel(e.target.value)}
+                      placeholder={providerDef.models[0] ?? 'model'}
+                      style={{ fontFamily: 'monospace', fontSize: 12 }}
+                    />
+                    <datalist id="gen-models">
+                      {providerDef.models.map((m) => <option key={m} value={m}>{m}</option>)}
+                    </datalist>
+                  </div>
                 </div>
                 <div className="field">
-                  <label>{zh ? '模型' : 'Model'}</label>
-                  <select value={model} onChange={(e) => setModel(e.target.value)}>
-                    <option value="claude-sonnet-4-6">claude-sonnet-4-6 ({zh ? '推荐' : 'recommended'})</option>
-                    <option value="claude-opus-4-7">claude-opus-4-7 ({zh ? '最强' : 'most capable'})</option>
-                    <option value="claude-haiku-4-5-20251001">claude-haiku-4-5 ({zh ? '最快' : 'fastest'})</option>
-                  </select>
+                  <label>
+                    API Key{' '}
+                    <span style={{ color: 'var(--muted)', fontWeight: 400 }}>
+                      {provider === 'anthropic'
+                        ? (zh ? '（留空用 ANTHROPIC_API_KEY 环境变量）' : '(uses ANTHROPIC_API_KEY env if blank)')
+                        : (zh ? '（留空用 OPENAI_API_KEY 环境变量）' : '(uses OPENAI_API_KEY env if blank)')}
+                    </span>
+                  </label>
+                  <input type="password" value={apiKey} onChange={(e) => setApiKey(e.target.value)} placeholder={providerDef.keyHint} />
+                </div>
+                {provider !== 'anthropic' && (
+                  <div className="field">
+                    <label>
+                      Base URL{' '}
+                      <span style={{ color: 'var(--muted)', fontWeight: 400 }}>
+                        {providerDef.needsBaseUrl ? (zh ? '（必填，OpenAI 兼容 /chat/completions）' : '(required, OpenAI-compatible /chat/completions)') : (zh ? '（可选，覆盖默认端点）' : '(optional override)')}
+                      </span>
+                    </label>
+                    <input value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} placeholder="https://api.example.com/v1/chat/completions" style={{ fontFamily: 'monospace', fontSize: 12 }} />
+                  </div>
+                )}
+
+                {/* ── Generation parameters ── */}
+                <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end' }}>
+                  <div className="field" style={{ flex: 1 }}>
+                    <label>{zh ? '创造性 (temperature)' : 'Creativity (temperature)'}: {temperature.toFixed(1)}</label>
+                    <input type="range" min={0} max={1} step={0.1} value={temperature} onChange={(e) => setTemperature(Number(e.target.value))} />
+                  </div>
+                  <div className="field" style={{ width: 110 }}>
+                    <label>{zh ? '最大节点数' : 'Max nodes'}</label>
+                    <input type="number" min={2} max={30} value={maxNodes} placeholder={zh ? '不限' : 'auto'} onChange={(e) => setMaxNodes(e.target.value ? Number(e.target.value) : '')} />
+                  </div>
+                  <div className="field" style={{ width: 130 }}>
+                    <label>{zh ? '错误处理' : 'Error handling'}</label>
+                    <select value={errorHandling} onChange={(e) => setErrorHandling(e.target.value as 'auto' | 'yes' | 'no')}>
+                      <option value="auto">{zh ? '默认' : 'Auto'}</option>
+                      <option value="yes">{zh ? '包含' : 'Include'}</option>
+                      <option value="no">{zh ? '不含' : 'Omit'}</option>
+                    </select>
+                  </div>
+                </div>
+
+                {/* ── Allowed node modules ── */}
+                <div className="field">
+                  <label>
+                    {zh ? '可用节点模块' : 'Allowed node modules'}{' '}
+                    <span style={{ color: 'var(--muted)', fontWeight: 400 }}>
+                      {allowedModules.length === 0 ? (zh ? '（不限）' : '(unrestricted)') : `(${allowedModules.length})`}
+                    </span>
+                  </label>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                    {GEN_MODULES.map((m) => {
+                      const on = allowedModules.includes(m)
+                      return (
+                        <button
+                          key={m}
+                          type="button"
+                          onClick={() => toggleModule(m)}
+                          className="btn btn-sm"
+                          style={{
+                            fontSize: 11, padding: '2px 7px', fontFamily: 'monospace',
+                            background: on ? 'var(--accent)' : 'var(--panel)',
+                            color: on ? '#fff' : 'var(--muted)',
+                            borderColor: on ? 'var(--accent)' : 'var(--border)',
+                          }}
+                        >
+                          {m}
+                        </button>
+                      )
+                    })}
+                  </div>
+                  {allowedModules.length > 0 && (
+                    <button type="button" className="btn btn-sm" style={{ fontSize: 11, marginTop: 4, alignSelf: 'flex-start' }} onClick={() => setAllowedModules([])}>
+                      {zh ? '清空（不限）' : 'Clear (unrestricted)'}
+                    </button>
+                  )}
                 </div>
               </div>
             </details>

@@ -615,6 +615,13 @@ export function generateWorkflow(
     projectId?: string
     apiKey?: string
     model?: string
+    provider?: string
+    baseUrl?: string
+    temperature?: number
+    maxNodes?: number
+    allowedModules?: string[]
+    errorHandling?: boolean
+    language?: string
     create?: boolean
   } = {},
 ): Promise<GenerateWorkflowResult> {
@@ -627,6 +634,13 @@ export function generateWorkflow(
       project_id: opts.projectId,
       api_key: opts.apiKey,
       model: opts.model,
+      provider: opts.provider,
+      base_url: opts.baseUrl,
+      temperature: opts.temperature,
+      max_nodes: opts.maxNodes,
+      allowed_modules: opts.allowedModules ?? [],
+      error_handling: opts.errorHandling,
+      language: opts.language,
       create: opts.create ?? false,
     }),
   })
