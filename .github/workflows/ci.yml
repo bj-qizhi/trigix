@@ -32,12 +32,10 @@ jobs:
       - name: Check formatting
         run: cargo fmt --all -- --check
 
-      - name: Clippy (advisory)
-        # Advisory for now: the existing codebase has not yet been audited for
-        # all Clippy lints. New contributions should aim to keep this clean;
-        # tighten to `-D warnings` once the backlog is cleared.
-        continue-on-error: true
-        run: cargo clippy --workspace --all-targets
+      - name: Clippy
+        # Backlog cleared — clippy is now a hard gate. Keep it clean: fix lints
+        # or add a justified #[allow] at the narrowest scope.
+        run: cargo clippy --workspace --all-targets -- -D warnings
 
       - name: Test
         run: cargo test --workspace
