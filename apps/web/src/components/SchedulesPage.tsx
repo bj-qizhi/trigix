@@ -229,7 +229,7 @@ export function SchedulesPage({ onBack, onOpenWorkflow, onOpenExecution }: Props
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
           <button className="btn btn-sm" onClick={toggleTheme}>{theme === 'dark' ? '☀' : '◑'}</button>
           <button className="btn btn-sm" onClick={toggleLocale}>{locale === 'zh' ? 'EN' : '中'}</button>
-          <button className="btn btn-sm" onClick={onBack}>← {t('nav.back')}</button>
+          <button className="btn btn-sm" onClick={onBack}>{t('nav.back')}</button>
         </div>
       </header>
 

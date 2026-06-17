@@ -695,7 +695,7 @@ export function WorkflowList({ onOpen, onOpenExecution, onCredentials, onAuditLo
             title="Generate a workflow using AI"
             style={{ background: 'var(--node-claude)', color: '#fff', border: 'none' }}
           >
-            ✦ {t('wl.generate')}
+            {t('wl.generate')}
           </button>
           <button
             className="btn btn-sm"

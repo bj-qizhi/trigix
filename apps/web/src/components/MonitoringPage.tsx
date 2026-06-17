@@ -193,7 +193,7 @@ export function MonitoringPage({ onBack, onOpenExecution, onOpenWorkflow }: Prop
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
           <button className="btn btn-sm" onClick={toggleTheme}>{theme === 'dark' ? '☀' : '◑'}</button>
-          <button className="btn btn-sm" onClick={onBack}>← {t('nav.back')}</button>
+          <button className="btn btn-sm" onClick={onBack}>{t('nav.back')}</button>
         </div>
       </header>
 

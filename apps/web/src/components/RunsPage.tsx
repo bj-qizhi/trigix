@@ -378,7 +378,7 @@ export function RunsPage({ onBack, onOpenExecution, onOpenWorkflow, initialWorkf
           <button className="btn btn-sm" onClick={load} title={zh ? '刷新' : 'Refresh'}>↺ {zh ? '刷新' : 'Refresh'}</button>
           {filtered.length > 0 && (
             <button className="btn btn-sm" onClick={handleExportCsv} title={`Export ${filtered.length} runs as CSV`}>
-              ↓ {t('runs.export.csv')}
+              {t('runs.export.csv')}
             </button>
           )}
           <button
@@ -538,7 +538,7 @@ export function RunsPage({ onBack, onOpenExecution, onOpenWorkflow, initialWorkf
           </div>
           <button className="btn btn-sm" onClick={toggleTheme}>{theme === 'dark' ? '☀' : '◑'}</button>
           <button className="btn btn-sm" onClick={toggleLocale}>{locale === 'zh' ? 'EN' : '中'}</button>
-          <button className="btn btn-sm" onClick={onBack}>← {t('nav.back')}</button>
+          <button className="btn btn-sm" onClick={onBack}>{t('nav.back')}</button>
         </div>
       </header>
 
