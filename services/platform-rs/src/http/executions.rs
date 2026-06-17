@@ -168,16 +168,16 @@ async fn list_executions(
             query
                 .workflow_id
                 .as_ref()
-                .map_or(true, |id| &r.workflow_id == id)
+                .is_none_or(|id| &r.workflow_id == id)
         })
         .filter(|r| {
             query
                 .label
                 .as_ref()
-                .map_or(true, |l| r.label.as_deref() == Some(l.as_str()))
+                .is_none_or(|l| r.label.as_deref() == Some(l.as_str()))
         })
         .filter(|r| {
-            query.status.as_ref().map_or(true, |s| {
+            query.status.as_ref().is_none_or(|s| {
                 format!("{:?}", r.status).to_lowercase() == s.to_lowercase() ||
             // match the canonical string forms too
             matches!((&r.status, s.as_str()),
@@ -190,12 +190,12 @@ async fn list_executions(
             })
         })
         .filter(|r| {
-            query.search.as_ref().map_or(true, |s| {
+            query.search.as_ref().is_none_or(|s| {
                 let s = s.to_lowercase();
                 r.id.to_lowercase().starts_with(&s)
                     || r.label
                         .as_deref()
-                        .map_or(false, |l| l.to_lowercase().contains(&s))
+                        .is_some_and(|l| l.to_lowercase().contains(&s))
             })
         })
         .collect();
@@ -234,13 +234,13 @@ async fn list_executions_stream(
                     query
                         .workflow_id
                         .as_ref()
-                        .map_or(true, |id| &r.workflow_id == id)
+                        .is_none_or(|id| &r.workflow_id == id)
                 })
                 .filter(|r| {
                     query
                         .label
                         .as_ref()
-                        .map_or(true, |l| r.label.as_deref() == Some(l.as_str()))
+                        .is_none_or(|l| r.label.as_deref() == Some(l.as_str()))
                 })
                 .collect();
 
@@ -740,12 +740,19 @@ mod tests {
     use crate::http::*;
     use axum::body::{to_bytes, Body};
     use axum::http::Request;
+
+    // Tests that POST to the start-execution path read the process-global
+    // `DRAINING` flag. `drain_mode_rejects_new_executions` flips it true for a
+    // window, so serialize all start-execution tests through this lock to keep
+    // them deterministic under cargo's parallel test runner.
+    static START_EXEC_TEST_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
     use axum::http::StatusCode;
     use serde_json::json;
     use tower::ServiceExt;
 
     #[tokio::test]
     async fn starts_and_gets_execution_over_http() {
+        let _drain_guard = START_EXEC_TEST_LOCK.lock().await;
         let app = router();
         // Use trigger → transform so we can verify node-output template resolution
         // without requiring an external AI runtime.
@@ -850,6 +857,7 @@ mod tests {
 
     #[tokio::test]
     async fn approval_node_waits_and_resumes_on_approve() {
+        let _drain_guard = START_EXEC_TEST_LOCK.lock().await;
         let app = router();
 
         let request_body = json!({
@@ -941,6 +949,7 @@ mod tests {
 
     #[tokio::test]
     async fn approval_node_fails_on_reject() {
+        let _drain_guard = START_EXEC_TEST_LOCK.lock().await;
         let app = router();
 
         let request_body = json!({
@@ -1012,6 +1021,7 @@ mod tests {
 
     #[tokio::test]
     async fn approve_returns_404_when_no_pending_approval() {
+        let _drain_guard = START_EXEC_TEST_LOCK.lock().await;
         let app = router();
         let response = app
             .oneshot(
@@ -1029,6 +1039,7 @@ mod tests {
 
     #[tokio::test]
     async fn rejects_invalid_graph_over_http() {
+        let _drain_guard = START_EXEC_TEST_LOCK.lock().await;
         let app = router();
         let request_body = json!({
             "tenant_id": "tenant-1",
@@ -1065,6 +1076,7 @@ mod tests {
 
     #[tokio::test]
     async fn credential_reference_resolved_before_execution() {
+        let _drain_guard = START_EXEC_TEST_LOCK.lock().await;
         let cred_store = PlatformCredentialStore::default();
         cred_store
             .create("tenant-1", "my-token", "Bearer secret-abc")
@@ -1126,6 +1138,7 @@ mod tests {
 
     #[tokio::test]
     async fn audit_log_records_execution_started() {
+        let _drain_guard = START_EXEC_TEST_LOCK.lock().await;
         let app = router();
 
         let request_body = json!({
@@ -1176,6 +1189,7 @@ mod tests {
 
     #[tokio::test]
     async fn drain_mode_rejects_new_executions() {
+        let _drain_guard = START_EXEC_TEST_LOCK.lock().await;
         // Reset drain flag before test (other parallel tests must not interfere)
         super::DRAINING.store(false, std::sync::atomic::Ordering::SeqCst);
 
@@ -1245,8 +1259,8 @@ mod tests {
 
     #[tokio::test]
     async fn quota_exceeded_returns_402() {
+        let _drain_guard = START_EXEC_TEST_LOCK.lock().await;
         use crate::billing::{BillingStore, TenantQuota};
-        use std::sync::Arc;
 
         // Build a state where billing quota is exhausted
         let state = super::default_app_state();

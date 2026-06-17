@@ -665,7 +665,7 @@ pub(super) fn execute_switch(node: &Node, context: &ExecutionContext) -> NodeExe
     )
 }
 
-pub(super) fn execute_random(node: &Node, context: &ExecutionContext) -> NodeExecutionResult {
+pub(super) fn execute_random(node: &Node, _context: &ExecutionContext) -> NodeExecutionResult {
     use rand::Rng;
     let cfg = node.config.as_ref().cloned().unwrap_or_default();
     let rand_type = cfg.get("type").and_then(|v| v.as_str()).unwrap_or("number");
@@ -783,10 +783,7 @@ pub(super) fn execute_regex(node: &Node, context: &ExecutionContext) -> NodeExec
         .get("source")
         .and_then(|v| v.as_str())
         .unwrap_or("{{input}}");
-    let pattern_raw = cfg
-        .get("pattern")
-        .and_then(|v| v.as_str())
-        .unwrap_or_else(|| "");
+    let pattern_raw = cfg.get("pattern").and_then(|v| v.as_str()).unwrap_or("");
     if pattern_raw.is_empty() {
         return NodeExecutionResult::failed("Regex node requires 'pattern' config");
     }
@@ -807,7 +804,7 @@ pub(super) fn execute_regex(node: &Node, context: &ExecutionContext) -> NodeExec
     };
 
     // Build regex with optional case-insensitive flag
-    let pattern = if case_insensitive {
+    let _pattern = if case_insensitive {
         format!("(?i){}", pattern_raw)
     } else {
         pattern_raw.to_string()
@@ -1518,7 +1515,7 @@ pub(super) fn execute_math(node: &Node, context: &ExecutionContext) -> NodeExecu
                 Err(e) => return NodeExecutionResult::failed(format!("eval error: {e}")),
             }
         }
-        "add" | _ => {
+        _ => {
             let a = get_f64("a").unwrap_or(0.0);
             let b = get_f64("b").unwrap_or(0.0);
             a + b
@@ -1627,7 +1624,7 @@ pub(super) fn execute_array_utils(node: &Node, context: &ExecutionContext) -> No
             };
             source_arr
                 .into_iter()
-                .zip(source2_arr.into_iter())
+                .zip(source2_arr)
                 .map(|(a, b)| serde_json::json!([a, b]))
                 .collect()
         }

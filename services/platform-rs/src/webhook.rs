@@ -165,13 +165,13 @@ fn dynamic_to_json(val: &rhai::Dynamic) -> serde_json::Value {
     if val.is_unit() {
         return serde_json::Value::Null;
     }
-    if let Some(b) = val.as_bool().ok() {
+    if let Ok(b) = val.as_bool() {
         return serde_json::Value::Bool(b);
     }
-    if let Some(i) = val.as_int().ok() {
+    if let Ok(i) = val.as_int() {
         return serde_json::json!(i);
     }
-    if let Some(f) = val.as_float().ok() {
+    if let Ok(f) = val.as_float() {
         return serde_json::json!(f);
     }
     if let Some(s) = val.clone().try_cast::<String>() {
@@ -382,7 +382,7 @@ impl WebhookStore for MemoryWebhookStore {
                 .filter(|d| d.webhook_token == token)
                 .cloned()
                 .collect();
-            result.sort_by(|a, b| b.delivered_at.cmp(&a.delivered_at));
+            result.sort_by_key(|x| std::cmp::Reverse(x.delivered_at));
             result.truncate(limit as usize);
             result
         }

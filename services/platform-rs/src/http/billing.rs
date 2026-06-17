@@ -324,7 +324,7 @@ fn apply_stripe_event(state: &AppState, event_type: &str, obj: &serde_json::Valu
             let sub_id = obj["id"].as_str();
             let tier = obj["items"]["data"][0]["price"]["id"]
                 .as_str()
-                .and_then(|pid| price_id_to_tier(pid));
+                .and_then(price_id_to_tier);
             if let Some(tenant_id) = state.billing_store.get_tenant_by_stripe_customer(customer) {
                 if let Some(ref t) = tier {
                     let quota = match t.as_str() {

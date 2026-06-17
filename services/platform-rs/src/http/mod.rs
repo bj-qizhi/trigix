@@ -94,7 +94,7 @@ use crate::execution::{
     PlatformExecutorClient, StartExecutionRequest,
 };
 use crate::form::{FormError, PlatformFormStore, PublishFormRequest};
-use crate::invitations::{InviteStore, PlatformInviteStore};
+use crate::invitations::InviteStore;
 use crate::notification_prefs::NotificationPrefsStore;
 use crate::notifications::{NotificationStore, PlatformNotificationStore};
 use crate::openapi as oa;
@@ -865,6 +865,7 @@ pub fn router_with_services(
 }
 
 /// Full-store constructor used by main when DATABASE_URL is set.
+#[allow(clippy::too_many_arguments)]
 pub fn router_with_all_stores(
     execution_service: PlatformService,
     workflow_service: PlatformWorkflowService,
@@ -2470,7 +2471,9 @@ fn default_notif_limit() -> usize {
     50
 }
 
-// Helper to fire a notification (non-blocking)
+// Helper to fire a notification (non-blocking). Kept for callers that wire
+// server-side notifications; allow dead_code until the next call site lands.
+#[allow(dead_code)]
 pub(crate) fn push_notification(
     state: &AppState,
     tenant_id: &str,

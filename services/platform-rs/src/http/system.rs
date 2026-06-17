@@ -187,12 +187,7 @@ async fn mcp_execute_tool(
                 .workflow_service
                 .get_workflow(&tenant_id, workflow_id)
                 .await
-                .or_else(|_| {
-                    // Fallback: search by name is not supported in one step; propagate original error
-                    Err(ApiError::not_found(&format!(
-                        "workflow not found: {workflow_id}"
-                    )))
-                })?;
+                .map_err(|_| ApiError::not_found(&format!("workflow not found: {workflow_id}")))?;
             let version_id = workflow
                 .latest_version_id
                 .ok_or(WorkflowError::NoPublishedVersion)?;

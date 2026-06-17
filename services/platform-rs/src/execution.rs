@@ -2438,10 +2438,7 @@ mod tests {
 
     #[tokio::test]
     async fn rejects_mismatched_workflow_version() {
-        let service = ExecutionService::new(
-            MemoryExecutionStore::default(),
-            NoopExecutorClient::default(),
-        );
+        let service = ExecutionService::new(MemoryExecutionStore::default(), NoopExecutorClient);
         let mut request = valid_request();
         request.graph.workflow_version_id = "other-version".to_string();
 
@@ -2452,10 +2449,7 @@ mod tests {
 
     #[tokio::test]
     async fn rejects_invalid_graph() {
-        let service = ExecutionService::new(
-            MemoryExecutionStore::default(),
-            NoopExecutorClient::default(),
-        );
+        let service = ExecutionService::new(MemoryExecutionStore::default(), NoopExecutorClient);
         let mut request = valid_request();
         request.graph.edges.push(Edge {
             source: "agent".to_string(),

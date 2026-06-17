@@ -248,7 +248,7 @@ impl OrgStore for PostgresOrgStore {
                 .fetch_one(&pool).await
                 .map(OrgRecord::from)
                 .map_err(|e| OrgError::StoreError(e.to_string()))
-                .map(|org| {
+                .inspect(|_org| {
                     // fire-and-forget owner member insert
                     let pool2 = pool.clone();
                     let id2 = id.clone();
@@ -258,7 +258,6 @@ impl OrgStore for PostgresOrgStore {
                             "INSERT INTO af_org_members (org_id, user_id, role) VALUES ($1, $2, 'admin') ON CONFLICT DO NOTHING"
                         ).bind(&id2).bind(&owner2).execute(&pool2).await;
                     });
-                    org
                 })
             })
         })

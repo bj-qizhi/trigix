@@ -7,8 +7,10 @@ use serde::{Deserialize, Serialize};
 /// User role within a tenant. Defaults to `Editor` when not present in JWT.
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, PartialOrd, Ord)]
 #[serde(rename_all = "snake_case")]
+#[derive(Default)]
 pub enum Role {
     Viewer,
+    #[default]
     Editor,
     Admin,
 }
@@ -32,12 +34,6 @@ impl std::str::FromStr for Role {
             "viewer" => Ok(Role::Viewer),
             _ => Err(()),
         }
-    }
-}
-
-impl Default for Role {
-    fn default() -> Self {
-        Role::Editor
     }
 }
 

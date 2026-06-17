@@ -212,7 +212,7 @@ pub(super) async fn execute_qdrant(
         .and_then(|v| v.as_str())
         .map(|s| s.to_string());
 
-    let mut builder = |method: &str, url: &str| -> reqwest::RequestBuilder {
+    let builder = |method: &str, url: &str| -> reqwest::RequestBuilder {
         let rb = match method {
             "POST" => http_client.post(url),
             "PUT" => http_client.put(url),
@@ -1135,7 +1135,7 @@ pub(super) async fn execute_calendly(
     match operation.as_str() {
         "get_current_user" => {
             match http_client
-                .get(&format!("{base}/users/me"))
+                .get(format!("{base}/users/me"))
                 .header("Authorization", &auth)
                 .send()
                 .await
@@ -1741,7 +1741,7 @@ pub(super) async fn execute_neon(
     match operation.as_str() {
         "list_projects" => {
             match http_client
-                .get(&format!("{base}/projects"))
+                .get(format!("{base}/projects"))
                 .header("Authorization", &auth)
                 .send()
                 .await
@@ -1787,7 +1787,7 @@ pub(super) async fn execute_neon(
                 .unwrap_or("new-project");
             let body = serde_json::json!({ "project": { "name": name } });
             match http_client
-                .post(&format!("{base}/projects"))
+                .post(format!("{base}/projects"))
                 .header("Authorization", &auth)
                 .json(&body)
                 .send()
@@ -1864,7 +1864,7 @@ pub(super) async fn execute_copper(
         "list" => {
             let body = cfg.get("filter").cloned().unwrap_or(serde_json::json!({}));
             req_builder = http_client
-                .post(&format!("{base}/{resource}/search"))
+                .post(format!("{base}/{resource}/search"))
                 .json(&body);
         }
         "get" => {
@@ -1872,14 +1872,14 @@ pub(super) async fn execute_copper(
                 Some(id) if !id.is_empty() => id.to_string(),
                 _ => return NodeExecutionResult::failed("Copper get requires 'record_id'"),
             };
-            req_builder = http_client.get(&format!("{base}/{resource}/{id}"));
+            req_builder = http_client.get(format!("{base}/{resource}/{id}"));
         }
         "create" => {
             let body = cfg
                 .get("body")
                 .cloned()
                 .unwrap_or(serde_json::Value::Object(serde_json::Map::new()));
-            req_builder = http_client.post(&format!("{base}/{resource}")).json(&body);
+            req_builder = http_client.post(format!("{base}/{resource}")).json(&body);
         }
         "update" => {
             let id = match cfg.get("record_id").and_then(|v| v.as_str()) {
@@ -1891,7 +1891,7 @@ pub(super) async fn execute_copper(
                 .cloned()
                 .unwrap_or(serde_json::Value::Object(serde_json::Map::new()));
             req_builder = http_client
-                .put(&format!("{base}/{resource}/{id}"))
+                .put(format!("{base}/{resource}/{id}"))
                 .json(&body);
         }
         "delete" => {
@@ -1899,7 +1899,7 @@ pub(super) async fn execute_copper(
                 Some(id) if !id.is_empty() => id.to_string(),
                 _ => return NodeExecutionResult::failed("Copper delete requires 'record_id'"),
             };
-            req_builder = http_client.delete(&format!("{base}/{resource}/{id}"));
+            req_builder = http_client.delete(format!("{base}/{resource}/{id}"));
         }
         other => return NodeExecutionResult::failed(format!("Copper unknown operation '{other}'")),
     };

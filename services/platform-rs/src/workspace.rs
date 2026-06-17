@@ -93,7 +93,7 @@ impl MemoryWorkspaceStore {
         let mut map = self.workspaces.write().unwrap();
         if map
             .get(workspace_id)
-            .map_or(false, |w| w.tenant_id == tenant_id)
+            .is_some_and(|w| w.tenant_id == tenant_id)
         {
             map.remove(workspace_id);
             true
@@ -109,9 +109,7 @@ impl MemoryWorkspaceStore {
         name: &str,
         description: Option<&str>,
     ) -> Option<ProjectRecord> {
-        if self.get_workspace(tenant_id, workspace_id).await.is_none() {
-            return None;
-        }
+        self.get_workspace(tenant_id, workspace_id).await.as_ref()?;
         let record = ProjectRecord {
             id: next_id(),
             tenant_id: tenant_id.to_string(),
@@ -143,7 +141,7 @@ impl MemoryWorkspaceStore {
         let mut map = self.projects.write().unwrap();
         if map
             .get(project_id)
-            .map_or(false, |p| p.tenant_id == tenant_id)
+            .is_some_and(|p| p.tenant_id == tenant_id)
         {
             map.remove(project_id);
             true
@@ -252,9 +250,7 @@ impl PostgresWorkspaceStore {
         description: Option<&str>,
     ) -> Option<ProjectRecord> {
         // Verify workspace exists for this tenant
-        if self.get_workspace(tenant_id, workspace_id).await.is_none() {
-            return None;
-        }
+        self.get_workspace(tenant_id, workspace_id).await.as_ref()?;
         let id = next_id();
         let now = unix_now();
         let ok = sqlx::query(

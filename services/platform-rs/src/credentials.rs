@@ -238,7 +238,7 @@ impl CredentialStore for MemoryCredentialStore {
         let mut out: Vec<CredentialSummary> = records
             .iter()
             .filter(|(k, _)| k.starts_with(&prefix))
-            .filter(|(_, r)| r.expires_at.map_or(false, |e| e <= before_unix))
+            .filter(|(_, r)| r.expires_at.is_some_and(|e| e <= before_unix))
             .map(|(_, r)| CredentialSummary::from(r))
             .collect();
         out.sort_by_key(|c| c.expires_at.unwrap_or(u64::MAX));

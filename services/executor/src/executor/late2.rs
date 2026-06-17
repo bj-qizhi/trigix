@@ -24,7 +24,7 @@ pub(super) async fn execute_mailchimp(
     let server = match cfg.get("server").and_then(|v| v.as_str()) {
         Some(s) if !s.is_empty() => s.to_string(),
         // Try to extract server prefix from api_key (format: key-us1)
-        _ => match api_key.split('-').last() {
+        _ => match api_key.split('-').next_back() {
             Some(s) if !s.is_empty() => s.to_string(),
             _ => return NodeExecutionResult::failed("Mailchimp requires 'server' (e.g. us1)"),
         },
@@ -2875,6 +2875,7 @@ fn sigv4_uri_encode(s: &str) -> String {
         .collect()
 }
 
+#[allow(clippy::too_many_arguments)]
 fn aws_sigv4_s3_auth(
     access_key_id: &str,
     secret_access_key: &str,
@@ -2948,7 +2949,7 @@ fn epoch_to_ymd(secs: u64) -> (u32, u32, u32) {
     let mut y = 1970u32;
     let mut d = days as u32;
     loop {
-        let dy = if (y % 4 == 0 && y % 100 != 0) || y % 400 == 0 {
+        let dy = if (y.is_multiple_of(4) && !y.is_multiple_of(100)) || y.is_multiple_of(400) {
             366
         } else {
             365
@@ -2959,7 +2960,7 @@ fn epoch_to_ymd(secs: u64) -> (u32, u32, u32) {
         d -= dy;
         y += 1;
     }
-    let leap = (y % 4 == 0 && y % 100 != 0) || y % 400 == 0;
+    let leap = (y.is_multiple_of(4) && !y.is_multiple_of(100)) || y.is_multiple_of(400);
     let month_days = [
         31u32,
         if leap { 29 } else { 28 },

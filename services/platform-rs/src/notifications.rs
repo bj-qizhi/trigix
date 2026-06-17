@@ -4,7 +4,7 @@
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use std::collections::HashMap;
-use std::sync::{Arc, RwLock};
+use std::sync::RwLock;
 
 fn unix_now() -> u64 {
     std::time::SystemTime::now()
@@ -84,13 +84,12 @@ impl NotificationStore for MemoryNotificationStore {
             .values()
             .filter(|n| {
                 n.tenant_id == tenant_id
-                    && user_id.map_or(true, |uid| {
-                        n.user_id.as_deref() == Some(uid) || n.user_id.is_none()
-                    })
+                    && user_id
+                        .is_none_or(|uid| n.user_id.as_deref() == Some(uid) || n.user_id.is_none())
             })
             .cloned()
             .collect();
-        items.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+        items.sort_by_key(|x| std::cmp::Reverse(x.created_at));
         items.truncate(limit);
         items
     }
@@ -110,9 +109,8 @@ impl NotificationStore for MemoryNotificationStore {
         let mut data = self.data.write().unwrap();
         for n in data.values_mut() {
             if (tenant_id.is_empty() || n.tenant_id == tenant_id)
-                && user_id.map_or(true, |uid| {
-                    n.user_id.as_deref() == Some(uid) || n.user_id.is_none()
-                })
+                && user_id
+                    .is_none_or(|uid| n.user_id.as_deref() == Some(uid) || n.user_id.is_none())
             {
                 n.read = true;
             }
@@ -140,9 +138,8 @@ impl NotificationStore for MemoryNotificationStore {
             .filter(|n| {
                 !n.read
                     && n.tenant_id == tenant_id
-                    && user_id.map_or(true, |uid| {
-                        n.user_id.as_deref() == Some(uid) || n.user_id.is_none()
-                    })
+                    && user_id
+                        .is_none_or(|uid| n.user_id.as_deref() == Some(uid) || n.user_id.is_none())
             })
             .count() as u64
     }

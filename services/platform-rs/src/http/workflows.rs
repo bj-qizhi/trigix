@@ -749,7 +749,7 @@ async fn workflow_node_stats_handler(
     }
 
     let mut stats: Vec<_> = map.into_values().collect();
-    stats.sort_by(|a, b| b.total.cmp(&a.total));
+    stats.sort_by_key(|x| std::cmp::Reverse(x.total));
     Json(stats)
 }
 
@@ -1398,7 +1398,7 @@ async fn copilot_handler(
         .trim()
         .to_string();
 
-    let _ = state.audit_store.record(
+    state.audit_store.record(
         &body.tenant_id,
         "copilot.query",
         "copilot",
@@ -3232,7 +3232,7 @@ mod tests {
         let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
         let export: serde_json::Value = serde_json::from_slice(&body).unwrap();
         assert_eq!(export["name"], "Dev Lead Workflow");
-        assert!(export["graph"]["nodes"].as_array().unwrap().len() >= 1);
+        assert!(!export["graph"]["nodes"].as_array().unwrap().is_empty());
         assert!(export["exported_at"].as_u64().unwrap() > 0);
     }
 

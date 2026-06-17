@@ -47,6 +47,9 @@ pub struct WorkflowRecord {
     pub budget_usd: Option<f64>,
 }
 
+// Referenced by serde via #[serde(default = "default_tenant_visibility")]; the
+// string reference is invisible to dead-code analysis, hence the allow.
+#[allow(dead_code)]
 fn default_tenant_visibility() -> String {
     "tenant".to_string()
 }
@@ -749,7 +752,7 @@ impl WorkflowVersionStore for MemoryWorkflowVersionStore {
             })
             .cloned()
             .collect::<Vec<_>>();
-        records.sort_by(|left, right| right.version.cmp(&left.version));
+        records.sort_by_key(|x| std::cmp::Reverse(x.version));
         records.truncate(limit);
         Ok(records)
     }

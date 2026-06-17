@@ -9,6 +9,7 @@ use crate::runtime::{ExecutionContext, NodeExecutionResult};
 use workflow_core::Node;
 
 // ── 国内大模型通用 OpenAI-compatible helper ──────────────────────────────
+#[allow(clippy::too_many_arguments)]
 async fn openai_compat_chat(
     node_name: &str,
     api_key: &str,

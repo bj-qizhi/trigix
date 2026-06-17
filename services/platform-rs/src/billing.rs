@@ -9,7 +9,7 @@ fn epoch_to_year_month(secs: u64) -> String {
     let mut days = secs / 86400;
     let mut y = 1970u32;
     loop {
-        let dy = if (y % 4 == 0 && y % 100 != 0) || y % 400 == 0 {
+        let dy = if (y.is_multiple_of(4) && !y.is_multiple_of(100)) || y.is_multiple_of(400) {
             366u64
         } else {
             365u64
@@ -20,7 +20,7 @@ fn epoch_to_year_month(secs: u64) -> String {
         days -= dy;
         y += 1;
     }
-    let leap = (y % 4 == 0 && y % 100 != 0) || y % 400 == 0;
+    let leap = (y.is_multiple_of(4) && !y.is_multiple_of(100)) || y.is_multiple_of(400);
     let month_days: [u64; 12] = [
         31,
         if leap { 29 } else { 28 },
@@ -63,7 +63,7 @@ pub fn recent_year_months(n: usize) -> Vec<String> {
     let mut days = now / 86400;
     let mut y = 1970u32;
     loop {
-        let dy: u64 = if (y % 4 == 0 && y % 100 != 0) || y % 400 == 0 {
+        let dy: u64 = if (y.is_multiple_of(4) && !y.is_multiple_of(100)) || y.is_multiple_of(400) {
             366
         } else {
             365
@@ -74,7 +74,7 @@ pub fn recent_year_months(n: usize) -> Vec<String> {
         days -= dy;
         y += 1;
     }
-    let leap = (y % 4 == 0 && y % 100 != 0) || y % 400 == 0;
+    let leap = (y.is_multiple_of(4) && !y.is_multiple_of(100)) || y.is_multiple_of(400);
     let month_days: [u64; 12] = [
         31,
         if leap { 29 } else { 28 },
@@ -124,7 +124,7 @@ pub fn secs_until_quota_reset() -> u64 {
     let now_secs_in_day = now % 86400;
     let mut y = 1970u32;
     loop {
-        let dy: u64 = if (y % 4 == 0 && y % 100 != 0) || y % 400 == 0 {
+        let dy: u64 = if (y.is_multiple_of(4) && !y.is_multiple_of(100)) || y.is_multiple_of(400) {
             366
         } else {
             365
@@ -135,7 +135,7 @@ pub fn secs_until_quota_reset() -> u64 {
         days_remaining -= dy;
         y += 1;
     }
-    let leap = (y % 4 == 0 && y % 100 != 0) || y % 400 == 0;
+    let leap = (y.is_multiple_of(4) && !y.is_multiple_of(100)) || y.is_multiple_of(400);
     let month_days: [u64; 12] = [
         31,
         if leap { 29 } else { 28 },
@@ -300,6 +300,7 @@ pub trait BillingStore: Send + Sync {
 // ── Memory implementation ──────────────────────────────────────────────────
 
 #[derive(Default)]
+#[allow(clippy::type_complexity)]
 pub struct MemoryBillingStore {
     quotas: RwLock<HashMap<String, TenantQuota>>,
     usage: RwLock<HashMap<(String, String), UsageSummary>>,

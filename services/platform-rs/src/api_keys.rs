@@ -78,13 +78,13 @@ impl MemoryApiKeyStore {
             .filter(|r| r.tenant_id == tenant_id)
             .cloned()
             .collect();
-        out.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+        out.sort_by_key(|x| std::cmp::Reverse(x.created_at));
         out
     }
 
     pub async fn delete(&self, tenant_id: &str, id: &str) -> bool {
         let mut map = self.keys.write().unwrap();
-        if map.get(id).map_or(false, |r| r.tenant_id == tenant_id) {
+        if map.get(id).is_some_and(|r| r.tenant_id == tenant_id) {
             map.remove(id);
             true
         } else {

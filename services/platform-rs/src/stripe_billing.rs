@@ -59,6 +59,7 @@ impl StripeClient {
     }
 
     /// Creates a hosted Checkout Session and returns the redirect URL.
+    #[allow(clippy::too_many_arguments)]
     pub async fn create_checkout_session(
         &self,
         price_id: &str,

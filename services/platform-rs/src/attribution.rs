@@ -67,7 +67,6 @@ pub struct ChannelStats {
 }
 
 #[allow(async_fn_in_trait)]
-
 pub trait AttributionStore: Clone + Send + Sync + 'static {
     /// Records first-touch attribution. No-op if the tenant already has a row.
     async fn record_first_touch(&self, rec: AttributionRecord);

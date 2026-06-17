@@ -205,7 +205,7 @@ impl UserStore for MemoryUserStore {
             .unwrap()
             .values()
             .filter(|u| u.tenant_id == tenant_id)
-            .map(|u| PublicUser::from(u))
+            .map(PublicUser::from)
             .collect()
     }
 

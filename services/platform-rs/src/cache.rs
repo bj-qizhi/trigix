@@ -7,9 +7,10 @@ use redis::aio::ConnectionManager;
 use redis::AsyncCommands;
 
 /// Optional Redis cache. When REDIS_URL is not set, all operations are no-ops.
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub enum CacheClient {
     Redis(ConnectionManager),
+    #[default]
     Noop,
 }
 
@@ -302,12 +303,6 @@ fn parse_stream_messages(messages: &[redis::Value]) -> Vec<(String, Vec<(String,
         out.push((id, fields));
     }
     out
-}
-
-impl Default for CacheClient {
-    fn default() -> Self {
-        Self::Noop
-    }
 }
 
 /// Cache key helpers — centralize key construction to avoid collisions.

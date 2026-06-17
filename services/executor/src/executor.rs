@@ -98,9 +98,10 @@ mod nodes_custom;
 use nodes_custom::*;
 
 // Global per-process node output cache: key → (cached_at, output_json)
-static NODE_CACHE: OnceLock<Arc<Mutex<LruCache<String, (Instant, String)>>>> = OnceLock::new();
+type NodeCache = Arc<Mutex<LruCache<String, (Instant, String)>>>;
+static NODE_CACHE: OnceLock<NodeCache> = OnceLock::new();
 
-fn node_cache() -> &'static Arc<Mutex<LruCache<String, (Instant, String)>>> {
+fn node_cache() -> &'static NodeCache {
     NODE_CACHE.get_or_init(|| {
         Arc::new(Mutex::new(LruCache::new(
             std::num::NonZeroUsize::new(1024).unwrap(),
@@ -1422,11 +1423,11 @@ async fn execute_graphql(
     }
 }
 
-/// Validates a JSON value against a simple schema definition.
-/// Config: `source` (template resolving to JSON), `schema` (JSON object with field definitions),
-///         `fail_on_invalid` (bool, default true).
-/// Schema format: `{ "field_name": { "type": "string"|"number"|"boolean"|"array"|"object", "required": true } }`
-/// Returns: `{ valid: bool, errors: [...] }`
+// Validates a JSON value against a simple schema definition.
+// Config: `source` (template resolving to JSON), `schema` (JSON object with field definitions),
+//         `fail_on_invalid` (bool, default true).
+// Schema format: `{ "field_name": { "type": "string"|"number"|"boolean"|"array"|"object", "required": true } }`
+// Returns: `{ valid: bool, errors: [...] }`
 
 fn json_type_name(v: &serde_json::Value) -> &'static str {
     match v {
@@ -1439,31 +1440,31 @@ fn json_type_name(v: &serde_json::Value) -> &'static str {
     }
 }
 
-/// GitHub REST API node.
-/// config: token (required), method (GET/POST/PATCH/DELETE, default GET),
-///         endpoint (required, e.g. "/repos/{owner}/{repo}/issues"),
-///         body (optional JSON template), base_url (default https://api.github.com)
+// GitHub REST API node.
+// config: token (required), method (GET/POST/PATCH/DELETE, default GET),
+//         endpoint (required, e.g. "/repos/{owner}/{repo}/issues"),
+//         body (optional JSON template), base_url (default https://api.github.com)
 
-/// Outbound webhook send node — send an HTTP POST to an arbitrary URL.
-/// config: url (required), headers (optional object), body_template (optional JSON template)
+// Outbound webhook send node — send an HTTP POST to an arbitrary URL.
+// config: url (required), headers (optional object), body_template (optional JSON template)
 
-/// Jira integration node — calls Jira REST API v3 using Basic auth (email:token).
-/// config: base_url (required, e.g. https://company.atlassian.net), email (required),
-///         token (required, API token), endpoint (required, e.g. /rest/api/3/issue/PROJ-1),
-///         method (GET/POST/PUT/DELETE, default GET), body (optional JSON template)
+// Jira integration node — calls Jira REST API v3 using Basic auth (email:token).
+// config: base_url (required, e.g. https://company.atlassian.net), email (required),
+//         token (required, API token), endpoint (required, e.g. /rest/api/3/issue/PROJ-1),
+//         method (GET/POST/PUT/DELETE, default GET), body (optional JSON template)
 
-/// Notion integration node — calls Notion REST API v1 using Bearer token.
-/// config: token (required, Notion integration token), endpoint (required, e.g. /v1/pages),
-///         method (GET/POST/PATCH/DELETE, default GET), body (optional JSON template)
+// Notion integration node — calls Notion REST API v1 using Bearer token.
+// config: token (required, Notion integration token), endpoint (required, e.g. /v1/pages),
+//         method (GET/POST/PATCH/DELETE, default GET), body (optional JSON template)
 
-/// Linear integration node — calls Linear GraphQL API using Bearer token (API key).
-/// config: token (required), query (required, GraphQL query string),
-///         variables (optional JSON object template)
+// Linear integration node — calls Linear GraphQL API using Bearer token (API key).
+// config: token (required), query (required, GraphQL query string),
+//         variables (optional JSON object template)
 
-/// Airtable integration node — calls Airtable REST API using Bearer token (personal access token).
-/// config: token (required), base_id (required), table (required),
-///         method (GET/POST/PATCH/DELETE, default GET), record_id (optional for single-record ops),
-///         body (optional JSON template for writes), filter_formula (optional for GET list)
+// Airtable integration node — calls Airtable REST API using Bearer token (personal access token).
+// config: token (required), base_id (required), table (required),
+//         method (GET/POST/PATCH/DELETE, default GET), record_id (optional for single-record ops),
+//         body (optional JSON template for writes), filter_formula (optional for GET list)
 
 /// ForEach node — runs a sub-workflow for each item in an array in parallel.
 /// config: items (template expression resolving to array, required),
@@ -1602,21 +1603,21 @@ async fn execute_for_each(
     )
 }
 
-/// Discord notification node — sends a message to a Discord channel via an incoming webhook.
-/// config: webhook_url (required), content (required, message text template),
-///         username (optional override), avatar_url (optional)
+// Discord notification node — sends a message to a Discord channel via an incoming webhook.
+// config: webhook_url (required), content (required, message text template),
+//         username (optional override), avatar_url (optional)
 
-/// Microsoft Teams notification node — sends an Adaptive Card message via an incoming webhook.
-/// config: webhook_url (required), title (optional), text (required, message body template),
-///         color (optional hex, e.g. "#0078D4")
+// Microsoft Teams notification node — sends an Adaptive Card message via an incoming webhook.
+// config: webhook_url (required), title (optional), text (required, message body template),
+//         color (optional hex, e.g. "#0078D4")
 
-/// Google Sheets node — reads or writes Google Sheets cells via Sheets API v4.
-/// Uses a Bearer token (OAuth2 access token or service account token).
-/// config: token (required), spreadsheet_id (required),
-///         range (required, A1 notation e.g. "Sheet1!A1:C10"),
-///         method (GET/APPEND/UPDATE/CLEAR, default GET),
-///         values (optional JSON array of rows for APPEND/UPDATE),
-///         value_input_option (RAW/USER_ENTERED, default USER_ENTERED)
+// Google Sheets node — reads or writes Google Sheets cells via Sheets API v4.
+// Uses a Bearer token (OAuth2 access token or service account token).
+// config: token (required), spreadsheet_id (required),
+//         range (required, A1 notation e.g. "Sheet1!A1:C10"),
+//         method (GET/APPEND/UPDATE/CLEAR, default GET),
+//         values (optional JSON array of rows for APPEND/UPDATE),
+//         value_input_option (RAW/USER_ENTERED, default USER_ENTERED)
 
 fn redis_value_to_json(val: redis::Value) -> serde_json::Value {
     match val {
@@ -2956,7 +2957,7 @@ mod tests {
 
     #[test]
     fn dedupe_node_removes_duplicates_by_field() {
-        let node = Node {
+        let _node = Node {
             id: "dd1".to_string(),
             node_type: NodeType::Dedupe,
             config: Some(serde_json::json!({ "field": "id" })),
@@ -3043,7 +3044,7 @@ mod tests {
             let out: serde_json::Value =
                 serde_json::from_str(result.output_json.as_deref().unwrap()).unwrap();
             let v = out["value"].as_f64().unwrap();
-            assert!(v >= 10.0 && v <= 20.0, "value {v} out of range");
+            assert!((10.0..=20.0).contains(&v), "value {v} out of range");
         }
     }
 
@@ -3111,7 +3112,7 @@ mod tests {
 
     #[test]
     fn join_node_joins_array() {
-        let node = Node {
+        let _node = Node {
             id: "join1".to_string(),
             node_type: NodeType::Join,
             config: Some(serde_json::json!({ "delimiter": "-" })),
@@ -3860,12 +3861,12 @@ mod tests_262_265 {
         let node = Node {
             id: "m2".into(),
             node_type: NodeType::Math,
-            config: Some(serde_json::json!({ "operation": "round", "a": 3.14159, "precision": 2 })),
+            config: Some(serde_json::json!({ "operation": "round", "a": 5.6789, "precision": 2 })),
         };
         let r = execute_math(&node, &ctx());
         let out: serde_json::Value =
             serde_json::from_str(r.output_json.as_deref().unwrap()).unwrap();
-        assert_eq!(out["result"], 3.14);
+        assert_eq!(out["result"], 5.68);
     }
 
     #[test]

@@ -422,7 +422,7 @@ mod tests {
         )
         .unwrap();
         assert_eq!(out2["format"], "jpeg");
-        assert!(out2["image_base64"].as_str().unwrap().len() > 0);
+        assert!(!out2["image_base64"].as_str().unwrap().is_empty());
     }
 
     #[tokio::test]

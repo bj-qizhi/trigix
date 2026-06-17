@@ -25,12 +25,12 @@ async fn list_audit_log(
     let events = state.audit_store.list(&tenant_id, limit).await;
     let filtered = events
         .into_iter()
-        .filter(|e| query.action.as_ref().map_or(true, |a| &e.action == a))
+        .filter(|e| query.action.as_ref().is_none_or(|a| &e.action == a))
         .filter(|e| {
             query
                 .resource_id
                 .as_ref()
-                .map_or(true, |r| &e.resource_id == r)
+                .is_none_or(|r| &e.resource_id == r)
         })
         .collect();
     Json(filtered)
@@ -82,13 +82,11 @@ async fn node_type_analytics_handler(
     }
     for (node_type, st) in map.iter_mut() {
         if let (Some(&sum), Some(&cnt)) = (dur_sum.get(node_type), dur_count.get(node_type)) {
-            if cnt > 0 {
-                st.avg_duration_ms = Some(sum / cnt);
-            }
+            st.avg_duration_ms = sum.checked_div(cnt);
         }
     }
     let mut stats: Vec<_> = map.into_values().collect();
-    stats.sort_by(|a, b| b.total.cmp(&a.total));
+    stats.sort_by_key(|x| std::cmp::Reverse(x.total));
     Json(stats)
 }
 
@@ -192,7 +190,7 @@ async fn workflow_stats_analytics_handler(
                 d.1 += dur;
             }
         }
-        if entry.last_run_at.map_or(true, |t| ex.started_at > t) {
+        if entry.last_run_at.is_none_or(|t| ex.started_at > t) {
             entry.last_run_at = Some(ex.started_at);
         }
     }
@@ -204,7 +202,7 @@ async fn workflow_stats_analytics_handler(
     }
 
     let mut rows: Vec<WorkflowStatRow> = map.into_values().collect();
-    rows.sort_by(|a, b| b.total.cmp(&a.total));
+    rows.sort_by_key(|x| std::cmp::Reverse(x.total));
 
     Json(WorkflowStatsAnalyticsResponse { rows, since })
 }
@@ -279,7 +277,7 @@ async fn sla_breaches_handler(
         }
     }
 
-    breaches.sort_by(|a, b| b.overage_seconds.cmp(&a.overage_seconds));
+    breaches.sort_by_key(|x| std::cmp::Reverse(x.overage_seconds));
 
     let compliance_rate = if total_completed > 0 {
         (total_compliant as f64 / total_completed as f64) * 100.0
@@ -362,7 +360,7 @@ async fn error_analysis_handler(
 
     let distinct_error_types = error_map.len();
     let mut top_errors: Vec<_> = error_map.into_values().collect();
-    top_errors.sort_by(|a, b| b.count.cmp(&a.count));
+    top_errors.sort_by_key(|x| std::cmp::Reverse(x.count));
     top_errors.truncate(20);
 
     Json(ErrorAnalysisResponse {
@@ -397,7 +395,7 @@ mod tests {
     use axum::body::{to_bytes, Body};
     use axum::http::Request;
     use axum::http::StatusCode;
-    use serde_json::json;
+
     use tower::ServiceExt;
 
     #[tokio::test]

@@ -54,12 +54,12 @@ async fn run_execution(
 ) -> Result<Json<ExecutionReport>, ApiError> {
     validate_request(&request)?;
 
-    let mut node_executor = (*state.executor).clone();
+    let node_executor = (*state.executor).clone();
     let report = run_workflow(
         request.execution_id,
         &request.graph,
         request.input_json,
-        &mut node_executor,
+        &node_executor,
         request.dry_run,
     )
     .await?;

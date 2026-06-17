@@ -55,6 +55,12 @@ pub struct MemoryPasswordResetStore {
     records: RwLock<HashMap<String, PasswordReset>>,
 }
 
+impl Default for MemoryPasswordResetStore {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl MemoryPasswordResetStore {
     pub fn new() -> Self {
         Self {
