@@ -22,6 +22,7 @@ import {
 import '@xyflow/react/dist/style.css'
 import type { ApiNode, ApiEdge, NodeType, NodeExecutionRecord } from '../types'
 import { NodeIcon } from './nodeIcons'
+import { labelLocale } from './panels/i18nLabels'
 
 const NodeStatusContext = createContext<Record<string, NodeExecutionRecord>>({})
 const NodeWarningContext = createContext<Set<string>>(new Set())
@@ -306,6 +307,7 @@ export const NODE_COLORS: Record<string, string> = {
               structured_output: '#10a37f',
               classifier: '#10a37f',
               image_gen: '#10a37f',
+              video_gen: '#10a37f',
               speech_to_text: '#10a37f',
               tts: '#10a37f',
               html_extract: '#0d9488',
@@ -493,6 +495,7 @@ const NODE_LABELS: Record<NodeType, string> = {
   structured_output: 'Structured Output',
   classifier: 'Classifier',
   image_gen: 'Image Gen',
+  video_gen: 'Video Gen',
   speech_to_text: 'Speech → Text',
   tts: 'Text → Speech',
   html_extract: 'HTML Extract',
@@ -516,6 +519,79 @@ const NODE_LABELS: Record<NodeType, string> = {
   hunyuan: '混元',
 }
 
+// Chinese titles for the *generic* node types. Brand/product nodes (Slack,
+// GitHub, OpenAI, MySQL, …) are intentionally absent — they keep their English
+// names, which match their docs. Falls back to NODE_LABELS when not present.
+const NODE_LABELS_ZH: Partial<Record<NodeType, string>> = {
+  trigger: '触发器',
+  agent: 'AI 智能体',
+  condition: '条件分支',
+  approval: '人工审批',
+  map: '映射',
+  filter: '过滤',
+  aggregate: '聚合',
+  sort: '排序',
+  transform: '转换',
+  delay: '延时',
+  sub_workflow: '子工作流',
+  assert: '断言',
+  catch: '错误捕获',
+  fan_out: '并行分发',
+  fan_in: '并行汇总',
+  code: '代码',
+  email: '邮件',
+  rag: 'RAG 检索',
+  rag_ingest: 'RAG 入库',
+  custom: '自定义',
+  database: '数据库',
+  extract: '字段提取',
+  merge: '合并',
+  loop: '循环',
+  validate: '校验',
+  note: '注释',
+  split: '拆分',
+  join: '拼接',
+  switch: '多路分支',
+  random: '随机',
+  dedupe: '去重',
+  regex: '正则',
+  csv: 'CSV 解析',
+  rename: '重命名',
+  format: '格式化',
+  webhook: 'Webhook 发送',
+  for_each: '遍历执行',
+  xml: 'XML 解析',
+  crypto: '加密',
+  date: '日期/时间',
+  math: '数学运算',
+  array_utils: '数组工具',
+  handlebars: 'HB 模板',
+  redis: 'Redis 缓存',
+  hash: '哈希 / HMAC',
+  zip: '压缩包',
+  image: '图片',
+  pdf_extract: 'PDF 提取',
+  ocr: 'OCR',
+  embedding: '嵌入向量',
+  reranker: '重排序',
+  text_splitter: '文本分块',
+  structured_output: '结构化输出',
+  classifier: '分类器',
+  image_gen: '图像生成',
+  video_gen: '视频生成',
+  speech_to_text: '语音转文字',
+  tts: '文字转语音',
+  html_extract: 'HTML 提取',
+  rss: 'RSS 订阅',
+  wait: '等待',
+}
+
+/** Display title for a node type, localized to the active editor locale. */
+export function nodeTitle(nt: NodeType): string {
+  if (labelLocale() === 'zh' && NODE_LABELS_ZH[nt]) return NODE_LABELS_ZH[nt]!
+  return NODE_LABELS[nt] ?? nt
+}
+
 
 function FlowNodeComponent({ data, selected, id }: NodeProps) {
   const statuses = useContext(NodeStatusContext)
@@ -524,7 +600,7 @@ function FlowNodeComponent({ data, selected, id }: NodeProps) {
   const hasWarning = warnings.has(id)
   const d = data as FlowNodeData
   const nt = d.nodeType
-  const label = (d.config?.node_label as string | undefined) || (nt ? (NODE_LABELS[nt] ?? nt) : 'Node')
+  const label = (d.config?.node_label as string | undefined) || (nt ? nodeTitle(nt) : 'Node')
 
   const preview = (() => {
     if (!nt) return ''
@@ -695,6 +771,7 @@ function FlowNodeComponent({ data, selected, id }: NodeProps) {
     if (nt === 'structured_output') return String(c.model ?? 'gpt-5.4-mini')
     if (nt === 'classifier') return Array.isArray(c.categories) ? `${(c.categories as unknown[]).length} 类` : String(c.model ?? 'gpt-5.4-mini')
     if (nt === 'image_gen') return String(c.model ?? 'dall-e-3')
+    if (nt === 'video_gen') return String(c.provider ?? 'seedance')
     if (nt === 'speech_to_text') return String(c.model ?? 'whisper-1')
     if (nt === 'tts') return `${String(c.model ?? 'tts-1')} · ${String(c.voice ?? 'alloy')}`
     if (nt === 'html_extract') return c.selector ? `${String(c.extract ?? 'text')} · ${String(c.selector)}` : 'No selector'
@@ -920,6 +997,7 @@ const nodeTypes = {
   structured_output: FlowNodeComponent,
   classifier: FlowNodeComponent,
   image_gen: FlowNodeComponent,
+  video_gen: FlowNodeComponent,
   speech_to_text: FlowNodeComponent,
   tts: FlowNodeComponent,
   html_extract: FlowNodeComponent,

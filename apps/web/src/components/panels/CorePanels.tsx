@@ -4,6 +4,7 @@
 import { useEffect, useRef, useState } from 'react'
 import * as api from '../../api/client'
 import type { ConfigProps } from './types'
+import { fl, labelLocale } from './i18nLabels'
 
 export function CronExpressionField({ value, onChange }: { value: string; onChange: (v: string) => void }) {
   const [preview, setPreview] = useState<string[]>([])
@@ -24,7 +25,7 @@ export function CronExpressionField({ value, onChange }: { value: string; onChan
 
   return (
     <div className="field">
-      <label>Cron Expression</label>
+      <label>{fl("Cron Expression")}</label>
       <input
         type="text"
         value={value}
@@ -37,13 +38,12 @@ export function CronExpressionField({ value, onChange }: { value: string; onChan
       )}
       {preview.length > 0 && (
         <div style={{ marginTop: 6, fontSize: 11, color: 'var(--muted)' }}>
-          <div style={{ fontWeight: 600, marginBottom: 2 }}>Next fires:</div>
+          <div style={{ fontWeight: 600, marginBottom: 2 }}>{fl("Next fires:")}</div>
           {preview.map((t, i) => <div key={i} style={{ fontFamily: 'monospace' }}>{t}</div>)}
         </div>
       )}
       <p style={{ fontSize: 11, color: 'var(--muted)', marginTop: 4 }}>
-        7-field format: <code>sec min hour day month weekday year</code>.
-        Example: <code>0 0 9 * * Mon-Fri *</code> = weekdays at 9am.
+        {fl("7-field format:")} <code>{fl("sec min hour day month weekday year")}</code>{fl(".\n        Example:")} <code>{fl("0 0 9 * * Mon-Fri *")}</code> {fl("= weekdays at 9am.")}
       </p>
     </div>
   )
@@ -52,7 +52,7 @@ export function CronExpressionField({ value, onChange }: { value: string; onChan
 export function HeadersEditor({ set }: { set: ConfigProps['set'] }) {
   return (
     <div className="field">
-      <label>Headers (one per line: Key: Value)</label>
+      <label>{fl("Headers (one per line: Key: Value)")}</label>
       <textarea
         placeholder="Authorization: Bearer token&#10;X-Custom: value"
         style={{ fontFamily: 'monospace', fontSize: 12 }}
@@ -82,17 +82,30 @@ export function TriggerConfig({
   return (
     <div style={{ fontSize: 13, display: 'flex', flexDirection: 'column', gap: 12 }}>
       <div style={{ color: 'var(--muted)' }}>
-        <p>This node starts the workflow.</p>
-        <p style={{ marginTop: 4 }}>
-          It passes the execution{' '}
-          <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>input_json</code>{' '}
-          to downstream nodes.
-        </p>
+        {labelLocale() === 'zh' ? (
+          <>
+            <p>{fl("该节点启动工作流。")}</p>
+            <p style={{ marginTop: 4 }}>
+              {fl("它会把执行的")}{' '}
+              <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>{fl("input_json")}</code>{' '}
+              {fl("传递给下游节点。")}
+            </p>
+          </>
+        ) : (
+          <>
+            <p>{fl("This node starts the workflow.")}</p>
+            <p style={{ marginTop: 4 }}>
+              {fl("It passes the execution")}{' '}
+              <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>{fl("input_json")}</code>{' '}
+              {fl("to downstream nodes.")}
+            </p>
+          </>
+        )}
       </div>
 
       {/* Schedule mode selector */}
       <div className="field">
-        <label>Auto-run Schedule</label>
+        <label>{fl("Auto-run Schedule")}</label>
         <select
           value={scheduleMode}
           onChange={(e) => {
@@ -109,28 +122,28 @@ export function TriggerConfig({
             }
           }}
         >
-          <option value="none">None (manual / webhook only)</option>
-          <option value="interval">Fixed interval</option>
-          <option value="cron">Cron expression</option>
+          <option value="none">{fl("None (manual / webhook only)")}</option>
+          <option value="interval">{fl("Fixed interval")}</option>
+          <option value="cron">{fl("Cron expression")}</option>
         </select>
       </div>
 
       {scheduleMode === 'interval' && (
         <div className="field">
-          <label>Interval</label>
+          <label>{fl("Interval")}</label>
           <select
             value={intervalSecs || ''}
             onChange={(e) =>
               set('interval_secs', e.target.value ? Number(e.target.value) : undefined as unknown as number)
             }
           >
-            <option value="60">Every minute</option>
-            <option value="300">Every 5 minutes</option>
-            <option value="3600">Every hour</option>
-            <option value="86400">Every day</option>
+            <option value="60">{fl("Every minute")}</option>
+            <option value="300">{fl("Every 5 minutes")}</option>
+            <option value="3600">{fl("Every hour")}</option>
+            <option value="86400">{fl("Every day")}</option>
           </select>
           <p style={{ fontSize: 11, color: 'var(--muted)', marginTop: 4 }}>
-            Schedule activates when the workflow is published.
+            {fl("Schedule activates when the workflow is published.")}
           </p>
         </div>
       )}
@@ -144,7 +157,7 @@ export function TriggerConfig({
 
       {/* Webhook secret config */}
       <div className="field">
-        <label>Webhook Secret</label>
+        <label>{fl("Webhook Secret")}</label>
         <input
           type="text"
           value={str('webhook_secret', '')}
@@ -153,14 +166,13 @@ export function TriggerConfig({
           style={{ fontFamily: 'monospace' }}
         />
         <p style={{ fontSize: 11, color: 'var(--muted)', marginTop: 4 }}>
-          If set, callers must send <code>X-Webhook-Signature: sha256=&lt;hmac&gt;</code>.
-          Publish to activate.
+          {fl("If set, callers must send")} <code>X-Webhook-Signature: sha256=&lt;hmac&gt;</code>{fl(".\n          Publish to activate.")}
         </p>
       </div>
 
       {/* Failure alert webhook */}
       <div className="field">
-        <label>Failure Alert URL <span style={{ color: 'var(--muted)', fontWeight: 400 }}>(optional)</span></label>
+        <label>{fl("Failure Alert URL")} <span style={{ color: 'var(--muted)', fontWeight: 400 }}>{fl("(optional)")}</span></label>
         <input
           type="url"
           value={str('on_failure_url', '')}
@@ -168,14 +180,14 @@ export function TriggerConfig({
           placeholder="https://your-service/alert"
         />
         <p style={{ fontSize: 11, color: 'var(--muted)', marginTop: 4 }}>
-          POST with <code>{'{ execution_id, workflow_id, status, started_at, finished_at }'}</code> when execution fails.
+          {fl("POST with")} <code>{'{ execution_id, workflow_id, status, started_at, finished_at }'}</code> {fl("when execution fails.")}
         </p>
       </div>
 
       {/* Webhook URL display */}
       {webhookUrl ? (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          <p style={{ fontSize: 12, color: 'var(--text)', fontWeight: 500, margin: 0 }}>Webhook URL</p>
+          <p style={{ fontSize: 12, color: 'var(--text)', fontWeight: 500, margin: 0 }}>{fl("Webhook URL")}</p>
           <div style={{ display: 'flex', gap: 6, alignItems: 'flex-start' }}>
             <code style={{ fontSize: 11, background: 'var(--panel)', padding: '5px 7px', borderRadius: 4, flex: 1, wordBreak: 'break-all', lineHeight: 1.5 }}>
               {webhookUrl}
@@ -184,14 +196,14 @@ export function TriggerConfig({
               className="btn btn-sm"
               style={{ flexShrink: 0 }}
               onClick={() => void navigator.clipboard.writeText(webhookUrl)}
-              title="Copy webhook URL"
+              title={fl("Copy webhook URL")}
             >
-              Copy
+              {fl("Copy")}
             </button>
           </div>
           {webhookSecret && (
             <>
-              <p style={{ fontSize: 12, color: 'var(--text)', fontWeight: 500, margin: 0 }}>Webhook Secret</p>
+              <p style={{ fontSize: 12, color: 'var(--text)', fontWeight: 500, margin: 0 }}>{fl("Webhook Secret")}</p>
               <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
                 <code style={{ fontSize: 11, background: 'var(--panel)', padding: '4px 7px', borderRadius: 4, flex: 1, wordBreak: 'break-all' }}>
                   {webhookSecret}
@@ -200,20 +212,20 @@ export function TriggerConfig({
                   className="btn btn-sm"
                   style={{ flexShrink: 0 }}
                   onClick={() => void navigator.clipboard.writeText(webhookSecret)}
-                  title="Copy secret"
+                  title={fl("Copy secret")}
                 >
-                  Copy
+                  {fl("Copy")}
                 </button>
               </div>
             </>
           )}
           <p style={{ fontSize: 11, color: 'var(--muted)' }}>
-            POST JSON to this URL to trigger an execution.
+            {fl("POST JSON to this URL to trigger an execution.")}
           </p>
         </div>
       ) : (
         <p style={{ fontSize: 12, color: 'var(--muted)' }}>
-          Publish a version to get a webhook URL.
+          {fl("Publish a version to get a webhook URL.")}
         </p>
       )}
     </div>
@@ -225,7 +237,7 @@ export function HttpConfig({ config, set, str, num }: ConfigProps) {
   return (
     <>
       <div className="field">
-        <label>URL *</label>
+        <label>{fl("URL *")}</label>
         <input
           placeholder="https://api.example.com/{{input.id}}"
           value={str('url')}
@@ -235,26 +247,26 @@ export function HttpConfig({ config, set, str, num }: ConfigProps) {
       </div>
       <TemplateHint />
       <div className="field">
-        <label>Method</label>
+        <label>{fl("Method")}</label>
         <select value={str('method', 'GET')} onChange={(e) => set('method', e.target.value)}>
-          <option>GET</option>
-          <option>POST</option>
-          <option>PUT</option>
-          <option>PATCH</option>
-          <option>DELETE</option>
+          <option>{fl("GET")}</option>
+          <option>{fl("POST")}</option>
+          <option>{fl("PUT")}</option>
+          <option>{fl("PATCH")}</option>
+          <option>{fl("DELETE")}</option>
         </select>
       </div>
       <div className="field">
-        <label>Auth Type</label>
+        <label>{fl("Auth Type")}</label>
         <select value={authType} onChange={(e) => set('auth_type', e.target.value)}>
-          <option value="none">None</option>
-          <option value="bearer">Bearer Token</option>
-          <option value="oauth2">OAuth2 Client Credentials</option>
+          <option value="none">{fl("None")}</option>
+          <option value="bearer">{fl("Bearer Token")}</option>
+          <option value="oauth2">{fl("OAuth2 Client Credentials")}</option>
         </select>
       </div>
       {authType === 'bearer' && (
         <div className="field">
-          <label>Bearer Token</label>
+          <label>{fl("Bearer Token")}</label>
           <input
             placeholder="{{credential.my-api-key}}"
             value={str('auth_token')}
@@ -265,7 +277,7 @@ export function HttpConfig({ config, set, str, num }: ConfigProps) {
       {authType === 'oauth2' && (
         <>
           <div className="field">
-            <label>Token URL *</label>
+            <label>{fl("Token URL *")}</label>
             <input
               placeholder="https://auth.example.com/oauth/token"
               value={str('oauth2_token_url')}
@@ -273,7 +285,7 @@ export function HttpConfig({ config, set, str, num }: ConfigProps) {
             />
           </div>
           <div className="field">
-            <label>Client ID</label>
+            <label>{fl("Client ID")}</label>
             <input
               placeholder="{{credential.oauth_client_id}}"
               value={str('oauth2_client_id')}
@@ -281,7 +293,7 @@ export function HttpConfig({ config, set, str, num }: ConfigProps) {
             />
           </div>
           <div className="field">
-            <label>Client Secret</label>
+            <label>{fl("Client Secret")}</label>
             <input
               placeholder="{{credential.oauth_client_secret}}"
               value={str('oauth2_client_secret')}
@@ -289,7 +301,7 @@ export function HttpConfig({ config, set, str, num }: ConfigProps) {
             />
           </div>
           <div className="field">
-            <label>Scope <span style={{ color: 'var(--muted)', fontWeight: 400 }}>(optional)</span></label>
+            <label>{fl("Scope")} <span style={{ color: 'var(--muted)', fontWeight: 400 }}>{fl("(optional)")}</span></label>
             <input
               placeholder="read write"
               value={str('oauth2_scope')}
@@ -299,7 +311,7 @@ export function HttpConfig({ config, set, str, num }: ConfigProps) {
         </>
       )}
       <div className="field">
-        <label>Body (JSON)</label>
+        <label>{fl("Body (JSON)")}</label>
         <textarea
           placeholder={'{"id": "{{input.id}}"}'}
           value={str('body')}
@@ -317,13 +329,11 @@ export function HttpConfig({ config, set, str, num }: ConfigProps) {
           onChange={(e) => set('fail_on_error', e.target.checked)}
           style={{ width: 14, height: 14, cursor: 'pointer' }}
         />
-        <label htmlFor="fail_on_error" style={{ cursor: 'pointer', marginBottom: 0 }}>
-          Fail node on non-2xx status
-        </label>
+        <label htmlFor="fail_on_error" style={{ cursor: 'pointer', marginBottom: 0 }}>{fl("Fail node on non-2xx status")}</label>
       </div>
       <div style={{ display: 'flex', gap: 8 }}>
         <div className="field" style={{ flex: 1 }}>
-          <label>Retries</label>
+          <label>{fl("Retries")}</label>
           <input
             type="number" min={0} max={5}
             value={num('max_retries', 0)}
@@ -331,7 +341,7 @@ export function HttpConfig({ config, set, str, num }: ConfigProps) {
           />
         </div>
         <div className="field" style={{ flex: 1 }}>
-          <label>Timeout (s)</label>
+          <label>{fl("Timeout (s)")}</label>
           <input
             type="number" min={0} max={300} placeholder="none"
             value={num('timeout_secs', 0) || ''}
@@ -352,7 +362,7 @@ export function AgentConfig({ config, set, str, num }: ConfigProps) {
   return (
     <>
       <div className="field">
-        <label>Provider</label>
+        <label>{fl("Provider")}</label>
         <select
           value={str('provider', 'anthropic')}
           onChange={(e) => {
@@ -365,23 +375,23 @@ export function AgentConfig({ config, set, str, num }: ConfigProps) {
             }
           }}
         >
-          <option value="anthropic">Anthropic (Claude)</option>
-          <option value="openai">OpenAI-compatible (Qwen / DeepSeek / Zhipu / vLLM …)</option>
+          <option value="anthropic">{fl("Anthropic (Claude)")}</option>
+          <option value="openai">{fl("OpenAI-compatible (Qwen / DeepSeek / Zhipu / vLLM …)")}</option>
         </select>
       </div>
       {str('provider', 'anthropic') === 'anthropic' ? (
         <div className="field">
-          <label>Model</label>
+          <label>{fl("Model")}</label>
           <select value={str('model', 'claude-sonnet-4-6')} onChange={(e) => set('model', e.target.value)}>
-            <option value="claude-haiku-4-5-20251001">claude-haiku-4-5 (fast)</option>
-            <option value="claude-sonnet-4-6">claude-sonnet-4-6 (balanced)</option>
-            <option value="claude-opus-4-7">claude-opus-4-7 (powerful)</option>
+            <option value="claude-haiku-4-5-20251001">{fl("claude-haiku-4-5 (fast)")}</option>
+            <option value="claude-sonnet-4-6">{fl("claude-sonnet-4-6 (balanced)")}</option>
+            <option value="claude-opus-4-8">{fl("claude-opus-4-8 (powerful)")}</option>
           </select>
         </div>
       ) : (
         <>
           <div className="field">
-            <label>Model</label>
+            <label>{fl("Model")}</label>
             <input
               value={str('model')}
               placeholder="qwen-plus / deepseek-chat / glm-4 / moonshot-v1-8k"
@@ -389,20 +399,33 @@ export function AgentConfig({ config, set, str, num }: ConfigProps) {
             />
           </div>
           <div className="field">
-            <label>Base URL</label>
+            <label>{fl("Base URL")}</label>
             <input
               value={str('base_url')}
               placeholder="https://dashscope.aliyuncs.com/compatible-mode/v1"
               onChange={(e) => set('base_url', e.target.value)}
             />
             <span style={{ fontSize: 11, color: 'var(--muted)' }}>
-              API key via the OPENAI_API_KEY env var on the runtime (or set api_key in raw config).
+              {fl("API key via the OPENAI_API_KEY env var on the runtime (or set api_key in raw config).")}
             </span>
           </div>
         </>
       )}
       <div className="field">
-        <label>System Prompt</label>
+        <label>{fl("API Key")} <span style={{ color: 'var(--muted)' }}>{fl("(optional)")}</span></label>
+        <input
+          value={str('api_key')}
+          placeholder="{{credential.anthropic_key}}"
+          onChange={(e) => set('api_key', e.target.value || (undefined as unknown as string))}
+        />
+        <span style={{ fontSize: 11, color: 'var(--muted)' }}>
+          {labelLocale() === 'zh'
+            ? '留空则用运行时环境变量(ANTHROPIC_API_KEY / OPENAI_API_KEY);支持 {{credential.名称}}'
+            : 'Leave blank to use the runtime env var (ANTHROPIC_API_KEY / OPENAI_API_KEY). Supports {{credential.name}}.'}
+        </span>
+      </div>
+      <div className="field">
+        <label>{fl("System Prompt")}</label>
         <textarea
           placeholder="You are a helpful assistant."
           value={str('system_prompt')}
@@ -411,7 +434,7 @@ export function AgentConfig({ config, set, str, num }: ConfigProps) {
         />
       </div>
       <div className="field">
-        <label>Prompt Template</label>
+        <label>{fl("Prompt Template")}</label>
         <textarea
           placeholder={'Analyze lead {{input.lead_id}}: {{input}}'}
           value={str('prompt_template')}
@@ -421,7 +444,7 @@ export function AgentConfig({ config, set, str, num }: ConfigProps) {
       </div>
       <TemplateHint />
       <div className="field">
-        <label>Max Tokens</label>
+        <label>{fl("Max Tokens")}</label>
         <input
           type="number"
           min={64}
@@ -431,7 +454,20 @@ export function AgentConfig({ config, set, str, num }: ConfigProps) {
         />
       </div>
       <div className="field">
-        <label>Tools (tool-use loop)</label>
+        <label>{fl("Max iterations")}</label>
+        <input
+          type="number"
+          min={1}
+          max={20}
+          value={num('max_iterations', 6)}
+          onChange={(e) => set('max_iterations', Number(e.target.value))}
+        />
+        <span style={{ fontSize: 11, color: 'var(--muted)' }}>
+          {labelLocale() === 'zh' ? '工具调用循环的最大轮数（默认 6）' : 'Max tool-use loop rounds (default 6)'}
+        </span>
+      </div>
+      <div className="field">
+        <label>{fl("Tools (tool-use loop)")}</label>
         <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap' }}>
           {(['calculator', 'rag_search', 'http_request'] as const).map((tool) => (
             <label key={tool} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 13 }}>
@@ -441,19 +477,19 @@ export function AgentConfig({ config, set, str, num }: ConfigProps) {
           ))}
         </div>
         <span style={{ fontSize: 11, color: 'var(--muted)' }}>
-          When tools are enabled the agent can call them in a loop until it answers.
+          {fl("When tools are enabled the agent can call them in a loop until it answers.")}
         </span>
       </div>
       {tools.includes('rag_search') && (
         <div className="field">
-          <label>Knowledge Base (for rag_search)</label>
+          <label>{fl("Knowledge Base (for rag_search)")}</label>
           <input value={str('kb')} onChange={(e) => set('kb', e.target.value)} />
         </div>
       )}
       {tools.includes('http_request') && (
         <>
           <div className="field">
-            <label>HTTP allowlist (comma-separated hosts)</label>
+            <label>{fl("HTTP allowlist (comma-separated hosts)")}</label>
             <input
               placeholder="api.internal, data.example.com"
               value={((config['http_allow_hosts'] as string[] | undefined) ?? []).join(', ')}
@@ -469,20 +505,20 @@ export function AgentConfig({ config, set, str, num }: ConfigProps) {
               Allow any public host
             </label>
             <span style={{ fontSize: 11, color: 'var(--muted)' }}>
-              Outbound is denied by default. Allowlist hosts, or allow any public host — either way private/loopback/metadata IPs are blocked and the resolved IP is pinned.
+              {fl("Outbound is denied by default. Allowlist hosts, or allow any public host — either way private/loopback/metadata IPs are blocked and the resolved IP is pinned.")}
             </span>
           </div>
         </>
       )}
       {tools.length > 0 && (
         <div className="field">
-          <label>Max Agent Steps</label>
+          <label>{fl("Max Agent Steps")}</label>
           <input type="number" min={1} max={20} value={num('max_iterations', 6)} onChange={(e) => set('max_iterations', Number(e.target.value))} />
         </div>
       )}
       <div style={{ display: 'flex', gap: 8 }}>
         <div className="field" style={{ flex: 1 }}>
-          <label>Retries</label>
+          <label>{fl("Retries")}</label>
           <input
             type="number" min={0} max={5}
             value={num('max_retries', 0)}
@@ -490,7 +526,7 @@ export function AgentConfig({ config, set, str, num }: ConfigProps) {
           />
         </div>
         <div className="field" style={{ flex: 1 }}>
-          <label>Timeout (s)</label>
+          <label>{fl("Timeout (s)")}</label>
           <input
             type="number" min={0} max={300} placeholder="none"
             value={num('timeout_secs', 0) || ''}
@@ -503,19 +539,35 @@ export function AgentConfig({ config, set, str, num }: ConfigProps) {
 }
 
 export function ApprovalConfig() {
+  if (labelLocale() === 'zh') {
+    return (
+      <div style={{ color: 'var(--muted)', fontSize: 13 }}>
+        <p>{fl("该节点会暂停执行，直到有人批准或拒绝。")}</p>
+        <p style={{ marginTop: 8 }}>
+          {fl("等待期间，执行状态会变为")}{' '}
+          <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>
+            {fl("waiting_approval")}
+          </code>
+          。
+        </p>
+        <p style={{ marginTop: 8 }}>
+          {fl("在执行面板点击")} <strong>{fl("批准")}</strong> {fl("或")} <strong>{fl("拒绝")}</strong> {fl("按钮即可继续。")}
+        </p>
+      </div>
+    )
+  }
   return (
     <div style={{ color: 'var(--muted)', fontSize: 13 }}>
-      <p>This node pauses execution until a human approves or rejects it.</p>
+      <p>{fl("This node pauses execution until a human approves or rejects it.")}</p>
       <p style={{ marginTop: 8 }}>
-        While waiting, the execution status changes to{' '}
+        {fl("While waiting, the execution status changes to")}{' '}
         <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>
-          waiting_approval
+          {fl("waiting_approval")}
         </code>
         .
       </p>
       <p style={{ marginTop: 8 }}>
-        Use the <strong>Approve</strong> or <strong>Reject</strong> buttons in the Execution panel
-        to resume.
+        {fl("Use the")} <strong>{fl("Approve")}</strong> {fl("or")} <strong>{fl("Reject")}</strong> {fl("buttons in the Execution panel\n        to resume.")}
       </p>
     </div>
   )
@@ -528,7 +580,7 @@ let count = input["count"];
   return (
     <>
       <div className="field">
-        <label>Script * <span style={{ color: 'var(--muted)' }}>(Rhai — JavaScript-like)</span></label>
+        <label>{fl("Script *")} <span style={{ color: 'var(--muted)' }}>{fl("(Rhai — JavaScript-like)")}</span></label>
         <textarea
           rows={10}
           placeholder={example}
@@ -538,10 +590,9 @@ let count = input["count"];
         />
       </div>
       <p style={{ fontSize: 12, color: 'var(--muted)', marginTop: 4 }}>
-        Variables: <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>input</code> (workflow input map),{' '}
-        <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>nodes["id"]</code> (prior node output).
-        Return a map <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>#{'{ key: value }'}</code> or any value.
-        <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>{'{{...}}'}</code> expressions are resolved before execution.
+        {fl("Variables:")} <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>{fl("input")}</code> {fl("(workflow input map),")}{' '}
+        <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>{fl("nodes[\"id\"]")}</code> {fl("(prior node output).\n        Return a map")} <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>#{'{ key: value }'}</code> {fl("or any value.")}
+        <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>{'{{...}}'}</code> {fl("expressions are resolved before execution.")}
       </p>
     </>
   )
@@ -555,14 +606,14 @@ export function SubWorkflowConfig({ config, set, str }: ConfigProps) {
   return (
     <>
       <div className="field">
-        <label>Workflow ID *</label>
+        <label>{fl("Workflow ID *")}</label>
         <input
           placeholder="wf-abc123"
           value={str('workflow_id')}
           onChange={(e) => set('workflow_id', e.target.value)}
         />
         <span style={{ fontSize: 11, color: 'var(--muted)' }}>
-          ID of the workflow to call. Its published version will be resolved at execution start.
+          {fl("ID of the workflow to call. Its published version will be resolved at execution start.")}
         </span>
       </div>
       <div className="field">
@@ -582,12 +633,12 @@ export function SubWorkflowConfig({ config, set, str }: ConfigProps) {
           style={{ fontFamily: 'monospace', fontSize: 12 }}
         />
         <span style={{ fontSize: 11, color: 'var(--muted)' }}>
-          If omitted, the current execution input is passed through.
+          {fl("If omitted, the current execution input is passed through.")}
         </span>
       </div>
       <TemplateHint />
       <p style={{ fontSize: 12, color: 'var(--muted)', marginTop: 4 }}>
-        Returns <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>
+        {fl("Returns")} <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>
           {'{ "status": "succeeded", "output": {...} }'}
         </code>
       </p>
@@ -600,7 +651,7 @@ export function SubWorkflowConfig({ config, set, str }: ConfigProps) {
 function TemplateHint() {
   return (
     <p style={{ fontSize: 11, color: 'var(--muted)', marginTop: -6, lineHeight: 1.6 }}>
-      Templates:{' '}
+      {fl("Templates:")}{' '}
       <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>{'{{input.field}}'}</code>
       {' · '}
       <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>{'{{node_id.field}}'}</code>
@@ -648,14 +699,14 @@ export function CustomConfig({ config, set, str }: ConfigProps) {
   return (
     <>
       <div className="field">
-        <label>Custom Node</label>
+        <label>{fl("Custom Node")}</label>
         <select value={str('custom_node')} onChange={(e) => onPick(e.target.value)}>
-          <option value="">— select a registered node —</option>
+          <option value="">{fl("— select a registered node —")}</option>
           {nodes.map((n) => <option key={n.slug} value={n.slug}>{n.label}</option>)}
         </select>
         {nodes.length === 0 && (
           <span style={{ fontSize: 11, color: 'var(--muted)' }}>
-            No custom nodes registered. Add one in the nav menu → Custom Nodes.
+            {fl("No custom nodes registered. Add one in the nav menu → Custom Nodes.")}
           </span>
         )}
       </div>

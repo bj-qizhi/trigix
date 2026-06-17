@@ -609,6 +609,7 @@ async fn dispatch(
         NodeType::StructuredOutput => execute_structured_output(node, context, http_client).await,
         NodeType::Classifier => execute_classifier(node, context, http_client).await,
         NodeType::ImageGen => execute_image_gen(node, context, http_client).await,
+        NodeType::VideoGen => execute_video_gen(node, context, http_client).await,
         NodeType::SpeechToText => execute_speech_to_text(node, context, http_client).await,
         NodeType::Tts => execute_tts(node, context, http_client).await,
         NodeType::HtmlExtract => execute_html_extract(node, context).await,

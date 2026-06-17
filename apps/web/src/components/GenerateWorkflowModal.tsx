@@ -32,7 +32,7 @@ const EXAMPLE_PROMPTS_ZH = [
 // Generation LLM providers. `anthropic` uses the Anthropic Messages API; the
 // rest are OpenAI-compatible (the backend resolves their /chat/completions URL).
 const GEN_PROVIDERS: { value: string; label: string; models: string[]; keyHint: string; needsBaseUrl?: boolean }[] = [
-  { value: 'anthropic', label: 'Anthropic Claude', models: ['claude-sonnet-4-6', 'claude-opus-4-7', 'claude-haiku-4-5-20251001'], keyHint: 'sk-ant-...' },
+  { value: 'anthropic', label: 'Anthropic Claude', models: ['claude-sonnet-4-6', 'claude-opus-4-8', 'claude-haiku-4-5-20251001'], keyHint: 'sk-ant-...' },
   { value: 'openai', label: 'OpenAI', models: ['gpt-5.4-mini', 'gpt-5.5', 'gpt-4.1'], keyHint: 'sk-...' },
   { value: 'deepseek', label: 'DeepSeek', models: ['deepseek-v4-flash', 'deepseek-v4-pro'], keyHint: 'sk-...' },
   { value: 'qwen', label: 'Qwen 通义千问', models: ['qwen-max', 'qwen3-max', 'qwen3.5-plus'], keyHint: 'sk-...' },

@@ -35,6 +35,7 @@ const TOKEN_PRICES: Record<string, { input: number; output: number }> = {
   'gemini-1.5-pro':   { input: 1.25, output: 5.00 },
   'gemini-1.5-flash': { input: 0.075, output: 0.30 },
   'claude-opus-4-7':          { input: 15.00, output: 75.00 },
+  'claude-opus-4-8':          { input: 15.00, output: 75.00 },
   'claude-sonnet-4-6':        { input: 3.00,  output: 15.00 },
   'claude-haiku-4-5-20251001':{ input: 0.80,  output: 4.00 },
 }

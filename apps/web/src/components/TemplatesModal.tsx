@@ -55,7 +55,7 @@ export const TEMPLATES: Template[] = [
       nodes: [
         { id: 'trigger', type: 'trigger', config: {} },
         { id: 'fetch_lead', type: 'http', config: { method: 'GET', url: 'https://api.example.com/leads/{{input.lead_id}}' } },
-        { id: 'score_lead', type: 'openai', config: { model: 'gpt-4o-mini', api_key: '{{credential.openai_key}}', system_prompt: 'You are a B2B lead scoring expert. Respond with JSON only: {"score":1-10,"reason":"..."}', prompt_template: 'Score this lead: {{fetch_lead}}', max_tokens: 200, temperature: 0.3 } },
+        { id: 'score_lead', type: 'openai', config: { model: 'gpt-5.4-mini', api_key: '{{credential.openai_key}}', system_prompt: 'You are a B2B lead scoring expert. Respond with JSON only: {"score":1-10,"reason":"..."}', prompt_template: 'Score this lead: {{fetch_lead}}', max_tokens: 200, temperature: 0.3 } },
         { id: 'check_score', type: 'condition', config: { field: 'score', operator: 'gte', value: '7', source: '{{score_lead.content}}' } },
         { id: 'notify_sales', type: 'slack', config: { webhook_url: '{{credential.slack_webhook}}', text: 'Hot lead (score ≥ 7)! {{fetch_lead.body.name}} ({{fetch_lead.body.email}})\nModel output: {{score_lead.content}}', username: 'LeadBot' } },
       ],
@@ -110,7 +110,7 @@ export const TEMPLATES: Template[] = [
       workflow_version_id: 'template',
       nodes: [
         { id: 'trigger', type: 'trigger', config: {} },
-        { id: 'generate_draft', type: 'openai', config: { model: 'gpt-4o', api_key: '{{credential.openai_key}}', system_prompt: 'You are a professional content writer. Write engaging, SEO-optimized blog posts.', prompt_template: 'Write a 500-word blog post about: {{input.topic}}\nTarget audience: {{input.audience}}', max_tokens: 1500, temperature: 0.7 } },
+        { id: 'generate_draft', type: 'openai', config: { model: 'gpt-5.4', api_key: '{{credential.openai_key}}', system_prompt: 'You are a professional content writer. Write engaging, SEO-optimized blog posts.', prompt_template: 'Write a 500-word blog post about: {{input.topic}}\nTarget audience: {{input.audience}}', max_tokens: 1500, temperature: 0.7 } },
         { id: 'format_post', type: 'transform', config: { template: { title: '{{input.topic}}', content: '{{generate_draft.content}}', tags: '{{input.tags}}', status: 'draft' } } },
         { id: 'publish', type: 'http', config: { method: 'POST', url: 'https://api.yourcms.com/posts', auth_token: '{{credential.cms_key}}', body: '{{format_post}}' } },
       ],
@@ -134,7 +134,7 @@ export const TEMPLATES: Template[] = [
       nodes: [
         { id: 'trigger', type: 'trigger', config: { cron_expression: '0 0 9 * * Mon *' } },
         { id: 'fetch_topics', type: 'http', config: { method: 'GET', url: 'https://api.example.com/newsletter/topics' } },
-        { id: 'write_content', type: 'openai', config: { model: 'gpt-4o', api_key: '{{credential.openai_key}}', system_prompt: 'You are an expert newsletter writer. Write engaging, concise content.', prompt_template: 'Write a weekly newsletter section covering these topics:\n{{fetch_topics.body.topics}}\nKeep it to 200 words.', max_tokens: 600, temperature: 0.7 } },
+        { id: 'write_content', type: 'openai', config: { model: 'gpt-5.4', api_key: '{{credential.openai_key}}', system_prompt: 'You are an expert newsletter writer. Write engaging, concise content.', prompt_template: 'Write a weekly newsletter section covering these topics:\n{{fetch_topics.body.topics}}\nKeep it to 200 words.', max_tokens: 600, temperature: 0.7 } },
         { id: 'send_email', type: 'email', config: { to: '{{input.recipient_list}}', subject: 'Your Weekly Update — {{input.issue_date}}', body: '{{write_content.content}}', api_key: '{{credential.sendgrid_key}}', from: 'newsletter@example.com' } },
       ],
       edges: [
@@ -344,7 +344,7 @@ export const TEMPLATES: Template[] = [
       nodes: [
         { id: 'trigger', type: 'trigger', config: { interval_secs: 86400 } },
         { id: 'fetch_metrics', type: 'http', config: { method: 'GET', url: 'https://api.example.com/metrics/today', auth_token: '{{credential.api_key}}' } },
-        { id: 'summarize', type: 'openai', config: { model: 'gpt-4o-mini', api_key: '{{credential.openai_key}}', system_prompt: 'You are a business analyst. Write concise, actionable daily summaries.', prompt_template: 'Summarize these daily metrics in 3-5 bullet points:\n{{fetch_metrics}}', max_tokens: 400, temperature: 0.4 } },
+        { id: 'summarize', type: 'openai', config: { model: 'gpt-5.4-mini', api_key: '{{credential.openai_key}}', system_prompt: 'You are a business analyst. Write concise, actionable daily summaries.', prompt_template: 'Summarize these daily metrics in 3-5 bullet points:\n{{fetch_metrics}}', max_tokens: 400, temperature: 0.4 } },
         { id: 'send_report', type: 'email', config: { to: '{{input.report_recipients}}', subject: 'Daily Report — {{input.date}}', body: '{{summarize.content}}', api_key: '{{credential.sendgrid_key}}' } },
       ],
       edges: [
@@ -369,8 +369,8 @@ export const TEMPLATES: Template[] = [
       nodes: [
         { id: 'trigger', type: 'trigger', config: {} },
         { id: 'fan_out_1', type: 'fan_out', config: {} },
-        { id: 'gemini_1', type: 'gemini', config: { model: 'gemini-2.0-flash', api_key: '{{credential.gemini_key}}', system_prompt: 'You are a concise analyst. Respond with structured JSON.', prompt_template: 'Analyze: {{input.text}}', max_tokens: 512, temperature: 0.3 } },
-        { id: 'openai_1', type: 'openai', config: { model: 'gpt-4o-mini', api_key: '{{credential.openai_key}}', system_prompt: 'You are a concise analyst. Respond with structured JSON.', prompt_template: 'Analyze: {{input.text}}', max_tokens: 512, temperature: 0.3 } },
+        { id: 'gemini_1', type: 'gemini', config: { model: 'gemini-2.5-flash', api_key: '{{credential.gemini_key}}', system_prompt: 'You are a concise analyst. Respond with structured JSON.', prompt_template: 'Analyze: {{input.text}}', max_tokens: 512, temperature: 0.3 } },
+        { id: 'openai_1', type: 'openai', config: { model: 'gpt-5.4-mini', api_key: '{{credential.openai_key}}', system_prompt: 'You are a concise analyst. Respond with structured JSON.', prompt_template: 'Analyze: {{input.text}}', max_tokens: 512, temperature: 0.3 } },
         { id: 'fan_in_1', type: 'fan_in', config: {} },
         { id: 'merge', type: 'transform', config: { template: { gemini: '{{gemini_1.content}}', openai: '{{openai_1.content}}', combined: true } } },
       ],
@@ -423,7 +423,7 @@ export const TEMPLATES: Template[] = [
       workflow_version_id: 'template',
       nodes: [
         { id: 'trigger', type: 'trigger', config: { webhook_secret: '' } },
-        { id: 'review', type: 'gemini', config: { model: 'gemini-2.0-flash', api_key: '{{credential.gemini_key}}', system_prompt: 'You are a senior software engineer doing a code review. Be concise and actionable. Focus on bugs, security issues, and readability. Respond in markdown.', prompt_template: 'Please review this code:\n```\n{{input.code}}\n```\nLanguage: {{input.language}}\nContext: {{input.context}}', max_tokens: 1000 } },
+        { id: 'review', type: 'gemini', config: { model: 'gemini-2.5-flash', api_key: '{{credential.gemini_key}}', system_prompt: 'You are a senior software engineer doing a code review. Be concise and actionable. Focus on bugs, security issues, and readability. Respond in markdown.', prompt_template: 'Please review this code:\n```\n{{input.code}}\n```\nLanguage: {{input.language}}\nContext: {{input.context}}', max_tokens: 1000 } },
         { id: 'post_feedback', type: 'slack', config: { webhook_url: '{{credential.slack_webhook}}', text: '*Code Review for {{input.pr_title}}*\n\n{{review.content}}', username: 'ReviewBot' } },
       ],
       edges: [
@@ -472,7 +472,7 @@ export const TEMPLATES: Template[] = [
       nodes: [
         { id: 'trigger', type: 'trigger', config: { webhook_secret: '' } },
         { id: 'parse_command', type: 'extract', config: { source: '{{input}}', path: 'text' } },
-        { id: 'respond', type: 'openai', config: { model: 'gpt-4o-mini', api_key: '{{credential.openai_key}}', system_prompt: 'You are a helpful Slack bot. Keep answers concise and friendly.', prompt_template: '{{parse_command.value}}', max_tokens: 300 } },
+        { id: 'respond', type: 'openai', config: { model: 'gpt-5.4-mini', api_key: '{{credential.openai_key}}', system_prompt: 'You are a helpful Slack bot. Keep answers concise and friendly.', prompt_template: '{{parse_command.value}}', max_tokens: 300 } },
         { id: 'reply', type: 'slack', config: { webhook_url: '{{credential.slack_webhook}}', text: '{{respond.content}}', username: 'WorkflowBot' } },
       ],
       edges: [
@@ -548,7 +548,7 @@ export const TEMPLATES: Template[] = [
       workflow_version_id: 'template',
       nodes: [
         { id: 'trigger', type: 'trigger', config: { webhook_secret: '' } },
-        { id: 'classify', type: 'qwen', config: { model: 'qwen-turbo', api_key: '{{credential.dashscope_key}}', system_prompt: '你是客服分类助手。将问题分类为：退款、配送、产品咨询、其他。只输出分类词。', prompt_template: '{{input.message}}', max_tokens: 20 } },
+        { id: 'classify', type: 'qwen', config: { model: 'qwen3.5-flash', api_key: '{{credential.dashscope_key}}', system_prompt: '你是客服分类助手。将问题分类为：退款、配送、产品咨询、其他。只输出分类词。', prompt_template: '{{input.message}}', max_tokens: 20 } },
         { id: 'reply', type: 'qwen', config: { model: 'qwen-max', api_key: '{{credential.dashscope_key}}', system_prompt: '你是一名专业、友善的电商客服。用简洁中文回复，不超过150字。', prompt_template: '客户问题类型：{{classify.content}}\n客户原文：{{input.message}}\n订单信息：{{input.order_info}}', max_tokens: 300, temperature: 0.5 } },
         { id: 'send_reply', type: 'http', config: { method: 'POST', url: '{{input.reply_url}}', auth_token: '{{credential.cs_platform_key}}', body: '{"session_id":"{{input.session_id}}","message":"{{reply.content}}"}' } },
       ],
@@ -624,7 +624,7 @@ export const TEMPLATES: Template[] = [
       workflow_version_id: 'template',
       nodes: [
         { id: 'trigger', type: 'trigger', config: { webhook_secret: '' } },
-        { id: 'summarize', type: 'moonshot', config: { model: 'moonshot-v1-128k', api_key: '{{credential.moonshot_key}}', system_prompt: '你是专业文档分析师。输出结构化摘要：核心结论、关键数据、风险点、行动建议，每项不超过3条。', prompt_template: '文档标题：{{input.title}}\n\n文档内容：\n{{input.content}}', max_tokens: 1000, temperature: 0.3 } },
+        { id: 'summarize', type: 'moonshot', config: { model: 'kimi-latest', api_key: '{{credential.moonshot_key}}', system_prompt: '你是专业文档分析师。输出结构化摘要：核心结论、关键数据、风险点、行动建议，每项不超过3条。', prompt_template: '文档标题：{{input.title}}\n\n文档内容：\n{{input.content}}', max_tokens: 1000, temperature: 0.3 } },
         { id: 'store', type: 'database', config: { url: '{{credential.pg_url}}', query: "INSERT INTO doc_summaries (doc_id, title, summary, created_at) VALUES ('{{input.doc_id}}', '{{input.title}}', '{{summarize.content}}', NOW())" } },
         { id: 'notify', type: 'slack', config: { webhook_url: '{{credential.slack_webhook}}', text: '文档摘要完成：*{{input.title}}*\n\n{{summarize.content}}', username: 'KimiBot' } },
       ],
@@ -649,7 +649,7 @@ export const TEMPLATES: Template[] = [
         { id: 'trigger', type: 'trigger', config: { interval_secs: 300 } },
         { id: 'fetch_metrics', type: 'http', config: { method: 'GET', url: '{{input.metrics_url}}', auth_token: '{{credential.monitor_key}}' } },
         { id: 'check_threshold', type: 'condition', config: { field: 'body.value', operator: 'gt', value: '{{input.threshold}}', source: '{{fetch_metrics}}' } },
-        { id: 'analyze', type: 'hunyuan', config: { model: 'hunyuan-standard', api_key: '{{credential.hunyuan_key}}', system_prompt: '你是运维告警分析助手，用50字内中文描述告警原因和建议。', prompt_template: '指标：{{fetch_metrics.body.metric_name}}，当前值：{{fetch_metrics.body.value}}，阈值：{{input.threshold}}', max_tokens: 150 } },
+        { id: 'analyze', type: 'hunyuan', config: { model: 'hunyuan-turbos-latest', api_key: '{{credential.hunyuan_key}}', system_prompt: '你是运维告警分析助手，用50字内中文描述告警原因和建议。', prompt_template: '指标：{{fetch_metrics.body.metric_name}}，当前值：{{fetch_metrics.body.value}}，阈值：{{input.threshold}}', max_tokens: 150 } },
         { id: 'send_wecom', type: 'http', config: { method: 'POST', url: '{{credential.wecom_webhook}}', body: '{"msgtype":"markdown","markdown":{"content":"## ⚠️ 告警通知\n**指标**：{{fetch_metrics.body.metric_name}}\n**当前值**：{{fetch_metrics.body.value}}\n**分析**：{{analyze.content}}"}}' } },
       ],
       edges: [

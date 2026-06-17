@@ -244,6 +244,9 @@ pub enum NodeType {
     Classifier,
     /// Image generation (OpenAI-compatible images).
     ImageGen,
+    /// Video generation (Seedance/Volcengine Ark, Replicate, or a generic
+    /// OpenAI-compatible endpoint). Async providers are submitted then polled.
+    VideoGen,
     /// Speech-to-text transcription (Whisper-compatible).
     SpeechToText,
     /// Text-to-speech synthesis (OpenAI-compatible).

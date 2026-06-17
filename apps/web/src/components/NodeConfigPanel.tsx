@@ -7,6 +7,8 @@ import type { NodeType, ExecutionSummary, NodeExecutionRecord } from '../types'
 import type { TranslationKey } from '../i18n'
 import type { ConfigProps } from './panels/types'
 import { useLocale } from '../useLocale'
+import { captureField, isInsertableField, insertText, subscribe, replaceRange, type FieldSnapshot } from './varInsert'
+import { JsonTree } from './JsonTree'
 
 import {
   TriggerConfig, HttpConfig, AgentConfig, ApprovalConfig, CodeConfig, SubWorkflowConfig, CustomConfig,
@@ -44,7 +46,7 @@ import {
   CloudinaryConfig, GcalConfig, DocusignConfig, XeroConfig, CalendlyConfig, ApifyConfig,
   GanalyticsConfig, NeonConfig, CopperConfig,
   AzureOpenaiConfig, GrokConfig, OllamaConfig, WeaviateConfig, ChromaConfig, MongodbConfig, ClickhouseConfig, GcsConfig, AzureBlobConfig, HashConfig, JwtConfig, VertexConfig, SqsConfig, SnsConfig, BedrockConfig, MilvusConfig, KafkaConfig, RabbitmqConfig, ZipConfig, ImageConfig, PdfExtractConfig, OcrConfig, FeishuConfig, DingtalkConfig, WecomConfig,
-  EmbeddingConfig, RerankerConfig, TextSplitterConfig, StructuredOutputConfig, ClassifierConfig, ImageGenConfig, SpeechToTextConfig, TtsConfig, HtmlExtractConfig, RssConfig, MysqlConfig, SnowflakeConfig, BigqueryConfig, SqlserverConfig, FtpConfig, SftpConfig, SshConfig, ImapConfig, WaitConfig,
+  EmbeddingConfig, RerankerConfig, TextSplitterConfig, StructuredOutputConfig, ClassifierConfig, ImageGenConfig, VideoGenConfig, SpeechToTextConfig, TtsConfig, HtmlExtractConfig, RssConfig, MysqlConfig, SnowflakeConfig, BigqueryConfig, SqlserverConfig, FtpConfig, SftpConfig, SshConfig, ImapConfig, WaitConfig,
   DeepseekConfig, QwenConfig, ZhipuConfig, MoonshotConfig,
   DoubaoConfig, MinimaxConfig, ErnieConfig, HunyuanConfig,
 } from './panels/IntegrationPanels2'
@@ -129,6 +131,7 @@ const NODE_DESCRIPTIONS: Partial<Record<NodeType, { en: string; zh: string }>> =
   structured_output: { en: 'Get a JSON object from an LLM (json_object mode).', zh: '让 LLM 输出 JSON 对象（json_object 模式）。' },
   classifier:{ en: 'Classify input into one of N categories via an LLM.', zh: '用 LLM 把输入分到 N 个类别之一。' },
   image_gen: { en: 'Generate images via an OpenAI-compatible images endpoint.', zh: '调用 OpenAI 兼容图像接口生成图片。' },
+  video_gen: { en: 'Generate video (Seedance / Volcengine Ark, Replicate, or a generic endpoint). Submits an async task and polls until done.', zh: '生成视频（Seedance / 火山方舟、Replicate 或通用接口）：提交异步任务并轮询直到完成，返回 video_url。' },
   speech_to_text: { en: 'Transcribe audio (Whisper-compatible).', zh: '语音转文字（Whisper 兼容）。' },
   tts:       { en: 'Synthesize speech from text; returns base64 audio.', zh: '文字转语音，返回 base64 音频。' },
   html_extract: { en: 'Extract content from HTML by CSS selector (text/html/attr).', zh: '按 CSS 选择器从 HTML 抽取内容（text/html/attr）。' },
@@ -212,6 +215,7 @@ const NODE_LABELS: Partial<Record<NodeType, string>> = {
   structured_output: 'Structured Output',
   classifier: 'Classifier',
   image_gen: 'Image Gen',
+  video_gen: 'Video Gen',
   speech_to_text: 'Speech → Text',
   tts: 'Text → Speech',
   html_extract: 'HTML Extract',
@@ -296,6 +300,7 @@ const NODE_COLORS: Partial<Record<NodeType, string>> = {
   structured_output: 'var(--node-openai)',
   classifier: 'var(--node-openai)',
   image_gen: 'var(--node-openai)',
+  video_gen: 'var(--node-openai)',
   speech_to_text: 'var(--node-openai)',
   tts: 'var(--node-openai)',
   html_extract: 'var(--node-transform)',
@@ -370,6 +375,7 @@ const NODE_OUTPUTS: Partial<Record<NodeType, string[]>> = {
   structured_output: ['data', 'raw', 'model'],
   classifier:   ['category', 'raw'],
   image_gen:    ['status', 'body'],
+  video_gen:    ['video_url', 'status', 'task_id', 'provider', 'raw'],
   speech_to_text: ['status', 'text'],
   tts:          ['audio_base64', 'format'],
   html_extract: ['matches', 'count', 'first'],
@@ -423,6 +429,7 @@ interface Props {
   webhookSecret?: string | null
   onDuplicate?: () => void
   upstreamNodes?: FlowNode[]
+  upstreamResults?: Record<string, NodeExecutionRecord>
   onRenameId?: (oldId: string, newId: string) => { ok: boolean; error?: string }
 }
 
@@ -501,7 +508,7 @@ function PasteConfigButton({ onPaste }: { onPaste: (cfg: Record<string, unknown>
 }
 
 
-export function NodeConfigPanel({ node, onUpdateConfig, recentExecutions, onSelectExecution, executionResult, webhookUrl, webhookSecret, onDuplicate, upstreamNodes, onRenameId }: Props) {
+export function NodeConfigPanel({ node, onUpdateConfig, recentExecutions, onSelectExecution, executionResult, webhookUrl, webhookSecret, onDuplicate, upstreamNodes, upstreamResults, onRenameId }: Props) {
   const { locale, t } = useLocale()
 
   // ── Hooks must all be called before any early return (Rules of Hooks) ──
@@ -598,7 +605,7 @@ export function NodeConfigPanel({ node, onUpdateConfig, recentExecutions, onSele
               e.target.value = ''
             }}
           >
-            <option value="" disabled>Presets…</option>
+            <option value="" disabled>{locale === 'zh' ? '预设…' : 'Presets…'}</option>
             {presets.map((p) => (
               <option key={p.name} value={p.name}>{p.name}</option>
             ))}
@@ -608,7 +615,7 @@ export function NodeConfigPanel({ node, onUpdateConfig, recentExecutions, onSele
           <input
             autoFocus
             style={{ fontSize: 10, width: 90, padding: '1px 4px' }}
-            placeholder="Preset name"
+            placeholder={locale === 'zh' ? '预设名称' : 'Preset name'}
             value={presetName}
             onChange={(e) => setPresetName(e.target.value)}
             onBlur={() => setShowPresetInput(false)}
@@ -635,7 +642,16 @@ export function NodeConfigPanel({ node, onUpdateConfig, recentExecutions, onSele
         )}
       </div>
 
-      <div className="config-panel-body">
+      <div
+        className="config-panel-body"
+        onFocusCapture={(e) => { if (isInsertableField(e.target)) captureField(e.target) }}
+        onKeyUpCapture={(e) => { if (isInsertableField(e.target)) captureField(e.target) }}
+        onClickCapture={(e) => { if (isInsertableField(e.target)) captureField(e.target) }}
+        onSelectCapture={(e) => { if (isInsertableField(e.target)) captureField(e.target) }}
+        onInputCapture={(e) => { if (isInsertableField(e.target)) captureField(e.target) }}
+      >
+        {upstreamNodes && upstreamNodes.length > 0 && <VarAutocomplete nodes={upstreamNodes} />}
+        <ResolvePreview results={upstreamResults} />
         {executionResult && <NodeResultBox result={executionResult} locale={locale} t={t} />}
         {NODE_DESCRIPTIONS[nt] && (
           <div style={{
@@ -845,6 +861,7 @@ export function NodeConfigPanel({ node, onUpdateConfig, recentExecutions, onSele
         {nt === 'structured_output' && <StructuredOutputConfig config={config} set={set} str={str} num={num} />}
         {nt === 'classifier'      && <ClassifierConfig      config={config} set={set} str={str} num={num} />}
         {nt === 'image_gen'       && <ImageGenConfig        config={config} set={set} str={str} num={num} />}
+        {nt === 'video_gen'       && <VideoGenConfig        config={config} set={set} str={str} num={num} />}
         {nt === 'speech_to_text'  && <SpeechToTextConfig    config={config} set={set} str={str} num={num} />}
         {nt === 'tts'             && <TtsConfig             config={config} set={set} str={str} num={num} />}
         {nt === 'html_extract'    && <HtmlExtractConfig     config={config} set={set} str={str} num={num} />}
@@ -869,7 +886,7 @@ export function NodeConfigPanel({ node, onUpdateConfig, recentExecutions, onSele
         {nt !== 'trigger' && nt !== 'note' && nt !== 'approval' && nt !== 'fan_out' && nt !== 'fan_in' && (
           <AdvancedConfig config={config} set={set} str={str} num={num} />
         )}
-        {upstreamNodes && upstreamNodes.length > 0 && <UpstreamVarsHint nodes={upstreamNodes} />}
+        {upstreamNodes && upstreamNodes.length > 0 && <UpstreamVarsHint nodes={upstreamNodes} results={upstreamResults} />}
         <RawConfigPreview config={config} />
       </div>
     </div>
@@ -927,7 +944,7 @@ function AdvancedConfig({ config, set }: ConfigProps) {
             />
           </div>
           <div className="field" style={{ marginBottom: 0 }}>
-            <label style={{ fontSize: 11 }}>Cache TTL (s) <span style={{ color: 'var(--muted)' }}>(0 = off) — cache node output; same node+input reuses result</span></label>
+            <label style={{ fontSize: 11 }}>{t('node.cache.ttl')} <span style={{ color: 'var(--muted)' }}>{t('node.cache.ttl.hint')}</span></label>
             <input
               type="number" min={0} max={86400}
               value={cacheTtlSecs}
@@ -941,15 +958,17 @@ function AdvancedConfig({ config, set }: ConfigProps) {
   )
 }
 
-function UpstreamVarsHint({ nodes }: { nodes: FlowNode[] }) {
+function UpstreamVarsHint({ nodes, results }: { nodes: FlowNode[]; results?: Record<string, NodeExecutionRecord> }) {
   const [open, setOpen] = useState(false)
   const [copied, setCopied] = useState<string | null>(null)
-  const { t } = useLocale()
+  const { locale, t } = useLocale()
 
-  const copyVar = (v: string) => {
-    navigator.clipboard.writeText(v).catch(() => {})
+  // Click a variable token: insert it into the field the user is editing; if no
+  // field is focused, fall back to copying it to the clipboard.
+  const pick = (v: string) => {
+    if (!insertText(v)) navigator.clipboard.writeText(v).catch(() => {})
     setCopied(v)
-    setTimeout(() => setCopied(null), 1200)
+    setTimeout(() => setCopied(null), 1000)
   }
 
   return (
@@ -970,8 +989,9 @@ function UpstreamVarsHint({ nodes }: { nodes: FlowNode[] }) {
                 return (
                   <code
                     key={v}
-                    title="Click to copy"
-                    onClick={() => copyVar(full)}
+                    title={locale === 'zh' ? '点击插入到聚焦的字段（未聚焦则复制）' : 'Click to insert into the focused field (or copy)'}
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => pick(full)}
                     style={{
                       fontSize: 10, padding: '1px 5px',
                       background: copied === full ? 'rgba(34,197,94,0.15)' : 'rgba(37,99,235,0.10)',
@@ -1000,8 +1020,9 @@ function UpstreamVarsHint({ nodes }: { nodes: FlowNode[] }) {
                     return (
                       <code
                         key={field}
-                        title="Click to copy"
-                        onClick={() => copyVar(v)}
+                        title={locale === 'zh' ? '点击插入到聚焦的字段（未聚焦则复制）' : 'Click to insert into the focused field (or copy)'}
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() => pick(v)}
                         style={{
                           fontSize: 10, padding: '1px 5px',
                           background: copied === v ? 'rgba(34,197,94,0.15)' : 'rgba(37,99,235,0.10)',
@@ -1017,15 +1038,198 @@ function UpstreamVarsHint({ nodes }: { nodes: FlowNode[] }) {
                   })}
                   {fields.length === 0 && (
                     <span style={{ fontSize: 10, color: 'var(--muted)', fontStyle: 'italic' }}>
-                      (dynamic output — use <code style={{ fontSize: 10 }}>{`{{${n.id}.*}}`}</code>)
+                      {locale === 'zh' ? '动态输出 — 用' : 'dynamic output — use'} <code style={{ fontSize: 10 }}>{`{{${n.id}.*}}`}</code>
                     </span>
                   )}
                 </div>
+                {/* Last-run output of this upstream node — click any field to insert its real path. */}
+                {results?.[n.id]?.output_json && (
+                  <details style={{ marginTop: 4 }}>
+                    <summary style={{ fontSize: 10, color: 'var(--muted)', cursor: 'pointer' }}>
+                      {locale === 'zh' ? '上次运行输出（点字段插入）' : 'last-run output (click a field to insert)'}
+                    </summary>
+                    <div style={{ marginTop: 2, padding: '4px 6px', background: 'var(--panel)', border: '1px solid var(--border)', borderRadius: 4, maxHeight: 180, overflow: 'auto' }}>
+                      <JsonTree
+                        raw={results[n.id]!.output_json!}
+                        onPick={(p) => pick(p ? `{{${n.id}.${p}}}` : `{{${n.id}}}`)}
+                      />
+                    </div>
+                  </details>
+                )}
               </div>
             )
           })}
         </div>
       )}
+    </div>
+  )
+}
+
+// Autocomplete dropdown that fires while typing `{{` inside any config field.
+// Two levels: pick a source (input / ctx / upstream node id), then pick a field.
+interface AcOption { value: string; label: string; isField: boolean }
+
+function VarAutocomplete({ nodes }: { nodes: FlowNode[] }) {
+  const { locale } = useLocale()
+  const [state, setState] = useState<{
+    open: number // offset of the `{{`
+    caret: number
+    rect: { left: number; top: number; width: number }
+    options: AcOption[]
+    sel: number
+    mode: 'source' | 'field'
+    base: string // for field mode, the source id (e.g. "http_1")
+  } | null>(null)
+
+  const fieldsFor = (idPart: string): string[] => {
+    if (idPart === 'ctx') return ['execution_id', 'workflow_version_id']
+    if (idPart === 'input') return []
+    const n = nodes.find((x) => x.id === idPart)
+    return n ? (NODE_OUTPUTS[n.data.nodeType] ?? []) : []
+  }
+
+  useEffect(() => {
+    const recompute = (snap: FieldSnapshot | null) => {
+      if (!snap) { setState(null); return }
+      const before = snap.value.slice(0, snap.start)
+      const open = before.lastIndexOf('{{')
+      if (open === -1) { setState(null); return }
+      const seg = before.slice(open + 2)
+      if (seg.includes('}}')) { setState(null); return }
+      const rectRaw = snap.el.getBoundingClientRect()
+      const rect = { left: rectRaw.left, top: rectRaw.bottom, width: rectRaw.width }
+      const dot = seg.indexOf('.')
+      if (dot === -1) {
+        // source mode
+        const q = seg.trim().toLowerCase()
+        const sources: AcOption[] = [
+          { value: 'input', label: locale === 'zh' ? 'input · 工作流输入' : 'input · workflow input', isField: false },
+          { value: 'ctx', label: 'ctx · ' + (locale === 'zh' ? '执行元数据' : 'metadata'), isField: false },
+          ...nodes.map((n) => ({ value: n.id, label: `${n.id} · ${n.data.nodeType}`, isField: false })),
+        ].filter((o) => o.value.toLowerCase().includes(q))
+        setState(sources.length ? { open, caret: snap.start, rect, options: sources, sel: 0, mode: 'source', base: '' } : null)
+      } else {
+        // field mode: seg = "base.fieldpartial"
+        const base = seg.slice(0, dot)
+        const fq = seg.slice(dot + 1).toLowerCase()
+        const opts: AcOption[] = fieldsFor(base)
+          .filter((f) => f.toLowerCase().includes(fq))
+          .map((f) => ({ value: f, label: f, isField: true }))
+        setState(opts.length ? { open, caret: snap.start, rect, options: opts, sel: 0, mode: 'field', base } : null)
+      }
+    }
+    return subscribe(recompute)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [nodes, locale])
+
+  const choose = (opt: AcOption) => {
+    const s = state
+    if (!s) return
+    if (opt.isField) {
+      replaceRange(`{{${s.base}.${opt.value}}}`, s.open, s.caret)
+      setState(null)
+    } else {
+      // insert "{{source." and stay open for field suggestions
+      replaceRange(`{{${opt.value}.`, s.open, s.caret)
+    }
+  }
+
+  useEffect(() => {
+    if (!state) return
+    const onKey = (e: KeyboardEvent) => {
+      if (!state) return
+      if (e.key === 'ArrowDown') { e.preventDefault(); setState((p) => p && { ...p, sel: (p.sel + 1) % p.options.length }) }
+      else if (e.key === 'ArrowUp') { e.preventDefault(); setState((p) => p && { ...p, sel: (p.sel - 1 + p.options.length) % p.options.length }) }
+      else if (e.key === 'Enter') { e.preventDefault(); choose(state.options[state.sel]) }
+      else if (e.key === 'Escape') { e.preventDefault(); setState(null) }
+    }
+    window.addEventListener('keydown', onKey, true)
+    return () => window.removeEventListener('keydown', onKey, true)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state])
+
+  if (!state) return null
+  const left = Math.min(state.rect.left, window.innerWidth - 240)
+  const top = Math.min(state.rect.top + 2, window.innerHeight - 200)
+  return (
+    <div
+      style={{
+        position: 'fixed', left, top, zIndex: 1000, minWidth: Math.max(state.rect.width, 180), maxWidth: 320,
+        maxHeight: 200, overflow: 'auto', background: 'var(--panel)', border: '1px solid var(--border)',
+        borderRadius: 6, boxShadow: '0 6px 20px rgba(0,0,0,0.18)', padding: 3,
+      }}
+      onMouseDown={(e) => e.preventDefault()}
+    >
+      {state.options.map((o, i) => (
+        <div
+          key={o.value}
+          onClick={() => choose(o)}
+          onMouseEnter={() => setState((p) => p && { ...p, sel: i })}
+          style={{
+            fontSize: 11, fontFamily: 'monospace', padding: '3px 7px', borderRadius: 4, cursor: 'pointer',
+            background: i === state.sel ? 'var(--accent)' : 'transparent',
+            color: i === state.sel ? '#fff' : 'var(--text)',
+            whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+          }}
+        >
+          {o.label}
+        </div>
+      ))}
+    </div>
+  )
+}
+
+// Resolve a {{...}} template against the latest run's node outputs (mirrors the
+// executor's resolve_expr) so the user sees what a field will actually become.
+function jsonPathStr(val: unknown, path: string): string | undefined {
+  let cur: unknown = val
+  for (const seg of path.split('.')) {
+    if (Array.isArray(cur)) { cur = cur[Number(seg)] }
+    else if (cur && typeof cur === 'object') { cur = (cur as Record<string, unknown>)[seg] }
+    else return undefined
+    if (cur === undefined) return undefined
+  }
+  if (cur === null) return 'null'
+  if (typeof cur === 'string') return cur
+  return JSON.stringify(cur)
+}
+
+function ResolvePreview({ results }: { results?: Record<string, NodeExecutionRecord> }) {
+  const { locale } = useLocale()
+  const [val, setVal] = useState<string>('')
+  useEffect(() => subscribe((snap) => setVal(snap?.value ?? '')), [])
+
+  if (!val.includes('{{') || !val.includes('}}')) return null
+
+  let missing = false
+  let unknown = false
+  const out = val.replace(/\{\{\s*([^{}]+?)\s*\}\}/g, (_m, expr: string) => {
+    const dot = expr.indexOf('.')
+    const root = dot === -1 ? expr : expr.slice(0, dot)
+    const path = dot === -1 ? '' : expr.slice(dot + 1)
+    if (root === 'input' || root === 'ctx') { unknown = true; return `«${expr}»` }
+    const rec = results?.[root]
+    if (!rec?.output_json) { missing = true; return '«?»' }
+    let parsed: unknown
+    try { parsed = JSON.parse(rec.output_json) } catch { missing = true; return '«?»' }
+    if (!path) return typeof parsed === 'string' ? parsed : JSON.stringify(parsed)
+    const r = jsonPathStr(parsed, path)
+    if (r === undefined) { missing = true; return '«?»' }
+    return r
+  })
+
+  return (
+    <div style={{
+      marginTop: 6, padding: '5px 8px', borderRadius: 4, fontSize: 11, lineHeight: 1.5,
+      background: 'var(--canvas-bg)', border: `1px solid ${missing ? 'var(--danger-text, #f87171)' : 'var(--border)'}`,
+      wordBreak: 'break-all', fontFamily: 'var(--mono, monospace)',
+    }}>
+      <span style={{ color: 'var(--muted)', fontSize: 10 }}>
+        {locale === 'zh' ? '解析预览（最近一次运行）' : 'resolved (latest run)'}
+        {missing && (locale === 'zh' ? ' · 有取不到的字段' : ' · some fields not found')}
+        {unknown && !missing && (locale === 'zh' ? ' · input/ctx 运行时确定' : ' · input/ctx at run time')}
+      </span>
+      <div style={{ marginTop: 2, color: missing ? 'var(--danger-text, #f87171)' : 'var(--text)' }}>{out || '∅'}</div>
     </div>
   )
 }

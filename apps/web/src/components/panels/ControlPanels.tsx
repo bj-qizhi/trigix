@@ -2,6 +2,7 @@
 // https://www.qzso.com/ · managecode@gmail.com
 
 import type { ConfigProps } from './types'
+import { fl, labelLocale } from './i18nLabels'
 
 const CONDITION_OPS: { v: string; l: string }[] = [
   { v: 'equals', l: '= equals' },
@@ -23,7 +24,7 @@ export function ConditionConfig({ config, set, str }: ConfigProps) {
   return (
     <>
       <div className="field">
-        <label>Source <span style={{ color: 'var(--muted)' }}>(optional)</span></label>
+        <label>{fl("Source")} <span style={{ color: 'var(--muted)' }}>{fl("(optional)")}</span></label>
         <input
           placeholder="{{previous_node}}"
           value={str('source')}
@@ -34,7 +35,7 @@ export function ConditionConfig({ config, set, str }: ConfigProps) {
         </span>
       </div>
       <div className="field">
-        <label>Field *</label>
+        <label>{fl("Field *")}</label>
         <input
           placeholder="status"
           value={str('field')}
@@ -42,7 +43,7 @@ export function ConditionConfig({ config, set, str }: ConfigProps) {
         />
       </div>
       <div className="field">
-        <label>Operator</label>
+        <label>{fl("Operator")}</label>
         <select
           value={op}
           onChange={(e) => {
@@ -57,7 +58,7 @@ export function ConditionConfig({ config, set, str }: ConfigProps) {
       </div>
       {needsValue && (
         <div className="field">
-          <label>Value</label>
+          <label>{fl("Value")}</label>
           <input
             placeholder="active"
             value={str('value') || str('equals')}
@@ -67,7 +68,7 @@ export function ConditionConfig({ config, set, str }: ConfigProps) {
       )}
       <TemplateHint />
       <p style={{ fontSize: 12, color: 'var(--muted)', marginTop: 4 }}>
-        Routes the true/false branches. Returns <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>{"{ result: true | false }"}</code>.
+        {fl("Routes the true/false branches. Returns")} <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>{"{ result: true | false }"}</code>.
       </p>
     </>
   )
@@ -76,8 +77,7 @@ export function ConditionConfig({ config, set, str }: ConfigProps) {
 export function FanOutConfig() {
   return (
     <p style={{ fontSize: 12, color: 'var(--muted)', marginTop: 4 }}>
-      Splits execution into parallel branches. Draw edges from this node to each branch's first node.
-      Outputs{' '}
+      {fl("Splits execution into parallel branches. Draw edges from this node to each branch's first node.\n      Outputs")}{' '}
       <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>
         {'{ "ok": true, "input": {...} }'}
       </code>
@@ -89,12 +89,11 @@ export function FanOutConfig() {
 export function FanInConfig() {
   return (
     <p style={{ fontSize: 12, color: 'var(--muted)', marginTop: 4 }}>
-      Collects results from all incoming branches. Draw edges from each branch's last node to this node.
-      Outputs{' '}
+      {fl("Collects results from all incoming branches. Draw edges from each branch's last node to this node.\n      Outputs")}{' '}
       <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>
         {'{ "count": N, "results": [...] }'}
       </code>
-      . Access individual results as <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>{'{{fan_in_id.results[0]}}'}</code>.
+      {fl(". Access individual results as")} <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>{'{{fan_in_id.results[0]}}'}</code>.
     </p>
   )
 }
@@ -103,25 +102,33 @@ export function CatchConfig({ set, str }: ConfigProps) {
   return (
     <>
       <div className="field">
-        <label>Source node ID <span style={{ color: 'var(--muted)' }}>(optional)</span></label>
+        <label>{fl("Source node ID")} <span style={{ color: 'var(--muted)' }}>{fl("(optional)")}</span></label>
         <input
           placeholder="http_1"
           value={str('source')}
           onChange={(e) => set('source', e.target.value)}
         />
         <span style={{ fontSize: 11, color: 'var(--muted)' }}>
-          If set, reads the error from that specific node. Leave empty to auto-detect.
+          {fl("If set, reads the error from that specific node. Leave empty to auto-detect.")}
         </span>
       </div>
-      <p style={{ fontSize: 12, color: 'var(--muted)', marginTop: 4 }}>
-        Connect an <strong style={{ color: 'var(--node-catch)' }}>error</strong> edge from any
-        node to this Catch node. On failure, execution continues here instead of stopping.
-        The caught error is available as{' '}
-        <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>
-          {'{{catch_id.error}}'}
-        </code>{' '}
-        in downstream nodes.
-      </p>
+      {labelLocale() === 'zh' ? (
+        <p style={{ fontSize: 12, color: 'var(--muted)', marginTop: 4 }}>
+          {fl("从任意节点连一条")} <strong style={{ color: 'var(--node-catch)' }}>{fl("error")}</strong> {fl("边到此\n          Catch 节点。出错时执行会在这里继续而不是中断。捕获到的错误可在下游节点通过")}{' '}
+          <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>
+            {'{{catch_id.error}}'}
+          </code>{' '}
+          {fl("访问。")}
+        </p>
+      ) : (
+        <p style={{ fontSize: 12, color: 'var(--muted)', marginTop: 4 }}>
+          {fl("Connect an")} <strong style={{ color: 'var(--node-catch)' }}>{fl("error")}</strong> {fl("edge from any\n          node to this Catch node. On failure, execution continues here instead of stopping.\n          The caught error is available as")}{' '}
+          <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>
+            {'{{catch_id.error}}'}
+          </code>{' '}
+          {fl("in downstream nodes.")}
+        </p>
+      )}
     </>
   )
 }
@@ -139,11 +146,11 @@ export function AssertConfig({ set, str }: ConfigProps) {
           style={{ fontFamily: 'monospace', fontSize: 12 }}
         />
         <span style={{ fontSize: 11, color: 'var(--muted)' }}>
-          Truthy values: any non-empty string except "false", "null", "0".
+          {fl("Truthy values: any non-empty string except \"false\", \"null\", \"0\".")}
         </span>
       </div>
       <div className="field">
-        <label>Failure message <span style={{ color: 'var(--muted)' }}>(optional)</span></label>
+        <label>{fl("Failure message")} <span style={{ color: 'var(--muted)' }}>{fl("(optional)")}</span></label>
         <input
           placeholder="Assertion failed"
           value={str('message')}
@@ -152,10 +159,10 @@ export function AssertConfig({ set, str }: ConfigProps) {
       </div>
       <TemplateHint />
       <p style={{ fontSize: 12, color: 'var(--muted)', marginTop: 4 }}>
-        Returns <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>
+        {fl("Returns")} <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>
           {'{ "ok": true }'}
         </code>{' '}
-        or fails the execution with the failure message.
+        {fl("or fails the execution with the failure message.")}
       </p>
     </>
   )
@@ -166,7 +173,7 @@ export function DelayConfig({ set, num }: ConfigProps) {
   return (
     <>
       <div className="field">
-        <label>Duration (seconds) *</label>
+        <label>{fl("Duration (seconds) *")}</label>
         <input
           type="number"
           min={0}
@@ -178,10 +185,10 @@ export function DelayConfig({ set, num }: ConfigProps) {
             set('seconds', isNaN(val) ? 0 : Math.max(0, Math.min(3600, val)))
           }}
         />
-        <span style={{ fontSize: 11, color: 'var(--muted)' }}>0–3600 seconds (max 1 hour).</span>
+        <span style={{ fontSize: 11, color: 'var(--muted)' }}>{fl("0–3600 seconds (max 1 hour).")}</span>
       </div>
       <p style={{ fontSize: 12, color: 'var(--muted)', marginTop: 4 }}>
-        Returns <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>
+        {fl("Returns")} <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>
           {'{ "waited_secs": N }'}
         </code>
       </p>
@@ -193,27 +200,27 @@ export function ForEachConfig({ set, str, num }: ConfigProps) {
   return (
     <>
       <div className="field">
-        <label>Items (array expression) <span style={{ color: 'var(--danger)' }}>*</span></label>
+        <label>{fl("Items (array expression)")} <span style={{ color: 'var(--danger)' }}>*</span></label>
         <input
           value={str('items', '{{input.items}}')}
           onChange={(e) => set('items', e.target.value)}
           placeholder="{{input.items}} or {{fetch_data.body.results}}"
           style={{ fontFamily: 'monospace', fontSize: 12 }}
         />
-        <span style={{ fontSize: 11, color: 'var(--muted)' }}>Must resolve to a JSON array</span>
+        <span style={{ fontSize: 11, color: 'var(--muted)' }}>{fl("Must resolve to a JSON array")}</span>
       </div>
       <div className="field">
-        <label>Target Workflow ID <span style={{ color: 'var(--danger)' }}>*</span></label>
+        <label>{fl("Target Workflow ID")} <span style={{ color: 'var(--danger)' }}>*</span></label>
         <input
           value={str('workflow_id', '')}
           onChange={(e) => set('workflow_id', e.target.value)}
           placeholder="Workflow ID"
           style={{ fontFamily: 'monospace', fontSize: 12 }}
         />
-        <span style={{ fontSize: 11, color: 'var(--muted)' }}>Platform injects the published graph before execution</span>
+        <span style={{ fontSize: 11, color: 'var(--muted)' }}>{fl("Platform injects the published graph before execution")}</span>
       </div>
       <div className="field">
-        <label>Input Key</label>
+        <label>{fl("Input Key")}</label>
         <input
           value={str('input_key', 'item')}
           onChange={(e) => set('input_key', e.target.value)}
@@ -223,7 +230,7 @@ export function ForEachConfig({ set, str, num }: ConfigProps) {
         <span style={{ fontSize: 11, color: 'var(--muted)' }}>Each item passed as {'{"<key>": <item>}'}</span>
       </div>
       <div className="field">
-        <label>Max Concurrency</label>
+        <label>{fl("Max Concurrency")}</label>
         <input
           type="number"
           min={1}
@@ -233,7 +240,7 @@ export function ForEachConfig({ set, str, num }: ConfigProps) {
         />
       </div>
       <p style={{ fontSize: 12, color: 'var(--muted)', marginTop: 4 }}>
-        Returns <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>{'{ results, succeeded, failed, total }'}</code>
+        {fl("Returns")} <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>{'{ results, succeeded, failed, total }'}</code>
       </p>
     </>
   )
@@ -245,7 +252,7 @@ export function SwitchConfig({ config, set, str }: ConfigProps) {
   return (
     <>
       <div className="field">
-        <label>Value Expression *</label>
+        <label>{fl("Value Expression *")}</label>
         <input
           placeholder="{{input.status}}"
           value={str('value', '{{input}}')}
@@ -254,7 +261,7 @@ export function SwitchConfig({ config, set, str }: ConfigProps) {
         <span style={{ fontSize: 11, color: 'var(--muted)' }}>The value to match against cases. Supports {'{{...}}'} templates.</span>
       </div>
       <div className="field">
-        <label>Cases</label>
+        <label>{fl("Cases")}</label>
         {cases.map((c, i) => (
           <div key={i} style={{ display: 'flex', gap: 6, marginBottom: 4, alignItems: 'center' }}>
             <input
@@ -288,15 +295,22 @@ export function SwitchConfig({ config, set, str }: ConfigProps) {
           className="btn btn-secondary"
           style={{ marginTop: 4, fontSize: 12 }}
           onClick={() => setCases([...cases, { match: '', label: '' }])}
-        >+ Add case</button>
+        >{fl("+ Add case")}</button>
         <span style={{ fontSize: 11, color: 'var(--muted)', marginTop: 4, display: 'block' }}>
-          Add a case with match="*" to catch all unmatched values (default branch).
+          {fl('Add a case with match="*" to catch all unmatched values (default branch).')}
         </span>
       </div>
-      <p style={{ fontSize: 12, color: 'var(--muted)', marginTop: 4 }}>
-        Returns <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>{'{ "value": "...", "matched_case": "label", "matched": bool }'}</code>.<br/>
-        Outgoing edges whose <strong>condition_label</strong> equals the matched case label will be followed.
-      </p>
+      {labelLocale() === 'zh' ? (
+        <p style={{ fontSize: 12, color: 'var(--muted)', marginTop: 4 }}>
+          {fl("返回")} <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>{'{ "value": "...", "matched_case": "label", "matched": bool }'}</code>。<br/>
+          {fl("其")} <strong>{fl("condition_label")}</strong> {fl("等于命中 case 标签的出边会被执行。")}
+        </p>
+      ) : (
+        <p style={{ fontSize: 12, color: 'var(--muted)', marginTop: 4 }}>
+          {fl("Returns")} <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>{'{ "value": "...", "matched_case": "label", "matched": bool }'}</code>.<br/>
+          {fl("Outgoing edges whose")} <strong>{fl("condition_label")}</strong> {fl("equals the matched case label will be followed.")}
+        </p>
+      )}
     </>
   )
 }
@@ -305,16 +319,16 @@ export function LoopConfig({ set, str, num }: ConfigProps) {
   return (
     <>
       <div className="field">
-        <label>Items *</label>
+        <label>{fl("Items *")}</label>
         <input
           placeholder="{{input.items}} or {{fetch_node}}"
           value={str('items')}
           onChange={(e) => set('items', e.target.value)}
         />
-        <span style={{ fontSize: 11, color: 'var(--muted)' }}>Template expression resolving to a JSON array.</span>
+        <span style={{ fontSize: 11, color: 'var(--muted)' }}>{fl("Template expression resolving to a JSON array.")}</span>
       </div>
       <div className="field">
-        <label>Max iterations <span style={{ color: 'var(--muted)' }}>(1–1000)</span></label>
+        <label>{fl("Max iterations")} <span style={{ color: 'var(--muted)' }}>(1–1000)</span></label>
         <input
           type="number" min={1} max={1000}
           value={num('max_iterations', 100)}
@@ -323,7 +337,7 @@ export function LoopConfig({ set, str, num }: ConfigProps) {
         />
       </div>
       <div className="field">
-        <label>Until path <span style={{ color: 'var(--muted)' }}>(optional — stops when falsy)</span></label>
+        <label>{fl("Until path")} <span style={{ color: 'var(--muted)' }}>{fl("(optional — stops when falsy)")}</span></label>
         <input
           placeholder="active"
           value={str('until')}
@@ -332,7 +346,7 @@ export function LoopConfig({ set, str, num }: ConfigProps) {
         />
       </div>
       <div className="field">
-        <label>Item template <span style={{ color: 'var(--muted)' }}>(optional JSON)</span></label>
+        <label>{fl("Item template")} <span style={{ color: 'var(--muted)' }}>{fl("(optional JSON)")}</span></label>
         <textarea
           rows={3}
           placeholder={'{ "id": "{{item.id}}", "name": "{{item.name}}" }'}
@@ -342,7 +356,7 @@ export function LoopConfig({ set, str, num }: ConfigProps) {
         />
       </div>
       <p style={{ fontSize: 12, color: 'var(--muted)', marginTop: 4 }}>
-        Returns <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>
+        {fl("Returns")} <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>
           {'{ "count": N, "results": [...] }'}
         </code>
       </p>
@@ -354,14 +368,14 @@ export function MapConfig({ set, str }: ConfigProps) {
   return (
     <>
       <div className="field">
-        <label>Items expression *</label>
+        <label>{fl("Items expression *")}</label>
         <input
           placeholder="{{trigger.leads}}"
           value={str('items')}
           onChange={(e) => set('items', e.target.value)}
         />
         <span style={{ fontSize: 11, color: 'var(--muted)' }}>
-          Must resolve to a JSON array.
+          {fl("Must resolve to a JSON array.")}
         </span>
       </div>
       <div className="field">
@@ -383,7 +397,7 @@ export function MapConfig({ set, str }: ConfigProps) {
       </div>
       <TemplateHint />
       <p style={{ fontSize: 12, color: 'var(--muted)', marginTop: 4 }}>
-        Returns <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>
+        {fl("Returns")} <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>
           {'{ "count": N, "items": [...] }'}
         </code>
       </p>
@@ -397,16 +411,16 @@ export function SortConfig({ set, str }: ConfigProps) {
   return (
     <>
       <div className="field">
-        <label>Items expression *</label>
+        <label>{fl("Items expression *")}</label>
         <input
           placeholder="{{trigger.rows}}"
           value={str('items')}
           onChange={(e) => set('items', e.target.value)}
         />
-        <span style={{ fontSize: 11, color: 'var(--muted)' }}>Must resolve to a JSON array.</span>
+        <span style={{ fontSize: 11, color: 'var(--muted)' }}>{fl("Must resolve to a JSON array.")}</span>
       </div>
       <div className="field">
-        <label>Sort field *</label>
+        <label>{fl("Sort field *")}</label>
         <input
           placeholder="name"
           value={str('field')}
@@ -416,32 +430,32 @@ export function SortConfig({ set, str }: ConfigProps) {
       </div>
       <div style={{ display: 'flex', gap: 12 }}>
         <div className="field" style={{ flex: 1 }}>
-          <label>Order</label>
+          <label>{fl("Order")}</label>
           <select
             value={order}
             onChange={(e) => set('order', e.target.value)}
             style={{ background: 'var(--surface)', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: '4px 8px', fontSize: 13, width: '100%' }}
           >
-            <option value="asc">asc</option>
-            <option value="desc">desc</option>
+            <option value="asc">{fl("asc")}</option>
+            <option value="desc">{fl("desc")}</option>
           </select>
         </div>
         <div className="field" style={{ flex: 1 }}>
-          <label>Compare as</label>
+          <label>{fl("Compare as")}</label>
           <select
             value={type}
             onChange={(e) => set('type', e.target.value)}
             style={{ background: 'var(--surface)', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: '4px 8px', fontSize: 13, width: '100%' }}
           >
-            <option value="string">string</option>
-            <option value="number">number</option>
+            <option value="string">{fl("string")}</option>
+            <option value="number">{fl("number")}</option>
           </select>
         </div>
       </div>
       <p style={{ fontSize: 12, color: 'var(--muted)', marginTop: 4 }}>
-        Returns <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>
+        {fl("Returns")} <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>
           {'{ "count": N, "items": [...] }'}
-        </code> in sorted order.
+        </code> {fl("in sorted order.")}
       </p>
     </>
   )
@@ -455,16 +469,16 @@ export function AggregateConfig({ set, str }: ConfigProps) {
   return (
     <>
       <div className="field">
-        <label>Items expression *</label>
+        <label>{fl("Items expression *")}</label>
         <input
           placeholder="{{trigger.rows}}"
           value={str('items')}
           onChange={(e) => set('items', e.target.value)}
         />
-        <span style={{ fontSize: 11, color: 'var(--muted)' }}>Must resolve to a JSON array.</span>
+        <span style={{ fontSize: 11, color: 'var(--muted)' }}>{fl("Must resolve to a JSON array.")}</span>
       </div>
       <div className="field">
-        <label>Operation *</label>
+        <label>{fl("Operation *")}</label>
         <select
           value={operation}
           onChange={(e) => set('operation', e.target.value)}
@@ -488,7 +502,7 @@ export function AggregateConfig({ set, str }: ConfigProps) {
       )}
       {isJoin && (
         <div className="field">
-          <label>Separator <span style={{ color: 'var(--muted)' }}>(default ", ")</span></label>
+          <label>{fl("Separator")} <span style={{ color: 'var(--muted)' }}>{fl("(default \", \")")}</span></label>
           <input
             placeholder=", "
             value={str('separator')}
@@ -498,7 +512,7 @@ export function AggregateConfig({ set, str }: ConfigProps) {
       )}
       <TemplateHint />
       <p style={{ fontSize: 12, color: 'var(--muted)', marginTop: 4 }}>
-        Returns <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>
+        {fl("Returns")} <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>
           {'{ "result": <value> }'}
         </code>
       </p>
@@ -513,16 +527,16 @@ export function FilterConfig({ set, str }: ConfigProps) {
   return (
     <>
       <div className="field">
-        <label>Items expression *</label>
+        <label>{fl("Items expression *")}</label>
         <input
           placeholder="{{trigger.users}}"
           value={str('items')}
           onChange={(e) => set('items', e.target.value)}
         />
-        <span style={{ fontSize: 11, color: 'var(--muted)' }}>Must resolve to a JSON array.</span>
+        <span style={{ fontSize: 11, color: 'var(--muted)' }}>{fl("Must resolve to a JSON array.")}</span>
       </div>
       <div className="field">
-        <label>Field *</label>
+        <label>{fl("Field *")}</label>
         <input
           placeholder="status"
           value={str('field')}
@@ -531,7 +545,7 @@ export function FilterConfig({ set, str }: ConfigProps) {
         <span style={{ fontSize: 11, color: 'var(--muted)' }}>Field path on each item (e.g. <code>active</code> or <code>profile.age</code>).</span>
       </div>
       <div className="field">
-        <label>Operator</label>
+        <label>{fl("Operator")}</label>
         <select
           value={operator}
           onChange={(e) => set('operator', e.target.value)}
@@ -544,7 +558,7 @@ export function FilterConfig({ set, str }: ConfigProps) {
       </div>
       {needsValue && (
         <div className="field">
-          <label>Value *</label>
+          <label>{fl("Value *")}</label>
           <input
             placeholder="active"
             value={str('value')}
@@ -554,9 +568,9 @@ export function FilterConfig({ set, str }: ConfigProps) {
       )}
       <TemplateHint />
       <p style={{ fontSize: 12, color: 'var(--muted)', marginTop: 4 }}>
-        Returns <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>
+        {fl("Returns")} <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>
           {'{ "count": N, "items": [...] }'}
-        </code> with only matching items.
+        </code> {fl("with only matching items.")}
       </p>
     </>
   )
@@ -566,16 +580,16 @@ export function SplitConfig({ set, str }: ConfigProps) {
   return (
     <>
       <div className="field">
-        <label>Source *</label>
+        <label>{fl("Source *")}</label>
         <input
           placeholder="{{input.csv_line}}"
           value={str('source', '{{input}}')}
           onChange={(e) => set('source', e.target.value)}
         />
-        <span style={{ fontSize: 11, color: 'var(--muted)' }}>Template expression returning the string to split.</span>
+        <span style={{ fontSize: 11, color: 'var(--muted)' }}>{fl("Template expression returning the string to split.")}</span>
       </div>
       <div className="field">
-        <label>Delimiter</label>
+        <label>{fl("Delimiter")}</label>
         <input
           placeholder=","
           value={str('delimiter', ',')}
@@ -589,10 +603,10 @@ export function SplitConfig({ set, str }: ConfigProps) {
           checked={str('trim', 'true') !== 'false'}
           onChange={(e) => set('trim', e.target.checked)}
         />
-        <label htmlFor="split-trim" style={{ cursor: 'pointer' }}>Trim whitespace from each part</label>
+        <label htmlFor="split-trim" style={{ cursor: 'pointer' }}>{fl("Trim whitespace from each part")}</label>
       </div>
       <p style={{ fontSize: 12, color: 'var(--muted)', marginTop: 4 }}>
-        Returns <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>{'{ "parts": [...], "count": N }'}</code>
+        {fl("Returns")} <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>{'{ "parts": [...], "count": N }'}</code>
       </p>
     </>
   )
@@ -602,16 +616,16 @@ export function JoinConfig({ set, str }: ConfigProps) {
   return (
     <>
       <div className="field">
-        <label>Items Array *</label>
+        <label>{fl("Items Array *")}</label>
         <input
           placeholder="{{split_node.parts}}"
           value={str('items', '{{input}}')}
           onChange={(e) => set('items', e.target.value)}
         />
-        <span style={{ fontSize: 11, color: 'var(--muted)' }}>Template expression returning an array of strings (or objects).</span>
+        <span style={{ fontSize: 11, color: 'var(--muted)' }}>{fl("Template expression returning an array of strings (or objects).")}</span>
       </div>
       <div className="field">
-        <label>Delimiter</label>
+        <label>{fl("Delimiter")}</label>
         <input
           placeholder=","
           value={str('delimiter', ',')}
@@ -619,7 +633,7 @@ export function JoinConfig({ set, str }: ConfigProps) {
         />
       </div>
       <div className="field">
-        <label>Field <span style={{ color: 'var(--muted)' }}>(optional, for object arrays)</span></label>
+        <label>{fl("Field")} <span style={{ color: 'var(--muted)' }}>{fl("(optional, for object arrays)")}</span></label>
         <input
           placeholder="name"
           value={str('field')}
@@ -628,7 +642,7 @@ export function JoinConfig({ set, str }: ConfigProps) {
         <span style={{ fontSize: 11, color: 'var(--muted)' }}>Dot-path to extract from each object (e.g. <code>user.name</code>).</span>
       </div>
       <p style={{ fontSize: 12, color: 'var(--muted)', marginTop: 4 }}>
-        Returns <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>{'{ "result": "a,b,c", "count": N }'}</code>
+        {fl("Returns")} <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>{'{ "result": "a,b,c", "count": N }'}</code>
       </p>
     </>
   )
@@ -639,7 +653,7 @@ export function JoinConfig({ set, str }: ConfigProps) {
 function TemplateHint() {
   return (
     <p style={{ fontSize: 11, color: 'var(--muted)', marginTop: -6, lineHeight: 1.6 }}>
-      Templates:{' '}
+      {fl("Templates:")}{' '}
       <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>{'{{input.field}}'}</code>
       {' · '}
       <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>{'{{node_id.field}}'}</code>

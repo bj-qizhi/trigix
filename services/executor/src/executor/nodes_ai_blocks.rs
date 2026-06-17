@@ -387,6 +387,311 @@ pub(super) async fn execute_image_gen(
     }
 }
 
+// ── Video generation (Seedance / Volcengine Ark, Replicate, generic) ──────────
+//
+// Video generation is asynchronous on the major platforms: you submit a task and
+// poll until it finishes. This node submits then polls (bounded by
+// `poll_max_secs`, default 300) and returns the finished video URL. Set the
+// node's `timeout_secs` ≥ poll_max_secs if you also enable the generic timeout.
+pub(super) async fn execute_video_gen(
+    node: &Node,
+    context: &ExecutionContext,
+    http_client: &reqwest::Client,
+) -> NodeExecutionResult {
+    let cfg = resolve_config_strings(&node.config.clone().unwrap_or_default(), context);
+    let provider = cfg
+        .get("provider")
+        .and_then(|v| v.as_str())
+        .unwrap_or("seedance")
+        .to_lowercase();
+    let prompt = cfg.get("prompt").and_then(|v| v.as_str()).unwrap_or("");
+    let image_url = cfg
+        .get("image_url")
+        .and_then(|v| v.as_str())
+        .filter(|s| !s.is_empty());
+    let poll_max = cfg
+        .get("poll_max_secs")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(300)
+        .clamp(10, 900);
+    let poll_int = cfg
+        .get("poll_interval_secs")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(6)
+        .clamp(2, 30);
+
+    match provider.as_str() {
+        "seedance" | "volcengine" | "ark" | "doubao" => {
+            let api_key = match require_api_key(&cfg, "Video generation") {
+                Ok(k) => k,
+                Err(e) => return e,
+            };
+            if prompt.is_empty() && image_url.is_none() {
+                return NodeExecutionResult::failed(
+                    "Video generation (Seedance) requires 'prompt' or 'image_url'",
+                );
+            }
+            let model = cfg
+                .get("model")
+                .and_then(|v| v.as_str())
+                .filter(|s| !s.is_empty())
+                .unwrap_or("doubao-seedance-1-0-pro-250528");
+            let base = cfg
+                .get("base_url")
+                .and_then(|v| v.as_str())
+                .filter(|s| !s.is_empty())
+                .unwrap_or("https://ark.cn-beijing.volces.com/api/v3")
+                .trim_end_matches('/')
+                .to_string();
+            // Seedance encodes parameters as --flags appended to the text prompt.
+            let mut text = prompt.to_string();
+            for (key, flag) in [("ratio", "rt"), ("duration", "dur"), ("resolution", "rs")] {
+                if let Some(val) = cfg.get(key).and_then(|v| v.as_str()).filter(|s| !s.is_empty()) {
+                    let f = if key == "ratio" { "ratio" } else { flag };
+                    text.push_str(&format!(" --{f} {val}"));
+                }
+            }
+            let mut content = vec![serde_json::json!({ "type": "text", "text": text })];
+            if let Some(url) = image_url {
+                content.push(serde_json::json!({
+                    "type": "image_url", "image_url": { "url": url }
+                }));
+            }
+            let create_body = serde_json::json!({ "model": model, "content": content });
+            let create_url = format!("{base}/contents/generations/tasks");
+            let created: serde_json::Value = match http_client
+                .post(&create_url)
+                .header("Authorization", format!("Bearer {api_key}"))
+                .json(&create_body)
+                .send()
+                .await
+            {
+                Ok(resp) => {
+                    let ok = resp.status().is_success();
+                    let body = resp.json().await.unwrap_or(serde_json::Value::Null);
+                    if !ok {
+                        return NodeExecutionResult::failed(format!(
+                            "Seedance task create failed: {body}"
+                        ));
+                    }
+                    body
+                }
+                Err(e) => return NodeExecutionResult::failed(format!("Seedance request error: {e}")),
+            };
+            let task_id = match created.get("id").and_then(|v| v.as_str()) {
+                Some(id) => id.to_string(),
+                None => {
+                    return NodeExecutionResult::failed(format!(
+                        "Seedance: no task id in response: {created}"
+                    ))
+                }
+            };
+            let poll_url = format!("{base}/contents/generations/tasks/{task_id}");
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(poll_max);
+            loop {
+                tokio::time::sleep(std::time::Duration::from_secs(poll_int)).await;
+                let body: serde_json::Value = match http_client
+                    .get(&poll_url)
+                    .header("Authorization", format!("Bearer {api_key}"))
+                    .send()
+                    .await
+                {
+                    Ok(resp) => resp.json().await.unwrap_or(serde_json::Value::Null),
+                    Err(e) => {
+                        return NodeExecutionResult::failed(format!("Seedance poll error: {e}"))
+                    }
+                };
+                let status = body.get("status").and_then(|v| v.as_str()).unwrap_or("");
+                match status {
+                    "succeeded" => {
+                        let video_url = body
+                            .get("content")
+                            .and_then(|c| c.get("video_url"))
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("");
+                        return NodeExecutionResult::succeeded(
+                            serde_json::json!({
+                                "provider": "seedance", "status": "succeeded",
+                                "task_id": task_id, "video_url": video_url, "raw": body,
+                            })
+                            .to_string(),
+                        );
+                    }
+                    "failed" | "cancelled" | "canceled" => {
+                        return NodeExecutionResult::failed(format!(
+                            "Seedance task {status}: {body}"
+                        ));
+                    }
+                    _ => {} // queued / running → keep polling
+                }
+                if std::time::Instant::now() >= deadline {
+                    return NodeExecutionResult::failed(format!(
+                        "Seedance task {task_id} not finished within {poll_max}s (last status: {status})"
+                    ));
+                }
+            }
+        }
+        "replicate" => {
+            let api_token = match cfg
+                .get("api_token")
+                .or_else(|| cfg.get("api_key"))
+                .and_then(|v| v.as_str())
+                .filter(|s| !s.is_empty())
+            {
+                Some(t) => t.to_string(),
+                None => {
+                    return NodeExecutionResult::failed(
+                        "Video generation (Replicate) requires 'api_token'",
+                    )
+                }
+            };
+            let version = match cfg
+                .get("model")
+                .or_else(|| cfg.get("version"))
+                .and_then(|v| v.as_str())
+                .filter(|s| !s.is_empty())
+            {
+                Some(v) => v.to_string(),
+                None => {
+                    return NodeExecutionResult::failed(
+                        "Video generation (Replicate) requires 'model' (version ID)",
+                    )
+                }
+            };
+            // Use a caller-supplied input map, else build a sensible default.
+            let input = cfg.get("input").cloned().unwrap_or_else(|| {
+                let mut m = serde_json::Map::new();
+                if !prompt.is_empty() {
+                    m.insert("prompt".into(), serde_json::Value::String(prompt.to_string()));
+                }
+                if let Some(url) = image_url {
+                    m.insert("image".into(), serde_json::Value::String(url.to_string()));
+                }
+                serde_json::Value::Object(m)
+            });
+            let auth = format!("Token {api_token}");
+            let created: serde_json::Value = match http_client
+                .post("https://api.replicate.com/v1/predictions")
+                .header("Authorization", &auth)
+                .json(&serde_json::json!({ "version": version, "input": input }))
+                .send()
+                .await
+            {
+                Ok(resp) => {
+                    let ok = resp.status().is_success();
+                    let body = resp.json().await.unwrap_or(serde_json::Value::Null);
+                    if !ok {
+                        return NodeExecutionResult::failed(format!(
+                            "Replicate prediction create failed: {body}"
+                        ));
+                    }
+                    body
+                }
+                Err(e) => {
+                    return NodeExecutionResult::failed(format!("Replicate request error: {e}"))
+                }
+            };
+            let get_url = created
+                .get("urls")
+                .and_then(|u| u.get("get"))
+                .and_then(|v| v.as_str())
+                .map(String::from);
+            let get_url = match get_url {
+                Some(u) => u,
+                None => {
+                    return NodeExecutionResult::failed(format!(
+                        "Replicate: no poll URL in response: {created}"
+                    ))
+                }
+            };
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(poll_max);
+            loop {
+                tokio::time::sleep(std::time::Duration::from_secs(poll_int)).await;
+                let body: serde_json::Value = match http_client
+                    .get(&get_url)
+                    .header("Authorization", &auth)
+                    .send()
+                    .await
+                {
+                    Ok(resp) => resp.json().await.unwrap_or(serde_json::Value::Null),
+                    Err(e) => {
+                        return NodeExecutionResult::failed(format!("Replicate poll error: {e}"))
+                    }
+                };
+                let status = body.get("status").and_then(|v| v.as_str()).unwrap_or("");
+                match status {
+                    "succeeded" => {
+                        // output is a URL string or an array of URLs.
+                        let out = body.get("output");
+                        let video_url = out
+                            .and_then(|o| o.as_str())
+                            .map(String::from)
+                            .or_else(|| {
+                                out.and_then(|o| o.as_array())
+                                    .and_then(|a| a.last())
+                                    .and_then(|v| v.as_str())
+                                    .map(String::from)
+                            })
+                            .unwrap_or_default();
+                        return NodeExecutionResult::succeeded(
+                            serde_json::json!({
+                                "provider": "replicate", "status": "succeeded",
+                                "video_url": video_url, "raw": body,
+                            })
+                            .to_string(),
+                        );
+                    }
+                    "failed" | "canceled" => {
+                        return NodeExecutionResult::failed(format!(
+                            "Replicate prediction {status}: {body}"
+                        ));
+                    }
+                    _ => {}
+                }
+                if std::time::Instant::now() >= deadline {
+                    return NodeExecutionResult::failed(format!(
+                        "Replicate prediction not finished within {poll_max}s (last status: {status})"
+                    ));
+                }
+            }
+        }
+        // Generic: a synchronous OpenAI-compatible video endpoint (best-effort).
+        _ => {
+            let api_key = match require_api_key(&cfg, "Video generation") {
+                Ok(k) => k,
+                Err(e) => return e,
+            };
+            let base_url = match cfg.get("base_url").and_then(|v| v.as_str()).filter(|s| !s.is_empty()) {
+                Some(u) => u.to_string(),
+                None => {
+                    return NodeExecutionResult::failed(
+                        "Video generation (generic provider) requires 'base_url'",
+                    )
+                }
+            };
+            let model = cfg.get("model").and_then(|v| v.as_str()).unwrap_or("");
+            let payload = serde_json::json!({ "model": model, "prompt": prompt });
+            match http_client
+                .post(&base_url)
+                .header("Authorization", format!("Bearer {api_key}"))
+                .json(&payload)
+                .send()
+                .await
+            {
+                Ok(resp) => {
+                    let status = resp.status().as_u16();
+                    let body = resp.json().await.unwrap_or(serde_json::Value::Null);
+                    NodeExecutionResult::succeeded(
+                        serde_json::json!({ "provider": "generic", "status": status, "body": body })
+                            .to_string(),
+                    )
+                }
+                Err(e) => NodeExecutionResult::failed(format!("Video generation request error: {e}")),
+            }
+        }
+    }
+}
+
 // ── Speech-to-Text (Whisper transcription, multipart) ─────────────────────────
 pub(super) async fn execute_speech_to_text(
     node: &Node,

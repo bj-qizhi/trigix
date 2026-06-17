@@ -3,11 +3,12 @@
 
 import type { ReactNode } from 'react'
 import type { ConfigProps } from './types'
+import { fl } from './i18nLabels'
 
 function TemplateHint() {
   return (
     <p style={{ fontSize: 11, color: 'var(--muted)', marginTop: -6, lineHeight: 1.6 }}>
-      Templates:{' '}
+      {fl("Templates:")}{' '}
       <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>{'{{input.field}}'}</code>
       {' · '}
       <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>{'{{node_id.field}}'}</code>
@@ -48,19 +49,19 @@ export function OpenAIConfig({ set, str, num }: ConfigProps) {
   return (
     <>
       <div className="field">
-        <label>Model <span style={{ color: 'var(--muted)' }}>(输入或选择)</span></label>
+        <label>{fl("Model")} <span style={{ color: 'var(--muted)' }}>{fl("(输入或选择)")}</span></label>
         <input list="openai-models" placeholder="gpt-5.4-mini" value={str('model', 'gpt-5.4-mini')} onChange={(e) => set('model', e.target.value)} style={{ fontFamily: 'monospace', fontSize: 12 }} />
         <datalist id="openai-models">
-          <option value="gpt-5.5">gpt-5.5 (frontier)</option>
-          <option value="gpt-5.4">gpt-5.4 (workhorse)</option>
-          <option value="gpt-5.4-mini">gpt-5.4-mini (budget)</option>
-          <option value="gpt-5.4-nano">gpt-5.4-nano (cheapest)</option>
-          <option value="gpt-4.1">gpt-4.1 (long-context)</option>
-          <option value="gpt-4o-mini">gpt-4o-mini (legacy)</option>
+          <option value="gpt-5.5">{fl("gpt-5.5 (frontier)")}</option>
+          <option value="gpt-5.4">{fl("gpt-5.4 (workhorse)")}</option>
+          <option value="gpt-5.4-mini">{fl("gpt-5.4-mini (budget)")}</option>
+          <option value="gpt-5.4-nano">{fl("gpt-5.4-nano (cheapest)")}</option>
+          <option value="gpt-4.1">{fl("gpt-4.1 (long-context)")}</option>
+          <option value="gpt-4o-mini">{fl("gpt-4o-mini (legacy)")}</option>
         </datalist>
       </div>
       <div className="field">
-        <label>API Key *</label>
+        <label>{fl("API Key *")}</label>
         <input
           placeholder="{{credential.openai_key}}"
           value={str('api_key')}
@@ -71,7 +72,7 @@ export function OpenAIConfig({ set, str, num }: ConfigProps) {
         </span>
       </div>
       <div className="field">
-        <label>System Prompt <span style={{ color: 'var(--muted)' }}>(optional)</span></label>
+        <label>{fl("System Prompt")} <span style={{ color: 'var(--muted)' }}>{fl("(optional)")}</span></label>
         <textarea
           rows={3}
           placeholder="You are a helpful assistant."
@@ -81,7 +82,7 @@ export function OpenAIConfig({ set, str, num }: ConfigProps) {
         />
       </div>
       <div className="field">
-        <label>Prompt Template *</label>
+        <label>{fl("Prompt Template *")}</label>
         <textarea
           rows={4}
           placeholder={'Summarize: {{input.text}}'}
@@ -99,7 +100,7 @@ export function OpenAIConfig({ set, str, num }: ConfigProps) {
       <TemplateHint />
       <div style={{ display: 'flex', gap: 8 }}>
         <div className="field" style={{ flex: 1 }}>
-          <label>Max Tokens</label>
+          <label>{fl("Max Tokens")}</label>
           <input
             type="number" min={64} max={16384}
             value={num('max_tokens', 1024)}
@@ -107,7 +108,7 @@ export function OpenAIConfig({ set, str, num }: ConfigProps) {
           />
         </div>
         <div className="field" style={{ flex: 1 }}>
-          <label>Temperature</label>
+          <label>{fl("Temperature")}</label>
           <input
             type="number" min={0} max={2} step={0.1}
             value={num('temperature', 0.7)}
@@ -116,7 +117,7 @@ export function OpenAIConfig({ set, str, num }: ConfigProps) {
         </div>
       </div>
       <p style={{ fontSize: 12, color: 'var(--muted)', marginTop: 4 }}>
-        Returns <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>
+        {fl("Returns")} <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>
           {'{ "content": "...", "model": "...", "usage": {...} }'}
         </code>
       </p>
@@ -128,17 +129,17 @@ export function GeminiConfig({ set, str, num }: ConfigProps) {
   return (
     <>
       <div className="field">
-        <label>Model <span style={{ color: 'var(--muted)' }}>(输入或选择)</span></label>
+        <label>{fl("Model")} <span style={{ color: 'var(--muted)' }}>{fl("(输入或选择)")}</span></label>
         <input list="gemini-models" placeholder="gemini-2.5-flash" value={str('model', 'gemini-2.5-flash')} onChange={(e) => set('model', e.target.value)} style={{ fontFamily: 'monospace', fontSize: 12 }} />
         <datalist id="gemini-models">
-          <option value="gemini-3.5-flash">gemini-3.5-flash (newest)</option>
-          <option value="gemini-2.5-pro">gemini-2.5-pro (balanced, 1M)</option>
-          <option value="gemini-2.5-flash">gemini-2.5-flash (fast)</option>
-          <option value="gemini-3.1-flash-lite">gemini-3.1-flash-lite (cheapest)</option>
+          <option value="gemini-3.5-flash">{fl("gemini-3.5-flash (newest)")}</option>
+          <option value="gemini-2.5-pro">{fl("gemini-2.5-pro (balanced, 1M)")}</option>
+          <option value="gemini-2.5-flash">{fl("gemini-2.5-flash (fast)")}</option>
+          <option value="gemini-3.1-flash-lite">{fl("gemini-3.1-flash-lite (cheapest)")}</option>
         </datalist>
       </div>
       <div className="field">
-        <label>API Key *</label>
+        <label>{fl("API Key *")}</label>
         <input
           placeholder="{{credential.gemini_key}}"
           value={str('api_key')}
@@ -149,7 +150,7 @@ export function GeminiConfig({ set, str, num }: ConfigProps) {
         </span>
       </div>
       <div className="field">
-        <label>System Instruction <span style={{ color: 'var(--muted)' }}>(optional)</span></label>
+        <label>{fl("System Instruction")} <span style={{ color: 'var(--muted)' }}>{fl("(optional)")}</span></label>
         <textarea
           rows={3}
           placeholder="You are a helpful assistant."
@@ -159,7 +160,7 @@ export function GeminiConfig({ set, str, num }: ConfigProps) {
         />
       </div>
       <div className="field">
-        <label>Prompt Template *</label>
+        <label>{fl("Prompt Template *")}</label>
         <textarea
           rows={4}
           placeholder={'Summarize: {{input.text}}'}
@@ -177,7 +178,7 @@ export function GeminiConfig({ set, str, num }: ConfigProps) {
       <TemplateHint />
       <div style={{ display: 'flex', gap: 8 }}>
         <div className="field" style={{ flex: 1 }}>
-          <label>Max Tokens</label>
+          <label>{fl("Max Tokens")}</label>
           <input
             type="number" min={64} max={32768}
             value={num('max_tokens', 1024)}
@@ -185,7 +186,7 @@ export function GeminiConfig({ set, str, num }: ConfigProps) {
           />
         </div>
         <div className="field" style={{ flex: 1 }}>
-          <label>Temperature</label>
+          <label>{fl("Temperature")}</label>
           <input
             type="number" min={0} max={2} step={0.1}
             value={num('temperature', 0.7)}
@@ -194,7 +195,7 @@ export function GeminiConfig({ set, str, num }: ConfigProps) {
         </div>
       </div>
       <p style={{ fontSize: 12, color: 'var(--muted)', marginTop: 4 }}>
-        Returns <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>
+        {fl("Returns")} <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>
           {'{ "content": "...", "model": "...", "usage": {...} }'}
         </code>
       </p>
@@ -206,15 +207,15 @@ export function ClaudeConfig({ set, str, num }: ConfigProps) {
   return (
     <>
       <div className="field">
-        <label>Model</label>
+        <label>{fl("Model")}</label>
         <select value={str('model', 'claude-sonnet-4-6')} onChange={(e) => set('model', e.target.value)}>
-          <option value="claude-sonnet-4-6">claude-sonnet-4-6 (balanced)</option>
-          <option value="claude-opus-4-7">claude-opus-4-7 (powerful)</option>
-          <option value="claude-haiku-4-5-20251001">claude-haiku-4-5 (fast)</option>
+          <option value="claude-sonnet-4-6">{fl("claude-sonnet-4-6 (balanced)")}</option>
+          <option value="claude-opus-4-8">{fl("claude-opus-4-8 (powerful)")}</option>
+          <option value="claude-haiku-4-5-20251001">{fl("claude-haiku-4-5 (fast)")}</option>
         </select>
       </div>
       <div className="field">
-        <label>API Key *</label>
+        <label>{fl("API Key *")}</label>
         <input
           placeholder="{{credential.anthropic_key}}"
           value={str('api_key')}
@@ -225,7 +226,7 @@ export function ClaudeConfig({ set, str, num }: ConfigProps) {
         </span>
       </div>
       <div className="field">
-        <label>System Prompt <span style={{ color: 'var(--muted)' }}>(optional)</span></label>
+        <label>{fl("System Prompt")} <span style={{ color: 'var(--muted)' }}>{fl("(optional)")}</span></label>
         <textarea
           rows={3}
           placeholder="You are a helpful assistant."
@@ -235,7 +236,7 @@ export function ClaudeConfig({ set, str, num }: ConfigProps) {
         />
       </div>
       <div className="field">
-        <label>Prompt Template *</label>
+        <label>{fl("Prompt Template *")}</label>
         <textarea
           rows={4}
           placeholder={'Analyze: {{input.text}}'}
@@ -252,7 +253,7 @@ export function ClaudeConfig({ set, str, num }: ConfigProps) {
       </div>
       <TemplateHint />
       <div className="field">
-        <label>Max Tokens</label>
+        <label>{fl("Max Tokens")}</label>
         <input
           type="number" min={64} max={8192}
           value={num('max_tokens', 1024)}
@@ -260,7 +261,7 @@ export function ClaudeConfig({ set, str, num }: ConfigProps) {
         />
       </div>
       <p style={{ fontSize: 12, color: 'var(--muted)', marginTop: 4 }}>
-        Returns <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>
+        {fl("Returns")} <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>
           {'{ "content": "...", "model": "...", "usage": {...} }'}
         </code>
       </p>
@@ -272,7 +273,7 @@ export function DatabaseConfig({ set, str }: ConfigProps) {
   return (
     <>
       <div className="field">
-        <label>Connection URL *</label>
+        <label>{fl("Connection URL *")}</label>
         <input
           placeholder="{{credential.db_url}}"
           value={str('url')}
@@ -284,7 +285,7 @@ export function DatabaseConfig({ set, str }: ConfigProps) {
         </span>
       </div>
       <div className="field">
-        <label>SQL Query *</label>
+        <label>{fl("SQL Query *")}</label>
         <textarea
           rows={5}
           placeholder={'SELECT id, name, score\nFROM leads\nWHERE status = \'active\'\nLIMIT 100'}
@@ -298,9 +299,9 @@ export function DatabaseConfig({ set, str }: ConfigProps) {
       </div>
       <TemplateHint />
       <p style={{ fontSize: 12, color: 'var(--muted)', marginTop: 4 }}>
-        SELECT → <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>{'{ "rows": [...], "count": N }'}</code>
+        {fl("SELECT →")} <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>{'{ "rows": [...], "count": N }'}</code>
         <br />
-        DML → <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>{'{ "rows_affected": N }'}</code>
+        {fl("DML →")} <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>{'{ "rows_affected": N }'}</code>
       </p>
     </>
   )
@@ -310,7 +311,7 @@ export function GraphQLConfig({ set, str }: ConfigProps) {
   return (
     <>
       <div className="field">
-        <label>Endpoint URL *</label>
+        <label>{fl("Endpoint URL *")}</label>
         <input
           placeholder="https://api.example.com/graphql"
           value={str('url')}
@@ -318,7 +319,7 @@ export function GraphQLConfig({ set, str }: ConfigProps) {
         />
       </div>
       <div className="field">
-        <label>Query / Mutation *</label>
+        <label>{fl("Query / Mutation *")}</label>
         <textarea
           rows={6}
           placeholder={'query GetUser($id: ID!) {\n  user(id: $id) {\n    name\n    email\n  }\n}'}
@@ -338,7 +339,7 @@ export function GraphQLConfig({ set, str }: ConfigProps) {
         />
       </div>
       <div className="field">
-        <label>Bearer token <span style={{ color: 'var(--muted)' }}>(optional)</span></label>
+        <label>{fl("Bearer token")} <span style={{ color: 'var(--muted)' }}>{fl("(optional)")}</span></label>
         <input
           placeholder="{{credential.graphql_token}}"
           value={str('bearer_token')}
@@ -347,9 +348,9 @@ export function GraphQLConfig({ set, str }: ConfigProps) {
       </div>
       <TemplateHint />
       <p style={{ fontSize: 12, color: 'var(--muted)', marginTop: 4 }}>
-        Returns <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>
+        {fl("Returns")} <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>
           {'{ "data": {...} }'}
-        </code> or fails on GraphQL errors.
+        </code> {fl("or fails on GraphQL errors.")}
       </p>
     </>
   )
@@ -362,11 +363,11 @@ export function MistralConfig({ config, set, str }: ConfigProps) {
   return (
     <>
       <div className="field">
-        <label>API Key <span style={{ color: 'var(--danger)' }}>*</span></label>
+        <label>{fl("API Key")} <span style={{ color: 'var(--danger)' }}>*</span></label>
         <input type="password" value={str('api_key', '')} onChange={(e) => set('api_key', e.target.value)} style={{ fontFamily: 'monospace', fontSize: 12 }} />
       </div>
       <div className="field">
-        <label>Operation</label>
+        <label>{fl("Operation")}</label>
         <select value={operation} onChange={(e) => set('operation', e.target.value)}>
           {OPERATIONS.map((op) => <option key={op} value={op}>{op}</option>)}
         </select>
@@ -374,21 +375,21 @@ export function MistralConfig({ config, set, str }: ConfigProps) {
       {operation === 'chat' && (
         <>
           <div className="field">
-            <label>Model</label>
+            <label>{fl("Model")}</label>
             <select value={str('model', 'mistral-small-latest')} onChange={(e) => set('model', e.target.value)}>
               {MODELS.filter(m => m !== 'mistral-embed').map((m) => <option key={m} value={m}>{m}</option>)}
             </select>
           </div>
           <div className="field">
-            <label>Prompt (or use Messages JSON)</label>
+            <label>{fl("Prompt (or use Messages JSON)")}</label>
             <textarea rows={3} placeholder="{{input.prompt}}" value={str('prompt', '')} onChange={(e) => set('prompt', e.target.value)} style={{ fontFamily: 'monospace', fontSize: 12 }} />
           </div>
           <div className="field">
-            <label>Temperature</label>
+            <label>{fl("Temperature")}</label>
             <input type="number" min={0} max={2} step={0.1} placeholder="0.7" value={(config['temperature'] as number | undefined) ?? ''} onChange={(e) => set('temperature', e.target.value ? parseFloat(e.target.value) : undefined)} />
           </div>
           <div className="field">
-            <label>Max Tokens</label>
+            <label>{fl("Max Tokens")}</label>
             <input type="number" min={1} placeholder="1024" value={(config['max_tokens'] as number | undefined) ?? ''} onChange={(e) => set('max_tokens', e.target.value ? parseInt(e.target.value) : undefined)} />
           </div>
         </>
@@ -396,19 +397,19 @@ export function MistralConfig({ config, set, str }: ConfigProps) {
       {operation === 'embeddings' && (
         <>
           <div className="field">
-            <label>Model</label>
+            <label>{fl("Model")}</label>
             <select value={str('model', 'mistral-embed')} onChange={(e) => set('model', e.target.value)}>
-              <option value="mistral-embed">mistral-embed</option>
+              <option value="mistral-embed">{fl("mistral-embed")}</option>
             </select>
           </div>
           <div className="field">
-            <label>Input (string or array)</label>
+            <label>{fl("Input (string or array)")}</label>
             <textarea rows={2} placeholder='"{{input.text}}"' value={str('input', '')} onChange={(e) => set('input', e.target.value)} style={{ fontFamily: 'monospace', fontSize: 12 }} />
           </div>
         </>
       )}
       <p style={{ fontSize: 11, color: 'var(--muted)', margin: '8px 0 0' }}>
-        Returns <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>{'{ status, body }'}</code>
+        {fl("Returns")} <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>{'{ status, body }'}</code>
       </p>
     </>
   )
@@ -425,33 +426,33 @@ export function PerplexityConfig({ config, set, str }: ConfigProps) {
   return (
     <>
       <div className="field">
-        <label>API Key <span style={{ color: 'var(--danger)' }}>*</span></label>
+        <label>{fl("API Key")} <span style={{ color: 'var(--danger)' }}>*</span></label>
         <input type="password" placeholder="pplx-…" value={str('api_key', '')} onChange={(e) => set('api_key', e.target.value)} style={{ fontFamily: 'monospace', fontSize: 12 }} />
       </div>
       <div className="field">
-        <label>Model</label>
+        <label>{fl("Model")}</label>
         <select value={str('model', 'llama-3.1-sonar-small-128k-online')} onChange={(e) => set('model', e.target.value)}>
           {MODELS.map((m) => <option key={m} value={m}>{m}</option>)}
         </select>
       </div>
       <div className="field">
-        <label>Prompt <span style={{ color: 'var(--danger)' }}>*</span></label>
+        <label>{fl("Prompt")} <span style={{ color: 'var(--danger)' }}>*</span></label>
         <textarea rows={3} placeholder="{{input.question}}" value={str('prompt', '')} onChange={(e) => set('prompt', e.target.value)} style={{ fontFamily: 'monospace', fontSize: 12 }} />
       </div>
       <div className="field">
-        <label>Temperature</label>
+        <label>{fl("Temperature")}</label>
         <input type="number" min={0} max={2} step={0.1} placeholder="0.2" value={(config['temperature'] as number | undefined) ?? ''} onChange={(e) => set('temperature', e.target.value ? parseFloat(e.target.value) : undefined)} />
       </div>
       <div className="field">
-        <label>Max Tokens</label>
+        <label>{fl("Max Tokens")}</label>
         <input type="number" min={1} placeholder="1024" value={(config['max_tokens'] as number | undefined) ?? ''} onChange={(e) => set('max_tokens', e.target.value ? parseInt(e.target.value) : undefined)} />
       </div>
       <div className="field" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
         <input type="checkbox" id="pplx-citations" checked={!!config.return_citations} onChange={(e) => set('return_citations', e.target.checked)} />
-        <label htmlFor="pplx-citations" style={{ margin: 0 }}>Return Citations</label>
+        <label htmlFor="pplx-citations" style={{ margin: 0 }}>{fl("Return Citations")}</label>
       </div>
       <p style={{ fontSize: 11, color: 'var(--muted)', margin: '8px 0 0' }}>
-        Online models perform real-time web search. Returns <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>{'{ status, body }'}</code>
+        {fl("Online models perform real-time web search. Returns")} <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>{'{ status, body }'}</code>
       </p>
     </>
   )
@@ -466,11 +467,11 @@ export function CohereConfig({ config, set, str }: ConfigProps) {
   return (
     <>
       <div className="field">
-        <label>API Key <span style={{ color: 'var(--danger)' }}>*</span></label>
+        <label>{fl("API Key")} <span style={{ color: 'var(--danger)' }}>*</span></label>
         <input type="password" value={str('api_key', '')} onChange={(e) => set('api_key', e.target.value)} style={{ fontFamily: 'monospace', fontSize: 12 }} />
       </div>
       <div className="field">
-        <label>Operation</label>
+        <label>{fl("Operation")}</label>
         <select value={operation} onChange={(e) => set('operation', e.target.value)}>
           {OPERATIONS.map((op) => <option key={op} value={op}>{op}</option>)}
         </select>
@@ -478,17 +479,17 @@ export function CohereConfig({ config, set, str }: ConfigProps) {
       {operation === 'chat' && (
         <>
           <div className="field">
-            <label>Model</label>
+            <label>{fl("Model")}</label>
             <select value={str('model', 'command-r-plus')} onChange={(e) => set('model', e.target.value)}>
               {CHAT_MODELS.map((m) => <option key={m} value={m}>{m}</option>)}
             </select>
           </div>
           <div className="field">
-            <label>Message <span style={{ color: 'var(--danger)' }}>*</span></label>
+            <label>{fl("Message")} <span style={{ color: 'var(--danger)' }}>*</span></label>
             <textarea rows={3} placeholder="{{input.message}}" value={str('message', '')} onChange={(e) => set('message', e.target.value)} style={{ fontFamily: 'monospace', fontSize: 12 }} />
           </div>
           <div className="field">
-            <label>Temperature</label>
+            <label>{fl("Temperature")}</label>
             <input type="number" min={0} max={1} step={0.1} value={(config['temperature'] as number | undefined) ?? ''} onChange={(e) => set('temperature', e.target.value ? parseFloat(e.target.value) : undefined)} />
           </div>
         </>
@@ -496,17 +497,17 @@ export function CohereConfig({ config, set, str }: ConfigProps) {
       {operation === 'embed' && (
         <>
           <div className="field">
-            <label>Model</label>
+            <label>{fl("Model")}</label>
             <select value={str('model', 'embed-english-v3.0')} onChange={(e) => set('model', e.target.value)}>
               {EMBED_MODELS.map((m) => <option key={m} value={m}>{m}</option>)}
             </select>
           </div>
           <div className="field">
-            <label>Texts (JSON array) <span style={{ color: 'var(--danger)' }}>*</span></label>
+            <label>{fl("Texts (JSON array)")} <span style={{ color: 'var(--danger)' }}>*</span></label>
             <textarea rows={2} placeholder='["{{input.text}}"]' value={typeof config.texts === 'object' ? JSON.stringify(config.texts) : str('texts', '')} onChange={(e) => { try { set('texts', JSON.parse(e.target.value)) } catch { set('texts', e.target.value) } }} style={{ fontFamily: 'monospace', fontSize: 12 }} />
           </div>
           <div className="field">
-            <label>Input Type</label>
+            <label>{fl("Input Type")}</label>
             <select value={str('input_type', 'search_document')} onChange={(e) => set('input_type', e.target.value)}>
               {['search_document','search_query','classification','clustering'].map((t) => <option key={t} value={t}>{t}</option>)}
             </select>
@@ -516,17 +517,17 @@ export function CohereConfig({ config, set, str }: ConfigProps) {
       {operation === 'rerank' && (
         <>
           <div className="field">
-            <label>Model</label>
+            <label>{fl("Model")}</label>
             <select value={str('model', 'rerank-english-v3.0')} onChange={(e) => set('model', e.target.value)}>
               {RERANK_MODELS.map((m) => <option key={m} value={m}>{m}</option>)}
             </select>
           </div>
           <div className="field">
-            <label>Query <span style={{ color: 'var(--danger)' }}>*</span></label>
+            <label>{fl("Query")} <span style={{ color: 'var(--danger)' }}>*</span></label>
             <input placeholder="{{input.query}}" value={str('query', '')} onChange={(e) => set('query', e.target.value)} />
           </div>
           <div className="field">
-            <label>Documents (JSON array) <span style={{ color: 'var(--danger)' }}>*</span></label>
+            <label>{fl("Documents (JSON array)")} <span style={{ color: 'var(--danger)' }}>*</span></label>
             <textarea rows={3} placeholder='["doc1","doc2"]' value={typeof config.documents === 'object' ? JSON.stringify(config.documents) : str('documents', '')} onChange={(e) => { try { set('documents', JSON.parse(e.target.value)) } catch { set('documents', e.target.value) } }} style={{ fontFamily: 'monospace', fontSize: 12 }} />
           </div>
         </>
@@ -534,17 +535,17 @@ export function CohereConfig({ config, set, str }: ConfigProps) {
       {operation === 'classify' && (
         <>
           <div className="field">
-            <label>Inputs (JSON array) <span style={{ color: 'var(--danger)' }}>*</span></label>
+            <label>{fl("Inputs (JSON array)")} <span style={{ color: 'var(--danger)' }}>*</span></label>
             <textarea rows={2} placeholder='["text to classify"]' value={typeof config.inputs === 'object' ? JSON.stringify(config.inputs) : str('inputs', '')} onChange={(e) => { try { set('inputs', JSON.parse(e.target.value)) } catch { set('inputs', e.target.value) } }} style={{ fontFamily: 'monospace', fontSize: 12 }} />
           </div>
           <div className="field">
-            <label>Examples (JSON array) <span style={{ color: 'var(--danger)' }}>*</span></label>
+            <label>{fl("Examples (JSON array)")} <span style={{ color: 'var(--danger)' }}>*</span></label>
             <textarea rows={3} placeholder='[{"text":"pos example","label":"positive"}]' value={typeof config.examples === 'object' ? JSON.stringify(config.examples) : str('examples', '')} onChange={(e) => { try { set('examples', JSON.parse(e.target.value)) } catch { set('examples', e.target.value) } }} style={{ fontFamily: 'monospace', fontSize: 12 }} />
           </div>
         </>
       )}
       <p style={{ fontSize: 11, color: 'var(--muted)', margin: '8px 0 0' }}>
-        Returns <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>{'{ status, body }'}</code>
+        {fl("Returns")} <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>{'{ status, body }'}</code>
       </p>
     </>
   )
@@ -556,11 +557,11 @@ export function ReplicateConfig({ config, set, str }: ConfigProps) {
   return (
     <>
       <div className="field">
-        <label>API Token <span style={{ color: 'var(--danger)' }}>*</span></label>
+        <label>{fl("API Token")} <span style={{ color: 'var(--danger)' }}>*</span></label>
         <input type="password" placeholder="r8_…" value={str('api_token', '')} onChange={(e) => set('api_token', e.target.value)} style={{ fontFamily: 'monospace', fontSize: 12 }} />
       </div>
       <div className="field">
-        <label>Operation</label>
+        <label>{fl("Operation")}</label>
         <select value={operation} onChange={(e) => set('operation', e.target.value)}>
           {OPERATIONS.map((op) => <option key={op} value={op}>{op}</option>)}
         </select>
@@ -568,23 +569,23 @@ export function ReplicateConfig({ config, set, str }: ConfigProps) {
       {['run', 'create_prediction'].includes(operation) && (
         <>
           <div className="field">
-            <label>Model Version <span style={{ color: 'var(--danger)' }}>*</span></label>
+            <label>{fl("Model Version")} <span style={{ color: 'var(--danger)' }}>*</span></label>
             <input placeholder="abc123… (version hash)" value={str('version', '')} onChange={(e) => set('version', e.target.value)} style={{ fontFamily: 'monospace', fontSize: 12 }} />
           </div>
           <div className="field">
-            <label>Input (JSON)</label>
+            <label>{fl("Input (JSON)")}</label>
             <textarea rows={3} placeholder='{"prompt": "{{input.prompt}}"}' value={typeof config.input === 'object' ? JSON.stringify(config.input, null, 2) : str('input', '')} onChange={(e) => { try { set('input', JSON.parse(e.target.value)) } catch { set('input', e.target.value) } }} style={{ fontFamily: 'monospace', fontSize: 12 }} />
           </div>
         </>
       )}
       {operation === 'get_prediction' && (
         <div className="field">
-          <label>Prediction ID <span style={{ color: 'var(--danger)' }}>*</span></label>
+          <label>{fl("Prediction ID")} <span style={{ color: 'var(--danger)' }}>*</span></label>
           <input placeholder="{{input.prediction_id}}" value={str('prediction_id', '')} onChange={(e) => set('prediction_id', e.target.value)} />
         </div>
       )}
       <p style={{ fontSize: 11, color: 'var(--muted)', margin: '8px 0 0' }}>
-        Calls the Replicate REST API. Returns <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>{'{ status, body }'}</code>
+        {fl("Calls the Replicate REST API. Returns")} <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>{'{ status, body }'}</code>
       </p>
     </>
   )
@@ -596,11 +597,11 @@ export function GroqConfig({ config, set, str }: ConfigProps) {
   return (
     <>
       <div className="field">
-        <label>API Key <span style={{ color: 'var(--danger)' }}>*</span></label>
+        <label>{fl("API Key")} <span style={{ color: 'var(--danger)' }}>*</span></label>
         <input type="password" placeholder="gsk_…" value={str('api_key', '')} onChange={(e) => set('api_key', e.target.value)} style={{ fontFamily: 'monospace', fontSize: 12 }} />
       </div>
       <div className="field">
-        <label>Operation</label>
+        <label>{fl("Operation")}</label>
         <select value={operation} onChange={(e) => set('operation', e.target.value)}>
           {OPERATIONS.map((op) => <option key={op} value={op}>{op}</option>)}
         </select>
@@ -608,25 +609,25 @@ export function GroqConfig({ config, set, str }: ConfigProps) {
       {operation === 'chat' && (
         <>
           <div className="field">
-            <label>Model</label>
+            <label>{fl("Model")}</label>
             <input placeholder="llama3-8b-8192" value={str('model', '')} onChange={(e) => set('model', e.target.value)} style={{ fontFamily: 'monospace', fontSize: 12 }} />
           </div>
           <div className="field">
-            <label>Messages (JSON array)</label>
+            <label>{fl("Messages (JSON array)")}</label>
             <textarea rows={4} placeholder='[{"role":"user","content":"Hello"}]' value={typeof config.messages === 'object' ? JSON.stringify(config.messages, null, 2) : str('messages', '')} onChange={(e) => { try { set('messages', JSON.parse(e.target.value)) } catch { set('messages', e.target.value) } }} style={{ fontFamily: 'monospace', fontSize: 12 }} />
           </div>
           <div className="field">
-            <label>Temperature</label>
+            <label>{fl("Temperature")}</label>
             <input type="number" min={0} max={2} step={0.1} placeholder="1.0" value={(config['temperature'] as number | undefined) ?? ''} onChange={(e) => set('temperature', e.target.value ? parseFloat(e.target.value) : undefined)} />
           </div>
           <div className="field">
-            <label>Max Tokens</label>
+            <label>{fl("Max Tokens")}</label>
             <input type="number" min={1} placeholder="1024" value={(config['max_tokens'] as number | undefined) ?? ''} onChange={(e) => set('max_tokens', e.target.value ? parseInt(e.target.value) : undefined)} />
           </div>
         </>
       )}
       <p style={{ fontSize: 11, color: 'var(--muted)', margin: '8px 0 0' }}>
-        Ultra-fast LLM inference. Models: llama3-8b-8192, llama3-70b-8192, mixtral-8x7b-32768, gemma-7b-it. Returns <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>{'{ status, body }'}</code>
+        {fl("Ultra-fast LLM inference. Models: llama3-8b-8192, llama3-70b-8192, mixtral-8x7b-32768, gemma-7b-it. Returns")} <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>{'{ status, body }'}</code>
       </p>
     </>
   )
@@ -638,11 +639,11 @@ export function OpenrouterConfig({ config, set, str }: ConfigProps) {
   return (
     <>
       <div className="field">
-        <label>API Key <span style={{ color: 'var(--danger)' }}>*</span></label>
+        <label>{fl("API Key")} <span style={{ color: 'var(--danger)' }}>*</span></label>
         <input type="password" placeholder="sk-or-…" value={str('api_key', '')} onChange={(e) => set('api_key', e.target.value)} style={{ fontFamily: 'monospace', fontSize: 12 }} />
       </div>
       <div className="field">
-        <label>Operation</label>
+        <label>{fl("Operation")}</label>
         <select value={operation} onChange={(e) => set('operation', e.target.value)}>
           {OPERATIONS.map((op) => <option key={op} value={op}>{op}</option>)}
         </select>
@@ -650,25 +651,25 @@ export function OpenrouterConfig({ config, set, str }: ConfigProps) {
       {operation === 'chat' && (
         <>
           <div className="field">
-            <label>Model</label>
+            <label>{fl("Model")}</label>
             <input placeholder="openai/gpt-4o" value={str('model', '')} onChange={(e) => set('model', e.target.value)} style={{ fontFamily: 'monospace', fontSize: 12 }} />
           </div>
           <div className="field">
-            <label>Messages (JSON array)</label>
+            <label>{fl("Messages (JSON array)")}</label>
             <textarea rows={4} placeholder='[{"role":"user","content":"Hello"}]' value={typeof config.messages === 'object' ? JSON.stringify(config.messages, null, 2) : str('messages', '')} onChange={(e) => { try { set('messages', JSON.parse(e.target.value)) } catch { set('messages', e.target.value) } }} style={{ fontFamily: 'monospace', fontSize: 12 }} />
           </div>
           <div className="field">
-            <label>Temperature</label>
+            <label>{fl("Temperature")}</label>
             <input type="number" min={0} max={2} step={0.1} placeholder="1.0" value={(config['temperature'] as number | undefined) ?? ''} onChange={(e) => set('temperature', e.target.value ? parseFloat(e.target.value) : undefined)} />
           </div>
           <div className="field">
-            <label>Max Tokens</label>
+            <label>{fl("Max Tokens")}</label>
             <input type="number" min={1} placeholder="1024" value={(config['max_tokens'] as number | undefined) ?? ''} onChange={(e) => set('max_tokens', e.target.value ? parseInt(e.target.value) : undefined)} />
           </div>
         </>
       )}
       <p style={{ fontSize: 11, color: 'var(--muted)', margin: '8px 0 0' }}>
-        Access 100+ models from OpenAI, Anthropic, Meta, Mistral, and more. Returns <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>{'{ status, body }'}</code>
+        {fl("Access 100+ models from OpenAI, Anthropic, Meta, Mistral, and more. Returns")} <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>{'{ status, body }'}</code>
       </p>
     </>
   )
@@ -680,17 +681,17 @@ export function TogetheraiConfig({ config, set, str }: ConfigProps) {
   return (
     <>
       <div className="field">
-        <label>API Key <span style={{ color: 'var(--danger)' }}>*</span></label>
+        <label>{fl("API Key")} <span style={{ color: 'var(--danger)' }}>*</span></label>
         <input type="password" value={str('api_key', '')} onChange={(e) => set('api_key', e.target.value)} style={{ fontFamily: 'monospace', fontSize: 12 }} />
       </div>
       <div className="field">
-        <label>Operation</label>
+        <label>{fl("Operation")}</label>
         <select value={operation} onChange={(e) => set('operation', e.target.value)}>
           {OPERATIONS.map((op) => <option key={op} value={op}>{op}</option>)}
         </select>
       </div>
       <div className="field">
-        <label>Model</label>
+        <label>{fl("Model")}</label>
         <input placeholder="meta-llama/Llama-3.2-11B-Vision-Instruct-Turbo" value={str('model', '')} onChange={(e) => set('model', e.target.value)} style={{ fontFamily: 'monospace', fontSize: 12 }} />
       </div>
       {['chat', 'completions'].includes(operation) && (
@@ -700,23 +701,23 @@ export function TogetheraiConfig({ config, set, str }: ConfigProps) {
             <textarea rows={3} placeholder="{{input.prompt}}" value={str('prompt', '')} onChange={(e) => set('prompt', e.target.value)} style={{ fontFamily: 'monospace', fontSize: 12 }} />
           </div>
           <div className="field">
-            <label>Temperature</label>
+            <label>{fl("Temperature")}</label>
             <input type="number" min={0} max={2} step={0.1} placeholder="0.7" value={(config['temperature'] as number | undefined) ?? ''} onChange={(e) => set('temperature', e.target.value ? parseFloat(e.target.value) : undefined)} />
           </div>
           <div className="field">
-            <label>Max Tokens</label>
+            <label>{fl("Max Tokens")}</label>
             <input type="number" min={1} placeholder="512" value={(config['max_tokens'] as number | undefined) ?? ''} onChange={(e) => set('max_tokens', e.target.value ? parseInt(e.target.value) : undefined)} />
           </div>
         </>
       )}
       {operation === 'embeddings' && (
         <div className="field">
-          <label>Input</label>
+          <label>{fl("Input")}</label>
           <input placeholder="{{input.text}}" value={str('input', '')} onChange={(e) => set('input', e.target.value)} />
         </div>
       )}
       <p style={{ fontSize: 11, color: 'var(--muted)', margin: '8px 0 0' }}>
-        Runs open-source LLMs. Returns <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>{'{ status, body }'}</code>
+        {fl("Runs open-source LLMs. Returns")} <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>{'{ status, body }'}</code>
       </p>
     </>
   )
@@ -728,15 +729,15 @@ export function HuggingfaceConfig({ config, set, str }: ConfigProps) {
   return (
     <>
       <div className="field">
-        <label>API Token <span style={{ color: 'var(--danger)' }}>*</span></label>
+        <label>{fl("API Token")} <span style={{ color: 'var(--danger)' }}>*</span></label>
         <input type="password" placeholder="hf_…" value={str('api_token', '')} onChange={(e) => set('api_token', e.target.value)} style={{ fontFamily: 'monospace', fontSize: 12 }} />
       </div>
       <div className="field">
-        <label>Model <span style={{ color: 'var(--danger)' }}>*</span></label>
+        <label>{fl("Model")} <span style={{ color: 'var(--danger)' }}>*</span></label>
         <input placeholder="facebook/bart-large-cnn" value={str('model', '')} onChange={(e) => set('model', e.target.value)} style={{ fontFamily: 'monospace', fontSize: 12 }} />
       </div>
       <div className="field">
-        <label>Operation</label>
+        <label>{fl("Operation")}</label>
         <select value={operation} onChange={(e) => set('operation', e.target.value)}>
           {OPERATIONS.map((op) => <option key={op} value={op}>{op}</option>)}
         </select>
@@ -744,11 +745,11 @@ export function HuggingfaceConfig({ config, set, str }: ConfigProps) {
       {operation === 'inference' && (
         <>
           <div className="field">
-            <label>Inputs <span style={{ color: 'var(--danger)' }}>*</span></label>
+            <label>{fl("Inputs")} <span style={{ color: 'var(--danger)' }}>*</span></label>
             <textarea rows={3} placeholder='"{{input.text}}" or {"question":"…","context":"…"}' value={str('inputs', '')} onChange={(e) => { try { set('inputs', JSON.parse(e.target.value)) } catch { set('inputs', e.target.value) } }} style={{ fontFamily: 'monospace', fontSize: 12 }} />
           </div>
           <div className="field">
-            <label>Parameters (JSON)</label>
+            <label>{fl("Parameters (JSON)")}</label>
             <textarea rows={2} placeholder='{"max_length":100}' value={typeof config.parameters === 'object' ? JSON.stringify(config.parameters) : str('parameters', '')} onChange={(e) => { try { set('parameters', JSON.parse(e.target.value)) } catch { set('parameters', e.target.value) } }} style={{ fontFamily: 'monospace', fontSize: 12 }} />
           </div>
         </>
@@ -756,11 +757,11 @@ export function HuggingfaceConfig({ config, set, str }: ConfigProps) {
       {operation === 'list_models' && (
         <>
           <div className="field">
-            <label>Search</label>
+            <label>{fl("Search")}</label>
             <input placeholder="text-classification" value={str('search', '')} onChange={(e) => set('search', e.target.value)} />
           </div>
           <div className="field">
-            <label>Limit</label>
+            <label>{fl("Limit")}</label>
             <input type="number" min={1} max={100} placeholder="20" value={(config['limit'] as number | undefined) ?? ''} onChange={(e) => set('limit', e.target.value ? parseInt(e.target.value) : undefined)} />
           </div>
         </>
@@ -778,53 +779,53 @@ export function PineconeConfig({ config, set, str }: ConfigProps) {
   return (
     <>
       <div className="field">
-        <label>API Key <span style={{ color: 'var(--danger)' }}>*</span></label>
+        <label>{fl("API Key")} <span style={{ color: 'var(--danger)' }}>*</span></label>
         <input type="password" value={str('api_key', '')} onChange={(e) => set('api_key', e.target.value)} style={{ fontFamily: 'monospace', fontSize: 12 }} />
       </div>
       <div className="field">
-        <label>Index Host <span style={{ color: 'var(--danger)' }}>*</span></label>
+        <label>{fl("Index Host")} <span style={{ color: 'var(--danger)' }}>*</span></label>
         <input placeholder="https://my-index-abc.svc.pinecone.io" value={str('index_host', '')} onChange={(e) => set('index_host', e.target.value)} style={{ fontFamily: 'monospace', fontSize: 12 }} />
       </div>
       <div className="field">
-        <label>Operation</label>
+        <label>{fl("Operation")}</label>
         <select value={operation} onChange={(e) => set('operation', e.target.value)}>
           {OPERATIONS.map((op) => <option key={op} value={op}>{op}</option>)}
         </select>
       </div>
       <div className="field">
-        <label>Namespace</label>
+        <label>{fl("Namespace")}</label>
         <input placeholder="(optional)" value={str('namespace', '')} onChange={(e) => set('namespace', e.target.value)} />
       </div>
       {operation === 'query' && (
         <>
           <div className="field">
-            <label>Vector (JSON float array) <span style={{ color: 'var(--danger)' }}>*</span></label>
+            <label>{fl("Vector (JSON float array)")} <span style={{ color: 'var(--danger)' }}>*</span></label>
             <textarea rows={2} placeholder="[0.1, 0.2, 0.3, …]" value={typeof config.vector === 'object' ? JSON.stringify(config.vector) : str('vector', '')} onChange={(e) => { try { set('vector', JSON.parse(e.target.value)) } catch { set('vector', e.target.value) } }} style={{ fontFamily: 'monospace', fontSize: 12 }} />
           </div>
           <div className="field">
-            <label>Top K</label>
+            <label>{fl("Top K")}</label>
             <input type="number" min={1} max={10000} placeholder="10" value={(config['top_k'] as number | undefined) ?? ''} onChange={(e) => set('top_k', e.target.value ? parseInt(e.target.value) : undefined)} />
           </div>
           <div className="field" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <input type="checkbox" id="pc-meta" checked={!!config.include_metadata} onChange={(e) => set('include_metadata', e.target.checked)} />
-            <label htmlFor="pc-meta" style={{ margin: 0 }}>Include Metadata</label>
+            <label htmlFor="pc-meta" style={{ margin: 0 }}>{fl("Include Metadata")}</label>
           </div>
         </>
       )}
       {operation === 'upsert' && (
         <div className="field">
-          <label>Vectors (JSON array) <span style={{ color: 'var(--danger)' }}>*</span></label>
+          <label>{fl("Vectors (JSON array)")} <span style={{ color: 'var(--danger)' }}>*</span></label>
           <textarea rows={4} placeholder='[{"id":"v1","values":[0.1,0.2],"metadata":{"text":"hello"}}]' value={typeof config.vectors === 'object' ? JSON.stringify(config.vectors, null, 2) : str('vectors', '')} onChange={(e) => { try { set('vectors', JSON.parse(e.target.value)) } catch { set('vectors', e.target.value) } }} style={{ fontFamily: 'monospace', fontSize: 12 }} />
         </div>
       )}
       {['delete', 'fetch'].includes(operation) && (
         <div className="field">
-          <label>IDs (JSON array) <span style={{ color: 'var(--danger)' }}>*</span></label>
+          <label>{fl("IDs (JSON array)")} <span style={{ color: 'var(--danger)' }}>*</span></label>
           <textarea rows={2} placeholder='["id1","id2"]' value={typeof config.ids === 'object' ? JSON.stringify(config.ids) : str('ids', '')} onChange={(e) => { try { set('ids', JSON.parse(e.target.value)) } catch { set('ids', e.target.value) } }} style={{ fontFamily: 'monospace', fontSize: 12 }} />
         </div>
       )}
       <p style={{ fontSize: 11, color: 'var(--muted)', margin: '8px 0 0' }}>
-        Returns <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>{'{ status, body }'}</code>
+        {fl("Returns")} <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>{'{ status, body }'}</code>
       </p>
     </>
   )
@@ -836,19 +837,19 @@ export function QdrantConfig({ config, set, str }: ConfigProps) {
   return (
     <>
       <div className="field">
-        <label>Server URL <span style={{ color: 'var(--danger)' }}>*</span></label>
+        <label>{fl("Server URL")} <span style={{ color: 'var(--danger)' }}>*</span></label>
         <input placeholder="https://your-cluster.qdrant.io" value={str('url', '')} onChange={(e) => set('url', e.target.value)} style={{ fontFamily: 'monospace', fontSize: 12 }} />
       </div>
       <div className="field">
-        <label>API Key</label>
+        <label>{fl("API Key")}</label>
         <input type="password" value={str('api_key', '')} onChange={(e) => set('api_key', e.target.value)} style={{ fontFamily: 'monospace', fontSize: 12 }} />
       </div>
       <div className="field">
-        <label>Collection <span style={{ color: 'var(--danger)' }}>*</span></label>
+        <label>{fl("Collection")} <span style={{ color: 'var(--danger)' }}>*</span></label>
         <input placeholder="my_collection" value={str('collection', '')} onChange={(e) => set('collection', e.target.value)} />
       </div>
       <div className="field">
-        <label>Operation</label>
+        <label>{fl("Operation")}</label>
         <select value={operation} onChange={(e) => set('operation', e.target.value)}>
           {OPERATIONS.map((op) => <option key={op} value={op}>{op}</option>)}
         </select>
@@ -856,35 +857,35 @@ export function QdrantConfig({ config, set, str }: ConfigProps) {
       {operation === 'search' && (
         <>
           <div className="field">
-            <label>Query Vector (JSON array)</label>
+            <label>{fl("Query Vector (JSON array)")}</label>
             <textarea rows={2} placeholder="[0.1, 0.2, 0.3, …]" value={typeof config.vector === 'object' ? JSON.stringify(config.vector) : str('vector', '')} onChange={(e) => { try { set('vector', JSON.parse(e.target.value)) } catch { set('vector', e.target.value) } }} style={{ fontFamily: 'monospace', fontSize: 12 }} />
           </div>
           <div className="field">
-            <label>Top K</label>
+            <label>{fl("Top K")}</label>
             <input type="number" min={1} max={100} placeholder="10" value={(config['top'] as number | undefined) ?? ''} onChange={(e) => set('top', e.target.value ? parseInt(e.target.value) : undefined)} />
           </div>
         </>
       )}
       {operation === 'upsert' && (
         <div className="field">
-          <label>Points (JSON array)</label>
+          <label>{fl("Points (JSON array)")}</label>
           <textarea rows={4} placeholder='[{"id":1,"vector":[0.1,0.2],"payload":{"text":"…"}}]' value={typeof config.points === 'object' ? JSON.stringify(config.points, null, 2) : str('points', '')} onChange={(e) => { try { set('points', JSON.parse(e.target.value)) } catch { set('points', e.target.value) } }} style={{ fontFamily: 'monospace', fontSize: 12 }} />
         </div>
       )}
       {operation === 'delete' && (
         <div className="field">
-          <label>Point IDs (JSON array)</label>
+          <label>{fl("Point IDs (JSON array)")}</label>
           <textarea rows={2} placeholder='[1, 2, 3]' value={typeof config.ids === 'object' ? JSON.stringify(config.ids) : str('ids', '')} onChange={(e) => { try { set('ids', JSON.parse(e.target.value)) } catch { set('ids', e.target.value) } }} style={{ fontFamily: 'monospace', fontSize: 12 }} />
         </div>
       )}
       {operation === 'create_collection' && (
         <div className="field">
-          <label>Vector Size</label>
+          <label>{fl("Vector Size")}</label>
           <input type="number" min={1} placeholder="1536" value={(config['vector_size'] as number | undefined) ?? ''} onChange={(e) => set('vector_size', e.target.value ? parseInt(e.target.value) : undefined)} />
         </div>
       )}
       <p style={{ fontSize: 11, color: 'var(--muted)', margin: '8px 0 0' }}>
-        High-performance vector similarity search. Returns <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>{'{ status, body }'}</code>
+        {fl("High-performance vector similarity search. Returns")} <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>{'{ status, body }'}</code>
       </p>
     </>
   )
@@ -894,31 +895,31 @@ export function RagConfig({ config, set, str, num }: ConfigProps) {
   return (
     <>
       <div className="field">
-        <label>Knowledge Base *</label>
+        <label>{fl("Knowledge Base *")}</label>
         <input placeholder="my-kb" value={str('kb')} onChange={(e) => set('kb', e.target.value)} />
         <span style={{ fontSize: 11, color: 'var(--muted)' }}>
-          Knowledge base to search (populated via the RAG ingest API).
+          {fl("Knowledge base to search (populated via the RAG ingest API).")}
         </span>
       </div>
       <div className="field">
-        <label>Query *</label>
+        <label>{fl("Query *")}</label>
         <input placeholder="{{input.question}}" value={str('query')} onChange={(e) => set('query', e.target.value)} />
         <span style={{ fontSize: 11, color: 'var(--muted)' }}>
           Supports {'{{...}}'} templates. Embedded and matched against the KB.
         </span>
       </div>
       <div className="field">
-        <label>Top K</label>
+        <label>{fl("Top K")}</label>
         <input type="number" min={1} max={50} value={num('top_k', 4)} onChange={(e) => set('top_k', e.target.value ? parseInt(e.target.value) : 4)} />
       </div>
       <div className="field">
-        <label>Retrieval mode</label>
+        <label>{fl("Retrieval mode")}</label>
         <select value={str('mode', 'vector')} onChange={(e) => set('mode', e.target.value === 'vector' ? undefined : e.target.value)}>
-          <option value="vector">vector (semantic)</option>
-          <option value="hybrid">hybrid (semantic + keyword)</option>
+          <option value="vector">{fl("vector (semantic)")}</option>
+          <option value="hybrid">{fl("hybrid (semantic + keyword)")}</option>
         </select>
         <span style={{ fontSize: 11, color: 'var(--muted)' }}>
-          Hybrid fuses vector and full-text ranking — better for exact codes/identifiers.
+          {fl("Hybrid fuses vector and full-text ranking — better for exact codes/identifiers.")}
         </span>
       </div>
       <div className="field">
@@ -927,11 +928,11 @@ export function RagConfig({ config, set, str, num }: ConfigProps) {
           Rerank results (cross-encoder)
         </label>
         <span style={{ fontSize: 11, color: 'var(--muted)' }}>
-          Reorders a larger candidate pool for precision. Uses RERANK_BASE_URL if set, else a local fallback.
+          {fl("Reorders a larger candidate pool for precision. Uses RERANK_BASE_URL if set, else a local fallback.")}
         </span>
       </div>
       <div className="field">
-        <label>Tenant ID</label>
+        <label>{fl("Tenant ID")}</label>
         <input placeholder="tenant-1" value={str('tenant_id')} onChange={(e) => set('tenant_id', e.target.value)} />
       </div>
     </>
@@ -942,33 +943,33 @@ export function RagIngestConfig({ set, str, num }: ConfigProps) {
   return (
     <>
       <div className="field">
-        <label>Knowledge Base *</label>
+        <label>{fl("Knowledge Base *")}</label>
         <input placeholder="my-kb" value={str('kb')} onChange={(e) => set('kb', e.target.value)} />
       </div>
       <div className="field">
-        <label>Document ID *</label>
+        <label>{fl("Document ID *")}</label>
         <input placeholder="{{input.id}}" value={str('doc_id')} onChange={(e) => set('doc_id', e.target.value)} />
         <span style={{ fontSize: 11, color: 'var(--muted)' }}>
           Re-ingesting the same Document ID replaces it. Supports {'{{...}}'} templates.
         </span>
       </div>
       <div className="field">
-        <label>Text *</label>
+        <label>{fl("Text *")}</label>
         <textarea rows={5} placeholder="{{input.content}}" value={str('text')} onChange={(e) => set('text', e.target.value)} />
         <span style={{ fontSize: 11, color: 'var(--muted)' }}>Document text to chunk + embed. Supports {'{{...}}'} templates.</span>
       </div>
       <div className="field" style={{ display: 'flex', gap: 8 }}>
         <div style={{ flex: 1 }}>
-          <label>Chunk size</label>
+          <label>{fl("Chunk size")}</label>
           <input type="number" min={50} max={8000} value={num('chunk_size', 1000)} onChange={(e) => set('chunk_size', e.target.value ? parseInt(e.target.value) : 1000)} />
         </div>
         <div style={{ flex: 1 }}>
-          <label>Overlap</label>
+          <label>{fl("Overlap")}</label>
           <input type="number" min={0} max={2000} value={num('overlap', 150)} onChange={(e) => set('overlap', e.target.value ? parseInt(e.target.value) : 150)} />
         </div>
       </div>
       <div className="field">
-        <label>Tenant ID</label>
+        <label>{fl("Tenant ID")}</label>
         <input placeholder="tenant-1" value={str('tenant_id')} onChange={(e) => set('tenant_id', e.target.value)} />
       </div>
     </>

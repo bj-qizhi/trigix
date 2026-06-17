@@ -2178,6 +2178,7 @@ fn node_type_to_str(node_type: &workflow_core::NodeType) -> &'static str {
         workflow_core::NodeType::StructuredOutput => "structured_output",
         workflow_core::NodeType::Classifier => "classifier",
         workflow_core::NodeType::ImageGen => "image_gen",
+        workflow_core::NodeType::VideoGen => "video_gen",
         workflow_core::NodeType::SpeechToText => "speech_to_text",
         workflow_core::NodeType::Tts => "tts",
         workflow_core::NodeType::HtmlExtract => "html_extract",

@@ -21,6 +21,7 @@ import { TestCasesModal } from './TestCasesModal'
 import { CommentsModal } from './CommentsModal'
 import { useTheme } from '../useTheme'
 import { useLocale } from '../useLocale'
+import { setLabelLocale } from './panels/i18nLabels'
 
 interface Props {
   workflowId: string
@@ -54,11 +55,11 @@ const NODE_TYPE_LIST: { type: NodeType; label: string; color: string; desc: stri
   { type: 'imap',         label: 'IMAP',          color: 'var(--node-slack)',  desc: 'Read an IMAP mailbox over TLS. Config: host, port, username, password, operation (list_messages/list_mailboxes), mailbox, limit. Returns {messages, count}.', category: 'Integration' },
   { type: 'slack',        label: 'Slack',         color: 'var(--node-slack)',   desc: 'Sends a message to a Slack channel via an Incoming Webhook URL. Supports {{...}} templates in text.', category: 'Integration' },
   { type: 'email',        label: 'Email',         color: 'var(--node-email)',   desc: 'Sends an email via the SendGrid API. Configure to, subject, body, and API key (use {{credential.*}}).', category: 'Integration' },
-  { type: 'openai',       label: 'OpenAI',        color: 'var(--node-openai)',   desc: 'Calls OpenAI Chat Completions (gpt-4o, gpt-4o-mini, o1). Returns {content, model, usage}.', category: 'AI' },
+  { type: 'openai',       label: 'OpenAI',        color: 'var(--node-openai)',   desc: 'Calls OpenAI Chat Completions (gpt-5.5, gpt-5.4 / -mini, gpt-4.1). Returns {content, model, usage}.', category: 'AI' },
   { type: 'gemini',       label: 'Gemini',        color: 'var(--node-gemini)',   desc: 'Calls Google Gemini (2.0-flash, 1.5-pro, 1.5-flash, thinking). Returns {content, model, usage}.', category: 'AI' },
   { type: 'vertex',       label: 'Vertex AI',     color: 'var(--node-gemini)',  desc: 'Google Vertex AI (Gemini generateContent) via an OAuth2 access token. Config: access_token, project, location, model, prompt_template, system_prompt, max_tokens, temperature. Returns {content, model, usage}.', category: 'AI' },
   { type: 'bedrock',      label: 'AWS Bedrock',   color: 'var(--node-awss3)',  desc: 'AWS Bedrock InvokeModel (SigV4-signed). Config: access_key_id, secret_access_key, region, model_id, body (model-native JSON). Returns {status, body}.', category: 'AI' },
-  { type: 'claude',       label: 'Claude',        color: 'var(--node-claude)',   desc: 'Calls Anthropic Claude (claude-opus-4-7, claude-sonnet-4-6, claude-haiku-4-5). Returns {content, model, usage}.', category: 'AI' },
+  { type: 'claude',       label: 'Claude',        color: 'var(--node-claude)',   desc: 'Calls Anthropic Claude (claude-opus-4-8, claude-sonnet-4-6, claude-haiku-4-5). Returns {content, model, usage}.', category: 'AI' },
   { type: 'agent',        label: 'Agent',         color: 'var(--node-agent)',   desc: 'Runs a Python AI agent via the AI Runtime. Configures model, prompt and system instructions.', category: 'AI' },
   { type: 'rag',          label: 'RAG',           color: 'var(--node-rag)',   desc: 'Retrieves the most relevant chunks from a pgvector knowledge base via the AI Runtime. Returns {results}.', category: 'AI' },
   { type: 'rag_ingest',   label: 'RAG Ingest',    color: 'var(--node-rag)',   desc: 'Ingests a document into a pgvector knowledge base via the AI Runtime (chunk + embed + store). Returns {doc_id, chunks}.', category: 'AI' },
@@ -68,6 +69,7 @@ const NODE_TYPE_LIST: { type: NodeType; label: string; color: string; desc: stri
   { type: 'structured_output', label: 'Structured Output', color: 'var(--node-openai)', desc: 'Get a JSON object from an LLM (json_object mode). Config: api_key, base_url, model, prompt_template, schema. Returns {data, raw, model}.', category: 'AI' },
   { type: 'classifier',   label: 'Classifier',    color: 'var(--node-openai)',  desc: 'Classify input into one of N categories via an LLM. Config: api_key, base_url, model, input, categories. Returns {category, raw}.', category: 'AI' },
   { type: 'image_gen',    label: 'Image Gen',     color: 'var(--node-openai)',  desc: 'Generate images (OpenAI-compatible). Config: api_key, base_url, model, prompt, size, n. Returns {status, body}.', category: 'AI' },
+  { type: 'video_gen',    label: 'Video Gen',     color: 'var(--node-openai)',  desc: 'Generate video (Seedance / Volcengine Ark, Replicate, or generic). Submits a task then polls until done. Config: provider, api_key, model, prompt, image_url, duration, ratio, resolution. Returns {video_url, status, raw}.', category: 'AI' },
   { type: 'speech_to_text', label: 'Speech → Text', color: 'var(--node-openai)',  desc: 'Transcribe audio (Whisper-compatible). Config: api_key, base_url, model, audio_base64, filename, language. Returns {status, text}.', category: 'AI' },
   { type: 'tts',          label: 'Text → Speech', color: 'var(--node-openai)',  desc: 'Synthesize speech (OpenAI-compatible). Config: api_key, base_url, model, input, voice, format. Returns {audio_base64, format}.', category: 'AI' },
   { type: 'custom',       label: 'Custom',        color: 'var(--node-custom)',   desc: 'Runs a community/third-party node served over HTTP (node SDK). Pick a registered custom node.', category: 'AI' },
@@ -199,7 +201,7 @@ const NODE_TYPE_LIST: { type: NodeType; label: string; color: string; desc: stri
   { type: 'ernie',        label: 'ERNIE 文心一言',  color: 'var(--node-ernie)',  desc: 'Call Baidu ERNIE (Wenxin) via OAuth token exchange. Config: api_key, secret_key, model, prompt_template, system_prompt, max_tokens, temperature. Returns {content, model, usage}.', category: 'AI' },
   { type: 'hunyuan',      label: 'Hunyuan 混元',    color: 'var(--node-hunyuan)',  desc: 'Call Tencent Hunyuan (OpenAI-compatible). Config: api_key, model, prompt_template, system_prompt, max_tokens, temperature. Returns {content, model, usage}.', category: 'AI' },
   { type: 'azure_openai', label: 'Azure OpenAI',   color: 'var(--node-openai)',  desc: 'Call Azure OpenAI deployments. Config: endpoint, deployment, api_version (2024-02-01), api_key, prompt_template, system_prompt, max_tokens, temperature. Returns {content, model, usage}.', category: 'AI' },
-  { type: 'openrouter',   label: 'OpenRouter',     color: 'var(--node-openrouter)',  desc: 'Access 100+ LLMs via OpenRouter. Config: api_key, operation (chat/models), model (e.g. openai/gpt-4o), messages, temperature, max_tokens. Returns {status, body}.', category: 'AI' },
+  { type: 'openrouter',   label: 'OpenRouter',     color: 'var(--node-openrouter)',  desc: 'Access 100+ LLMs via OpenRouter. Config: api_key, operation (chat/models), model (e.g. openai/gpt-5.4), messages, temperature, max_tokens. Returns {status, body}.', category: 'AI' },
   { type: 'qdrant',       label: 'Qdrant',         color: 'var(--node-qdrant)',  desc: 'Vector search with Qdrant. Config: url, api_key, collection, operation (search/upsert/delete/get_collection/create_collection), vector, top, points. Returns {status, body}.', category: 'AI' },
   { type: 'weaviate',     label: 'Weaviate',       color: 'var(--node-qdrant)',  desc: 'Weaviate vector store. Config: host, api_key, operation (query/create_object/get_object/delete_object), query (GraphQL), class, properties, vector, id. Returns {status, body}.', category: 'AI' },
   { type: 'chroma',       label: 'Chroma',         color: 'var(--node-qdrant)',  desc: 'Chroma vector store. Config: host, api_key, operation (query/add/delete/get_collection), collection, collection_id, query_embeddings, n_results, ids, embeddings, documents. Returns {status, body}.', category: 'AI' },
@@ -312,7 +314,7 @@ const NODE_ZH: Record<string, { labelZh: string; descZh: string }> = {
   neon:         { labelZh: 'Neon',        descZh: '管理 Neon Serverless Postgres，支持列出和创建项目及分支。' },
   copper:       { labelZh: 'Copper CRM',  descZh: '通过 Copper 实现 CRM 自动化，支持联系人、线索和商机管理。' },
   // AI
-  openai:       { labelZh: 'OpenAI',      descZh: '调用 OpenAI Chat Completions（gpt-4o、gpt-4o-mini、o1），返回 {content, model, usage}。' },
+  openai:       { labelZh: 'OpenAI',      descZh: '调用 OpenAI Chat Completions（gpt-5.5、gpt-5.4/-mini、gpt-4.1 等），返回 {content, model, usage}。' },
   gemini:       { labelZh: 'Gemini',      descZh: '调用 Google Gemini（2.0-flash、1.5-pro、thinking），返回 {content, model, usage}。' },
   claude:       { labelZh: 'Claude',      descZh: '调用 Anthropic Claude（opus-4-7、sonnet-4-6、haiku-4-5），返回 {content, model, usage}。' },
   agent:        { labelZh: 'AI 智能体',   descZh: '通过 AI Runtime 运行 Python AI 智能体，配置模型、提示词和系统指令。' },
@@ -354,6 +356,67 @@ const NODE_ZH: Record<string, { labelZh: string; descZh: string }> = {
   // Utility
   note:         { labelZh: '备注',        descZh: '文档注释（便利贴），不执行也不影响工作流数据流。' },
   random:       { labelZh: '随机',        descZh: '生成随机值，支持 UUID、数字（可设范围）、布尔值和从数组随机选取。' },
+  hash:         { labelZh: '哈希 / HMAC', descZh: '计算 SHA-256/384/512 或 HMAC 摘要，输出 hex/base64/base64url。' },
+  jwt:          { labelZh: 'JWT',         descZh: '签发或校验 HMAC JWT（HS256/384/512），支持过期时间，返回 token 或校验结果。' },
+  zip:          { labelZh: '压缩包',      descZh: '创建或解压 zip 包（base64 载荷），返回 zip_base64 或文件列表。' },
+  image:        { labelZh: '图片处理',    descZh: '图片缩放 / 格式转换 / 取元数据（base64 进出）。' },
+  pdf_extract:  { labelZh: 'PDF 提取',    descZh: '从 base64 PDF 中抽取文本，返回 text 与字符数。' },
+  ocr:          { labelZh: 'OCR 识别',    descZh: '通过 tesseract CLI 对图片做 OCR（执行机需安装 tesseract），返回识别文本。' },
+  html_extract: { labelZh: 'HTML 提取',   descZh: '按 CSS 选择器从 HTML 中抽取内容（text/html/attr），返回匹配结果。' },
+  rss:          { labelZh: 'RSS 订阅',    descZh: '读取 RSS/Atom/JSON 订阅源，返回标题与条目列表。' },
+  wait:         { labelZh: '等待',        descZh: '暂停运行：按时长（秒或 RFC3339 时刻，自动恢复）或挂起直到外部恢复。' },
+  custom:       { labelZh: '自定义节点',  descZh: '运行通过 HTTP 提供的社区/第三方节点（Node SDK），选择已注册的自定义节点。' },
+  // Data / RAG
+  rag:          { labelZh: 'RAG 检索',    descZh: '通过 AI 运行时从 pgvector 知识库检索最相关的文本块，返回 results。' },
+  rag_ingest:   { labelZh: 'RAG 入库',    descZh: '通过 AI 运行时将文档写入 pgvector 知识库（分块 + 向量化 + 存储）。' },
+  embedding:    { labelZh: '嵌入向量',    descZh: '调用 OpenAI 兼容接口对文本做向量化，返回 embeddings 与用量。' },
+  reranker:     { labelZh: '重排序',      descZh: '按 query 对文档列表重新排序（Cohere/Jina 风格）。' },
+  text_splitter:{ labelZh: '文本分块',    descZh: '将文本切成带重叠、UTF-8 安全的块，返回 chunks 与数量。' },
+  structured_output: { labelZh: '结构化输出', descZh: '让 LLM 以 json_object 模式输出 JSON 对象，返回 data 与原始内容。' },
+  classifier:   { labelZh: '分类器',      descZh: '用 LLM 把输入归类到 N 个类别之一，返回 category。' },
+  image_gen:    { labelZh: '图像生成',    descZh: '调用 OpenAI 兼容图像接口生成图片，可设尺寸与数量。' },
+  video_gen:    { labelZh: '视频生成',    descZh: '生成视频（Seedance / 火山方舟、Replicate 或通用接口）：提交任务后轮询直到完成，返回 video_url。可配 provider、model、prompt、image_url、时长、比例等。' },
+  speech_to_text:{ labelZh: '语音转文字', descZh: '语音转写（Whisper 兼容），返回识别文本。' },
+  tts:          { labelZh: '文字转语音',  descZh: '文本合成语音（OpenAI 兼容），返回 base64 音频。' },
+  // AI providers
+  azure_openai: { labelZh: 'Azure OpenAI', descZh: '调用 Azure OpenAI 部署，按 endpoint/deployment/api_version 配置，返回内容与用量。' },
+  vertex:       { labelZh: 'Vertex AI',   descZh: '调用 Google Vertex AI（Gemini generateContent），用 OAuth2 令牌，返回内容与用量。' },
+  bedrock:      { labelZh: 'AWS Bedrock', descZh: 'AWS Bedrock InvokeModel（SigV4 签名），请求体按模型原生 schema。' },
+  grok:         { labelZh: 'xAI Grok',    descZh: '调用 xAI Grok（OpenAI 兼容），返回内容与用量。' },
+  ollama:       { labelZh: 'Ollama',      descZh: '调用自托管 Ollama 服务（OpenAI 兼容，可配置 base_url），返回内容与用量。' },
+  deepseek:     { labelZh: 'DeepSeek',    descZh: '调用 DeepSeek（OpenAI 兼容，默认 deepseek-v4-flash），返回内容与用量。' },
+  qwen:         { labelZh: '通义千问',    descZh: '调用阿里通义千问 / DashScope（OpenAI 兼容），返回内容与用量。' },
+  zhipu:        { labelZh: '智谱 GLM',    descZh: '调用智谱 GLM（OpenAI 兼容，默认 glm-4.6），返回内容与用量。' },
+  moonshot:     { labelZh: 'Moonshot (Kimi)', descZh: '调用月之暗面 Kimi（OpenAI 兼容，默认 kimi-latest），返回内容与用量。' },
+  doubao:       { labelZh: '豆包',        descZh: '调用火山引擎豆包（OpenAI 兼容，model 填推理接入点 ID），返回内容与用量。' },
+  minimax:      { labelZh: 'MiniMax',     descZh: '调用 MiniMax（OpenAI 兼容，默认 MiniMax-Text-01），返回内容与用量。' },
+  ernie:        { labelZh: '文心一言',    descZh: '通过 OAuth 令牌交换调用百度文心一言，返回内容与用量。' },
+  hunyuan:      { labelZh: '混元',        descZh: '调用腾讯混元（OpenAI 兼容），返回内容与用量。' },
+  // Databases
+  mysql:        { labelZh: 'MySQL',       descZh: '对 MySQL 执行 SQL 查询，SELECT 返回行数据，DML 返回影响行数。' },
+  snowflake:    { labelZh: 'Snowflake',   descZh: '通过 Snowflake SQL API v2 执行 SQL（bearer token）。' },
+  bigquery:     { labelZh: 'BigQuery',    descZh: '通过 BigQuery jobs.query REST 执行查询（OAuth2 令牌）。' },
+  sqlserver:    { labelZh: 'SQL Server',  descZh: '对 Microsoft SQL Server 执行 SQL（纯 Rust TDS）。' },
+  clickhouse:   { labelZh: 'ClickHouse',  descZh: '通过 HTTP 接口对 ClickHouse 执行 SQL；SELECT 自动追加 FORMAT。' },
+  mongodb:      { labelZh: 'MongoDB',     descZh: 'MongoDB（Atlas Data API）：增删改查与聚合。' },
+  // Vector stores
+  weaviate:     { labelZh: 'Weaviate',    descZh: 'Weaviate 向量库：GraphQL 检索或对象增删查（REST）。' },
+  chroma:       { labelZh: 'Chroma',      descZh: 'Chroma 向量库：查询/添加/删除向量或解析 collection（REST）。' },
+  milvus:       { labelZh: 'Milvus',      descZh: 'Milvus / Zilliz 向量库（REST API v2）：检索/插入/查询/删除。' },
+  // Storage / files / messaging
+  gcs:          { labelZh: '云存储 (GCS)', descZh: 'Google Cloud Storage（JSON API）：用 OAuth2 令牌增删查对象与上传下载。' },
+  azure_blob:   { labelZh: 'Azure Blob',  descZh: 'Azure Blob 存储（REST + SAS）：增删查 Blob。' },
+  sqs:          { labelZh: 'AWS SQS',     descZh: 'AWS SQS（SigV4 签名）：发送/接收/删除消息。' },
+  sns:          { labelZh: 'AWS SNS',     descZh: 'AWS SNS Publish（SigV4 签名）：发到 topic / target ARN / 手机号。' },
+  kafka:        { labelZh: 'Kafka',       descZh: '通过 Confluent REST Proxy 向 Kafka topic 生产消息。' },
+  rabbitmq:     { labelZh: 'RabbitMQ',    descZh: 'RabbitMQ 管理 HTTP API：发布/拉取消息/列出队列。' },
+  ftp:          { labelZh: 'FTP',         descZh: 'FTP / FTPS 文件传输：列目录/下载/上传/删除（base64 载荷）。' },
+  sftp:         { labelZh: 'SFTP',        descZh: 'SFTP over SSH（纯 Rust，密码或私钥）：列目录/下载/上传/删除。' },
+  ssh:          { labelZh: 'SSH',         descZh: 'SSH 执行命令（密码或私钥），返回 stdout/stderr/exit。' },
+  imap:         { labelZh: 'IMAP',        descZh: 'IMAP over TLS 读邮箱：最近邮件或邮箱列表。' },
+  feishu:       { labelZh: '飞书 / Lark', descZh: '飞书/Lark 发消息：自定义机器人 webhook 或 App 消息 API。' },
+  dingtalk:     { labelZh: '钉钉',        descZh: '钉钉自定义机器人发消息（可选加签），支持 text/markdown。' },
+  wecom:        { labelZh: '企业微信',    descZh: '企业微信群机器人发消息，支持 text/markdown。' },
 }
 
 function highlightMatch(text: string, query: string): ReactNode {
@@ -376,6 +439,9 @@ export function WorkflowEditor({ workflowId, onBack, initialInput }: Props) {
   const { theme, toggle: toggleTheme } = useTheme()
   const { locale, toggle: toggleLocale, t } = useLocale()
   const zh = locale === 'zh'
+  // Share the active locale with the config-panel label dictionary (fl()) and
+  // the canvas node-title map, which render inside this editor subtree.
+  setLabelLocale(locale)
   const [workflow, setWorkflow]       = useState<WorkflowRecord | null>(null)
   const [version, setVersion]         = useState<WorkflowVersionRecord | null>(null)
   const [nodes, setNodes]             = useState<FlowNode[]>([])
@@ -2253,6 +2319,7 @@ export function WorkflowEditor({ workflowId, onBack, initialInput }: Props) {
             webhookSecret={webhookSecret}
             onDuplicate={selectedNode ? handleDuplicateNode : undefined}
             upstreamNodes={upstreamNodes}
+            upstreamResults={nodeStatuses}
             onSelectExecution={async (id) => {
               try {
                 const rec = await api.getExecution(auth!.tenantId, id)

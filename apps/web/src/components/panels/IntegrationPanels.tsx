@@ -3,11 +3,12 @@
 
 import type { ReactNode } from 'react'
 import type { ConfigProps } from './types'
+import { fl } from './i18nLabels'
 
 function TemplateHint() {
   return (
     <p style={{ fontSize: 11, color: 'var(--muted)', marginTop: -6, lineHeight: 1.6 }}>
-      Templates:{' '}
+      {fl("Templates:")}{' '}
       <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>{'{{input.field}}'}</code>
       {' · '}
       <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>{'{{node_id.field}}'}</code>
@@ -48,7 +49,7 @@ export function SlackConfig({ set, str }: ConfigProps) {
   return (
     <>
       <div className="field">
-        <label>Webhook URL *</label>
+        <label>{fl("Webhook URL *")}</label>
         <input
           placeholder="https://hooks.slack.com/services/..."
           value={str('webhook_url')}
@@ -59,7 +60,7 @@ export function SlackConfig({ set, str }: ConfigProps) {
         </span>
       </div>
       <div className="field">
-        <label>Message *</label>
+        <label>{fl("Message *")}</label>
         <textarea
           rows={3}
           placeholder="Workflow {{input.name}} completed successfully."
@@ -69,7 +70,7 @@ export function SlackConfig({ set, str }: ConfigProps) {
         <TemplatePreview text={str('text')} />
       </div>
       <div className="field">
-        <label>Channel <span style={{ color: 'var(--muted)' }}>(optional, overrides webhook default)</span></label>
+        <label>{fl("Channel")} <span style={{ color: 'var(--muted)' }}>{fl("(optional, overrides webhook default)")}</span></label>
         <input
           placeholder="#alerts"
           value={str('channel')}
@@ -77,7 +78,7 @@ export function SlackConfig({ set, str }: ConfigProps) {
         />
       </div>
       <div className="field">
-        <label>Bot name <span style={{ color: 'var(--muted)' }}>(optional)</span></label>
+        <label>{fl("Bot name")} <span style={{ color: 'var(--muted)' }}>{fl("(optional)")}</span></label>
         <input
           placeholder="Trigix"
           value={str('username')}
@@ -86,7 +87,7 @@ export function SlackConfig({ set, str }: ConfigProps) {
       </div>
       <TemplateHint />
       <p style={{ fontSize: 12, color: 'var(--muted)', marginTop: 4 }}>
-        Returns <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>
+        {fl("Returns")} <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>
           {'{ "ok": true, "text": "..." }'}
         </code>
       </p>
@@ -98,7 +99,7 @@ export function EmailConfig({ set, str }: ConfigProps) {
   return (
     <>
       <div className="field">
-        <label>To *</label>
+        <label>{fl("To *")}</label>
         <input
           placeholder="user@example.com"
           value={str('to')}
@@ -106,7 +107,7 @@ export function EmailConfig({ set, str }: ConfigProps) {
         />
       </div>
       <div className="field">
-        <label>Subject *</label>
+        <label>{fl("Subject *")}</label>
         <input
           placeholder="Workflow completed: {{input.name}}"
           value={str('subject')}
@@ -115,7 +116,7 @@ export function EmailConfig({ set, str }: ConfigProps) {
         <TemplatePreview text={str('subject')} />
       </div>
       <div className="field">
-        <label>Body *</label>
+        <label>{fl("Body *")}</label>
         <textarea
           rows={4}
           placeholder="Your workflow has completed successfully."
@@ -125,7 +126,7 @@ export function EmailConfig({ set, str }: ConfigProps) {
         <TemplatePreview text={str('body')} />
       </div>
       <div className="field">
-        <label>From <span style={{ color: 'var(--muted)' }}>(optional)</span></label>
+        <label>{fl("From")} <span style={{ color: 'var(--muted)' }}>{fl("(optional)")}</span></label>
         <input
           placeholder="noreply@trigix.dev"
           value={str('from')}
@@ -133,7 +134,7 @@ export function EmailConfig({ set, str }: ConfigProps) {
         />
       </div>
       <div className="field">
-        <label>SendGrid API Key *</label>
+        <label>{fl("SendGrid API Key *")}</label>
         <input
           placeholder="{{credential.sendgrid_key}}"
           value={str('api_key')}
@@ -145,7 +146,7 @@ export function EmailConfig({ set, str }: ConfigProps) {
       </div>
       <TemplateHint />
       <p style={{ fontSize: 12, color: 'var(--muted)', marginTop: 4 }}>
-        Sends via SendGrid API. Returns <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>
+        {fl("Sends via SendGrid API. Returns")} <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>
           {'{ "ok": true, "to": "...", "subject": "..." }'}
         </code>
       </p>
@@ -157,7 +158,7 @@ export function GithubConfig({ set, str }: ConfigProps) {
   return (
     <>
       <div className="field">
-        <label>Token <span style={{ color: 'var(--danger)' }}>*</span></label>
+        <label>{fl("Token")} <span style={{ color: 'var(--danger)' }}>*</span></label>
         <input
           value={str('token', '')}
           onChange={(e) => set('token', e.target.value)}
@@ -165,7 +166,7 @@ export function GithubConfig({ set, str }: ConfigProps) {
         />
       </div>
       <div className="field">
-        <label>Endpoint <span style={{ color: 'var(--danger)' }}>*</span></label>
+        <label>{fl("Endpoint")} <span style={{ color: 'var(--danger)' }}>*</span></label>
         <input
           value={str('endpoint', '')}
           onChange={(e) => set('endpoint', e.target.value)}
@@ -174,17 +175,17 @@ export function GithubConfig({ set, str }: ConfigProps) {
       </div>
       <div className="field-row">
         <div className="field" style={{ flex: 1 }}>
-          <label>Method</label>
+          <label>{fl("Method")}</label>
           <select value={str('method', 'GET')} onChange={(e) => set('method', e.target.value)}>
-            <option value="GET">GET</option>
-            <option value="POST">POST</option>
-            <option value="PATCH">PATCH</option>
-            <option value="PUT">PUT</option>
-            <option value="DELETE">DELETE</option>
+            <option value="GET">{fl("GET")}</option>
+            <option value="POST">{fl("POST")}</option>
+            <option value="PATCH">{fl("PATCH")}</option>
+            <option value="PUT">{fl("PUT")}</option>
+            <option value="DELETE">{fl("DELETE")}</option>
           </select>
         </div>
         <div className="field" style={{ flex: 2 }}>
-          <label>Base URL</label>
+          <label>{fl("Base URL")}</label>
           <input
             value={str('base_url', 'https://api.github.com')}
             onChange={(e) => set('base_url', e.target.value)}
@@ -193,7 +194,7 @@ export function GithubConfig({ set, str }: ConfigProps) {
         </div>
       </div>
       <div className="field">
-        <label>Request Body (JSON template)</label>
+        <label>{fl("Request Body (JSON template)")}</label>
         <textarea
           rows={4}
           value={str('body', '')}
@@ -203,7 +204,7 @@ export function GithubConfig({ set, str }: ConfigProps) {
         />
       </div>
       <p style={{ fontSize: 12, color: 'var(--muted)', marginTop: 4 }}>
-        Returns <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>{'{ status, body }'}</code>
+        {fl("Returns")} <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>{'{ status, body }'}</code>
       </p>
     </>
   )
@@ -224,7 +225,7 @@ export function WebhookSendConfig({ config, set, str }: ConfigProps) {
   return (
     <>
       <div className="field">
-        <label>URL <span style={{ color: 'var(--danger)' }}>*</span></label>
+        <label>{fl("URL")} <span style={{ color: 'var(--danger)' }}>*</span></label>
         <input
           value={str('url', '')}
           onChange={(e) => set('url', e.target.value)}
@@ -232,7 +233,7 @@ export function WebhookSendConfig({ config, set, str }: ConfigProps) {
         />
       </div>
       <div className="field">
-        <label>Body Template (JSON)</label>
+        <label>{fl("Body Template (JSON)")}</label>
         <textarea
           rows={4}
           value={str('body_template', '')}
@@ -240,10 +241,10 @@ export function WebhookSendConfig({ config, set, str }: ConfigProps) {
           placeholder={'{"event": "{{input.event}}", "data": "{{input.data}}"}'}
           style={{ fontFamily: 'monospace', fontSize: 12 }}
         />
-        <span style={{ fontSize: 11, color: 'var(--muted)' }}>Leave blank to send current input as body</span>
+        <span style={{ fontSize: 11, color: 'var(--muted)' }}>{fl("Leave blank to send current input as body")}</span>
       </div>
       <div className="field">
-        <label>Headers</label>
+        <label>{fl("Headers")}</label>
         {Object.entries(headers).map(([k, v]) => (
           <div key={k} className="field-row" style={{ gap: 4, marginBottom: 4 }}>
             <input value={k} readOnly style={{ flex: 1, fontFamily: 'monospace', fontSize: 12 }} />
@@ -259,10 +260,10 @@ export function WebhookSendConfig({ config, set, str }: ConfigProps) {
           className="btn"
           style={{ marginTop: 4, fontSize: 12 }}
           onClick={() => updateHeader('X-Custom-Header', '')}
-        >+ Add Header</button>
+        >{fl("+ Add Header")}</button>
       </div>
       <p style={{ fontSize: 12, color: 'var(--muted)', marginTop: 4 }}>
-        Returns <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>{'{ status, ok }'}</code>
+        {fl("Returns")} <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>{'{ status, ok }'}</code>
       </p>
     </>
   )
@@ -273,7 +274,7 @@ export function JiraConfig({ set, str }: ConfigProps) {
   return (
     <>
       <div className="field">
-        <label>Base URL <span style={{ color: 'var(--danger)' }}>*</span></label>
+        <label>{fl("Base URL")} <span style={{ color: 'var(--danger)' }}>*</span></label>
         <input
           value={str('base_url', '')}
           onChange={(e) => set('base_url', e.target.value)}
@@ -281,7 +282,7 @@ export function JiraConfig({ set, str }: ConfigProps) {
         />
       </div>
       <div className="field">
-        <label>Email <span style={{ color: 'var(--danger)' }}>*</span></label>
+        <label>{fl("Email")} <span style={{ color: 'var(--danger)' }}>*</span></label>
         <input
           value={str('email', '')}
           onChange={(e) => set('email', e.target.value)}
@@ -289,7 +290,7 @@ export function JiraConfig({ set, str }: ConfigProps) {
         />
       </div>
       <div className="field">
-        <label>API Token <span style={{ color: 'var(--danger)' }}>*</span></label>
+        <label>{fl("API Token")} <span style={{ color: 'var(--danger)' }}>*</span></label>
         <input
           value={str('token', '')}
           onChange={(e) => set('token', e.target.value)}
@@ -297,7 +298,7 @@ export function JiraConfig({ set, str }: ConfigProps) {
         />
       </div>
       <div className="field">
-        <label>Endpoint <span style={{ color: 'var(--danger)' }}>*</span></label>
+        <label>{fl("Endpoint")} <span style={{ color: 'var(--danger)' }}>*</span></label>
         <input
           value={str('endpoint', '')}
           onChange={(e) => set('endpoint', e.target.value)}
@@ -306,13 +307,13 @@ export function JiraConfig({ set, str }: ConfigProps) {
         />
       </div>
       <div className="field">
-        <label>Method</label>
+        <label>{fl("Method")}</label>
         <select value={str('method', 'GET')} onChange={(e) => set('method', e.target.value)}>
           {METHOD_OPTIONS.map(m => <option key={m} value={m}>{m}</option>)}
         </select>
       </div>
       <div className="field">
-        <label>Body (JSON template)</label>
+        <label>{fl("Body (JSON template)")}</label>
         <textarea
           rows={4}
           value={str('body', '')}
@@ -320,10 +321,10 @@ export function JiraConfig({ set, str }: ConfigProps) {
           placeholder={'{"fields": {"summary": "{{input.title}}", "issuetype": {"name": "Task"}}}'}
           style={{ fontFamily: 'monospace', fontSize: 12 }}
         />
-        <span style={{ fontSize: 11, color: 'var(--muted)' }}>Leave blank for GET requests</span>
+        <span style={{ fontSize: 11, color: 'var(--muted)' }}>{fl("Leave blank for GET requests")}</span>
       </div>
       <p style={{ fontSize: 12, color: 'var(--muted)', marginTop: 4 }}>
-        Returns <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>{'{ status, body }'}</code>
+        {fl("Returns")} <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>{'{ status, body }'}</code>
       </p>
     </>
   )
@@ -334,7 +335,7 @@ export function NotionConfig({ set, str }: ConfigProps) {
   return (
     <>
       <div className="field">
-        <label>Integration Token <span style={{ color: 'var(--danger)' }}>*</span></label>
+        <label>{fl("Integration Token")} <span style={{ color: 'var(--danger)' }}>*</span></label>
         <input
           value={str('token', '')}
           onChange={(e) => set('token', e.target.value)}
@@ -342,7 +343,7 @@ export function NotionConfig({ set, str }: ConfigProps) {
         />
       </div>
       <div className="field">
-        <label>Endpoint <span style={{ color: 'var(--danger)' }}>*</span></label>
+        <label>{fl("Endpoint")} <span style={{ color: 'var(--danger)' }}>*</span></label>
         <input
           value={str('endpoint', '')}
           onChange={(e) => set('endpoint', e.target.value)}
@@ -351,13 +352,13 @@ export function NotionConfig({ set, str }: ConfigProps) {
         />
       </div>
       <div className="field">
-        <label>Method</label>
+        <label>{fl("Method")}</label>
         <select value={str('method', 'GET')} onChange={(e) => set('method', e.target.value)}>
           {METHOD_OPTIONS.map(m => <option key={m} value={m}>{m}</option>)}
         </select>
       </div>
       <div className="field">
-        <label>Body (JSON template)</label>
+        <label>{fl("Body (JSON template)")}</label>
         <textarea
           rows={4}
           value={str('body', '')}
@@ -365,10 +366,10 @@ export function NotionConfig({ set, str }: ConfigProps) {
           placeholder={'{"parent": {"database_id": "{{input.db_id}}"}, "properties": {"Name": {"title": [{"text": {"content": "{{input.title}"}}]}}}'}
           style={{ fontFamily: 'monospace', fontSize: 12 }}
         />
-        <span style={{ fontSize: 11, color: 'var(--muted)' }}>Leave blank for GET requests. Uses Notion API 2022-06-28.</span>
+        <span style={{ fontSize: 11, color: 'var(--muted)' }}>{fl("Leave blank for GET requests. Uses Notion API 2022-06-28.")}</span>
       </div>
       <p style={{ fontSize: 12, color: 'var(--muted)', marginTop: 4 }}>
-        Returns <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>{'{ status, body }'}</code>
+        {fl("Returns")} <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>{'{ status, body }'}</code>
       </p>
     </>
   )
@@ -378,7 +379,7 @@ export function LinearConfig({ set, str }: ConfigProps) {
   return (
     <>
       <div className="field">
-        <label>API Token <span style={{ color: 'var(--danger)' }}>*</span></label>
+        <label>{fl("API Token")} <span style={{ color: 'var(--danger)' }}>*</span></label>
         <input
           value={str('token', '')}
           onChange={(e) => set('token', e.target.value)}
@@ -386,7 +387,7 @@ export function LinearConfig({ set, str }: ConfigProps) {
         />
       </div>
       <div className="field">
-        <label>GraphQL Query <span style={{ color: 'var(--danger)' }}>*</span></label>
+        <label>{fl("GraphQL Query")} <span style={{ color: 'var(--danger)' }}>*</span></label>
         <textarea
           rows={6}
           value={str('query', '')}
@@ -396,7 +397,7 @@ export function LinearConfig({ set, str }: ConfigProps) {
         />
       </div>
       <div className="field">
-        <label>Variables (JSON template)</label>
+        <label>{fl("Variables (JSON template)")}</label>
         <textarea
           rows={3}
           value={str('variables', '')}
@@ -406,7 +407,7 @@ export function LinearConfig({ set, str }: ConfigProps) {
         />
       </div>
       <p style={{ fontSize: 12, color: 'var(--muted)', marginTop: 4 }}>
-        Returns <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>{'{ status, data }'}</code>
+        {fl("Returns")} <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>{'{ status, data }'}</code>
       </p>
     </>
   )
@@ -417,7 +418,7 @@ export function AirtableConfig({ set, str, num }: ConfigProps) {
   return (
     <>
       <div className="field">
-        <label>Personal Access Token <span style={{ color: 'var(--danger)' }}>*</span></label>
+        <label>{fl("Personal Access Token")} <span style={{ color: 'var(--danger)' }}>*</span></label>
         <input
           value={str('token', '')}
           onChange={(e) => set('token', e.target.value)}
@@ -425,7 +426,7 @@ export function AirtableConfig({ set, str, num }: ConfigProps) {
         />
       </div>
       <div className="field">
-        <label>Base ID <span style={{ color: 'var(--danger)' }}>*</span></label>
+        <label>{fl("Base ID")} <span style={{ color: 'var(--danger)' }}>*</span></label>
         <input
           value={str('base_id', '')}
           onChange={(e) => set('base_id', e.target.value)}
@@ -434,7 +435,7 @@ export function AirtableConfig({ set, str, num }: ConfigProps) {
         />
       </div>
       <div className="field">
-        <label>Table <span style={{ color: 'var(--danger)' }}>*</span></label>
+        <label>{fl("Table")} <span style={{ color: 'var(--danger)' }}>*</span></label>
         <input
           value={str('table', '')}
           onChange={(e) => set('table', e.target.value)}
@@ -442,13 +443,13 @@ export function AirtableConfig({ set, str, num }: ConfigProps) {
         />
       </div>
       <div className="field">
-        <label>Method</label>
+        <label>{fl("Method")}</label>
         <select value={str('method', 'GET')} onChange={(e) => set('method', e.target.value)}>
           {METHOD_OPTIONS.map(m => <option key={m} value={m}>{m}</option>)}
         </select>
       </div>
       <div className="field">
-        <label>Record ID <span style={{ fontSize: 11, color: 'var(--muted)' }}>(optional)</span></label>
+        <label>{fl("Record ID")} <span style={{ fontSize: 11, color: 'var(--muted)' }}>{fl("(optional)")}</span></label>
         <input
           value={str('record_id', '')}
           onChange={(e) => set('record_id', e.target.value)}
@@ -457,7 +458,7 @@ export function AirtableConfig({ set, str, num }: ConfigProps) {
         />
       </div>
       <div className="field">
-        <label>Filter Formula <span style={{ fontSize: 11, color: 'var(--muted)' }}>(GET list only)</span></label>
+        <label>{fl("Filter Formula")} <span style={{ fontSize: 11, color: 'var(--muted)' }}>{fl("(GET list only)")}</span></label>
         <input
           value={str('filter_formula', '')}
           onChange={(e) => set('filter_formula', e.target.value)}
@@ -466,7 +467,7 @@ export function AirtableConfig({ set, str, num }: ConfigProps) {
         />
       </div>
       <div className="field">
-        <label>Max Records</label>
+        <label>{fl("Max Records")}</label>
         <input
           type="number"
           min={1}
@@ -476,7 +477,7 @@ export function AirtableConfig({ set, str, num }: ConfigProps) {
         />
       </div>
       <div className="field">
-        <label>Body (JSON template, for POST/PATCH)</label>
+        <label>{fl("Body (JSON template, for POST/PATCH)")}</label>
         <textarea
           rows={4}
           value={str('body', '')}
@@ -486,7 +487,7 @@ export function AirtableConfig({ set, str, num }: ConfigProps) {
         />
       </div>
       <p style={{ fontSize: 12, color: 'var(--muted)', marginTop: 4 }}>
-        Returns <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>{'{ status, body }'}</code>
+        {fl("Returns")} <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>{'{ status, body }'}</code>
       </p>
     </>
   )
@@ -496,7 +497,7 @@ export function DiscordConfig({ set, str }: ConfigProps) {
   return (
     <>
       <div className="field">
-        <label>Webhook URL <span style={{ color: 'var(--danger)' }}>*</span></label>
+        <label>{fl("Webhook URL")} <span style={{ color: 'var(--danger)' }}>*</span></label>
         <input
           value={str('webhook_url', '')}
           onChange={(e) => set('webhook_url', e.target.value)}
@@ -505,7 +506,7 @@ export function DiscordConfig({ set, str }: ConfigProps) {
         />
       </div>
       <div className="field">
-        <label>Message Content <span style={{ color: 'var(--danger)' }}>*</span></label>
+        <label>{fl("Message Content")} <span style={{ color: 'var(--danger)' }}>*</span></label>
         <textarea
           rows={3}
           value={str('content', '')}
@@ -515,7 +516,7 @@ export function DiscordConfig({ set, str }: ConfigProps) {
         />
       </div>
       <div className="field">
-        <label>Username (optional)</label>
+        <label>{fl("Username (optional)")}</label>
         <input
           value={str('username', '')}
           onChange={(e) => set('username', e.target.value)}
@@ -523,7 +524,7 @@ export function DiscordConfig({ set, str }: ConfigProps) {
         />
       </div>
       <div className="field">
-        <label>Avatar URL (optional)</label>
+        <label>{fl("Avatar URL (optional)")}</label>
         <input
           value={str('avatar_url', '')}
           onChange={(e) => set('avatar_url', e.target.value)}
@@ -531,7 +532,7 @@ export function DiscordConfig({ set, str }: ConfigProps) {
         />
       </div>
       <p style={{ fontSize: 12, color: 'var(--muted)', marginTop: 4 }}>
-        Returns <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>{'{ ok, content }'}</code>
+        {fl("Returns")} <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>{'{ ok, content }'}</code>
       </p>
     </>
   )
@@ -541,7 +542,7 @@ export function TeamsConfig({ set, str }: ConfigProps) {
   return (
     <>
       <div className="field">
-        <label>Webhook URL <span style={{ color: 'var(--danger)' }}>*</span></label>
+        <label>{fl("Webhook URL")} <span style={{ color: 'var(--danger)' }}>*</span></label>
         <input
           value={str('webhook_url', '')}
           onChange={(e) => set('webhook_url', e.target.value)}
@@ -550,7 +551,7 @@ export function TeamsConfig({ set, str }: ConfigProps) {
         />
       </div>
       <div className="field">
-        <label>Message Text <span style={{ color: 'var(--danger)' }}>*</span></label>
+        <label>{fl("Message Text")} <span style={{ color: 'var(--danger)' }}>*</span></label>
         <textarea
           rows={3}
           value={str('text', '')}
@@ -560,7 +561,7 @@ export function TeamsConfig({ set, str }: ConfigProps) {
         />
       </div>
       <div className="field">
-        <label>Title (optional)</label>
+        <label>{fl("Title (optional)")}</label>
         <input
           value={str('title', '')}
           onChange={(e) => set('title', e.target.value)}
@@ -568,7 +569,7 @@ export function TeamsConfig({ set, str }: ConfigProps) {
         />
       </div>
       <div className="field">
-        <label>Theme Color (hex, optional)</label>
+        <label>{fl("Theme Color (hex, optional)")}</label>
         <input
           value={str('color', '')}
           onChange={(e) => set('color', e.target.value)}
@@ -577,7 +578,7 @@ export function TeamsConfig({ set, str }: ConfigProps) {
         />
       </div>
       <p style={{ fontSize: 12, color: 'var(--muted)', marginTop: 4 }}>
-        Returns <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>{'{ ok, text }'}</code>
+        {fl("Returns")} <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>{'{ ok, text }'}</code>
       </p>
     </>
   )
@@ -587,7 +588,7 @@ export function SheetsConfig({ set, str }: ConfigProps) {
   return (
     <>
       <div className="field">
-        <label>Bearer Token <span style={{ color: 'var(--danger)' }}>*</span></label>
+        <label>{fl("Bearer Token")} <span style={{ color: 'var(--danger)' }}>*</span></label>
         <input
           value={str('token', '')}
           onChange={(e) => set('token', e.target.value)}
@@ -596,7 +597,7 @@ export function SheetsConfig({ set, str }: ConfigProps) {
         />
       </div>
       <div className="field">
-        <label>Spreadsheet ID <span style={{ color: 'var(--danger)' }}>*</span></label>
+        <label>{fl("Spreadsheet ID")} <span style={{ color: 'var(--danger)' }}>*</span></label>
         <input
           value={str('spreadsheet_id', '')}
           onChange={(e) => set('spreadsheet_id', e.target.value)}
@@ -605,7 +606,7 @@ export function SheetsConfig({ set, str }: ConfigProps) {
         />
       </div>
       <div className="field">
-        <label>Range (A1 notation)</label>
+        <label>{fl("Range (A1 notation)")}</label>
         <input
           value={str('range', 'Sheet1!A1')}
           onChange={(e) => set('range', e.target.value)}
@@ -614,16 +615,16 @@ export function SheetsConfig({ set, str }: ConfigProps) {
         />
       </div>
       <div className="field">
-        <label>Method</label>
+        <label>{fl("Method")}</label>
         <select value={str('method', 'GET')} onChange={(e) => set('method', e.target.value)}>
-          <option value="GET">GET — read values</option>
-          <option value="APPEND">APPEND — append rows</option>
-          <option value="UPDATE">UPDATE — write values (PUT)</option>
-          <option value="CLEAR">CLEAR — clear range</option>
+          <option value="GET">{fl("GET — read values")}</option>
+          <option value="APPEND">{fl("APPEND — append rows")}</option>
+          <option value="UPDATE">{fl("UPDATE — write values (PUT)")}</option>
+          <option value="CLEAR">{fl("CLEAR — clear range")}</option>
         </select>
       </div>
       <div className="field">
-        <label>Values (for APPEND/UPDATE)</label>
+        <label>{fl("Values (for APPEND/UPDATE)")}</label>
         <textarea
           rows={3}
           value={str('values', '')}
@@ -631,10 +632,10 @@ export function SheetsConfig({ set, str }: ConfigProps) {
           placeholder='[["row1col1","row1col2"],["row2col1","row2col2"]]'
           style={{ fontFamily: 'monospace', fontSize: 12 }}
         />
-        <span style={{ fontSize: 11, color: 'var(--muted)' }}>JSON 2D array of rows</span>
+        <span style={{ fontSize: 11, color: 'var(--muted)' }}>{fl("JSON 2D array of rows")}</span>
       </div>
       <p style={{ fontSize: 12, color: 'var(--muted)', marginTop: 4 }}>
-        Returns <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>{'{ status, body, values }'}</code>
+        {fl("Returns")} <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>{'{ status, body, values }'}</code>
       </p>
     </>
   )
@@ -644,7 +645,7 @@ export function HubspotConfig({ set, str }: ConfigProps) {
   return (
     <>
       <div className="field">
-        <label>Private App Token <span style={{ color: 'var(--danger)' }}>*</span></label>
+        <label>{fl("Private App Token")} <span style={{ color: 'var(--danger)' }}>*</span></label>
         <input
           value={str('token', '')}
           onChange={(e) => set('token', e.target.value)}
@@ -653,26 +654,26 @@ export function HubspotConfig({ set, str }: ConfigProps) {
         />
       </div>
       <div className="field">
-        <label>Endpoint <span style={{ color: 'var(--danger)' }}>*</span></label>
+        <label>{fl("Endpoint")} <span style={{ color: 'var(--danger)' }}>*</span></label>
         <input
           value={str('endpoint', '')}
           onChange={(e) => set('endpoint', e.target.value)}
           placeholder="/crm/v3/objects/contacts"
           style={{ fontFamily: 'monospace', fontSize: 12 }}
         />
-        <span style={{ fontSize: 11, color: 'var(--muted)' }}>Relative to api.hubapi.com</span>
+        <span style={{ fontSize: 11, color: 'var(--muted)' }}>{fl("Relative to api.hubapi.com")}</span>
       </div>
       <div className="field">
-        <label>Method</label>
+        <label>{fl("Method")}</label>
         <select value={str('method', 'GET')} onChange={(e) => set('method', e.target.value)}>
-          <option value="GET">GET — read/search</option>
-          <option value="POST">POST — create</option>
-          <option value="PATCH">PATCH — update</option>
-          <option value="DELETE">DELETE — delete</option>
+          <option value="GET">{fl("GET — read/search")}</option>
+          <option value="POST">{fl("POST — create")}</option>
+          <option value="PATCH">{fl("PATCH — update")}</option>
+          <option value="DELETE">{fl("DELETE — delete")}</option>
         </select>
       </div>
       <div className="field">
-        <label>Body (JSON)</label>
+        <label>{fl("Body (JSON)")}</label>
         <textarea
           rows={3}
           value={str('body', '')}
@@ -682,7 +683,7 @@ export function HubspotConfig({ set, str }: ConfigProps) {
         />
       </div>
       <p style={{ fontSize: 12, color: 'var(--muted)', marginTop: 4 }}>
-        Returns <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>{'{ status, body }'}</code>
+        {fl("Returns")} <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>{'{ status, body }'}</code>
       </p>
     </>
   )
@@ -692,17 +693,17 @@ export function ZendeskConfig({ set, str }: ConfigProps) {
   return (
     <>
       <div className="field">
-        <label>Subdomain <span style={{ color: 'var(--danger)' }}>*</span></label>
+        <label>{fl("Subdomain")} <span style={{ color: 'var(--danger)' }}>*</span></label>
         <input
           value={str('subdomain', '')}
           onChange={(e) => set('subdomain', e.target.value)}
           placeholder="mycompany"
           style={{ fontFamily: 'monospace', fontSize: 12 }}
         />
-        <span style={{ fontSize: 11, color: 'var(--muted)' }}>Your Zendesk subdomain (before .zendesk.com)</span>
+        <span style={{ fontSize: 11, color: 'var(--muted)' }}>{fl("Your Zendesk subdomain (before .zendesk.com)")}</span>
       </div>
       <div className="field">
-        <label>API Token <span style={{ color: 'var(--danger)' }}>*</span></label>
+        <label>{fl("API Token")} <span style={{ color: 'var(--danger)' }}>*</span></label>
         <input
           value={str('token', '')}
           onChange={(e) => set('token', e.target.value)}
@@ -711,26 +712,26 @@ export function ZendeskConfig({ set, str }: ConfigProps) {
         />
       </div>
       <div className="field">
-        <label>Endpoint <span style={{ color: 'var(--danger)' }}>*</span></label>
+        <label>{fl("Endpoint")} <span style={{ color: 'var(--danger)' }}>*</span></label>
         <input
           value={str('endpoint', '')}
           onChange={(e) => set('endpoint', e.target.value)}
           placeholder="/tickets.json"
           style={{ fontFamily: 'monospace', fontSize: 12 }}
         />
-        <span style={{ fontSize: 11, color: 'var(--muted)' }}>Relative to /api/v2 — e.g. /tickets.json, /users/123.json</span>
+        <span style={{ fontSize: 11, color: 'var(--muted)' }}>{fl("Relative to /api/v2 — e.g. /tickets.json, /users/123.json")}</span>
       </div>
       <div className="field">
-        <label>Method</label>
+        <label>{fl("Method")}</label>
         <select value={str('method', 'GET')} onChange={(e) => set('method', e.target.value)}>
-          <option value="GET">GET — read/list</option>
-          <option value="POST">POST — create</option>
-          <option value="PUT">PUT — update</option>
-          <option value="DELETE">DELETE — delete</option>
+          <option value="GET">{fl("GET — read/list")}</option>
+          <option value="POST">{fl("POST — create")}</option>
+          <option value="PUT">{fl("PUT — update")}</option>
+          <option value="DELETE">{fl("DELETE — delete")}</option>
         </select>
       </div>
       <div className="field">
-        <label>Body (JSON)</label>
+        <label>{fl("Body (JSON)")}</label>
         <textarea
           rows={3}
           value={str('body', '')}
@@ -740,7 +741,7 @@ export function ZendeskConfig({ set, str }: ConfigProps) {
         />
       </div>
       <p style={{ fontSize: 12, color: 'var(--muted)', marginTop: 4 }}>
-        Returns <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>{'{ status, body }'}</code>
+        {fl("Returns")} <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>{'{ status, body }'}</code>
       </p>
     </>
   )
@@ -750,7 +751,7 @@ export function TwilioConfig({ set, str }: ConfigProps) {
   return (
     <>
       <div className="field">
-        <label>Account SID <span style={{ color: 'var(--danger)' }}>*</span></label>
+        <label>{fl("Account SID")} <span style={{ color: 'var(--danger)' }}>*</span></label>
         <input
           value={str('account_sid', '')}
           onChange={(e) => set('account_sid', e.target.value)}
@@ -759,7 +760,7 @@ export function TwilioConfig({ set, str }: ConfigProps) {
         />
       </div>
       <div className="field">
-        <label>Auth Token <span style={{ color: 'var(--danger)' }}>*</span></label>
+        <label>{fl("Auth Token")} <span style={{ color: 'var(--danger)' }}>*</span></label>
         <input
           value={str('auth_token', '')}
           onChange={(e) => set('auth_token', e.target.value)}
@@ -768,7 +769,7 @@ export function TwilioConfig({ set, str }: ConfigProps) {
         />
       </div>
       <div className="field">
-        <label>To (E.164) <span style={{ color: 'var(--danger)' }}>*</span></label>
+        <label>{fl("To (E.164)")} <span style={{ color: 'var(--danger)' }}>*</span></label>
         <input
           value={str('to', '')}
           onChange={(e) => set('to', e.target.value)}
@@ -777,7 +778,7 @@ export function TwilioConfig({ set, str }: ConfigProps) {
         />
       </div>
       <div className="field">
-        <label>From (E.164) <span style={{ color: 'var(--danger)' }}>*</span></label>
+        <label>{fl("From (E.164)")} <span style={{ color: 'var(--danger)' }}>*</span></label>
         <input
           value={str('from', '')}
           onChange={(e) => set('from', e.target.value)}
@@ -786,7 +787,7 @@ export function TwilioConfig({ set, str }: ConfigProps) {
         />
       </div>
       <div className="field">
-        <label>Message Body <span style={{ color: 'var(--danger)' }}>*</span></label>
+        <label>{fl("Message Body")} <span style={{ color: 'var(--danger)' }}>*</span></label>
         <textarea
           rows={3}
           value={str('body', '')}
@@ -796,7 +797,7 @@ export function TwilioConfig({ set, str }: ConfigProps) {
         />
       </div>
       <p style={{ fontSize: 12, color: 'var(--muted)', marginTop: 4 }}>
-        Returns <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>{'{ sid, status, to, from }'}</code>
+        {fl("Returns")} <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>{'{ sid, status, to, from }'}</code>
       </p>
     </>
   )
@@ -806,36 +807,36 @@ export function StripeConfig({ set, str }: ConfigProps) {
   return (
     <>
       <div className="field">
-        <label>API Key <span style={{ color: 'var(--danger)' }}>*</span></label>
+        <label>{fl("API Key")} <span style={{ color: 'var(--danger)' }}>*</span></label>
         <input
           value={str('api_key', '')}
           onChange={(e) => set('api_key', e.target.value)}
           placeholder="{{credential.stripe_key}}"
           style={{ fontFamily: 'monospace', fontSize: 12 }}
         />
-        <span style={{ fontSize: 11, color: 'var(--muted)' }}>sk_live_… or sk_test_…</span>
+        <span style={{ fontSize: 11, color: 'var(--muted)' }}>{fl("sk_live_… or sk_test_…")}</span>
       </div>
       <div className="field">
-        <label>Endpoint <span style={{ color: 'var(--danger)' }}>*</span></label>
+        <label>{fl("Endpoint")} <span style={{ color: 'var(--danger)' }}>*</span></label>
         <input
           value={str('endpoint', '')}
           onChange={(e) => set('endpoint', e.target.value)}
           placeholder="/customers"
           style={{ fontFamily: 'monospace', fontSize: 12 }}
         />
-        <span style={{ fontSize: 11, color: 'var(--muted)' }}>e.g. /customers, /charges/ch_xxx, /payment_intents</span>
+        <span style={{ fontSize: 11, color: 'var(--muted)' }}>{fl("e.g. /customers, /charges/ch_xxx, /payment_intents")}</span>
       </div>
       <div className="field">
-        <label>Method</label>
+        <label>{fl("Method")}</label>
         <select value={str('method', 'GET')} onChange={(e) => set('method', e.target.value)}>
-          <option value="GET">GET — retrieve / list</option>
-          <option value="POST">POST — create (form-encoded)</option>
-          <option value="PATCH">PATCH — update (form-encoded)</option>
-          <option value="DELETE">DELETE — delete</option>
+          <option value="GET">{fl("GET — retrieve / list")}</option>
+          <option value="POST">{fl("POST — create (form-encoded)")}</option>
+          <option value="PATCH">{fl("PATCH — update (form-encoded)")}</option>
+          <option value="DELETE">{fl("DELETE — delete")}</option>
         </select>
       </div>
       <div className="field">
-        <label>Body (flat object for POST/PATCH)</label>
+        <label>{fl("Body (flat object for POST/PATCH)")}</label>
         <textarea
           rows={3}
           value={str('body', '')}
@@ -843,10 +844,10 @@ export function StripeConfig({ set, str }: ConfigProps) {
           placeholder='{"email": "{{input.email}}", "name": "{{input.name}}"}'
           style={{ fontFamily: 'monospace', fontSize: 12 }}
         />
-        <span style={{ fontSize: 11, color: 'var(--muted)' }}>For GET: used as query params. For POST/PATCH: form-encoded.</span>
+        <span style={{ fontSize: 11, color: 'var(--muted)' }}>{fl("For GET: used as query params. For POST/PATCH: form-encoded.")}</span>
       </div>
       <p style={{ fontSize: 12, color: 'var(--muted)', marginTop: 4 }}>
-        Returns <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>{'{ status, id, object, body }'}</code>
+        {fl("Returns")} <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>{'{ status, id, object, body }'}</code>
       </p>
     </>
   )
@@ -858,30 +859,30 @@ export function ShopifyConfig({ config, set, str }: ConfigProps) {
   return (
     <>
       <div className="field">
-        <label>Shop (subdomain)</label>
+        <label>{fl("Shop (subdomain)")}</label>
         <input placeholder="my-store" value={str('shop', '')} onChange={(e) => set('shop', e.target.value)} />
       </div>
       <div className="field">
-        <label>Access Token</label>
+        <label>{fl("Access Token")}</label>
         <input type="password" placeholder="shpat_…" value={str('token', '')} onChange={(e) => set('token', e.target.value)} />
       </div>
       <div className="field">
-        <label>API Version</label>
+        <label>{fl("API Version")}</label>
         <input placeholder="2024-01" value={str('api_version', '2024-01')} onChange={(e) => set('api_version', e.target.value)} />
       </div>
       <div className="field">
-        <label>Method</label>
+        <label>{fl("Method")}</label>
         <select value={method} onChange={(e) => set('method', e.target.value)}>
           {METHODS.map((m) => <option key={m} value={m}>{m}</option>)}
         </select>
       </div>
       <div className="field">
-        <label>Endpoint</label>
+        <label>{fl("Endpoint")}</label>
         <input placeholder="/products.json" value={str('endpoint', '/products.json')} onChange={(e) => set('endpoint', e.target.value)} />
       </div>
       {['POST', 'PUT', 'PATCH'].includes(method) && (
         <div className="field">
-          <label>Body (JSON)</label>
+          <label>{fl("Body (JSON)")}</label>
           <textarea
             rows={4}
             placeholder='{"product": {"title": "My Product"}}'
@@ -892,7 +893,7 @@ export function ShopifyConfig({ config, set, str }: ConfigProps) {
         </div>
       )}
       <p style={{ fontSize: 12, color: 'var(--muted)', marginTop: 4 }}>
-        Returns <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>{'{ status, body }'}</code>
+        {fl("Returns")} <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>{'{ status, body }'}</code>
       </p>
     </>
   )
@@ -904,30 +905,30 @@ export function DatadogConfig({ config, set, str }: ConfigProps) {
   return (
     <>
       <div className="field">
-        <label>API Key</label>
+        <label>{fl("API Key")}</label>
         <input type="password" placeholder="DD-API-KEY" value={str('api_key', '')} onChange={(e) => set('api_key', e.target.value)} />
       </div>
       <div className="field">
-        <label>Application Key (optional)</label>
+        <label>{fl("Application Key (optional)")}</label>
         <input type="password" placeholder="DD-APPLICATION-KEY" value={str('app_key', '')} onChange={(e) => set('app_key', e.target.value)} />
       </div>
       <div className="field">
-        <label>Site</label>
+        <label>{fl("Site")}</label>
         <input placeholder="datadoghq.com" value={str('site', 'datadoghq.com')} onChange={(e) => set('site', e.target.value)} />
       </div>
       <div className="field">
-        <label>Method</label>
+        <label>{fl("Method")}</label>
         <select value={method} onChange={(e) => set('method', e.target.value)}>
           {METHODS.map((m) => <option key={m} value={m}>{m}</option>)}
         </select>
       </div>
       <div className="field">
-        <label>Endpoint</label>
+        <label>{fl("Endpoint")}</label>
         <input placeholder="/api/v1/validate" value={str('endpoint', '')} onChange={(e) => set('endpoint', e.target.value)} />
       </div>
       {['POST', 'PUT', 'PATCH'].includes(method) && (
         <div className="field">
-          <label>Body (JSON)</label>
+          <label>{fl("Body (JSON)")}</label>
           <textarea
             rows={4}
             placeholder='{"series": [{"metric": "my.metric", "points": [[1609459200, 1.5]]}]}'
@@ -938,7 +939,7 @@ export function DatadogConfig({ config, set, str }: ConfigProps) {
         </div>
       )}
       <p style={{ fontSize: 12, color: 'var(--muted)', marginTop: 4 }}>
-        Returns <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>{'{ status, body }'}</code>
+        {fl("Returns")} <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>{'{ status, body }'}</code>
       </p>
     </>
   )
@@ -950,26 +951,26 @@ export function SalesforceConfig({ config, set, str }: ConfigProps) {
   return (
     <>
       <div className="field">
-        <label>Access Token (OAuth)</label>
+        <label>{fl("Access Token (OAuth)")}</label>
         <input type="password" placeholder="00D…" value={str('token', '')} onChange={(e) => set('token', e.target.value)} />
       </div>
       <div className="field">
-        <label>Instance URL</label>
+        <label>{fl("Instance URL")}</label>
         <input placeholder="https://myorg.salesforce.com" value={str('instance_url', '')} onChange={(e) => set('instance_url', e.target.value)} />
       </div>
       <div className="field">
-        <label>Method</label>
+        <label>{fl("Method")}</label>
         <select value={method} onChange={(e) => set('method', e.target.value)}>
           {METHODS.map((m) => <option key={m} value={m}>{m}</option>)}
         </select>
       </div>
       <div className="field">
-        <label>Endpoint</label>
+        <label>{fl("Endpoint")}</label>
         <input placeholder="/services/data/v59.0/sobjects/Account" value={str('endpoint', '/services/data/v59.0/sobjects')} onChange={(e) => set('endpoint', e.target.value)} />
       </div>
       {['POST', 'PUT', 'PATCH'].includes(method) && (
         <div className="field">
-          <label>Body (JSON)</label>
+          <label>{fl("Body (JSON)")}</label>
           <textarea rows={4}
             placeholder='{"Name": "Acme Corp"}'
             value={typeof config.body === 'string' ? config.body : JSON.stringify(config.body ?? {}, null, 2)}
@@ -979,7 +980,7 @@ export function SalesforceConfig({ config, set, str }: ConfigProps) {
         </div>
       )}
       <p style={{ fontSize: 12, color: 'var(--muted)', marginTop: 4 }}>
-        Returns <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>{'{ status, body }'}</code>
+        {fl("Returns")} <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>{'{ status, body }'}</code>
       </p>
     </>
   )
@@ -991,26 +992,26 @@ export function FreshdeskConfig({ config, set, str }: ConfigProps) {
   return (
     <>
       <div className="field">
-        <label>API Key</label>
+        <label>{fl("API Key")}</label>
         <input type="password" placeholder="Freshdesk API key" value={str('api_key', '')} onChange={(e) => set('api_key', e.target.value)} />
       </div>
       <div className="field">
-        <label>Domain</label>
+        <label>{fl("Domain")}</label>
         <input placeholder="yourcompany.freshdesk.com" value={str('domain', '')} onChange={(e) => set('domain', e.target.value)} />
       </div>
       <div className="field">
-        <label>Method</label>
+        <label>{fl("Method")}</label>
         <select value={method} onChange={(e) => set('method', e.target.value)}>
           {METHODS.map((m) => <option key={m} value={m}>{m}</option>)}
         </select>
       </div>
       <div className="field">
-        <label>Endpoint</label>
+        <label>{fl("Endpoint")}</label>
         <input placeholder="/api/v2/tickets" value={str('endpoint', '/api/v2/tickets')} onChange={(e) => set('endpoint', e.target.value)} />
       </div>
       {['POST', 'PUT', 'PATCH'].includes(method) && (
         <div className="field">
-          <label>Body (JSON)</label>
+          <label>{fl("Body (JSON)")}</label>
           <textarea rows={4}
             placeholder='{"subject": "Help needed", "email": "user@example.com", "priority": 1, "status": 2}'
             value={typeof config.body === 'string' ? config.body : JSON.stringify(config.body ?? {}, null, 2)}
@@ -1020,7 +1021,7 @@ export function FreshdeskConfig({ config, set, str }: ConfigProps) {
         </div>
       )}
       <p style={{ fontSize: 12, color: 'var(--muted)', marginTop: 4 }}>
-        Returns <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>{'{ status, body }'}</code>
+        {fl("Returns")} <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>{'{ status, body }'}</code>
       </p>
     </>
   )
@@ -1030,42 +1031,42 @@ export function MailgunConfig({ set, str }: ConfigProps) {
   return (
     <>
       <div className="field">
-        <label>API Key</label>
+        <label>{fl("API Key")}</label>
         <input type="password" placeholder="key-…" value={str('api_key', '')} onChange={(e) => set('api_key', e.target.value)} />
       </div>
       <div className="field">
-        <label>Sending Domain</label>
+        <label>{fl("Sending Domain")}</label>
         <input placeholder="mg.yourdomain.com" value={str('domain', '')} onChange={(e) => set('domain', e.target.value)} />
       </div>
       <div className="field">
-        <label>From</label>
+        <label>{fl("From")}</label>
         <input placeholder="sender@mg.yourdomain.com" value={str('from', '')} onChange={(e) => set('from', e.target.value)} />
       </div>
       <div className="field">
-        <label>To</label>
+        <label>{fl("To")}</label>
         <input placeholder="recipient@example.com" value={str('to', '')} onChange={(e) => set('to', e.target.value)} />
       </div>
       <div className="field">
-        <label>Subject</label>
+        <label>{fl("Subject")}</label>
         <input placeholder="Hello from Mailgun" value={str('subject', '')} onChange={(e) => set('subject', e.target.value)} />
       </div>
       <div className="field">
-        <label>HTML Body</label>
+        <label>{fl("HTML Body")}</label>
         <textarea rows={3} placeholder="<h1>Hello!</h1>" value={str('html', '')} onChange={(e) => set('html', e.target.value)} style={{ fontFamily: 'monospace', fontSize: 12 }} />
       </div>
       <div className="field">
-        <label>Text Body (fallback)</label>
+        <label>{fl("Text Body (fallback)")}</label>
         <textarea rows={2} placeholder="Plain text version" value={str('text', '')} onChange={(e) => set('text', e.target.value)} />
       </div>
       <div className="field">
-        <label>Region</label>
+        <label>{fl("Region")}</label>
         <select value={str('region', 'us')} onChange={(e) => set('region', e.target.value)}>
-          <option value="us">US (api.mailgun.net)</option>
-          <option value="eu">EU (api.eu.mailgun.net)</option>
+          <option value="us">{fl("US (api.mailgun.net)")}</option>
+          <option value="eu">{fl("EU (api.eu.mailgun.net)")}</option>
         </select>
       </div>
       <p style={{ fontSize: 12, color: 'var(--muted)', marginTop: 4 }}>
-        Returns <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>{'{ status, body }'}</code>
+        {fl("Returns")} <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>{'{ status, body }'}</code>
       </p>
     </>
   )
@@ -1077,22 +1078,22 @@ export function AsanaConfig({ config, set, str }: ConfigProps) {
   return (
     <>
       <div className="field">
-        <label>Personal Access Token</label>
+        <label>{fl("Personal Access Token")}</label>
         <input type="password" placeholder="1/…" value={str('token', '')} onChange={(e) => set('token', e.target.value)} />
       </div>
       <div className="field">
-        <label>Method</label>
+        <label>{fl("Method")}</label>
         <select value={method} onChange={(e) => set('method', e.target.value)}>
           {METHODS.map((m) => <option key={m} value={m}>{m}</option>)}
         </select>
       </div>
       <div className="field">
-        <label>Endpoint</label>
+        <label>{fl("Endpoint")}</label>
         <input placeholder="/tasks" value={str('endpoint', '/tasks')} onChange={(e) => set('endpoint', e.target.value)} />
       </div>
       {['POST', 'PUT', 'PATCH'].includes(method) && (
         <div className="field">
-          <label>Body (JSON)</label>
+          <label>{fl("Body (JSON)")}</label>
           <textarea rows={4}
             placeholder='{"data": {"name": "My task", "projects": ["<project_gid>"]}}'
             value={typeof config.body === 'string' ? config.body : JSON.stringify(config.body ?? {}, null, 2)}
@@ -1102,7 +1103,7 @@ export function AsanaConfig({ config, set, str }: ConfigProps) {
         </div>
       )}
       <p style={{ fontSize: 12, color: 'var(--muted)', marginTop: 4 }}>
-        Returns <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>{'{ status, body }'}</code>
+        {fl("Returns")} <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>{'{ status, body }'}</code>
       </p>
     </>
   )
@@ -1114,30 +1115,30 @@ export function ServiceNowConfig({ config, set, str }: ConfigProps) {
   return (
     <>
       <div className="field">
-        <label>Instance</label>
+        <label>{fl("Instance")}</label>
         <input placeholder="myco.service-now.com" value={str('instance', '')} onChange={(e) => set('instance', e.target.value)} />
       </div>
       <div className="field">
-        <label>Username</label>
+        <label>{fl("Username")}</label>
         <input placeholder="admin" value={str('username', '')} onChange={(e) => set('username', e.target.value)} />
       </div>
       <div className="field">
-        <label>Password</label>
+        <label>{fl("Password")}</label>
         <input type="password" placeholder="••••••••" value={str('password', '')} onChange={(e) => set('password', e.target.value)} />
       </div>
       <div className="field">
-        <label>Method</label>
+        <label>{fl("Method")}</label>
         <select value={method} onChange={(e) => set('method', e.target.value)}>
           {METHODS.map((m) => <option key={m} value={m}>{m}</option>)}
         </select>
       </div>
       <div className="field">
-        <label>Endpoint</label>
+        <label>{fl("Endpoint")}</label>
         <input placeholder="/api/now/table/incident" value={str('endpoint', '/api/now/table/incident')} onChange={(e) => set('endpoint', e.target.value)} />
       </div>
       {['POST', 'PUT', 'PATCH'].includes(method) && (
         <div className="field">
-          <label>Body (JSON)</label>
+          <label>{fl("Body (JSON)")}</label>
           <textarea rows={4}
             placeholder='{"short_description": "Issue", "urgency": "2", "impact": "2"}'
             value={typeof config.body === 'string' ? config.body : JSON.stringify(config.body ?? {}, null, 2)}
@@ -1147,7 +1148,7 @@ export function ServiceNowConfig({ config, set, str }: ConfigProps) {
         </div>
       )}
       <p style={{ fontSize: 12, color: 'var(--muted)', marginTop: 4 }}>
-        Returns <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>{'{ status, body }'}</code>
+        {fl("Returns")} <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>{'{ status, body }'}</code>
       </p>
     </>
   )
@@ -1160,48 +1161,48 @@ export function ConfluenceConfig({ config, set, str }: ConfigProps) {
   return (
     <>
       <div className="field">
-        <label>Base URL</label>
+        <label>{fl("Base URL")}</label>
         <input placeholder="https://myco.atlassian.net/wiki" value={str('base_url', '')} onChange={(e) => set('base_url', e.target.value)} />
       </div>
       <div className="field">
-        <label>Auth Mode</label>
+        <label>{fl("Auth Mode")}</label>
         <select value={authMode} onChange={(e) => set('auth_mode', e.target.value)}>
-          <option value="token">Bearer Token</option>
-          <option value="basic">Basic (Email + API Token)</option>
+          <option value="token">{fl("Bearer Token")}</option>
+          <option value="basic">{fl("Basic (Email + API Token)")}</option>
         </select>
       </div>
       {authMode === 'token' ? (
         <div className="field">
-          <label>Bearer Token</label>
+          <label>{fl("Bearer Token")}</label>
           <input type="password" placeholder="eyJ…" value={str('token', '')} onChange={(e) => set('token', e.target.value)} />
         </div>
       ) : (
         <>
           <div className="field">
-            <label>Email</label>
+            <label>{fl("Email")}</label>
             <input placeholder="user@example.com" value={str('email', '')} onChange={(e) => set('email', e.target.value)} />
           </div>
           <div className="field">
-            <label>API Token</label>
+            <label>{fl("API Token")}</label>
             <input type="password" placeholder="Atlassian API token" value={str('api_token', '')} onChange={(e) => set('api_token', e.target.value)} />
           </div>
         </>
       )}
       <div className="field">
-        <label>Method</label>
+        <label>{fl("Method")}</label>
         <select value={method} onChange={(e) => set('method', e.target.value)}>
           {METHODS.map((m) => <option key={m} value={m}>{m}</option>)}
         </select>
       </div>
       <div className="field">
-        <label>Endpoint</label>
+        <label>{fl("Endpoint")}</label>
         <input placeholder="/rest/api/content" value={str('endpoint', '/rest/api/content')} onChange={(e) => set('endpoint', e.target.value)} />
       </div>
       {['POST', 'PUT'].includes(method) && (
         <div className="field">
-          <label>Body (JSON)</label>
+          <label>{fl("Body (JSON)")}</label>
           <textarea rows={5}
-            placeholder='{"type": "page", "title": "New page", "space": {"key": "SPACE"}, "body": {"storage": {"value": "<p>Hello</p>", "representation": "storage"}}}'
+            placeholder='{"type": "page", "title": "New page", "space": {"key": "SPACE"}, "body": {"storage": {"value": "<p>{fl("Hello")}</p>", "representation": "storage"}}}'
             value={typeof config.body === 'string' ? config.body : JSON.stringify(config.body ?? {}, null, 2)}
             onChange={(e) => { try { set('body', JSON.parse(e.target.value)) } catch { set('body', e.target.value) } }}
             style={{ fontFamily: 'monospace', fontSize: 12 }}
@@ -1209,7 +1210,7 @@ export function ConfluenceConfig({ config, set, str }: ConfigProps) {
         </div>
       )}
       <p style={{ fontSize: 12, color: 'var(--muted)', marginTop: 4 }}>
-        Returns <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>{'{ status, body }'}</code>
+        {fl("Returns")} <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>{'{ status, body }'}</code>
       </p>
     </>
   )
@@ -1221,26 +1222,26 @@ export function BitbucketConfig({ config, set, str }: ConfigProps) {
   return (
     <>
       <div className="field">
-        <label>Username</label>
+        <label>{fl("Username")}</label>
         <input placeholder="bitbucket_username" value={str('username', '')} onChange={(e) => set('username', e.target.value)} />
       </div>
       <div className="field">
-        <label>App Password</label>
+        <label>{fl("App Password")}</label>
         <input type="password" placeholder="Bitbucket app password" value={str('app_password', '')} onChange={(e) => set('app_password', e.target.value)} />
       </div>
       <div className="field">
-        <label>Method</label>
+        <label>{fl("Method")}</label>
         <select value={method} onChange={(e) => set('method', e.target.value)}>
           {METHODS.map((m) => <option key={m} value={m}>{m}</option>)}
         </select>
       </div>
       <div className="field">
-        <label>Endpoint</label>
+        <label>{fl("Endpoint")}</label>
         <input placeholder="/repositories/workspace/repo-slug" value={str('endpoint', '')} onChange={(e) => set('endpoint', e.target.value)} />
       </div>
       {['POST', 'PUT'].includes(method) && (
         <div className="field">
-          <label>Body (JSON)</label>
+          <label>{fl("Body (JSON)")}</label>
           <textarea rows={4}
             placeholder='{"title": "My PR", "source": {"branch": {"name": "feature"}}, "destination": {"branch": {"name": "main"}}}'
             value={typeof config.body === 'string' ? config.body : JSON.stringify(config.body ?? {}, null, 2)}
@@ -1250,7 +1251,7 @@ export function BitbucketConfig({ config, set, str }: ConfigProps) {
         </div>
       )}
       <p style={{ fontSize: 12, color: 'var(--muted)', marginTop: 4 }}>
-        Returns <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>{'{ status, body }'}</code>
+        {fl("Returns")} <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>{'{ status, body }'}</code>
       </p>
     </>
   )
@@ -1262,34 +1263,34 @@ export function AzureDevOpsConfig({ config, set, str }: ConfigProps) {
   return (
     <>
       <div className="field">
-        <label>Personal Access Token</label>
+        <label>{fl("Personal Access Token")}</label>
         <input type="password" placeholder="Azure DevOps PAT" value={str('pat', '')} onChange={(e) => set('pat', e.target.value)} />
       </div>
       <div className="field">
-        <label>Organization</label>
+        <label>{fl("Organization")}</label>
         <input placeholder="myorg" value={str('organization', '')} onChange={(e) => set('organization', e.target.value)} />
       </div>
       <div className="field">
-        <label>Project (optional)</label>
+        <label>{fl("Project (optional)")}</label>
         <input placeholder="MyProject" value={str('project', '')} onChange={(e) => set('project', e.target.value)} />
       </div>
       <div className="field">
-        <label>Method</label>
+        <label>{fl("Method")}</label>
         <select value={method} onChange={(e) => set('method', e.target.value)}>
           {METHODS.map((m) => <option key={m} value={m}>{m}</option>)}
         </select>
       </div>
       <div className="field">
-        <label>Endpoint</label>
+        <label>{fl("Endpoint")}</label>
         <input placeholder="/build/builds" value={str('endpoint', '')} onChange={(e) => set('endpoint', e.target.value)} />
       </div>
       <div className="field">
-        <label>API Version</label>
+        <label>{fl("API Version")}</label>
         <input placeholder="7.1" value={str('api_version', '7.1')} onChange={(e) => set('api_version', e.target.value)} />
       </div>
       {['POST', 'PUT', 'PATCH'].includes(method) && (
         <div className="field">
-          <label>Body (JSON)</label>
+          <label>{fl("Body (JSON)")}</label>
           <textarea rows={4}
             placeholder='{"definition": {"id": 1}, "sourceBranch": "refs/heads/main"}'
             value={typeof config.body === 'string' ? config.body : JSON.stringify(config.body ?? {}, null, 2)}
@@ -1299,10 +1300,10 @@ export function AzureDevOpsConfig({ config, set, str }: ConfigProps) {
         </div>
       )}
       <p style={{ fontSize: 12, color: 'var(--muted)', marginTop: 4 }}>
-        URL: <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>dev.azure.com/{'{org}/{project}/_apis{endpoint}'}</code>
+        {fl("URL:")} <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>{fl("dev.azure.com/")}{'{org}/{project}{fl("/_apis")}{endpoint}'}</code>
       </p>
       <p style={{ fontSize: 12, color: 'var(--muted)', marginTop: 4 }}>
-        Returns <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>{'{ status, body }'}</code>
+        {fl("Returns")} <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>{'{ status, body }'}</code>
       </p>
     </>
   )
@@ -1317,7 +1318,7 @@ export function RedisConfig({ set, str, num }: ConfigProps) {
   return (
     <>
       <div className="field">
-        <label>Redis URL <span style={{ color: 'var(--danger)' }}>*</span></label>
+        <label>{fl("Redis URL")} <span style={{ color: 'var(--danger)' }}>*</span></label>
         <input
           value={str('url', '')}
           onChange={(e) => set('url', e.target.value)}
@@ -1326,37 +1327,37 @@ export function RedisConfig({ set, str, num }: ConfigProps) {
         />
       </div>
       <div className="field">
-        <label>Operation</label>
+        <label>{fl("Operation")}</label>
         <select value={op} onChange={(e) => set('operation', e.target.value)}>
           <optgroup label="String">
-            <option value="get">GET — read value</option>
-            <option value="set">SET — write value</option>
-            <option value="del">DEL — delete key</option>
-            <option value="exists">EXISTS — check existence</option>
-            <option value="incr">INCR — increment</option>
-            <option value="decr">DECR — decrement</option>
-            <option value="incrby">INCRBY — increment by amount</option>
+            <option value="get">{fl("GET — read value")}</option>
+            <option value="set">{fl("SET — write value")}</option>
+            <option value="del">{fl("DEL — delete key")}</option>
+            <option value="exists">{fl("EXISTS — check existence")}</option>
+            <option value="incr">{fl("INCR — increment")}</option>
+            <option value="decr">{fl("DECR — decrement")}</option>
+            <option value="incrby">{fl("INCRBY — increment by amount")}</option>
           </optgroup>
           <optgroup label="Expiry">
-            <option value="expire">EXPIRE — set TTL</option>
-            <option value="ttl">TTL — get remaining TTL</option>
+            <option value="expire">{fl("EXPIRE — set TTL")}</option>
+            <option value="ttl">{fl("TTL — get remaining TTL")}</option>
           </optgroup>
           <optgroup label="Hash">
-            <option value="hget">HGET — read hash field</option>
-            <option value="hset">HSET — write hash field</option>
-            <option value="hdel">HDEL — delete hash field</option>
-            <option value="hgetall">HGETALL — read all hash fields</option>
+            <option value="hget">{fl("HGET — read hash field")}</option>
+            <option value="hset">{fl("HSET — write hash field")}</option>
+            <option value="hdel">{fl("HDEL — delete hash field")}</option>
+            <option value="hgetall">{fl("HGETALL — read all hash fields")}</option>
           </optgroup>
           <optgroup label="List">
-            <option value="lpush">LPUSH — prepend to list</option>
-            <option value="lpop">LPOP — pop from head</option>
-            <option value="rpush">RPUSH — append to list</option>
-            <option value="rpop">RPOP — pop from tail</option>
-            <option value="llen">LLEN — list length</option>
+            <option value="lpush">{fl("LPUSH — prepend to list")}</option>
+            <option value="lpop">{fl("LPOP — pop from head")}</option>
+            <option value="rpush">{fl("RPUSH — append to list")}</option>
+            <option value="rpop">{fl("RPOP — pop from tail")}</option>
+            <option value="llen">{fl("LLEN — list length")}</option>
           </optgroup>
           <optgroup label="Other">
-            <option value="keys">KEYS — list matching keys</option>
-            <option value="ping">PING — health check</option>
+            <option value="keys">{fl("KEYS — list matching keys")}</option>
+            <option value="ping">{fl("PING — health check")}</option>
           </optgroup>
         </select>
       </div>
@@ -1371,7 +1372,7 @@ export function RedisConfig({ set, str, num }: ConfigProps) {
       </div>
       {needsField && (
         <div className="field">
-          <label>Hash Field <span style={{ color: 'var(--danger)' }}>*</span></label>
+          <label>{fl("Hash Field")} <span style={{ color: 'var(--danger)' }}>*</span></label>
           <input
             value={str('field', '')}
             onChange={(e) => set('field', e.target.value)}
@@ -1382,7 +1383,7 @@ export function RedisConfig({ set, str, num }: ConfigProps) {
       )}
       {needsValue && (
         <div className="field">
-          <label>Value</label>
+          <label>{fl("Value")}</label>
           <input
             value={str('value', '')}
             onChange={(e) => set('value', e.target.value)}
@@ -1393,18 +1394,18 @@ export function RedisConfig({ set, str, num }: ConfigProps) {
       )}
       {needsAmount && (
         <div className="field">
-          <label>Amount</label>
+          <label>{fl("Amount")}</label>
           <input type="number" value={num('amount', 1)} onChange={(e) => set('amount', Number(e.target.value))} />
         </div>
       )}
       {needsTtl && (
         <div className="field">
-          <label>TTL (seconds, 0 = no expiry)</label>
+          <label>{fl("TTL (seconds, 0 = no expiry)")}</label>
           <input type="number" min={0} value={num('ttl_secs', 0)} onChange={(e) => set('ttl_secs', Number(e.target.value))} />
         </div>
       )}
       <p style={{ fontSize: 12, color: 'var(--muted)', marginTop: 4 }}>
-        Returns <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>{'{ value, operation, key }'}</code>
+        {fl("Returns")} <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>{'{ value, operation, key }'}</code>
       </p>
     </>
   )
@@ -1414,7 +1415,7 @@ export function ElasticsearchConfig({ set, str }: ConfigProps) {
   return (
     <>
       <div className="field">
-        <label>Cluster URL <span style={{ color: 'var(--danger)' }}>*</span></label>
+        <label>{fl("Cluster URL")} <span style={{ color: 'var(--danger)' }}>*</span></label>
         <input
           value={str('url', '')}
           onChange={(e) => set('url', e.target.value)}
@@ -1423,7 +1424,7 @@ export function ElasticsearchConfig({ set, str }: ConfigProps) {
         />
       </div>
       <div className="field">
-        <label>Endpoint</label>
+        <label>{fl("Endpoint")}</label>
         <input
           value={str('endpoint', '/_search')}
           onChange={(e) => set('endpoint', e.target.value)}
@@ -1432,16 +1433,16 @@ export function ElasticsearchConfig({ set, str }: ConfigProps) {
         />
       </div>
       <div className="field">
-        <label>Method</label>
+        <label>{fl("Method")}</label>
         <select value={str('method', 'GET')} onChange={(e) => set('method', e.target.value)}>
-          <option value="GET">GET</option>
-          <option value="POST">POST — search / create</option>
-          <option value="PUT">PUT — index / update</option>
-          <option value="DELETE">DELETE</option>
+          <option value="GET">{fl("GET")}</option>
+          <option value="POST">{fl("POST — search / create")}</option>
+          <option value="PUT">{fl("PUT — index / update")}</option>
+          <option value="DELETE">{fl("DELETE")}</option>
         </select>
       </div>
       <div className="field">
-        <label>API Key (optional)</label>
+        <label>{fl("API Key (optional)")}</label>
         <input
           value={str('api_key', '')}
           onChange={(e) => set('api_key', e.target.value)}
@@ -1450,7 +1451,7 @@ export function ElasticsearchConfig({ set, str }: ConfigProps) {
         />
       </div>
       <div className="field">
-        <label>Body (JSON)</label>
+        <label>{fl("Body (JSON)")}</label>
         <textarea
           rows={4}
           value={str('body', '')}
@@ -1460,7 +1461,7 @@ export function ElasticsearchConfig({ set, str }: ConfigProps) {
         />
       </div>
       <p style={{ fontSize: 12, color: 'var(--muted)', marginTop: 4 }}>
-        Returns <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>{'{ status, body, took, hits_total }'}</code>
+        {fl("Returns")} <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>{'{ status, body, took, hits_total }'}</code>
       </p>
     </>
   )
@@ -1470,7 +1471,7 @@ export function PagerdutyConfig({ set, str }: ConfigProps) {
   return (
     <>
       <div className="field">
-        <label>Routing Key (Integration Key) <span style={{ color: 'var(--danger)' }}>*</span></label>
+        <label>{fl("Routing Key (Integration Key)")} <span style={{ color: 'var(--danger)' }}>*</span></label>
         <input
           value={str('routing_key', '')}
           onChange={(e) => set('routing_key', e.target.value)}
@@ -1479,7 +1480,7 @@ export function PagerdutyConfig({ set, str }: ConfigProps) {
         />
       </div>
       <div className="field">
-        <label>Summary <span style={{ color: 'var(--danger)' }}>*</span></label>
+        <label>{fl("Summary")} <span style={{ color: 'var(--danger)' }}>*</span></label>
         <input
           value={str('summary', '')}
           onChange={(e) => set('summary', e.target.value)}
@@ -1488,24 +1489,24 @@ export function PagerdutyConfig({ set, str }: ConfigProps) {
         />
       </div>
       <div className="field">
-        <label>Event Action</label>
+        <label>{fl("Event Action")}</label>
         <select value={str('event_action', 'trigger')} onChange={(e) => set('event_action', e.target.value)}>
-          <option value="trigger">trigger — create/update incident</option>
-          <option value="acknowledge">acknowledge — ack incident</option>
-          <option value="resolve">resolve — close incident</option>
+          <option value="trigger">{fl("trigger — create/update incident")}</option>
+          <option value="acknowledge">{fl("acknowledge — ack incident")}</option>
+          <option value="resolve">{fl("resolve — close incident")}</option>
         </select>
       </div>
       <div className="field">
-        <label>Severity</label>
+        <label>{fl("Severity")}</label>
         <select value={str('severity', 'error')} onChange={(e) => set('severity', e.target.value)}>
-          <option value="critical">critical</option>
-          <option value="error">error</option>
-          <option value="warning">warning</option>
-          <option value="info">info</option>
+          <option value="critical">{fl("critical")}</option>
+          <option value="error">{fl("error")}</option>
+          <option value="warning">{fl("warning")}</option>
+          <option value="info">{fl("info")}</option>
         </select>
       </div>
       <div className="field">
-        <label>Source</label>
+        <label>{fl("Source")}</label>
         <input
           value={str('source', 'trigix')}
           onChange={(e) => set('source', e.target.value)}
@@ -1513,17 +1514,17 @@ export function PagerdutyConfig({ set, str }: ConfigProps) {
         />
       </div>
       <div className="field">
-        <label>Dedup Key (optional)</label>
+        <label>{fl("Dedup Key (optional)")}</label>
         <input
           value={str('dedup_key', '')}
           onChange={(e) => set('dedup_key', e.target.value)}
           placeholder="{{input.incident_id}}"
           style={{ fontFamily: 'monospace', fontSize: 12 }}
         />
-        <span style={{ fontSize: 11, color: 'var(--muted)' }}>Same key = update existing incident; omit = always create new</span>
+        <span style={{ fontSize: 11, color: 'var(--muted)' }}>{fl("Same key = update existing incident; omit = always create new")}</span>
       </div>
       <p style={{ fontSize: 12, color: 'var(--muted)', marginTop: 4 }}>
-        Returns <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>{'{ status, message, dedup_key }'}</code>
+        {fl("Returns")} <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>{'{ status, message, dedup_key }'}</code>
       </p>
     </>
   )

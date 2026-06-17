@@ -89,9 +89,10 @@ test('editor renders nodes with coloured headers + palette icons, no crash', asy
   await page.getByText('Smoke WF').click()
 
   // Canvas node renders (previously-broken title now shows on the node block).
+  // The default locale is zh, so generic node titles are localized.
   const node = page.getByTestId('rf__node-structured_output')
   await expect(node).toBeVisible({ timeout: 10_000 })
-  await expect(node.getByText('Structured Output')).toBeVisible()
+  await expect(node.getByText('结构化输出')).toBeVisible()
 
   // The header fix: node headers have a non-transparent background colour.
   const headerBg = await page.locator('.flow-node-header').first().evaluate(
@@ -106,6 +107,30 @@ test('editor renders nodes with coloured headers + palette icons, no crash', asy
   // Left palette renders draggable node items with icons.
   await expect(page.locator('.palette-node-label svg').first()).toBeVisible()
   await expect(page.locator('.palette-node[draggable="true"]').first()).toBeVisible()
+
+  expect(errors, errors.join('\n')).toHaveLength(0)
+})
+
+test('clicking an upstream variable chip inserts {{node.field}} into the focused field', async ({ page }) => {
+  const errors = trackErrors(page)
+  await authedList(page)
+  await page.route(/\/v1\/workflows\/wf1(\?|$)/, (r) => r.fulfill({ json: WF }))
+  await page.route(/\/v1\/workflow-versions\/v1/, (r) => r.fulfill({ json: VERSION }))
+  await page.goto('/')
+  await page.getByText('Smoke WF').click()
+
+  // Select the Slack node (its upstream is structured_output).
+  await page.getByTestId('rf__node-slack').click({ position: { x: 10, y: 10 } })
+
+  // Expand the "available variables" panel and focus the Message textarea.
+  await page.getByRole('button', { name: /可用变量|Available variables/ }).click()
+  const msg = page.locator('.config-panel-body textarea').first()
+  await msg.click()
+
+  // Click the {{structured_output.data}} chip — it should insert at the caret,
+  // exercising the native-setter + dispatched-input → React onChange path.
+  await page.locator('.config-panel-body code', { hasText: '{{structured_output.data}}' }).first().click()
+  await expect(msg).toHaveValue(/\{\{structured_output\.data\}\}/)
 
   expect(errors, errors.join('\n')).toHaveLength(0)
 })

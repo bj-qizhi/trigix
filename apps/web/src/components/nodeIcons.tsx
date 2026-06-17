@@ -30,7 +30,7 @@ import {
   PiStack, PiBrain, PiMegaphone, PiEnvelope, PiEnvelopeOpen, PiTree, PiHandshake,
   PiHardDrives, PiCpu, PiGraph, PiSignature, PiBug, PiUsersThree, PiCloud, PiHash,
   PiKey, PiPaperPlaneTilt, PiVectorThree, PiSlidersHorizontal, PiScissors, PiTag,
-  PiPaintBrush, PiMicrophone, PiSpeakerHigh, PiRss, PiFolderSimple, PiFolderLock,
+  PiPaintBrush, PiVideoCamera, PiMicrophone, PiSpeakerHigh, PiRss, PiFolderSimple, PiFolderLock,
   PiTerminal, PiTray, PiHourglass, PiMoon, PiChatCircleDots, PiFileZip, PiImage,
   PiFilePdf, PiScan, PiCircle,
 } from 'react-icons/pi'
@@ -62,7 +62,7 @@ export const NODE_ICON: Record<NodeType, IconType> = {
   hunyuan: PiBrain, azure_openai: PiBrain, vertex: SiGooglecloud, bedrock: PiBrain,
   rag: PiBooks, rag_ingest: PiUploadSimple, embedding: PiVectorThree,
   reranker: PiSlidersHorizontal, text_splitter: PiScissors, structured_output: PiBracketsCurly,
-  classifier: PiTag, image_gen: PiPaintBrush, speech_to_text: PiMicrophone, tts: PiSpeakerHigh,
+  classifier: PiTag, image_gen: PiPaintBrush, video_gen: PiVideoCamera, speech_to_text: PiMicrophone, tts: PiSpeakerHigh,
   // ── vector stores ──
   pinecone: PiTree, qdrant: PiGraph, weaviate: PiGraph, chroma: PiGraph, milvus: SiMilvus,
   // ── messaging / collab ──
