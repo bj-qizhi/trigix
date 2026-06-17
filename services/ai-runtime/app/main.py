@@ -63,9 +63,21 @@ def _select_provider(config: dict[str, Any]) -> str:
 
 def _build_llm(config: dict[str, Any], model: str, max_tokens: int):
     if _select_provider(config) == "anthropic":
-        if not os.environ.get("ANTHROPIC_API_KEY"):
-            raise HTTPException(status_code=503, detail="ANTHROPIC_API_KEY is not configured")
-        return AnthropicLLM(get_anthropic_client(), model, max_tokens)
+        # A per-node api_key wins (resolved from {{credential.…}} by the platform
+        # before dispatch); otherwise fall back to the runtime's env var. This
+        # mirrors the OpenAI-compatible path and the other LLM nodes.
+        cfg_key = config.get("api_key")
+        if cfg_key:
+            client = anthropic.Anthropic(api_key=str(cfg_key), max_retries=0)
+        elif os.environ.get("ANTHROPIC_API_KEY"):
+            client = get_anthropic_client()
+        else:
+            raise HTTPException(
+                status_code=503,
+                detail="Anthropic agent requires an API key "
+                "(config.api_key or the ANTHROPIC_API_KEY env var)",
+            )
+        return AnthropicLLM(client, model, max_tokens)
 
     # OpenAI-compatible provider.
     base_url = (
@@ -106,6 +118,11 @@ async def run_agent_node(request: AgentNodeRequest) -> AgentNodeResponse:
     config = request.node_config
     model = config.get("model", "claude-sonnet-4-6")
     system_prompt = config.get("system_prompt", "You are a helpful AI assistant.")
+    # Resolve {{input.…}} / {{node_id.…}} in the system prompt too (the user
+    # message is already templated in _build_user_message).
+    system_prompt = _resolve_template(
+        system_prompt, request.input_json, request.node_outputs
+    )
     max_tokens = int(config.get("max_tokens", 1024))
 
     user_message = _build_user_message(config, request.input_json, request.node_outputs)
