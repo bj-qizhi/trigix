@@ -2,7 +2,10 @@
 # Track the latest stable Rust (like CI's toolchain) so the image doesn't rot
 # when a dependency raises its edition / MSRV — 1.82 could no longer build the
 # tree once a transitive crate required edition 2024.
-FROM rust:1-slim AS rust-builder
+# Pin to -bookworm so the builder's glibc matches the bookworm runtime stage;
+# the default rust:1-slim moved to a newer Debian (glibc 2.39) and the binary
+# then failed to load on bookworm-slim (glibc 2.36).
+FROM rust:1-slim-bookworm AS rust-builder
 
 RUN apt-get update && apt-get install -y pkg-config libssl-dev && rm -rf /var/lib/apt/lists/*
 

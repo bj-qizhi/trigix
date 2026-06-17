@@ -1,4 +1,5 @@
-#!/bin/sh
+#!/bin/bash
+# bash (not sh/dash) — we use `wait -n` below to exit if either process dies.
 set -e
 
 # Backend binds on 0.0.0.0:38080 inside container; nginx proxies from port 80
