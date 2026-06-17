@@ -1,21 +1,38 @@
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
+/* Form controls don't inherit color/font by default — without this, any
+   <button>/<input> that doesn't set its own color uses the UA default (dark on
+   our dark theme = unreadable, e.g. the node palette buttons). */
+button, input, select, textarea { font-family: inherit; color: inherit; }
+
 :root {
-  --bg: #0d1117;
-  --surface: #161b22;
-  --panel: #21262d;
-  --border: #30363d;
-  --text: #e6edf3;
-  --muted: #8b949e;
-  --link: #58a6ff;
-  --accent: #1f6feb;
-  --accent-hover: #388bfd;
-  --success: #238636;
-  --success-text: #3fb950;
-  --danger: #da3633;
-  --danger-text: #f85149;
-  --warning-text: #d29922;
-  --radius: 6px;
+  /* Linear/Vercel-style dark: layered near-black neutrals + a signature indigo. */
+  --bg: #0b0b0f;
+  --surface: #111116;
+  --panel: #18181f;
+  --panel-hover: #20202a;
+  --border: #26262e;
+  --border-strong: #34343f;
+  --text: #f2f2f6;
+  --muted: #a1a1ad;          /* bumped from #8b949e for legibility */
+  --faint: #6c6c78;
+  --link: #8b8cf2;
+  --accent: #6e6ad8;         /* signature indigo-violet — used sparingly */
+  --accent-hover: #817ef0;
+  --accent-soft: rgba(110, 106, 216, 0.16);
+  --success: #2ea043;
+  --success-text: #4ac95e;
+  --danger: #e5484d;
+  --danger-text: #ff6166;
+  --warning-text: #e0a82e;
+  --radius: 8px;
+  --radius-sm: 6px;
+  --radius-lg: 12px;
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 6px 22px rgba(0, 0, 0, 0.45);
+  --shadow-lg: 0 16px 48px rgba(0, 0, 0, 0.55);
+  --hairline: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  --ring: 0 0 0 2px color-mix(in srgb, var(--accent) 55%, transparent);
 
   --node-trigger: #238636;
   --node-http: #1f6feb;
@@ -163,9 +180,12 @@
   --bg: #f6f8fa;
   --surface: #ffffff;
   --panel: #eaeef2;
+  --panel-hover: #dde3e9;
   --border: #d0d7de;
+  --border-strong: #afb8c1;
   --text: #1f2328;
   --muted: #57606a;
+  --faint: #8c959f;
   --link: #0969da;
   --accent: #0969da;
   --accent-hover: #0550ae;
@@ -256,8 +276,30 @@ label { font-size: 12px; color: var(--muted); display: block; margin-bottom: 4px
 }
 .topbar-logo { font-size: 16px; font-weight: 700; color: var(--text); letter-spacing: -0.02em; }
 .topbar-sep { color: var(--border); font-size: 18px; }
-.topbar-title { font-weight: 500; font-size: 14px; }
-.topbar-actions { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+.topbar-title { font-weight: 500; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 240px; flex-shrink: 0; }
+.topbar-actions { margin-left: auto; display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+
+/* Topbar "⚙ Limits" popover (declutters the governance chips). */
+.tb-pop-wrap { position: relative; display: inline-flex; }
+.tb-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); display: inline-block; }
+.tb-popover {
+  position: absolute; top: calc(100% + 6px); left: 0; z-index: 50; min-width: 248px; padding: 10px;
+  background: var(--surface); border: 1px solid var(--border-strong); border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg); display: flex; flex-direction: column; gap: 8px;
+}
+.tb-pop-title { font-size: 11px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }
+.tb-pop-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.tb-pop-row label { font-size: 12px; color: var(--muted); }
+.tb-pop-row input { width: 96px; font-size: 12px; padding: 3px 6px; background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius-sm); color: var(--text); text-align: right; }
+.tb-pop-val { font-size: 12px; color: var(--text); background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 3px 8px; min-width: 72px; text-align: right; cursor: pointer; }
+.tb-pop-val:hover { border-color: var(--accent); }
+
+/* "View ▾" / "⋯ More" dropdown menus. */
+.tb-menu { padding: 6px; min-width: 200px; gap: 2px; }
+.tb-menu-item { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; padding: 7px 10px; border: none; background: transparent; color: var(--text); font-size: 13px; text-align: left; border-radius: var(--radius-sm); cursor: pointer; }
+.tb-menu-item:hover { background: var(--panel-hover); }
+.tb-menu-state { font-size: 10px; font-weight: 600; color: var(--faint); letter-spacing: 0.04em; }
+.tb-menu-state.on { color: var(--accent); }
 
 /* ── Workflow list ── */
 .list-page { flex: 1; overflow: auto; padding: 32px 48px; }
@@ -515,7 +557,57 @@ label { font-size: 12px; color: var(--muted); display: block; margin-bottom: 4px
 @keyframes slide-up { from { opacity:0; transform: translateY(8px); } to { opacity:1; transform: translateY(0); } }
 
 /* ── Scrollbar ── */
-::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar { width: 8px; height: 8px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
-::-webkit-scrollbar-thumb:hover { background: var(--muted); }
+::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 4px; border: 2px solid transparent; background-clip: padding-box; }
+::-webkit-scrollbar-thumb:hover { background: var(--faint); background-clip: padding-box; }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   Polish layer — premium dark (Linear/Vercel-style): focus rings, smooth
+   micro-interactions, and subtle elevation. Additive; overrides by cascade.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/* Smooth transitions on anything interactive. */
+button, .btn, .palette-node, a, input, select, textarea, [role="button"] {
+  transition: background-color .13s ease, border-color .13s ease, color .13s ease,
+              box-shadow .13s ease, transform .13s ease;
+}
+
+/* Keyboard focus ring (accessible + premium); not on mouse clicks. */
+:focus { outline: none; }
+button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible,
+textarea:focus-visible, [tabindex]:focus-visible, [role="button"]:focus-visible {
+  outline: none;
+  box-shadow: var(--ring);
+  border-color: var(--accent);
+}
+
+/* Primary accent buttons get the signature color + a soft glow. */
+.btn-primary, .btn.primary, button.primary {
+  background: var(--accent); border-color: var(--accent); color: #fff;
+}
+.btn-primary:hover, .btn.primary:hover, button.primary:hover {
+  background: var(--accent-hover); border-color: var(--accent-hover);
+}
+
+/* Generic hover lift for cards / list rows (kept subtle). */
+.card, .stat-card, .wf-card, .workflow-card {
+  box-shadow: var(--shadow-sm);
+}
+.card:hover, .stat-card:hover, .wf-card:hover, .workflow-card:hover {
+  border-color: var(--border-strong);
+}
+
+/* Node palette buttons: clear text (belt-and-suspenders) + micro-lift on hover. */
+.palette-node { color: var(--text); background: var(--panel); }
+.palette-node:hover {
+  background: var(--panel-hover); border-color: var(--border-strong);
+  transform: translateY(-1px); box-shadow: var(--shadow-sm);
+}
+.palette-node:active { transform: translateY(0); }
+
+/* Side panels and floating surfaces get a 1px top highlight for depth. */
+.palette, .config-panel { box-shadow: var(--hairline); }
+
+/* Inputs: accent focus (kept conservative — don't override existing bg/border). */
+input:focus, select:focus, textarea:focus { border-color: var(--accent); box-shadow: var(--ring); }
