@@ -439,6 +439,9 @@ export function WorkflowEditor({ workflowId, onBack, initialInput }: Props) {
   const [saveMessage, setSaveMessage] = useState('')
   const [showSaveMessage, setShowSaveMessage] = useState(false)
   const [showSchedule, setShowSchedule] = useState(false)
+  const [showLimits, setShowLimits] = useState(false)
+  const [showMoreActions, setShowMoreActions] = useState(false)
+  const [showViewMenu, setShowViewMenu] = useState(false)
   const [showReadme, setShowReadme] = useState(false)
   const [showForms, setShowForms] = useState(false)
   const [showTests, setShowTests] = useState(false)
@@ -509,7 +512,14 @@ export function WorkflowEditor({ workflowId, onBack, initialInput }: Props) {
       if (wf.latest_version_id) {
         return api.getVersion(auth!.tenantId, wf.latest_version_id)
       }
-      return null
+      // No published version (e.g. an imported template or AI-generated draft):
+      // load the most recent version so the canvas shows the saved graph
+      // instead of an empty editor.
+      return api.listVersions(auth!.tenantId, workflowId).then((vs) => {
+        if (!vs.length) return null
+        const latest = vs.reduce((a, b) => (b.version > a.version ? b : a))
+        return api.getVersion(auth!.tenantId, latest.id)
+      })
     }).then((ver) => {
       if (ver) {
         setVersion(ver)
@@ -1611,79 +1621,50 @@ export function WorkflowEditor({ workflowId, onBack, initialInput }: Props) {
           )
         )}
         {workflow && (
-          editingSla ? (
-            <input
-              autoFocus
-              type="number"
-              min={1}
-              value={newSlaInput}
-              onChange={(e) => setNewSlaInput(e.target.value)}
-              onBlur={handleSaveSla}
-              onKeyDown={(e) => { if (e.key === 'Enter') handleSaveSla(); if (e.key === 'Escape') setEditingSla(false) }}
-              placeholder={zh ? 'SLA秒数（留空清除）' : 'SLA seconds (blank to clear)'}
-              style={{ width: 160, fontSize: 12, color: 'var(--muted)' }}
-            />
-          ) : (
-            <span
-              style={{ fontSize: 12, color: 'var(--muted)', cursor: 'pointer' }}
-              onClick={() => { setEditingSla(true); setNewSlaInput(workflow.sla_seconds != null ? String(workflow.sla_seconds) : '') }}
-              title={zh ? '点击设置 SLA（超时告警阈值，单位秒）' : 'Click to set SLA threshold (seconds). A notification fires if execution exceeds this duration.'}
-            >
-              {workflow.sla_seconds != null
-                ? (zh ? `SLA: ${workflow.sla_seconds}s` : `SLA: ${workflow.sla_seconds}s`)
-                : (zh ? '+ SLA' : '+ SLA')}
-            </span>
-          )
-        )}
-        {workflow && (
-          editingRateLimit ? (
-            <input
-              autoFocus
-              type="number"
-              min={1}
-              value={newRateLimitInput}
-              onChange={(e) => setNewRateLimitInput(e.target.value)}
-              onBlur={handleSaveRateLimit}
-              onKeyDown={(e) => { if (e.key === 'Enter') handleSaveRateLimit(); if (e.key === 'Escape') setEditingRateLimit(false) }}
-              placeholder={zh ? '每小时最大运行次数' : 'Max runs/hour (blank to clear)'}
-              style={{ width: 160, fontSize: 12, color: 'var(--muted)' }}
-            />
-          ) : (
-            <span
-              style={{ fontSize: 12, color: 'var(--muted)', cursor: 'pointer' }}
-              onClick={() => { setEditingRateLimit(true); setNewRateLimitInput(workflow.max_runs_per_hour != null ? String(workflow.max_runs_per_hour) : '') }}
-              title={zh ? '点击设置每小时最大运行次数（速率限制）' : 'Click to set max executions per hour (rate limit). Returns 429 when exceeded.'}
-            >
-              {workflow.max_runs_per_hour != null
-                ? (zh ? `限速: ${workflow.max_runs_per_hour}/hr` : `Limit: ${workflow.max_runs_per_hour}/hr`)
-                : (zh ? '+ 限速' : '+ Rate limit')}
-            </span>
-          )
-        )}
-        {workflow && (
-          editingMaxConcurrent ? (
-            <input
-              autoFocus
-              type="number"
-              min={1}
-              value={newMaxConcurrentInput}
-              onChange={(e) => setNewMaxConcurrentInput(e.target.value)}
-              onBlur={handleSaveMaxConcurrent}
-              onKeyDown={(e) => { if (e.key === 'Enter') handleSaveMaxConcurrent(); if (e.key === 'Escape') setEditingMaxConcurrent(false) }}
-              placeholder={zh ? '最大并发运行数（留空清除）' : 'Max concurrent runs (blank to clear)'}
-              style={{ width: 180, fontSize: 12, color: 'var(--muted)' }}
-            />
-          ) : (
-            <span
-              style={{ fontSize: 12, color: 'var(--muted)', cursor: 'pointer' }}
-              onClick={() => { setEditingMaxConcurrent(true); setNewMaxConcurrentInput(workflow.max_concurrent_runs != null ? String(workflow.max_concurrent_runs) : '') }}
-              title={zh ? '点击设置最大并发运行数（防止同一工作流同时有太多运行实例）' : 'Click to set max concurrent runs. Returns 429 when this many runs are already active for this workflow.'}
-            >
-              {workflow.max_concurrent_runs != null
-                ? (zh ? `并发: ${workflow.max_concurrent_runs}` : `Concur: ${workflow.max_concurrent_runs}`)
-                : (zh ? '+ 并发限制' : '+ Concur limit')}
-            </span>
-          )
+          <span className="tb-pop-wrap">
+            <button
+              className="btn btn-sm"
+              onClick={() => setShowLimits((v) => !v)}
+              title={zh ? 'SLA、速率、并发与 AI 预算' : 'SLA, rate limit, concurrency & AI budget'}
+            >⚙ {zh ? '限额' : 'Limits'}{(workflow.sla_seconds != null || workflow.max_runs_per_hour != null || workflow.max_concurrent_runs != null || workflow.budget_usd != null) && <span className="tb-dot" />}</button>
+            {showLimits && (
+              <div className="tb-popover" onMouseLeave={() => setShowLimits(false)}>
+                <div className="tb-pop-title">{zh ? '限额与预算' : 'Limits & budget'}</div>
+                <div className="tb-pop-row">
+                  <label>{zh ? 'SLA（秒）' : 'SLA (sec)'}</label>
+                  {editingSla ? (
+                    <input autoFocus type="number" min={1} value={newSlaInput} onChange={(e) => setNewSlaInput(e.target.value)} onBlur={handleSaveSla} onKeyDown={(e) => { if (e.key === 'Enter') handleSaveSla(); if (e.key === 'Escape') setEditingSla(false) }} />
+                  ) : (
+                    <button className="tb-pop-val" onClick={() => { setEditingSla(true); setNewSlaInput(workflow.sla_seconds != null ? String(workflow.sla_seconds) : '') }}>{workflow.sla_seconds != null ? `${workflow.sla_seconds}s` : (zh ? '未设置' : 'not set')}</button>
+                  )}
+                </div>
+                <div className="tb-pop-row">
+                  <label>{zh ? '速率（次/时）' : 'Rate (runs/hr)'}</label>
+                  {editingRateLimit ? (
+                    <input autoFocus type="number" min={1} value={newRateLimitInput} onChange={(e) => setNewRateLimitInput(e.target.value)} onBlur={handleSaveRateLimit} onKeyDown={(e) => { if (e.key === 'Enter') handleSaveRateLimit(); if (e.key === 'Escape') setEditingRateLimit(false) }} />
+                  ) : (
+                    <button className="tb-pop-val" onClick={() => { setEditingRateLimit(true); setNewRateLimitInput(workflow.max_runs_per_hour != null ? String(workflow.max_runs_per_hour) : '') }}>{workflow.max_runs_per_hour != null ? `${workflow.max_runs_per_hour}/hr` : (zh ? '未设置' : 'not set')}</button>
+                  )}
+                </div>
+                <div className="tb-pop-row">
+                  <label>{zh ? '并发上限' : 'Max concurrent'}</label>
+                  {editingMaxConcurrent ? (
+                    <input autoFocus type="number" min={1} value={newMaxConcurrentInput} onChange={(e) => setNewMaxConcurrentInput(e.target.value)} onBlur={handleSaveMaxConcurrent} onKeyDown={(e) => { if (e.key === 'Enter') handleSaveMaxConcurrent(); if (e.key === 'Escape') setEditingMaxConcurrent(false) }} />
+                  ) : (
+                    <button className="tb-pop-val" onClick={() => { setEditingMaxConcurrent(true); setNewMaxConcurrentInput(workflow.max_concurrent_runs != null ? String(workflow.max_concurrent_runs) : '') }}>{workflow.max_concurrent_runs != null ? String(workflow.max_concurrent_runs) : (zh ? '未设置' : 'not set')}</button>
+                  )}
+                </div>
+                <div className="tb-pop-row">
+                  <label>{zh ? 'AI 预算（$）' : 'AI budget ($)'}</label>
+                  {editingBudget ? (
+                    <input autoFocus type="number" min={0.01} step={0.01} value={newBudgetInput} onChange={(e) => setNewBudgetInput(e.target.value)} onBlur={handleSaveBudget} onKeyDown={(e) => { if (e.key === 'Enter') handleSaveBudget(); if (e.key === 'Escape') setEditingBudget(false) }} />
+                  ) : (
+                    <button className="tb-pop-val" onClick={() => { setEditingBudget(true); setNewBudgetInput(workflow.budget_usd != null ? String(workflow.budget_usd) : '') }}>{workflow.budget_usd != null ? `$${workflow.budget_usd.toFixed(2)}` : (zh ? '未设置' : 'not set')}</button>
+                  )}
+                </div>
+              </div>
+            )}
+          </span>
         )}
         {workflow && (workflow.tags ?? []).map(tag => (
           <span key={tag} style={{ display: 'inline-flex', alignItems: 'center', gap: 2, background: 'var(--border)', borderRadius: 4, padding: '1px 5px', fontSize: 11, color: 'var(--fg)' }}>
@@ -1712,32 +1693,6 @@ export function WorkflowEditor({ workflowId, onBack, initialInput }: Props) {
               onClick={() => setAddingTag(true)}
               title={zh ? '添加标签' : 'Add tag'}
             >+ tag</span>
-          )
-        )}
-        {workflow && (
-          editingBudget ? (
-            <input
-              autoFocus
-              type="number"
-              min={0.01}
-              step={0.01}
-              value={newBudgetInput}
-              onChange={(e) => setNewBudgetInput(e.target.value)}
-              onBlur={handleSaveBudget}
-              onKeyDown={(e) => { if (e.key === 'Enter') handleSaveBudget(); if (e.key === 'Escape') setEditingBudget(false) }}
-              placeholder={zh ? 'AI 预算（美元，留空清除）' : 'AI budget USD (blank to clear)'}
-              style={{ width: 160, fontSize: 12, color: 'var(--muted)' }}
-            />
-          ) : (
-            <span
-              style={{ fontSize: 12, color: 'var(--muted)', cursor: 'pointer' }}
-              onClick={() => { setEditingBudget(true); setNewBudgetInput(workflow.budget_usd != null ? String(workflow.budget_usd) : '') }}
-              title={zh ? '点击设置每次执行的 AI 成本预算（超出时发送通知）' : 'Click to set per-run AI cost budget. Notification fires when estimated cost exceeds this amount.'}
-            >
-              {workflow.budget_usd != null
-                ? (zh ? `预算: $${workflow.budget_usd.toFixed(2)}` : `Budget: $${workflow.budget_usd.toFixed(2)}`)
-                : (zh ? '+ AI 预算' : '+ AI budget')}
-            </span>
           )
         )}
         {version && (
@@ -1838,37 +1793,32 @@ export function WorkflowEditor({ workflowId, onBack, initialInput }: Props) {
           >
             {t('we.layout')}
           </button>
-          <button
-            className={`btn btn-sm${snapToGrid ? ' btn-primary' : ''}`}
-            onClick={() => setSnapToGrid((v) => !v)}
-            title={snapToGrid ? 'Snap to grid: ON (click to disable)' : 'Snap to grid: OFF (click to enable)'}
-            style={{ fontSize: 11 }}
-          >
-            {t('we.snap')}
-          </button>
-          <button
-            className={`btn btn-sm${showMinimap ? '' : ' btn-secondary'}`}
-            onClick={() => setShowMinimap((v) => !v)}
-            title={showMinimap ? 'Hide minimap' : 'Show minimap'}
-            style={{ fontSize: 11 }}
-          >
-            {showMinimap ? t('we.minimap') : '□ Map'}
-          </button>
-          <select
-            value={bgVariant}
-            onChange={(e) => {
-              const v = e.target.value as 'dots' | 'grid' | 'lines' | 'none'
-              setBgVariant(v)
-              try { localStorage.setItem('af:canvas_bg', v) } catch { /* ignore */ }
-            }}
-            title={zh ? '画布背景样式' : 'Canvas background style'}
-            style={{ fontSize: 11, padding: '2px 4px', height: 26, borderRadius: 4, border: '1px solid var(--border)', background: 'var(--panel)', color: 'var(--text)', cursor: 'pointer' }}
-          >
-            <option value="dots">{zh ? '· 点' : '· Dots'}</option>
-            <option value="grid">{zh ? '⊹ 网格' : '⊹ Grid'}</option>
-            <option value="lines">{zh ? '— 线' : '— Lines'}</option>
-            <option value="none">{zh ? '□ 无' : '□ None'}</option>
-          </select>
+          <span className="tb-pop-wrap">
+            <button className="btn btn-sm" onClick={() => setShowViewMenu((v) => !v)} title={zh ? '画布视图选项' : 'Canvas view options'}>{zh ? '视图' : 'View'} ▾</button>
+            {showViewMenu && (
+              <div className="tb-popover tb-menu" onMouseLeave={() => setShowViewMenu(false)}>
+                <button className="tb-menu-item" onClick={() => setSnapToGrid((v) => !v)}>
+                  <span>{zh ? '对齐网格' : 'Snap to grid'}</span><span className={`tb-menu-state${snapToGrid ? ' on' : ''}`}>{snapToGrid ? 'ON' : 'OFF'}</span>
+                </button>
+                <button className="tb-menu-item" onClick={() => setShowMinimap((v) => !v)}>
+                  <span>{zh ? '小地图' : 'Minimap'}</span><span className={`tb-menu-state${showMinimap ? ' on' : ''}`}>{showMinimap ? 'ON' : 'OFF'}</span>
+                </button>
+                <div className="tb-menu-item" style={{ cursor: 'default' }}>
+                  <span>{zh ? '背景' : 'Background'}</span>
+                  <select
+                    value={bgVariant}
+                    onChange={(e) => { const v = e.target.value as 'dots' | 'grid' | 'lines' | 'none'; setBgVariant(v); try { localStorage.setItem('af:canvas_bg', v) } catch { /* ignore */ } }}
+                    style={{ fontSize: 11, padding: '2px 6px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)', background: 'var(--panel)', color: 'var(--text)', cursor: 'pointer' }}
+                  >
+                    <option value="dots">{zh ? '· 点' : '· Dots'}</option>
+                    <option value="grid">{zh ? '⊹ 网格' : '⊹ Grid'}</option>
+                    <option value="lines">{zh ? '— 线' : '— Lines'}</option>
+                    <option value="none">{zh ? '□ 无' : '□ None'}</option>
+                  </select>
+                </div>
+              </div>
+            )}
+          </span>
           <button
             className="btn btn-sm"
             onClick={() => fitViewRef.current?.()}
@@ -1885,54 +1835,19 @@ export function WorkflowEditor({ workflowId, onBack, initialInput }: Props) {
           >
             🔍 {zh ? '查找' : 'Find'}
           </button>
-          <button
-            className="btn btn-sm"
-            onClick={() => { const w = collectPublishWarnings(); setValidateWarnings(w); setShowValidate(true) }}
-            title="Validate workflow configuration"
-            style={{ fontSize: 11 }}
-          >
-            {t('we.validate')}
-          </button>
-          <button
-            className="btn btn-sm"
-            onClick={() => setShowSchedule(true)}
-            title="Configure auto-run schedule for the trigger node"
-            style={{ fontSize: 11 }}
-          >
-            {t('we.schedule')}
-          </button>
-          <button
-            className="btn btn-sm"
-            onClick={() => setShowForms(true)}
-            title="Publish a shareable form URL for this workflow"
-            style={{ fontSize: 11 }}
-          >
-            {t('we.form')}
-          </button>
-          <button
-            className="btn btn-sm"
-            onClick={() => setShowTests(true)}
-            title="Manage workflow test cases"
-            style={{ fontSize: 11 }}
-          >
-            {t('we.tests')}
-          </button>
-          <button
-            className="btn btn-sm"
-            onClick={() => setShowComments(true)}
-            title="View and add comments on this workflow"
-            style={{ fontSize: 11 }}
-          >
-            {t('we.comments')}
-          </button>
-          <button
-            className="btn btn-sm"
-            onClick={() => setShowApiDocs(true)}
-            title={zh ? '查看此工作流的 API 调用文档' : 'View API usage docs for this workflow'}
-            style={{ fontSize: 11 }}
-          >
-            📖 {zh ? 'API 文档' : 'API Docs'}
-          </button>
+          <span className="tb-pop-wrap">
+            <button className="btn btn-sm" onClick={() => setShowMoreActions((v) => !v)} title={zh ? '更多操作' : 'More actions'}>⋯ {zh ? '更多' : 'More'}</button>
+            {showMoreActions && (
+              <div className="tb-popover tb-menu" style={{ right: 0, left: 'auto' }} onMouseLeave={() => setShowMoreActions(false)}>
+                <button className="tb-menu-item" onClick={() => { setShowMoreActions(false); const w = collectPublishWarnings(); setValidateWarnings(w); setShowValidate(true) }}>{t('we.validate')}</button>
+                <button className="tb-menu-item" onClick={() => { setShowMoreActions(false); setShowSchedule(true) }}>{t('we.schedule')}</button>
+                <button className="tb-menu-item" onClick={() => { setShowMoreActions(false); setShowForms(true) }}>{t('we.form')}</button>
+                <button className="tb-menu-item" onClick={() => { setShowMoreActions(false); setShowTests(true) }}>{t('we.tests')}</button>
+                <button className="tb-menu-item" onClick={() => { setShowMoreActions(false); setShowComments(true) }}>{t('we.comments')}</button>
+                <button className="tb-menu-item" onClick={() => { setShowMoreActions(false); setShowApiDocs(true) }}>📖 {zh ? 'API 文档' : 'API Docs'}</button>
+              </div>
+            )}
+          </span>
           <button
             className={`btn btn-sm${showCopilot ? ' btn-primary' : ''}`}
             onClick={() => setShowCopilot((v) => !v)}
