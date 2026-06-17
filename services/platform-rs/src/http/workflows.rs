@@ -1068,7 +1068,8 @@ async fn generate_workflow(
         .to_string();
     let temperature = body.temperature.unwrap_or(0.4).clamp(0.0, 2.0);
 
-    let mut system_prompt = String::from(r#"You are an expert workflow designer for Trigix, an AI-powered automation platform.
+    let mut system_prompt = String::from(
+        r#"You are an expert workflow designer for Trigix, an AI-powered automation platform.
 
 Generate a workflow graph JSON based on the user's description. Respond with ONLY valid JSON in this exact structure:
 {
@@ -1123,7 +1124,8 @@ Rules:
 - Use descriptive node IDs like "fetch_data", "parse_response", "send_slack"
 - Keep graphs focused — 3-8 nodes is ideal
 - Use {{credential.name}} for sensitive values (API keys, tokens)
-- Return ONLY the JSON, no explanation"#);
+- Return ONLY the JSON, no explanation"#,
+    );
 
     // Append caller-supplied constraints from the advanced options.
     let mut rules: Vec<String> = Vec::new();
@@ -1134,7 +1136,9 @@ Rules:
         ));
     }
     if let Some(n) = body.max_nodes.filter(|n| *n > 0) {
-        rules.push(format!("Use at most {n} nodes in total (including the trigger)."));
+        rules.push(format!(
+            "Use at most {n} nodes in total (including the trigger)."
+        ));
     }
     match body.error_handling {
         Some(true) => rules.push(
@@ -1187,13 +1191,18 @@ Rules:
             .json()
             .await
             .map_err(|e| ApiError::bad_request(&format!("Claude response parse error: {e}")))?;
-        j["content"][0]["text"].as_str().unwrap_or("").trim().to_string()
+        j["content"][0]["text"]
+            .as_str()
+            .unwrap_or("")
+            .trim()
+            .to_string()
     } else {
-        let url = resolve_generation_base_url(&provider, body.base_url.as_deref()).ok_or_else(|| {
-            ApiError::bad_request(
+        let url =
+            resolve_generation_base_url(&provider, body.base_url.as_deref()).ok_or_else(|| {
+                ApiError::bad_request(
                 "Unknown provider: set base_url to an OpenAI-compatible /chat/completions endpoint",
             )
-        })?;
+            })?;
         let payload = serde_json::json!({
             "model": model,
             "max_tokens": 2048,
@@ -1214,7 +1223,9 @@ Rules:
         if !resp.status().is_success() {
             let code = resp.status().as_u16();
             let text = resp.text().await.unwrap_or_default();
-            return Err(ApiError::bad_request(&format!("Generation API {code}: {text}")));
+            return Err(ApiError::bad_request(&format!(
+                "Generation API {code}: {text}"
+            )));
         }
         let j: serde_json::Value = resp
             .json()

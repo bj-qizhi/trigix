@@ -448,7 +448,11 @@ pub(super) async fn execute_deepseek(
     openai_compat_chat(
         "DeepSeek",
         &api_key,
-        &resolve_base_url(config, context, "https://api.deepseek.com/v1/chat/completions"),
+        &resolve_base_url(
+            config,
+            context,
+            "https://api.deepseek.com/v1/chat/completions",
+        ),
         &model,
         messages,
         max_tokens,
@@ -476,7 +480,11 @@ pub(super) async fn execute_qwen(
     openai_compat_chat(
         "Qwen",
         &api_key,
-        &resolve_base_url(config, context, "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions"),
+        &resolve_base_url(
+            config,
+            context,
+            "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions",
+        ),
         &model,
         messages,
         max_tokens,
@@ -504,7 +512,11 @@ pub(super) async fn execute_zhipu(
     openai_compat_chat(
         "Zhipu",
         &api_key,
-        &resolve_base_url(config, context, "https://open.bigmodel.cn/api/paas/v4/chat/completions"),
+        &resolve_base_url(
+            config,
+            context,
+            "https://open.bigmodel.cn/api/paas/v4/chat/completions",
+        ),
         &model,
         messages,
         max_tokens,
@@ -532,7 +544,11 @@ pub(super) async fn execute_moonshot(
     openai_compat_chat(
         "Moonshot",
         &api_key,
-        &resolve_base_url(config, context, "https://api.moonshot.cn/v1/chat/completions"),
+        &resolve_base_url(
+            config,
+            context,
+            "https://api.moonshot.cn/v1/chat/completions",
+        ),
         &model,
         messages,
         max_tokens,
@@ -588,7 +604,11 @@ pub(super) async fn execute_doubao(
     openai_compat_chat(
         "Doubao",
         &api_key,
-        &resolve_base_url(config, context, "https://ark.cn-beijing.volces.com/api/v3/chat/completions"),
+        &resolve_base_url(
+            config,
+            context,
+            "https://ark.cn-beijing.volces.com/api/v3/chat/completions",
+        ),
         &model,
         serde_json::Value::Array(messages),
         max_tokens,
@@ -785,11 +805,9 @@ pub(super) async fn execute_ernie(
     // Legacy wenxinworkshop path requires the client_secret for OAuth2 exchange.
     let secret_key = match config.get("secret_key").and_then(|v| v.as_str()) {
         Some(k) => resolve_template(k, context),
-        None => {
-            return NodeExecutionResult::failed(
-                "Ernie missing 'secret_key' (or set 'base_url' for Qianfan v2 OpenAI-compatible mode)",
-            )
-        }
+        None => return NodeExecutionResult::failed(
+            "Ernie missing 'secret_key' (or set 'base_url' for Qianfan v2 OpenAI-compatible mode)",
+        ),
     };
 
     // Step 1: exchange client credentials for access_token
@@ -889,7 +907,11 @@ pub(super) async fn execute_hunyuan(
     openai_compat_chat(
         "Hunyuan",
         &api_key,
-        &resolve_base_url(config, context, "https://api.hunyuan.cloud.tencent.com/v1/chat/completions"),
+        &resolve_base_url(
+            config,
+            context,
+            "https://api.hunyuan.cloud.tencent.com/v1/chat/completions",
+        ),
         &model,
         messages,
         max_tokens,
