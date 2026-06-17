@@ -1,7 +1,23 @@
 // Copyright © 2026 北京祺智科技有限公司. All rights reserved.
 // https://www.qzso.com/ · managecode@gmail.com
 
+import { useId } from 'react'
 import type { ConfigProps } from './types'
+
+// Editable model field: type any model name, or pick a current suggestion.
+// `options` are [value, label] pairs surfaced via a native datalist.
+function ModelField({ str, set, fallback, options }: Pick<ConfigProps, 'str' | 'set'> & { fallback: string; options: Array<[string, string]> }) {
+  const listId = useId()
+  return (
+    <div className="field">
+      <label>Model <span style={{ color: 'var(--muted)' }}>(输入或选择)</span></label>
+      <input list={listId} placeholder={fallback} value={str('model', fallback)} onChange={(e) => set('model', e.target.value)} />
+      <datalist id={listId}>
+        {options.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+      </datalist>
+    </div>
+  )
+}
 
 export function TwitchConfig({ config, set, str }: ConfigProps) {
   const method = str('method', 'GET')
@@ -4203,6 +4219,11 @@ function CnLlmCommonFields({ str, set, num }: Pick<ConfigProps, 'str' | 'set' | 
           <input type="number" step={0.1} min={0} max={2} value={num('temperature', 0.7)} onChange={(e) => set('temperature', Number(e.target.value))} />
         </div>
       </div>
+      <div className="field">
+        <label>API Base URL <span style={{ color: 'var(--muted)' }}>(可选，覆盖默认端点)</span></label>
+        <input placeholder="留空用默认；OpenAI 兼容 /chat/completions 地址" value={str('base_url', '')} onChange={(e) => set('base_url', e.target.value)} style={{ fontFamily: 'monospace', fontSize: 12 }} />
+        <span style={{ fontSize: 11, color: 'var(--muted)' }}>新模型（MiniMax M 系列、ERNIE 4.5/5.0/X1 等）填对应新接口地址即可调用。</span>
+      </div>
     </>
   )
 }
@@ -4268,7 +4289,12 @@ export function GrokConfig({ set, str, num }: ConfigProps) {
     <>
       <div className="field">
         <label>Model</label>
-        <input placeholder="grok-2-latest" value={str('model', 'grok-2-latest')} onChange={(e) => set('model', e.target.value)} style={{ fontFamily: 'monospace', fontSize: 12 }} />
+        <input list="grok-models" placeholder="grok-4.3" value={str('model', 'grok-4.3')} onChange={(e) => set('model', e.target.value)} style={{ fontFamily: 'monospace', fontSize: 12 }} />
+        <datalist id="grok-models">
+          <option value="grok-4.3">grok-4.3 (flagship)</option>
+          <option value="grok-4.20">grok-4.20 (2M ctx)</option>
+          <option value="grok-4">grok-4</option>
+        </datalist>
       </div>
       <div className="field">
         <label>API Key *</label>
@@ -4308,13 +4334,12 @@ export function OllamaConfig({ set, str, num }: ConfigProps) {
 export function DeepseekConfig({ set, str, num }: ConfigProps) {
   return (
     <>
-      <div className="field">
-        <label>Model</label>
-        <select value={str('model', 'deepseek-chat')} onChange={(e) => set('model', e.target.value)}>
-          <option value="deepseek-chat">deepseek-chat (V3)</option>
-          <option value="deepseek-reasoner">deepseek-reasoner (R1)</option>
-        </select>
-      </div>
+      <ModelField str={str} set={set} fallback="deepseek-v4-flash" options={[
+        ['deepseek-v4-flash', 'deepseek-v4-flash (V4, 1M)'],
+        ['deepseek-v4-pro', 'deepseek-v4-pro (V4, 1M)'],
+        ['deepseek-chat', 'deepseek-chat (legacy → retires 2026-07-24)'],
+        ['deepseek-reasoner', 'deepseek-reasoner (legacy → retires 2026-07-24)'],
+      ]} />
       <div className="field">
         <label>API Key *</label>
         <input type="password" placeholder="sk-..." value={str('api_key', '')} onChange={(e) => set('api_key', e.target.value)} />
@@ -4330,15 +4355,15 @@ export function DeepseekConfig({ set, str, num }: ConfigProps) {
 export function QwenConfig({ set, str, num }: ConfigProps) {
   return (
     <>
-      <div className="field">
-        <label>Model</label>
-        <select value={str('model', 'qwen-max')} onChange={(e) => set('model', e.target.value)}>
-          <option value="qwen-max">qwen-max</option>
-          <option value="qwen-plus">qwen-plus</option>
-          <option value="qwen-turbo">qwen-turbo</option>
-          <option value="qwen-long">qwen-long (128K)</option>
-        </select>
-      </div>
+      <ModelField str={str} set={set} fallback="qwen-max" options={[
+        ['qwen3-max', 'qwen3-max (flagship)'],
+        ['qwen3.5-plus', 'qwen3.5-plus'],
+        ['qwen3.5-flash', 'qwen3.5-flash (fast)'],
+        ['qwen-max', 'qwen-max (alias → latest)'],
+        ['qwen-plus', 'qwen-plus (alias)'],
+        ['qwen-turbo', 'qwen-turbo (alias)'],
+        ['qwen-long', 'qwen-long (long-context)'],
+      ]} />
       <div className="field">
         <label>API Key (DashScope) *</label>
         <input type="password" placeholder="sk-..." value={str('api_key', '')} onChange={(e) => set('api_key', e.target.value)} />
@@ -4354,15 +4379,14 @@ export function QwenConfig({ set, str, num }: ConfigProps) {
 export function ZhipuConfig({ set, str, num }: ConfigProps) {
   return (
     <>
-      <div className="field">
-        <label>Model</label>
-        <select value={str('model', 'glm-4')} onChange={(e) => set('model', e.target.value)}>
-          <option value="glm-4">glm-4</option>
-          <option value="glm-4-air">glm-4-air (fast)</option>
-          <option value="glm-4-flash">glm-4-flash (free)</option>
-          <option value="glm-3-turbo">glm-3-turbo</option>
-        </select>
-      </div>
+      <ModelField str={str} set={set} fallback="glm-4.6" options={[
+        ['glm-4.7', 'glm-4.7'],
+        ['glm-4.7-flash', 'glm-4.7-flash (free)'],
+        ['glm-4.6', 'glm-4.6'],
+        ['glm-4.5-air', 'glm-4.5-air (fast)'],
+        ['glm-4-plus', 'glm-4-plus'],
+        ['glm-4-flash', 'glm-4-flash'],
+      ]} />
       <div className="field">
         <label>API Key *</label>
         <input type="password" placeholder="智谱 API Key" value={str('api_key', '')} onChange={(e) => set('api_key', e.target.value)} />
@@ -4378,14 +4402,14 @@ export function ZhipuConfig({ set, str, num }: ConfigProps) {
 export function MoonshotConfig({ set, str, num }: ConfigProps) {
   return (
     <>
-      <div className="field">
-        <label>Model</label>
-        <select value={str('model', 'moonshot-v1-8k')} onChange={(e) => set('model', e.target.value)}>
-          <option value="moonshot-v1-8k">moonshot-v1-8k</option>
-          <option value="moonshot-v1-32k">moonshot-v1-32k</option>
-          <option value="moonshot-v1-128k">moonshot-v1-128k</option>
-        </select>
-      </div>
+      <ModelField str={str} set={set} fallback="kimi-latest" options={[
+        ['kimi-latest', 'kimi-latest (alias → newest)'],
+        ['kimi-k2.6', 'kimi-k2.6'],
+        ['kimi-k2.7-code', 'kimi-k2.7-code (coding)'],
+        ['moonshot-v1-128k', 'moonshot-v1-128k (legacy)'],
+        ['moonshot-v1-32k', 'moonshot-v1-32k (legacy)'],
+        ['moonshot-v1-8k', 'moonshot-v1-8k (legacy)'],
+      ]} />
       <div className="field">
         <label>API Key *</label>
         <input type="password" placeholder="sk-..." value={str('api_key', '')} onChange={(e) => set('api_key', e.target.value)} />
@@ -4421,14 +4445,12 @@ export function DoubaoConfig({ set, str, num }: ConfigProps) {
 export function MinimaxConfig({ set, str, num }: ConfigProps) {
   return (
     <>
-      <div className="field">
-        <label>Model</label>
-        <select value={str('model', 'abab6.5s-chat')} onChange={(e) => set('model', e.target.value)}>
-          <option value="abab6.5s-chat">abab6.5s-chat</option>
-          <option value="abab6.5-chat">abab6.5-chat</option>
-          <option value="abab5.5s-chat">abab5.5s-chat</option>
-        </select>
-      </div>
+      <ModelField str={str} set={set} fallback="MiniMax-Text-01" options={[
+        ['MiniMax-Text-01', 'MiniMax-Text-01 (1M ctx)'],
+        ['abab6.5s-chat', 'abab6.5s-chat (legacy)'],
+        ['abab6.5-chat', 'abab6.5-chat (legacy)'],
+        ['abab5.5s-chat', 'abab5.5s-chat (legacy)'],
+      ]} />
       <div className="field">
         <label>API Key *</label>
         <input type="password" placeholder="MiniMax API Key" value={str('api_key', '')} onChange={(e) => set('api_key', e.target.value)} />
@@ -4448,14 +4470,11 @@ export function MinimaxConfig({ set, str, num }: ConfigProps) {
 export function ErnieConfig({ set, str, num }: ConfigProps) {
   return (
     <>
-      <div className="field">
-        <label>Model</label>
-        <select value={str('model', 'ernie-4.0-8k')} onChange={(e) => set('model', e.target.value)}>
-          <option value="ernie-4.0-8k">ernie-4.0-8k</option>
-          <option value="ernie-3.5-8k">ernie-3.5-8k</option>
-          <option value="ernie-speed-128k">ernie-speed-128k</option>
-        </select>
-      </div>
+      <ModelField str={str} set={set} fallback="ernie-4.0-8k" options={[
+        ['ernie-4.0-8k', 'ernie-4.0-8k'],
+        ['ernie-3.5-8k', 'ernie-3.5-8k'],
+        ['ernie-speed-128k', 'ernie-speed-128k'],
+      ]} />
       <div className="field">
         <label>API Key (Client ID) *</label>
         <input type="password" placeholder="百度云 Client ID" value={str('api_key', '')} onChange={(e) => set('api_key', e.target.value)} />
@@ -4466,7 +4485,8 @@ export function ErnieConfig({ set, str, num }: ConfigProps) {
       </div>
       <CnLlmCommonFields str={str} set={set} num={num} />
       <p style={{ fontSize: 11, color: 'var(--muted)', margin: '8px 0 0' }}>
-        百度文心一言（自动 OAuth2 换取 access_token）。返回 <code>{'{ content, model, usage }'}</code>
+        百度文心一言（自动 OAuth2 换取 access_token）。返回 <code>{'{ content, model, usage }'}</code><br />
+        ERNIE 4.5 / 5.0 / X1 走百度千帆 v2 新接口，本节点暂用旧版 wenxinworkshop 接口，仅支持上述模型。
       </p>
     </>
   )
@@ -4475,14 +4495,12 @@ export function ErnieConfig({ set, str, num }: ConfigProps) {
 export function HunyuanConfig({ set, str, num }: ConfigProps) {
   return (
     <>
-      <div className="field">
-        <label>Model</label>
-        <select value={str('model', 'hunyuan-standard')} onChange={(e) => set('model', e.target.value)}>
-          <option value="hunyuan-standard">hunyuan-standard</option>
-          <option value="hunyuan-turbo">hunyuan-turbo</option>
-          <option value="hunyuan-lite">hunyuan-lite</option>
-        </select>
-      </div>
+      <ModelField str={str} set={set} fallback="hunyuan-turbos-latest" options={[
+        ['hunyuan-turbos-latest', 'hunyuan-turbos-latest'],
+        ['hunyuan-t1-latest', 'hunyuan-t1-latest (reasoning)'],
+        ['hunyuan-lite', 'hunyuan-lite'],
+        ['hunyuan-standard', 'hunyuan-standard (legacy)'],
+      ]} />
       <div className="field">
         <label>API Key *</label>
         <input type="password" placeholder="腾讯混元 API Key" value={str('api_key', '')} onChange={(e) => set('api_key', e.target.value)} />

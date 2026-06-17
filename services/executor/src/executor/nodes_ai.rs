@@ -23,7 +23,7 @@ pub(super) async fn execute_openai(
     let model = config
         .get("model")
         .and_then(|v| v.as_str())
-        .unwrap_or("gpt-4o-mini")
+        .unwrap_or("gpt-5.4-mini")
         .to_string();
     let prompt = match config.get("prompt_template").and_then(|v| v.as_str()) {
         Some(t) => resolve_template(t, context),
@@ -110,7 +110,7 @@ pub(super) async fn execute_gemini(
     let model = config
         .get("model")
         .and_then(|v| v.as_str())
-        .unwrap_or("gemini-2.0-flash")
+        .unwrap_or("gemini-2.5-flash")
         .to_string();
     let prompt = match config.get("prompt_template").and_then(|v| v.as_str()) {
         Some(t) => resolve_template(t, context),

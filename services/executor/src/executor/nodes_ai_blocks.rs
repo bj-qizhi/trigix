@@ -223,7 +223,7 @@ pub(super) async fn execute_structured_output(
     let model = cfg
         .get("model")
         .and_then(|v| v.as_str())
-        .unwrap_or("gpt-4o-mini")
+        .unwrap_or("gpt-5.4-mini")
         .to_string();
     let prompt = match cfg.get("prompt_template").and_then(|v| v.as_str()) {
         Some(p) if !p.is_empty() => p.to_string(),
@@ -286,7 +286,7 @@ pub(super) async fn execute_classifier(
     let model = cfg
         .get("model")
         .and_then(|v| v.as_str())
-        .unwrap_or("gpt-4o-mini")
+        .unwrap_or("gpt-5.4-mini")
         .to_string();
     let input = match cfg.get("input").and_then(|v| v.as_str()) {
         Some(i) if !i.is_empty() => i.to_string(),

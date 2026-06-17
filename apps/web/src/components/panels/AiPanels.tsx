@@ -48,13 +48,16 @@ export function OpenAIConfig({ set, str, num }: ConfigProps) {
   return (
     <>
       <div className="field">
-        <label>Model</label>
-        <select value={str('model', 'gpt-4o-mini')} onChange={(e) => set('model', e.target.value)}>
-          <option value="gpt-4o-mini">gpt-4o-mini (fast)</option>
-          <option value="gpt-4o">gpt-4o (balanced)</option>
-          <option value="o1-mini">o1-mini (reasoning)</option>
-          <option value="o1">o1 (powerful)</option>
-        </select>
+        <label>Model <span style={{ color: 'var(--muted)' }}>(输入或选择)</span></label>
+        <input list="openai-models" placeholder="gpt-5.4-mini" value={str('model', 'gpt-5.4-mini')} onChange={(e) => set('model', e.target.value)} style={{ fontFamily: 'monospace', fontSize: 12 }} />
+        <datalist id="openai-models">
+          <option value="gpt-5.5">gpt-5.5 (frontier)</option>
+          <option value="gpt-5.4">gpt-5.4 (workhorse)</option>
+          <option value="gpt-5.4-mini">gpt-5.4-mini (budget)</option>
+          <option value="gpt-5.4-nano">gpt-5.4-nano (cheapest)</option>
+          <option value="gpt-4.1">gpt-4.1 (long-context)</option>
+          <option value="gpt-4o-mini">gpt-4o-mini (legacy)</option>
+        </datalist>
       </div>
       <div className="field">
         <label>API Key *</label>
@@ -125,13 +128,14 @@ export function GeminiConfig({ set, str, num }: ConfigProps) {
   return (
     <>
       <div className="field">
-        <label>Model</label>
-        <select value={str('model', 'gemini-2.0-flash')} onChange={(e) => set('model', e.target.value)}>
-          <option value="gemini-2.0-flash">gemini-2.0-flash (fast)</option>
-          <option value="gemini-1.5-pro">gemini-1.5-pro (balanced)</option>
-          <option value="gemini-1.5-flash">gemini-1.5-flash (efficient)</option>
-          <option value="gemini-2.0-flash-thinking-exp">gemini-2.0-flash-thinking (reasoning)</option>
-        </select>
+        <label>Model <span style={{ color: 'var(--muted)' }}>(输入或选择)</span></label>
+        <input list="gemini-models" placeholder="gemini-2.5-flash" value={str('model', 'gemini-2.5-flash')} onChange={(e) => set('model', e.target.value)} style={{ fontFamily: 'monospace', fontSize: 12 }} />
+        <datalist id="gemini-models">
+          <option value="gemini-3.5-flash">gemini-3.5-flash (newest)</option>
+          <option value="gemini-2.5-pro">gemini-2.5-pro (balanced, 1M)</option>
+          <option value="gemini-2.5-flash">gemini-2.5-flash (fast)</option>
+          <option value="gemini-3.1-flash-lite">gemini-3.1-flash-lite (cheapest)</option>
+        </datalist>
       </div>
       <div className="field">
         <label>API Key *</label>

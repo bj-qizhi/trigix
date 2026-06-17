@@ -124,6 +124,24 @@ fn extract_chat_fields(
     ))
 }
 
+// Optional per-node endpoint override. When `base_url` is set in the config the
+// node talks to that OpenAI-compatible URL instead of the provider default —
+// this unlocks newer models served on different endpoints (e.g. MiniMax M-series,
+// ERNIE 4.5+/5.0 on Qianfan v2) without changing the request shape.
+fn resolve_base_url(
+    config: &serde_json::Value,
+    context: &ExecutionContext,
+    default_url: &str,
+) -> String {
+    config
+        .get("base_url")
+        .and_then(|v| v.as_str())
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty())
+        .map(|s| resolve_template(s, context))
+        .unwrap_or_else(|| default_url.to_string())
+}
+
 // ── xAI Grok ─────────────────────────────────────────────────────────────────
 pub(super) async fn execute_grok(
     node: &Node,
@@ -135,14 +153,14 @@ pub(super) async fn execute_grok(
         None => return NodeExecutionResult::failed("Grok node requires config"),
     };
     let (api_key, model, messages, max_tokens, temperature) =
-        match extract_chat_fields("Grok", config, context, "grok-2-latest") {
+        match extract_chat_fields("Grok", config, context, "grok-4.3") {
             Ok(v) => v,
             Err(e) => return e,
         };
     openai_compat_chat(
         "Grok",
         &api_key,
-        "https://api.x.ai/v1/chat/completions",
+        &resolve_base_url(config, context, "https://api.x.ai/v1/chat/completions"),
         &model,
         messages,
         max_tokens,
@@ -423,14 +441,14 @@ pub(super) async fn execute_deepseek(
         None => return NodeExecutionResult::failed("DeepSeek node requires config"),
     };
     let (api_key, model, messages, max_tokens, temperature) =
-        match extract_chat_fields("DeepSeek", config, context, "deepseek-chat") {
+        match extract_chat_fields("DeepSeek", config, context, "deepseek-v4-flash") {
             Ok(v) => v,
             Err(e) => return e,
         };
     openai_compat_chat(
         "DeepSeek",
         &api_key,
-        "https://api.deepseek.com/v1/chat/completions",
+        &resolve_base_url(config, context, "https://api.deepseek.com/v1/chat/completions"),
         &model,
         messages,
         max_tokens,
@@ -458,7 +476,7 @@ pub(super) async fn execute_qwen(
     openai_compat_chat(
         "Qwen",
         &api_key,
-        "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions",
+        &resolve_base_url(config, context, "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions"),
         &model,
         messages,
         max_tokens,
@@ -479,14 +497,14 @@ pub(super) async fn execute_zhipu(
         None => return NodeExecutionResult::failed("Zhipu node requires config"),
     };
     let (api_key, model, messages, max_tokens, temperature) =
-        match extract_chat_fields("Zhipu", config, context, "glm-4") {
+        match extract_chat_fields("Zhipu", config, context, "glm-4.6") {
             Ok(v) => v,
             Err(e) => return e,
         };
     openai_compat_chat(
         "Zhipu",
         &api_key,
-        "https://open.bigmodel.cn/api/paas/v4/chat/completions",
+        &resolve_base_url(config, context, "https://open.bigmodel.cn/api/paas/v4/chat/completions"),
         &model,
         messages,
         max_tokens,
@@ -507,14 +525,14 @@ pub(super) async fn execute_moonshot(
         None => return NodeExecutionResult::failed("Moonshot node requires config"),
     };
     let (api_key, model, messages, max_tokens, temperature) =
-        match extract_chat_fields("Moonshot", config, context, "moonshot-v1-8k") {
+        match extract_chat_fields("Moonshot", config, context, "kimi-latest") {
             Ok(v) => v,
             Err(e) => return e,
         };
     openai_compat_chat(
         "Moonshot",
         &api_key,
-        "https://api.moonshot.cn/v1/chat/completions",
+        &resolve_base_url(config, context, "https://api.moonshot.cn/v1/chat/completions"),
         &model,
         messages,
         max_tokens,
@@ -570,7 +588,7 @@ pub(super) async fn execute_doubao(
     openai_compat_chat(
         "Doubao",
         &api_key,
-        "https://ark.cn-beijing.volces.com/api/v3/chat/completions",
+        &resolve_base_url(config, context, "https://ark.cn-beijing.volces.com/api/v3/chat/completions"),
         &model,
         serde_json::Value::Array(messages),
         max_tokens,
@@ -594,14 +612,10 @@ pub(super) async fn execute_minimax(
         Some(k) => resolve_template(k, context),
         None => return NodeExecutionResult::failed("MiniMax missing 'api_key'"),
     };
-    let group_id = match config.get("group_id").and_then(|v| v.as_str()) {
-        Some(g) => resolve_template(g, context),
-        None => return NodeExecutionResult::failed("MiniMax missing 'group_id'"),
-    };
     let model = config
         .get("model")
         .and_then(|v| v.as_str())
-        .unwrap_or("abab6.5s-chat")
+        .unwrap_or("MiniMax-Text-01")
         .to_string();
     let prompt = match config.get("prompt_template").and_then(|v| v.as_str()) {
         Some(t) => resolve_template(t, context),
@@ -627,6 +641,37 @@ pub(super) async fn execute_minimax(
     }
     messages.push(serde_json::json!({ "role": "user", "content": prompt }));
 
+    // OpenAI-compatible mode (newest MiniMax M-series) when base_url is set —
+    // these are served on a standard /chat/completions endpoint without GroupId.
+    if let Some(base) = config
+        .get("base_url")
+        .and_then(|v| v.as_str())
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty())
+    {
+        let base = resolve_template(base, context);
+        return openai_compat_chat(
+            "MiniMax",
+            &api_key,
+            &base,
+            &model,
+            serde_json::Value::Array(messages),
+            max_tokens,
+            temperature,
+            http_client,
+        )
+        .await;
+    }
+
+    // Legacy chatcompletion_v2 path (requires group_id).
+    let group_id = match config.get("group_id").and_then(|v| v.as_str()) {
+        Some(g) => resolve_template(g, context),
+        None => {
+            return NodeExecutionResult::failed(
+                "MiniMax missing 'group_id' (or set 'base_url' for OpenAI-compatible mode)",
+            )
+        }
+    };
     let url = format!("https://api.minimax.chat/v1/text/chatcompletion_v2?GroupId={group_id}");
     let payload = serde_json::json!({
         "model": model,
@@ -687,10 +732,6 @@ pub(super) async fn execute_ernie(
         Some(k) => resolve_template(k, context),
         None => return NodeExecutionResult::failed("Ernie missing 'api_key' (client_id)"),
     };
-    let secret_key = match config.get("secret_key").and_then(|v| v.as_str()) {
-        Some(k) => resolve_template(k, context),
-        None => return NodeExecutionResult::failed("Ernie missing 'secret_key' (client_secret)"),
-    };
     let model = config
         .get("model")
         .and_then(|v| v.as_str())
@@ -713,6 +754,43 @@ pub(super) async fn execute_ernie(
         .get("temperature")
         .and_then(|v| v.as_f64())
         .unwrap_or(0.7);
+
+    // OpenAI-compatible mode (ERNIE 4.5 / 5.0 / X1 on Qianfan v2) when base_url is
+    // set — bearer auth with api_key, no OAuth token exchange or secret_key needed.
+    if let Some(base) = config
+        .get("base_url")
+        .and_then(|v| v.as_str())
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty())
+    {
+        let base = resolve_template(base, context);
+        let mut messages = Vec::new();
+        if !system_prompt.is_empty() {
+            messages.push(serde_json::json!({ "role": "system", "content": system_prompt }));
+        }
+        messages.push(serde_json::json!({ "role": "user", "content": prompt }));
+        return openai_compat_chat(
+            "Ernie",
+            &api_key,
+            &base,
+            &model,
+            serde_json::Value::Array(messages),
+            max_tokens,
+            temperature,
+            http_client,
+        )
+        .await;
+    }
+
+    // Legacy wenxinworkshop path requires the client_secret for OAuth2 exchange.
+    let secret_key = match config.get("secret_key").and_then(|v| v.as_str()) {
+        Some(k) => resolve_template(k, context),
+        None => {
+            return NodeExecutionResult::failed(
+                "Ernie missing 'secret_key' (or set 'base_url' for Qianfan v2 OpenAI-compatible mode)",
+            )
+        }
+    };
 
     // Step 1: exchange client credentials for access_token
     let token_url = format!(
@@ -804,14 +882,14 @@ pub(super) async fn execute_hunyuan(
         None => return NodeExecutionResult::failed("Hunyuan node requires config"),
     };
     let (api_key, model, messages, max_tokens, temperature) =
-        match extract_chat_fields("Hunyuan", config, context, "hunyuan-standard") {
+        match extract_chat_fields("Hunyuan", config, context, "hunyuan-turbos-latest") {
             Ok(v) => v,
             Err(e) => return e,
         };
     openai_compat_chat(
         "Hunyuan",
         &api_key,
-        "https://api.hunyuan.cloud.tencent.com/v1/chat/completions",
+        &resolve_base_url(config, context, "https://api.hunyuan.cloud.tencent.com/v1/chat/completions"),
         &model,
         messages,
         max_tokens,
