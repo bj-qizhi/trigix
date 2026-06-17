@@ -298,6 +298,8 @@ label { font-size: 12px; color: var(--muted); display: block; margin-bottom: 4px
 .tb-menu { padding: 6px; min-width: 200px; gap: 2px; }
 .tb-menu-item { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; padding: 7px 10px; border: none; background: transparent; color: var(--text); font-size: 13px; text-align: left; border-radius: var(--radius-sm); cursor: pointer; }
 .tb-menu-item:hover { background: var(--panel-hover); }
+.tb-menu-ic { display: inline-flex; align-items: center; gap: 9px; }
+.tb-menu-ic svg { flex-shrink: 0; opacity: 0.8; }
 .tb-menu-state { font-size: 10px; font-weight: 600; color: var(--faint); letter-spacing: 0.04em; }
 .tb-menu-state.on { color: var(--accent); }
 
@@ -321,11 +323,16 @@ label { font-size: 12px; color: var(--muted); display: block; margin-bottom: 4px
 .palette-label { font-size: 11px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; padding: 4px 8px 8px; }
 .palette-node {
   display: flex; align-items: center; gap: 8px; padding: 8px 10px;
-  border-radius: var(--radius); border: 1px solid var(--border); cursor: pointer;
+  border-radius: var(--radius); border: 1px solid var(--border); cursor: grab;
   font-size: 13px; font-weight: 500; background: var(--panel); transition: background 0.1s;
 }
+.palette-node:active { cursor: grabbing; }
 .palette-node:hover { background: var(--bg); border-color: var(--muted); }
 .palette-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+.palette-node-label { display: inline-flex; align-items: center; gap: 7px; min-width: 0; }
+.palette-node-label svg { flex-shrink: 0; opacity: 0.85; }
+.flow-node-header .flow-node-ic { display: inline-flex; align-items: center; }
+.flow-node-header .flow-node-ic svg { display: block; }
 
 /* ── Canvas area ── */
 .canvas-wrap { flex: 1; position: relative; background: var(--bg); height: 100%; min-height: 0; }

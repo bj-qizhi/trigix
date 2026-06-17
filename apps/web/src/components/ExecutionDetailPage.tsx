@@ -2,6 +2,7 @@
 // https://www.qzso.com/ · managecode@gmail.com
 
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { IconTestTube, ThemeToggleIcon } from './uiIcons'
 import { useAuth } from '../AuthContext'
 import * as api from '../api/client'
 import type { ExecutionRecord, AuditEvent } from '../types'
@@ -386,7 +387,7 @@ export function ExecutionDetailPage({ executionId, onBack, onOpenWorkflow, onRet
               </button>
             </>
           )}
-          <button className="btn btn-sm" onClick={toggleTheme} title={zh ? '切换深色/浅色主题' : 'Toggle dark/light theme'}>{theme === 'dark' ? '☀' : '◑'}</button>
+          <button className="btn btn-sm" onClick={toggleTheme} title={zh ? '切换深色/浅色主题' : 'Toggle dark/light theme'}>{theme === 'dark' ? <ThemeToggleIcon dark /> : <ThemeToggleIcon dark={false} />}</button>
           <button className="btn btn-sm" onClick={toggleLocale} title="切换语言 / Switch language">{locale === 'zh' ? 'EN' : '中'}</button>
         </div>
       </header>
@@ -554,7 +555,7 @@ export function ExecutionDetailPage({ executionId, onBack, onOpenWorkflow, onRet
                   border: '1px solid var(--link)',
                   borderRadius: 8, fontSize: 13, color: 'var(--link)',
                 }}>
-                  <span style={{ fontSize: 18 }}>🧪</span>
+                  <span style={{ fontSize: 18 }}><IconTestTube size={16} /></span>
                   <span>{zh ? '演练模式 — 外部 API 调用已跳过，节点输出仅包含模拟数据。' : 'Dry run — external API calls were skipped. Node outputs contain mock data only.'}</span>
                 </div>
               </section>
@@ -689,7 +690,7 @@ export function ExecutionDetailPage({ executionId, onBack, onOpenWorkflow, onRet
                     onClick={() => setNodeView('log')}
                     style={{ fontSize: 11 }}
                   >
-                    📟 {zh ? '日志' : 'Log'}
+                    {zh ? '日志' : 'Log'}
                   </button>
                   <button
                     className={`btn btn-sm${nodeView === 'graph' ? ' btn-primary' : ''}`}

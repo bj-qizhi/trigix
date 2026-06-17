@@ -446,7 +446,7 @@ export const TEMPLATES: Template[] = [
         { id: 'trigger', type: 'trigger', config: { webhook_secret: '{{credential.github_webhook_secret}}' } },
         { id: 'validate', type: 'validate', config: { source: '{{input}}', schema: '{"required":["action","pull_request"]}', fail_on_invalid: true } },
         { id: 'review', type: 'claude', config: { model: 'claude-sonnet-4-6', api_key: '{{credential.claude_api_key}}', system_prompt: 'You are a code reviewer. Provide concise, constructive feedback.', prompt_template: 'Review this pull request:\nTitle: {{input.pull_request.title}}\nDescription: {{input.pull_request.body}}\n\nProvide a brief code review summary and key concerns.' } },
-        { id: 'post_comment', type: 'github', config: { token: '{{credential.github_token}}', method: 'POST', endpoint: '/repos/{{input.repository.full_name}}/issues/{{input.pull_request.number}}/comments', body: '{"body": "🤖 AI Review:\\n\\n{{review.content}}"}' } },
+        { id: 'post_comment', type: 'github', config: { token: '{{credential.github_token}}', method: 'POST', endpoint: '/repos/{{input.repository.full_name}}/issues/{{input.pull_request.number}}/comments', body: '{"body": "AI Review:\\n\\n{{review.content}}"}' } },
         { id: 'notify', type: 'slack', config: { webhook_url: '{{credential.slack_webhook}}', text: 'PR reviewed: *{{input.pull_request.title}}* — {{post_comment.status}}', username: 'PRBot' } },
       ],
       edges: [
@@ -527,7 +527,7 @@ export const TEMPLATES: Template[] = [
       workflow_version_id: 'template',
       nodes: [
         { id: 'trigger', type: 'trigger', config: { webhook_secret: '' } },
-        { id: 'review', type: 'deepseek', config: { model: 'deepseek-reasoner', api_key: '{{credential.deepseek_key}}', system_prompt: '你是一名资深后端工程师，做代码审查时关注：安全漏洞、性能问题、可读性。用中文回复，Markdown 格式。', prompt_template: '请审查以下代码：\n```{{input.language}}\n{{input.code}}\n```\n上下文：{{input.context}}', max_tokens: 1500 } },
+        { id: 'review', type: 'deepseek', config: { model: 'deepseek-v4-pro', api_key: '{{credential.deepseek_key}}', system_prompt: '你是一名资深后端工程师，做代码审查时关注：安全漏洞、性能问题、可读性。用中文回复，Markdown 格式。', prompt_template: '请审查以下代码：\n```{{input.language}}\n{{input.code}}\n```\n上下文：{{input.context}}', max_tokens: 1500 } },
         { id: 'post', type: 'slack', config: { webhook_url: '{{credential.slack_webhook}}', text: '*DeepSeek 代码审查：{{input.pr_title}}*\n\n{{review.content}}', username: 'DeepSeekBot' } },
       ],
       edges: [
@@ -572,7 +572,7 @@ export const TEMPLATES: Template[] = [
       nodes: [
         { id: 'trigger', type: 'trigger', config: {} },
         { id: 'fan_out', type: 'fan_out', config: {} },
-        { id: 'deepseek', type: 'deepseek', config: { model: 'deepseek-chat', api_key: '{{credential.deepseek_key}}', system_prompt: '请简洁、准确地回答。', prompt_template: '{{input.question}}', max_tokens: 512, temperature: 0.3 } },
+        { id: 'deepseek', type: 'deepseek', config: { model: 'deepseek-v4-flash', api_key: '{{credential.deepseek_key}}', system_prompt: '请简洁、准确地回答。', prompt_template: '{{input.question}}', max_tokens: 512, temperature: 0.3 } },
         { id: 'qwen', type: 'qwen', config: { model: 'qwen-max', api_key: '{{credential.dashscope_key}}', system_prompt: '请简洁、准确地回答。', prompt_template: '{{input.question}}', max_tokens: 512, temperature: 0.3 } },
         { id: 'fan_in', type: 'fan_in', config: {} },
         { id: 'compare', type: 'transform', config: { template: { question: '{{input.question}}', deepseek: '{{deepseek.content}}', qwen: '{{qwen.content}}' } } },
@@ -626,7 +626,7 @@ export const TEMPLATES: Template[] = [
         { id: 'trigger', type: 'trigger', config: { webhook_secret: '' } },
         { id: 'summarize', type: 'moonshot', config: { model: 'moonshot-v1-128k', api_key: '{{credential.moonshot_key}}', system_prompt: '你是专业文档分析师。输出结构化摘要：核心结论、关键数据、风险点、行动建议，每项不超过3条。', prompt_template: '文档标题：{{input.title}}\n\n文档内容：\n{{input.content}}', max_tokens: 1000, temperature: 0.3 } },
         { id: 'store', type: 'database', config: { url: '{{credential.pg_url}}', query: "INSERT INTO doc_summaries (doc_id, title, summary, created_at) VALUES ('{{input.doc_id}}', '{{input.title}}', '{{summarize.content}}', NOW())" } },
-        { id: 'notify', type: 'slack', config: { webhook_url: '{{credential.slack_webhook}}', text: '📄 文档摘要完成：*{{input.title}}*\n\n{{summarize.content}}', username: 'KimiBot' } },
+        { id: 'notify', type: 'slack', config: { webhook_url: '{{credential.slack_webhook}}', text: '文档摘要完成：*{{input.title}}*\n\n{{summarize.content}}', username: 'KimiBot' } },
       ],
       edges: [
         { source: 'trigger', target: 'summarize' },
@@ -676,7 +676,7 @@ export const TEMPLATES: Template[] = [
         { id: 'trigger', type: 'trigger', config: { webhook_secret: '{{credential.shopify_webhook_secret}}' } },
         { id: 'validate', type: 'validate', config: { source: '{{input}}', schema: '{"required":["id","email","total_price","line_items"]}', fail_on_invalid: true } },
         { id: 'confirm_email', type: 'email', config: { to: '{{input.email}}', subject: '订单确认 #{{input.order_number}} — 感谢您的购买！', body: '您好 {{input.billing_address.name}}，\n\n感谢您的订单 #{{input.order_number}}，金额 {{input.total_price}} {{input.currency}}。\n\n我们将尽快为您发货。', api_key: '{{credential.sendgrid_key}}', from: 'orders@yourshop.com' } },
-        { id: 'notify_team', type: 'slack', config: { webhook_url: '{{credential.slack_webhook}}', text: '🛒 新订单 #{{input.order_number}}\n客户：{{input.email}}\n金额：{{input.total_price}} {{input.currency}}\n商品数：{{input.line_items.length}}', username: 'ShopifyBot' } },
+        { id: 'notify_team', type: 'slack', config: { webhook_url: '{{credential.slack_webhook}}', text: '新订单 #{{input.order_number}}\n客户：{{input.email}}\n金额：{{input.total_price}} {{input.currency}}\n商品数：{{input.line_items.length}}', username: 'ShopifyBot' } },
         { id: 'catch_error', type: 'catch', config: {} },
         { id: 'alert_error', type: 'slack', config: { webhook_url: '{{credential.slack_webhook}}', text: '❌ 订单处理失败：{{catch_error.error}}' } },
       ],
@@ -704,7 +704,7 @@ export const TEMPLATES: Template[] = [
         { id: 'check_event', type: 'condition', config: { field: 'type', operator: 'equals', value: 'payment_intent.succeeded', source: '{{input}}' } },
         { id: 'update_order', type: 'database', config: { url: '{{credential.pg_url}}', query: "UPDATE orders SET status='paid', paid_at=NOW() WHERE stripe_payment_id='{{input.data.object.id}}' RETURNING id, customer_email, amount" } },
         { id: 'send_receipt', type: 'email', config: { to: '{{update_order.rows.0.customer_email}}', subject: '收款确认 — ¥{{input.data.object.amount_received}}', body: '您好，\n\n我们已收到您的付款 ¥{{input.data.object.amount_received}}（订单 ID: {{update_order.rows.0.id}}）。\n\n如有疑问请联系 support@example.com。', api_key: '{{credential.sendgrid_key}}', from: 'finance@example.com' } },
-        { id: 'notify_finance', type: 'slack', config: { webhook_url: '{{credential.slack_webhook}}', text: '💰 收款成功 ¥{{input.data.object.amount_received}}\n订单 ID: {{update_order.rows.0.id}}\nStripe ID: {{input.data.object.id}}', username: 'StripeBot' } },
+        { id: 'notify_finance', type: 'slack', config: { webhook_url: '{{credential.slack_webhook}}', text: '收款成功 ¥{{input.data.object.amount_received}}\n订单 ID: {{update_order.rows.0.id}}\nStripe ID: {{input.data.object.id}}', username: 'StripeBot' } },
       ],
       edges: [
         { source: 'trigger', target: 'check_event' },
@@ -791,7 +791,7 @@ export const TEMPLATES: Template[] = [
         { id: 'create_account', type: 'http', config: { method: 'POST', url: 'https://api.example.com/users', auth_token: '{{credential.admin_api_key}}', body: '{"email":"{{input.email}}","name":"{{input.name}}","department":"{{input.department}}","role":"{{input.role}}"}' } },
         { id: 'fan_out', type: 'fan_out', config: {} },
         { id: 'welcome_email', type: 'email', config: { to: '{{input.email}}', subject: '欢迎加入 {{input.company_name}}！', body: '亲爱的 {{input.name}}，\n\n欢迎加入我们！您的账号已创建，用户名为 {{input.email}}。\n\n入职日期：{{input.start_date}}\n部门：{{input.department}}\n直属上司：{{input.manager_name}}\n\n期待与您共事！', api_key: '{{credential.sendgrid_key}}', from: 'hr@example.com' } },
-        { id: 'slack_welcome', type: 'slack', config: { webhook_url: '{{credential.slack_webhook}}', text: '🎉 欢迎新同事 *{{input.name}}* 加入 {{input.department}} 部门！入职日期：{{input.start_date}}。大家热烈欢迎 👏', username: 'HRBot' } },
+        { id: 'slack_welcome', type: 'slack', config: { webhook_url: '{{credential.slack_webhook}}', text: '欢迎新同事 *{{input.name}}* 加入 {{input.department}} 部门！入职日期：{{input.start_date}}。大家热烈欢迎！', username: 'HRBot' } },
         { id: 'create_calendar', type: 'gcal', config: { access_token: '{{credential.gcal_token}}', operation: 'create_event', calendar_id: 'primary', summary: '{{input.name}} 入职培训', start_time: '{{input.start_date}}T09:00:00', end_time: '{{input.start_date}}T17:00:00' } },
         { id: 'fan_in', type: 'fan_in', config: {} },
         { id: 'notify_manager', type: 'slack', config: { webhook_url: '{{credential.slack_webhook}}', text: '✅ {{input.name}} 的入职准备已完成：账号已创建、欢迎邮件已发送、日历事件已创建。', username: 'HRBot' } },
@@ -857,7 +857,7 @@ export const TEMPLATES: Template[] = [
         { id: 'fan_out', type: 'fan_out', config: {} },
         { id: 'email_candidate', type: 'email', config: { to: '{{input.candidate_email}}', subject: '面试确认 — {{input.position}} 职位', body: '您好 {{input.candidate_name}}，\n\n您的面试已安排：\n时间：{{input.interview_time}}\n地点/链接：{{input.location}}\n面试官：{{input.interviewer_name}}\n\n请准时参加，祝面试顺利！', api_key: '{{credential.sendgrid_key}}', from: 'recruit@example.com' } },
         { id: 'email_interviewer', type: 'email', config: { to: '{{input.interviewer_email}}', subject: '面试提醒 — {{input.candidate_name}}（{{input.position}}）', body: '您好，\n\n面试安排如下：\n时间：{{input.interview_time}}\n候选人：{{input.candidate_name}}\n应聘职位：{{input.position}}\n简历链接：{{input.resume_url}}', api_key: '{{credential.sendgrid_key}}', from: 'recruit@example.com' } },
-        { id: 'slack_remind', type: 'slack', config: { webhook_url: '{{credential.slack_webhook}}', text: '📅 面试提醒：{{input.interviewer_name}} 将在 {{input.interview_time}} 面试候选人 {{input.candidate_name}}（{{input.position}}）', username: 'Recruit Bot' } },
+        { id: 'slack_remind', type: 'slack', config: { webhook_url: '{{credential.slack_webhook}}', text: '面试提醒：{{input.interviewer_name}} 将在 {{input.interview_time}} 面试候选人 {{input.candidate_name}}（{{input.position}}）', username: 'Recruit Bot' } },
         { id: 'fan_in', type: 'fan_in', config: {} },
       ],
       edges: [
@@ -950,7 +950,7 @@ export const TEMPLATES: Template[] = [
         { id: 'embed_articles', type: 'http', config: { method: 'POST', url: 'https://api.openai.com/v1/embeddings', auth_token: '{{credential.openai_key}}', body: '{"model":"text-embedding-3-small","input":{{prep_inputs.contents}}}' } },
         { id: 'build_points', type: 'code', config: { script: 'let arts = nodes.fetch_articles.body.articles;\nlet data = nodes.embed_articles.body.data;\nlet out = [];\nfor i in 0..arts.len() {\n  let a = arts[i];\n  out.push(#{ id: a.id, vector: data[i].embedding, payload: #{ title: a.title, url: a.url, updated_at: a.updated_at } });\n}\n#{ points: out, count: arts.len() }' } },
         { id: 'upsert_qdrant', type: 'qdrant', config: { url: '{{credential.qdrant_url}}', api_key: '{{credential.qdrant_key}}', collection: 'knowledge_base', operation: 'upsert', points: '{{build_points.points}}' } },
-        { id: 'notify', type: 'slack', config: { webhook_url: '{{credential.slack_webhook}}', text: '📚 知识库同步完成：{{fetch_articles.body.count}} 篇文章已更新向量索引', username: 'KBBot' } },
+        { id: 'notify', type: 'slack', config: { webhook_url: '{{credential.slack_webhook}}', text: '知识库同步完成：{{fetch_articles.body.count}} 篇文章已更新向量索引', username: 'KBBot' } },
       ],
       edges: [
         { source: 'trigger', target: 'fetch_articles' },
@@ -982,7 +982,7 @@ export const TEMPLATES: Template[] = [
         { id: 'check_status', type: 'condition', config: { field: 'status', operator: 'lt', value: '400', source: '{{check_api}}' } },
         { id: 'fan_out_alert', type: 'fan_out', config: {} },
         { id: 'pagerduty_alert', type: 'pagerduty', config: { routing_key: '{{credential.pd_routing_key}}', summary: '{{input.service_name}} API 健康检查失败', event_action: 'trigger', severity: 'critical', source: '{{input.health_check_url}}', dedup_key: 'health-{{input.service_name}}' } },
-        { id: 'slack_alert', type: 'slack', config: { webhook_url: '{{credential.slack_webhook}}', text: '🚨 *{{input.service_name}}* 健康检查失败！\nURL: {{input.health_check_url}}\n错误: {{catch_failure.error}}\n时间: {{input.run_time}}', username: 'MonitorBot' } },
+        { id: 'slack_alert', type: 'slack', config: { webhook_url: '{{credential.slack_webhook}}', text: '*{{input.service_name}}* 健康检查失败！\nURL: {{input.health_check_url}}\n错误: {{catch_failure.error}}\n时间: {{input.run_time}}', username: 'MonitorBot' } },
         { id: 'fan_in_alert', type: 'fan_in', config: {} },
         { id: 'ok_notify', type: 'slack', config: { webhook_url: '{{credential.slack_webhook}}', text: '✅ {{input.service_name}} 健康检查正常（状态码 {{check_api.status}}）', username: 'MonitorBot' } },
       ],
@@ -1014,7 +1014,7 @@ export const TEMPLATES: Template[] = [
         { id: 'trigger', type: 'trigger', config: { webhook_secret: '' } },
         { id: 'classify', type: 'claude', config: { model: 'claude-haiku-4-5-20251001', api_key: '{{credential.anthropic_key}}', system_prompt: 'You are a bug triage assistant. Respond with JSON only: {"severity":"critical|high|medium|low","component":"frontend|backend|infra|data","suggested_assignee":"...","summary":"one sentence"}', prompt_template: 'Triage this bug:\nTitle: {{input.title}}\nDescription: {{input.description}}\nEnvironment: {{input.environment}}', max_tokens: 300, temperature: 0.1 } },
         { id: 'create_issue', type: 'jira', config: { base_url: '{{credential.jira_base_url}}', email: '{{credential.jira_email}}', token: '{{credential.jira_token}}', endpoint: '/rest/api/3/issue', method: 'POST', body: '{"fields":{"project":{"key":"{{input.project_key}}"},"summary":"[{{classify.content.severity}}] {{input.title}}","description":{"type":"doc","version":1,"content":[{"type":"paragraph","content":[{"type":"text","text":"{{input.description}}"}]}]},"issuetype":{"name":"Bug"},"priority":{"name":"{{classify.content.severity}}"}}}' } },
-        { id: 'notify_team', type: 'slack', config: { webhook_url: '{{credential.slack_webhook}}', text: '🐛 新 Bug 工单已创建\n*[{{classify.content.severity}}]* {{input.title}}\nJira: {{create_issue.body.key}}\n建议负责人：{{classify.content.suggested_assignee}}\n摘要：{{classify.content.summary}}', username: 'BugBot' } },
+        { id: 'notify_team', type: 'slack', config: { webhook_url: '{{credential.slack_webhook}}', text: '新 Bug 工单已创建\n*[{{classify.content.severity}}]* {{input.title}}\nJira: {{create_issue.body.key}}\n建议负责人：{{classify.content.suggested_assignee}}\n摘要：{{classify.content.summary}}', username: 'BugBot' } },
       ],
       edges: [
         { source: 'trigger', target: 'classify' },
@@ -1037,7 +1037,7 @@ export const TEMPLATES: Template[] = [
         { id: 'trigger', type: 'trigger', config: { webhook_secret: '' } },
         { id: 'check_status', type: 'condition', config: { field: 'status', operator: 'equals', value: 'success', source: '{{input}}' } },
         { id: 'update_github', type: 'github', config: { token: '{{credential.github_token}}', method: 'POST', endpoint: '/repos/{{input.repo}}/statuses/{{input.sha}}', body: '{"state":"success","description":"Deployed to {{input.environment}}","context":"deploy/{{input.environment}}"}' } },
-        { id: 'slack_success', type: 'slack', config: { webhook_url: '{{credential.slack_webhook}}', text: '🚀 *部署成功*\n服务：{{input.service}}\n环境：{{input.environment}}\n版本：{{input.version}}\n提交：{{input.sha}}\n耗时：{{input.duration_secs}}s', username: 'DeployBot' } },
+        { id: 'slack_success', type: 'slack', config: { webhook_url: '{{credential.slack_webhook}}', text: '*部署成功*\n服务：{{input.service}}\n环境：{{input.environment}}\n版本：{{input.version}}\n提交：{{input.sha}}\n耗时：{{input.duration_secs}}s', username: 'DeployBot' } },
         { id: 'slack_failure', type: 'slack', config: { webhook_url: '{{credential.slack_webhook}}', text: '❌ *部署失败*\n服务：{{input.service}}\n环境：{{input.environment}}\n错误：{{input.error}}\n日志：{{input.log_url}}', username: 'DeployBot' } },
         { id: 'email_lead', type: 'email', config: { to: '{{input.team_lead_email}}', subject: '✅ {{input.service}} 已部署到 {{input.environment}}（v{{input.version}}）', body: '部署详情：\n\n服务：{{input.service}}\n环境：{{input.environment}}\n版本：{{input.version}}\nGit SHA：{{input.sha}}\n\n部署日志：{{input.log_url}}', api_key: '{{credential.sendgrid_key}}', from: 'devops@example.com' } },
       ],
@@ -1069,7 +1069,7 @@ export const TEMPLATES: Template[] = [
         { id: 'create_hubspot', type: 'hubspot', config: { token: '{{credential.hubspot_token}}', endpoint: '/crm/v3/objects/contacts', method: 'POST', body: '{"properties":{"email":"{{input.email}}","firstname":"{{input.first_name}}","lastname":"{{input.last_name}}","company":"{{input.company}}","phone":"{{input.phone}}"}}' } },
         { id: 'create_salesforce', type: 'salesforce', config: { token: '{{credential.sf_token}}', instance_url: '{{credential.sf_instance_url}}', endpoint: '/services/data/v58.0/sobjects/Lead', method: 'POST', body: '{"FirstName":"{{input.first_name}}","LastName":"{{input.last_name}}","Email":"{{input.email}}","Company":"{{input.company}}","Phone":"{{input.phone}}","LeadSource":"{{input.source}}"}' } },
         { id: 'fan_in', type: 'fan_in', config: {} },
-        { id: 'notify_sales', type: 'slack', config: { webhook_url: '{{credential.slack_webhook}}', text: '👤 新线索同步完成\n姓名：{{input.first_name}} {{input.last_name}}\n公司：{{input.company}}\n邮箱：{{input.email}}\nHubSpot ID：{{create_hubspot.id}}\n来源：{{input.source}}', username: 'CRMBot' } },
+        { id: 'notify_sales', type: 'slack', config: { webhook_url: '{{credential.slack_webhook}}', text: '新线索同步完成\n姓名：{{input.first_name}} {{input.last_name}}\n公司：{{input.company}}\n邮箱：{{input.email}}\nHubSpot ID：{{create_hubspot.id}}\n来源：{{input.source}}', username: 'CRMBot' } },
       ],
       edges: [
         { source: 'trigger', target: 'validate' },
@@ -1126,7 +1126,7 @@ export const TEMPLATES: Template[] = [
         { id: 'review_gate', type: 'approval', config: {} },
         { id: 'send_email', type: 'email', config: { to: '{{input.customer_email}}', subject: '感谢您的反馈，我们想了解更多', body: '{{draft_email.content}}', api_key: '{{credential.sendgrid_key}}', from: 'success@example.com' } },
         { id: 'update_crm', type: 'hubspot', config: { token: '{{credential.hubspot_token}}', endpoint: '/crm/v3/objects/contacts/{{input.hubspot_contact_id}}', method: 'PATCH', body: '{"properties":{"nps_score":"{{input.score}}","nps_followup_sent":"true","last_nps_date":"{{input.submitted_at}}"}}' } },
-        { id: 'notify_cs', type: 'slack', config: { webhook_url: '{{credential.slack_webhook}}', text: '📧 NPS 跟进邮件已发送给 {{input.customer_name}}（{{input.company}}，评分 {{input.score}}/10）', username: 'NPSBot' } },
+        { id: 'notify_cs', type: 'slack', config: { webhook_url: '{{credential.slack_webhook}}', text: 'NPS 跟进邮件已发送给 {{input.customer_name}}（{{input.company}}，评分 {{input.score}}/10）', username: 'NPSBot' } },
       ],
       edges: [
         { source: 'trigger', target: 'check_score' },
@@ -1281,7 +1281,7 @@ export const TEMPLATES: Template[] = [
         { id: 'store_snapshot', type: 'database', config: { url: '{{credential.pg_url}}', query: "INSERT INTO db_snapshots (snapshot_date, table_name, row_count) SELECT CURRENT_DATE, table_name, cnt FROM json_populate_recordset(null::record, '{{snapshot_today.rows}}')" } },
         { id: 'analyze_diff', type: 'claude', config: { model: 'claude-haiku-4-5-20251001', api_key: '{{credential.anthropic_key}}', system_prompt: '分析数据库行数变化，输出 JSON：{"has_anomaly":true/false,"anomalies":[],"summary":""}。变化超10%视为异常。', prompt_template: '今日快照：{{snapshot_today.rows}}\n昨日快照：{{snapshot_yesterday.rows}}', max_tokens: 300, temperature: 0.1 } },
         { id: 'check_anomaly', type: 'condition', config: { field: 'has_anomaly', equals: 'true', source: '{{analyze_diff.content}}' } },
-        { id: 'alert_anomaly', type: 'slack', config: { webhook_url: '{{credential.slack_webhook}}', text: '📊 数据库快照异常告警\n\n{{analyze_diff.content.summary}}\n\n异常项：{{analyze_diff.content.anomalies}}', username: 'DBMonitor' } },
+        { id: 'alert_anomaly', type: 'slack', config: { webhook_url: '{{credential.slack_webhook}}', text: '数据库快照异常告警\n\n{{analyze_diff.content.summary}}\n\n异常项：{{analyze_diff.content.anomalies}}', username: 'DBMonitor' } },
         { id: 'daily_summary', type: 'slack', config: { webhook_url: '{{credential.slack_webhook}}', text: '✅ 数据库快照正常\n{{analyze_diff.content.summary}}', username: 'DBMonitor' } },
       ],
       edges: [

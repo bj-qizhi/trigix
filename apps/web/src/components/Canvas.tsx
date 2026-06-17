@@ -21,6 +21,7 @@ import {
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import type { ApiNode, ApiEdge, NodeType, NodeExecutionRecord } from '../types'
+import { NodeIcon } from './nodeIcons'
 
 const NodeStatusContext = createContext<Record<string, NodeExecutionRecord>>({})
 const NodeWarningContext = createContext<Set<string>>(new Set())
@@ -139,6 +140,194 @@ export function graphFromApi(
 }
 
 // ── Custom node component ─────────────────────────────────────────────────────
+
+// Per-node accent colour (drives minimap dots and the node header background).
+export const NODE_COLORS: Record<string, string> = {
+              trigger: '#238636',
+              http: '#1f6feb',
+              agent: '#8957e5',
+              condition: '#d29922',
+              approval: '#0891b2',
+              map: '#e05d44',
+              filter: '#0891b2',
+              aggregate: '#7c3aed',
+              sort: '#d97706',
+              transform: '#0d9488',
+              delay: '#b45309',
+              sub_workflow: '#be185d',
+              assert: '#dc2626',
+              catch: '#ea580c',
+              fan_out: '#0891b2',
+              fan_in: '#0891b2',
+              code: '#7c3aed',
+              slack: '#4a154b',
+              email: '#0369a1',
+              openai: '#10a37f',
+              rag: '#7c3aed',
+              rag_ingest: '#7c3aed',
+              custom: '#475569',
+              gemini: '#4285f4',
+              database: '#336791',
+              extract: '#0f766e',
+              merge: '#7c2d12',
+              loop: '#6d28d9',
+              graphql: '#e10098',
+              validate: '#15803d',
+              note: '#b45309',
+              claude: '#c96442',
+              split: '#0369a1',
+              join: '#0891b2',
+              switch: '#7c3aed',
+              random: '#0f766e',
+              dedupe: '#1d4ed8',
+              regex: '#92400e',
+              csv: '#166534',
+              rename: '#065f46',
+              format: '#1e3a5f',
+              github: '#24292e',
+              webhook: '#6d28d9',
+              jira: '#0052cc',
+              notion: '#000000',
+              linear: '#5e6ad2',
+              airtable: '#18bfff',
+              for_each: '#7c3aed',
+              discord: '#5865f2',
+              teams: '#6264a7',
+              sheets: '#0f9d58',
+              xml: '#7b341e',
+              yaml: '#2c5282',
+              twilio: '#f22f46',
+              stripe: '#635bff',
+              crypto: '#134e4a',
+              hubspot: '#ff5c35',
+              date: '#0369a1',
+              zendesk: '#03363d',
+              redis: '#dc2626',
+              elasticsearch: '#f59e0b',
+              pagerduty: '#06b6d4',
+              handlebars: '#7c3aed',
+              math: '#0e7490',
+              array_utils: '#065f46',
+              shopify: '#96bf48',
+              datadog: '#632ca6',
+              salesforce: '#00a1e0',
+              freshdesk: '#25c16f',
+              mailgun: '#f06b26',
+              asana: '#f06a6a',
+              servicenow: '#81b5a1',
+              confluence: '#0052cc',
+              bitbucket: '#0052cc',
+              azure_devops: '#0078d4',
+              twitch: '#9146ff',
+              figma: '#f24e1e',
+              dropbox: '#0061ff',
+              cloudflare: '#f38020',
+              box: '#0061fe',
+              okta: '#007dc1',
+              zoom: '#2d8cff',
+              spotify: '#1db954',
+              typeform: '#262627',
+              webflow: '#4353ff',
+              intercom: '#1f8ded',
+              pipedrive: '#d4452c',
+              trello: '#0052cc',
+              monday: '#ff3d57',
+              clickup: '#7b68ee',
+              amplitude: '#1da462',
+              mixpanel: '#7856ff',
+              segment: '#52bd95',
+              sendgrid: '#1a82e2',
+              braintree: '#009cde',
+              paypal: '#003087',
+              razorpay: '#3395ff',
+              firebase: '#ff6d00',
+              supabase: '#3ecf8e',
+              mailchimp: '#ffe01b',
+              activecampaign: '#356ae6',
+              klaviyo: '#1a1a1a',
+              resend: '#000000',
+              contentful: '#2478cc',
+              algolia: '#003dff',
+              postmark: '#ffdd00',
+              vonage: '#9b59b6',
+              telegram: '#2ca5e0',
+              replicate: '#000000',
+              mistral: '#ff7000',
+              whatsapp: '#25d366',
+              googledocs: '#4285f4',
+              perplexity: '#20b2aa',
+              cohere: '#d4b896',
+              googledrive: '#1fa463',
+              woocommerce: '#7f54b3',
+              pinecone: '#1a1a2e',
+              togetherai: '#3d5af1',
+              awss3: '#ff9900',
+              huggingface: '#ff9d00',
+              groq: '#f55036',
+              openrouter: '#6467f2',
+              qdrant: '#dc244c',
+              cloudinary: '#3448c5',
+              gcal: '#1a73e8',
+              docusign: '#ff5400',
+              xero: '#1ab4d7',
+              calendly: '#006bff',
+              apify: '#00c4b4',
+              ganalytics: '#e37400',
+              neon: '#00e599',
+              copper: '#e8762b',
+              azure_openai: '#0078d4',
+              grok: '#111827',
+              ollama: '#0ea5e9',
+              weaviate: '#00c9a7',
+              chroma: '#ff6b6b',
+              mongodb: '#13aa52',
+              clickhouse: '#ffcc00',
+              gcs: '#4285f4',
+              azure_blob: '#0078d4',
+              hash: '#134e4a',
+              jwt: '#134e4a',
+              vertex: '#4285f4',
+              sqs: '#ff4f8b',
+              sns: '#ff9900',
+              bedrock: '#ff9900',
+              milvus: '#00a1ea',
+              kafka: '#231f20',
+              rabbitmq: '#ff6600',
+              zip: '#0d9488',
+              image: '#0d9488',
+              pdf_extract: '#0d9488',
+              ocr: '#0d9488',
+              feishu: '#00d6b9',
+              dingtalk: '#1296db',
+              wecom: '#2f90eb',
+              embedding: '#10a37f',
+              reranker: '#d4b896',
+              text_splitter: '#0d9488',
+              structured_output: '#10a37f',
+              classifier: '#10a37f',
+              image_gen: '#10a37f',
+              speech_to_text: '#10a37f',
+              tts: '#10a37f',
+              html_extract: '#0d9488',
+              rss: '#0d9488',
+              mysql: '#00758f',
+              snowflake: '#29b5e8',
+              bigquery: '#4285f4',
+              sqlserver: '#a91d22',
+              ftp: '#8b5cf6',
+              sftp: '#7c3aed',
+              ssh: '#334155',
+              imap: '#be123c',
+              wait: '#0891b2',
+              deepseek: '#4d6bfe',
+              qwen: '#6200ea',
+              zhipu: '#00897b',
+              moonshot: '#1a237e',
+              doubao: '#0078ff',
+              minimax: '#ff6f00',
+              ernie: '#2979ff',
+              hunyuan: '#00bcd4',
+            }
 
 const NODE_LABELS: Record<NodeType, string> = {
   trigger: 'Trigger',
@@ -327,192 +516,6 @@ const NODE_LABELS: Record<NodeType, string> = {
   hunyuan: '混元',
 }
 
-const NODE_ICONS: Record<NodeType, string> = {
-  trigger: '▶',
-  http: '↗',
-  agent: '✦',
-  condition: '◇',
-  approval: '✋',
-  map: '⟳',
-  filter: '⊃',
-  aggregate: 'Σ',
-  sort: '⇅',
-  transform: '⇄',
-  delay: '⏱',
-  sub_workflow: '⤵',
-  assert: '⊘',
-  catch: '↻',
-  fan_out: '⇉',
-  fan_in: '⇇',
-  code: '{ }',
-  slack: '#',
-  email: '@',
-  openai: '⬡',
-  rag: '⌕',
-  rag_ingest: '⊕',
-  custom: '⚙',
-  gemini: '✦',
-  database: '⊞',
-  extract: '↳',
-  merge: '⊕',
-  loop: '↺',
-  graphql: '◈',
-  validate: '✔',
-  note: '✎',
-  claude: '◆',
-  split: '⊸',
-  join: '⊷',
-  switch: '⇢',
-  random: '⚂',
-  dedupe: '⊟',
-  regex: '.*',
-  csv: '⊞',
-  rename: '≫',
-  format: 'Aa',
-  github: '⬡',
-  webhook: '↗',
-  jira: 'J',
-  notion: 'N',
-  linear: 'L',
-  airtable: 'A',
-  for_each: '↻',
-  discord: '◈',
-  teams: 'T',
-  sheets: '⊞',
-  xml: '</>',
-  yaml: '≡',
-  twilio: '✉',
-  stripe: '$',
-  crypto: '⊛',
-  hubspot: 'H',
-  date: '⏲',
-  zendesk: 'Z',
-  redis: '⊕',
-  elasticsearch: '🔍',
-  pagerduty: '🔔',
-  handlebars: '{}',
-  math: '∑',
-  array_utils: '[]',
-  shopify: '🛍',
-  datadog: '📊',
-  salesforce: '☁',
-  freshdesk: '🎫',
-  mailgun: '✉',
-  asana: '✅',
-  servicenow: '⚙',
-  confluence: '📄',
-  bitbucket: '⑂',
-  azure_devops: '🔷',
-  twitch: '🎮',
-  figma: '✏',
-  dropbox: '📦',
-  cloudflare: '☁',
-  box: '📁',
-  okta: '🔐',
-  zoom: '📹',
-  spotify: '🎵',
-  typeform: '📋',
-  webflow: '🌐',
-  intercom: '💬',
-  pipedrive: '🔗',
-  trello: '📌',
-  monday: '📅',
-  clickup: '✅',
-  amplitude: '📈',
-  mixpanel: '📊',
-  segment: '🔀',
-  sendgrid: '📧',
-  braintree: '💳',
-  paypal: '🅿',
-  razorpay: '💸',
-  firebase: '🔥',
-  supabase: '⚡',
-  mailchimp: '🐒',
-  activecampaign: '📣',
-  klaviyo: '📩',
-  resend: '✉',
-  contentful: '📄',
-  algolia: '🔍',
-  postmark: '📮',
-  vonage: '📱',
-  telegram: '✈',
-  replicate: '🔁',
-  mistral: '🌬',
-  whatsapp: '💬',
-  googledocs: '📝',
-  perplexity: '🔎',
-  cohere: '🧠',
-  googledrive: '📁',
-  woocommerce: '🛒',
-  pinecone: '🌲',
-  togetherai: '🤝',
-  awss3: '🪣',
-  huggingface: '🤗',
-  groq: '⚡',
-  openrouter: '🔀',
-  qdrant: '🎯',
-  cloudinary: '☁',
-  gcal: '📅',
-  docusign: '✍',
-  xero: '💹',
-  calendly: '🗓',
-  apify: '🕷',
-  ganalytics: '📊',
-  neon: '🌀',
-  copper: '🔶',
-  azure_openai: '☁️',
-  grok: '🤖',
-  ollama: '🦙',
-  weaviate: '🧬',
-  chroma: '🌈',
-  mongodb: '🍃',
-  clickhouse: '🗄️',
-  gcs: '🪣',
-  azure_blob: '📦',
-  hash: '#️⃣',
-  jwt: '🔑',
-  vertex: '🔷',
-  sqs: '📨',
-  sns: '📢',
-  bedrock: '🧱',
-  milvus: '🐦',
-  kafka: '🟧',
-  rabbitmq: '🐰',
-  zip: '🗜️',
-  image: '🖼️',
-  pdf_extract: '📄',
-  ocr: '👁️',
-  feishu: '🛫',
-  dingtalk: '🔔',
-  wecom: '💼',
-  embedding: '🧮',
-  reranker: '🎚️',
-  text_splitter: '✂️',
-  structured_output: '🧾',
-  classifier: '🏷️',
-  image_gen: '🎨',
-  speech_to_text: '🎙️',
-  tts: '🔊',
-  html_extract: '🔖',
-  rss: '📡',
-  mysql: '🐬',
-  snowflake: '❄️',
-  bigquery: '🔍',
-  sqlserver: '🗃️',
-  ftp: '📁',
-  sftp: '🔐',
-  ssh: '🖥️',
-  imap: '📬',
-  wait: '⏳',
-  deepseek: '🐋',
-  qwen: '🧩',
-  zhipu: '🔮',
-  moonshot: '🌙',
-  doubao: '🫧',
-  minimax: '🔥',
-  ernie: '🦅',
-  hunyuan: '☯',
-}
 
 function FlowNodeComponent({ data, selected, id }: NodeProps) {
   const statuses = useContext(NodeStatusContext)
@@ -522,7 +525,6 @@ function FlowNodeComponent({ data, selected, id }: NodeProps) {
   const d = data as FlowNodeData
   const nt = d.nodeType
   const label = (d.config?.node_label as string | undefined) || (nt ? (NODE_LABELS[nt] ?? nt) : 'Node')
-  const icon = nt ? (NODE_ICONS[nt] ?? '●') : '●'
 
   const preview = (() => {
     if (!nt) return ''
@@ -561,8 +563,8 @@ function FlowNodeComponent({ data, selected, id }: NodeProps) {
     if (nt === 'rag') return c.kb ? `kb: ${String(c.kb)}` : 'No knowledge base'
     if (nt === 'rag_ingest') return c.kb ? `kb: ${String(c.kb)}` : 'No knowledge base'
     if (nt === 'custom') return c.custom_node ? String(c.custom_node) : 'No custom node'
-    if (nt === 'openai') return (c.model as string) || 'gpt-4o-mini'
-    if (nt === 'gemini') return (c.model as string) || 'gemini-2.0-flash'
+    if (nt === 'openai') return (c.model as string) || 'gpt-5.4-mini'
+    if (nt === 'gemini') return (c.model as string) || 'gemini-2.5-flash'
     if (nt === 'database') return c.query ? String(c.query).split('\n')[0].slice(0, 40) : 'No query'
     if (nt === 'extract') return c.path ? `path: ${String(c.path)}` : 'No path set'
     if (nt === 'merge') return 'Merges fields'
@@ -663,7 +665,7 @@ function FlowNodeComponent({ data, selected, id }: NodeProps) {
     if (nt === 'neon') return `${String(c.operation ?? 'list_projects')}${c.project_id ? ' · '+String(c.project_id).slice(0, 10)+'…' : ''}`
     if (nt === 'copper') return `${String(c.operation ?? 'list')} ${String(c.resource ?? 'people')}`
     if (nt === 'azure_openai') return c.deployment ? String(c.deployment) : 'deployment'
-    if (nt === 'grok') return c.model ? String(c.model) : 'grok-2-latest'
+    if (nt === 'grok') return c.model ? String(c.model) : 'grok-4.3'
     if (nt === 'ollama') return c.model ? String(c.model) : 'llama3.2'
     if (nt === 'weaviate') return c.class ? `${String(c.operation ?? 'query')} [${String(c.class)}]` : String(c.operation ?? 'query')
     if (nt === 'chroma') return c.collection ? `${String(c.operation ?? 'query')} [${String(c.collection)}]` : String(c.operation ?? 'query')
@@ -690,8 +692,8 @@ function FlowNodeComponent({ data, selected, id }: NodeProps) {
     if (nt === 'embedding') return String(c.model ?? 'text-embedding-3-small')
     if (nt === 'reranker') return String(c.model ?? 'rerank-english-v3.0')
     if (nt === 'text_splitter') return `chunk ${String(c.chunk_size ?? 1000)}/${String(c.chunk_overlap ?? 200)}`
-    if (nt === 'structured_output') return String(c.model ?? 'gpt-4o-mini')
-    if (nt === 'classifier') return Array.isArray(c.categories) ? `${(c.categories as unknown[]).length} 类` : String(c.model ?? 'gpt-4o-mini')
+    if (nt === 'structured_output') return String(c.model ?? 'gpt-5.4-mini')
+    if (nt === 'classifier') return Array.isArray(c.categories) ? `${(c.categories as unknown[]).length} 类` : String(c.model ?? 'gpt-5.4-mini')
     if (nt === 'image_gen') return String(c.model ?? 'dall-e-3')
     if (nt === 'speech_to_text') return String(c.model ?? 'whisper-1')
     if (nt === 'tts') return `${String(c.model ?? 'tts-1')} · ${String(c.voice ?? 'alloy')}`
@@ -706,14 +708,14 @@ function FlowNodeComponent({ data, selected, id }: NodeProps) {
     if (nt === 'ssh') return c.host ? `ssh ${String(c.username ?? '')}@${String(c.host)}` : 'No host'
     if (nt === 'imap') return c.host ? `${String(c.operation ?? 'list_messages')} ${String(c.mailbox ?? 'INBOX')}` : 'No host'
     if (nt === 'wait') return String(c.mode ?? 'duration') === 'resume' ? 'until resumed' : (c.until ? `until ${String(c.until)}` : `${String(c.seconds ?? 0)}s`)
-    if (nt === 'deepseek') return c.model ? String(c.model) : 'deepseek-chat'
+    if (nt === 'deepseek') return c.model ? String(c.model) : 'deepseek-v4-flash'
     if (nt === 'qwen') return c.model ? String(c.model) : 'qwen-max'
-    if (nt === 'zhipu') return c.model ? String(c.model) : 'glm-4'
-    if (nt === 'moonshot') return c.model ? String(c.model) : 'moonshot-v1-8k'
+    if (nt === 'zhipu') return c.model ? String(c.model) : 'glm-4.6'
+    if (nt === 'moonshot') return c.model ? String(c.model) : 'kimi-latest'
     if (nt === 'doubao') return c.endpoint_id ? String(c.endpoint_id) : 'No endpoint ID'
-    if (nt === 'minimax') return c.model ? String(c.model) : 'abab6.5s-chat'
+    if (nt === 'minimax') return c.model ? String(c.model) : 'MiniMax-Text-01'
     if (nt === 'ernie') return c.model ? String(c.model) : 'ernie-4.0-8k'
-    if (nt === 'hunyuan') return c.model ? String(c.model) : 'hunyuan-standard'
+    if (nt === 'hunyuan') return c.model ? String(c.model) : 'hunyuan-turbos-latest'
     return ''
   })()
 
@@ -738,8 +740,8 @@ function FlowNodeComponent({ data, selected, id }: NodeProps) {
       {nt !== 'trigger' && (
         <Handle type="target" position={Position.Left} style={{ background: '#30363d' }} />
       )}
-      <div className="flow-node-header">
-        <span>{icon}</span>
+      <div className="flow-node-header" style={{ background: nt ? (NODE_COLORS[nt] ?? 'var(--accent)') : 'var(--accent)' }}>
+        <span className="flow-node-ic">{nt ? <NodeIcon type={nt} size={15} /> : null}</span>
         <span>{label}</span>
         <span style={{ opacity: 0.6, fontWeight: 400, fontSize: 11, marginLeft: 'auto' }}>{id}</span>
         {hasWarning && (
@@ -950,6 +952,7 @@ interface Props {
   onSelectionChange: (nodeId: string | null) => void
   onNodesUpdated: (nodes: FlowNode[]) => void
   onEdgesUpdated: (edges: FlowEdge[]) => void
+  onDropNode?: (type: NodeType, position: { x: number; y: number }) => void
   nodeStatuses?: Record<string, NodeExecutionRecord>
   warningNodeIds?: Set<string>
   snapToGrid?: boolean
@@ -985,6 +988,7 @@ export function Canvas({
   onSelectionChange,
   onNodesUpdated,
   onEdgesUpdated,
+  onDropNode,
   nodeStatuses = {},
   warningNodeIds,
   snapToGrid = false,
@@ -1007,6 +1011,21 @@ export function Canvas({
     if (connErrorTimer.current) clearTimeout(connErrorTimer.current)
     connErrorTimer.current = setTimeout(() => setConnError(null), 2500)
   }, [])
+
+  // Palette → canvas drag-and-drop. The RF instance (captured via onInit) gives
+  // screenToFlowPosition so the node lands under the cursor.
+  const rfInstance = useRef<{ screenToFlowPosition: (p: { x: number; y: number }) => { x: number; y: number } } | null>(null)
+  const onDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault()
+    e.dataTransfer.dropEffect = 'move'
+  }, [])
+  const onDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault()
+    const type = e.dataTransfer.getData('application/trigix-node') as NodeType
+    if (!type || !onDropNode || !rfInstance.current) return
+    const position = rfInstance.current.screenToFlowPosition({ x: e.clientX, y: e.clientY })
+    onDropNode(type, position)
+  }, [onDropNode])
 
   const onNodesChange = useCallback(
     (changes: import('@xyflow/react').NodeChange<FlowNode>[]) => {
@@ -1184,6 +1203,9 @@ export function Canvas({
         onEdgeClick={onEdgeClick}
         onNodeClick={handleNodeClick}
         onPaneClick={handlePaneClick}
+        onInit={(inst) => { rfInstance.current = inst }}
+        onDrop={onDrop}
+        onDragOver={onDragOver}
         nodeTypes={nodeTypes}
         fitView={!defaultViewport}
         defaultViewport={defaultViewport}
@@ -1205,193 +1227,7 @@ export function Canvas({
         {showMinimap && <MiniMap
           nodeColor={(n) => {
             const nt = (n.data as FlowNodeData)?.nodeType
-            const colors: Record<string, string> = {
-              trigger: '#238636',
-              http: '#1f6feb',
-              agent: '#8957e5',
-              condition: '#d29922',
-              approval: '#0891b2',
-              map: '#e05d44',
-              filter: '#0891b2',
-              aggregate: '#7c3aed',
-              sort: '#d97706',
-              transform: '#0d9488',
-              delay: '#b45309',
-              sub_workflow: '#be185d',
-              assert: '#dc2626',
-              catch: '#ea580c',
-              fan_out: '#0891b2',
-              fan_in: '#0891b2',
-              code: '#7c3aed',
-              slack: '#4a154b',
-              email: '#0369a1',
-              openai: '#10a37f',
-              rag: '#7c3aed',
-              rag_ingest: '#7c3aed',
-              custom: '#475569',
-              gemini: '#4285f4',
-              database: '#336791',
-              extract: '#0f766e',
-              merge: '#7c2d12',
-              loop: '#6d28d9',
-              graphql: '#e10098',
-              validate: '#15803d',
-              note: '#b45309',
-              claude: '#c96442',
-              split: '#0369a1',
-              join: '#0891b2',
-              switch: '#7c3aed',
-              random: '#0f766e',
-              dedupe: '#1d4ed8',
-              regex: '#92400e',
-              csv: '#166534',
-              rename: '#065f46',
-              format: '#1e3a5f',
-              github: '#24292e',
-              webhook: '#6d28d9',
-              jira: '#0052cc',
-              notion: '#000000',
-              linear: '#5e6ad2',
-              airtable: '#18bfff',
-              for_each: '#7c3aed',
-              discord: '#5865f2',
-              teams: '#6264a7',
-              sheets: '#0f9d58',
-              xml: '#7b341e',
-              yaml: '#2c5282',
-              twilio: '#f22f46',
-              stripe: '#635bff',
-              crypto: '#134e4a',
-              hubspot: '#ff5c35',
-              date: '#0369a1',
-              zendesk: '#03363d',
-              redis: '#dc2626',
-              elasticsearch: '#f59e0b',
-              pagerduty: '#06b6d4',
-              handlebars: '#7c3aed',
-              math: '#0e7490',
-              array_utils: '#065f46',
-              shopify: '#96bf48',
-              datadog: '#632ca6',
-              salesforce: '#00a1e0',
-              freshdesk: '#25c16f',
-              mailgun: '#f06b26',
-              asana: '#f06a6a',
-              servicenow: '#81b5a1',
-              confluence: '#0052cc',
-              bitbucket: '#0052cc',
-              azure_devops: '#0078d4',
-              twitch: '#9146ff',
-              figma: '#f24e1e',
-              dropbox: '#0061ff',
-              cloudflare: '#f38020',
-              box: '#0061fe',
-              okta: '#007dc1',
-              zoom: '#2d8cff',
-              spotify: '#1db954',
-              typeform: '#262627',
-              webflow: '#4353ff',
-              intercom: '#1f8ded',
-              pipedrive: '#d4452c',
-              trello: '#0052cc',
-              monday: '#ff3d57',
-              clickup: '#7b68ee',
-              amplitude: '#1da462',
-              mixpanel: '#7856ff',
-              segment: '#52bd95',
-              sendgrid: '#1a82e2',
-              braintree: '#009cde',
-              paypal: '#003087',
-              razorpay: '#3395ff',
-              firebase: '#ff6d00',
-              supabase: '#3ecf8e',
-              mailchimp: '#ffe01b',
-              activecampaign: '#356ae6',
-              klaviyo: '#1a1a1a',
-              resend: '#000000',
-              contentful: '#2478cc',
-              algolia: '#003dff',
-              postmark: '#ffdd00',
-              vonage: '#9b59b6',
-              telegram: '#2ca5e0',
-              replicate: '#000000',
-              mistral: '#ff7000',
-              whatsapp: '#25d366',
-              googledocs: '#4285f4',
-              perplexity: '#20b2aa',
-              cohere: '#d4b896',
-              googledrive: '#1fa463',
-              woocommerce: '#7f54b3',
-              pinecone: '#1a1a2e',
-              togetherai: '#3d5af1',
-              awss3: '#ff9900',
-              huggingface: '#ff9d00',
-              groq: '#f55036',
-              openrouter: '#6467f2',
-              qdrant: '#dc244c',
-              cloudinary: '#3448c5',
-              gcal: '#1a73e8',
-              docusign: '#ff5400',
-              xero: '#1ab4d7',
-              calendly: '#006bff',
-              apify: '#00c4b4',
-              ganalytics: '#e37400',
-              neon: '#00e599',
-              copper: '#e8762b',
-              azure_openai: '#0078d4',
-              grok: '#111827',
-              ollama: '#0ea5e9',
-              weaviate: '#00c9a7',
-              chroma: '#ff6b6b',
-              mongodb: '#13aa52',
-              clickhouse: '#ffcc00',
-              gcs: '#4285f4',
-              azure_blob: '#0078d4',
-              hash: '#134e4a',
-              jwt: '#134e4a',
-              vertex: '#4285f4',
-              sqs: '#ff4f8b',
-              sns: '#ff9900',
-              bedrock: '#ff9900',
-              milvus: '#00a1ea',
-              kafka: '#231f20',
-              rabbitmq: '#ff6600',
-              zip: '#0d9488',
-              image: '#0d9488',
-              pdf_extract: '#0d9488',
-              ocr: '#0d9488',
-              feishu: '#00d6b9',
-              dingtalk: '#1296db',
-              wecom: '#2f90eb',
-              embedding: '#10a37f',
-              reranker: '#d4b896',
-              text_splitter: '#0d9488',
-              structured_output: '#10a37f',
-              classifier: '#10a37f',
-              image_gen: '#10a37f',
-              speech_to_text: '#10a37f',
-              tts: '#10a37f',
-              html_extract: '#0d9488',
-              rss: '#0d9488',
-              mysql: '#00758f',
-              snowflake: '#29b5e8',
-              bigquery: '#4285f4',
-              sqlserver: '#a91d22',
-              ftp: '#8b5cf6',
-              sftp: '#7c3aed',
-              ssh: '#334155',
-              imap: '#be123c',
-              wait: '#0891b2',
-              deepseek: '#4d6bfe',
-              qwen: '#6200ea',
-              zhipu: '#00897b',
-              moonshot: '#1a237e',
-              doubao: '#0078ff',
-              minimax: '#ff6f00',
-              ernie: '#2979ff',
-              hunyuan: '#00bcd4',
-            }
-            return nt ? (colors[nt] ?? '#30363d') : '#30363d'
+            return nt ? (NODE_COLORS[nt] ?? '#30363d') : '#30363d'
           }}
           style={{ background: 'var(--panel)', border: '1px solid var(--border)' }}
         />}

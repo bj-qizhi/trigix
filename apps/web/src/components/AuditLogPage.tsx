@@ -2,6 +2,7 @@
 // https://www.qzso.com/ · managecode@gmail.com
 
 import { useTheme } from '../useTheme'
+import { ThemeToggleIcon } from './uiIcons'
 import { useEffect, useMemo, useState } from 'react'
 import { useAuth } from '../AuthContext'
 import { useLocale } from '../useLocale'
@@ -112,7 +113,7 @@ export function AuditLogPage({ onBack }: Props) {
           >
             ↓ CSV
           </button>
-          <button className="btn btn-sm" onClick={toggleTheme} title={zh ? '切换主题' : 'Toggle dark/light theme'}>{theme === 'dark' ? '☀' : '◑'}</button>
+          <button className="btn btn-sm" onClick={toggleTheme} title={zh ? '切换主题' : 'Toggle dark/light theme'}>{theme === 'dark' ? <ThemeToggleIcon dark /> : <ThemeToggleIcon dark={false} />}</button>
           <button className="btn btn-sm" onClick={onBack}>{zh ? '← 返回' : '← Back'}</button>
         </div>
       </header>

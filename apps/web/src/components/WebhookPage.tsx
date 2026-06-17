@@ -2,6 +2,7 @@
 // https://www.qzso.com/ · managecode@gmail.com
 
 import { Fragment, useEffect, useState } from 'react'
+import { ThemeToggleIcon } from './uiIcons'
 import { useAuth } from '../AuthContext'
 import { useLocale } from '../useLocale'
 import * as api from '../api/client'
@@ -182,7 +183,7 @@ export function WebhookPage({ onBack, onOpenWorkflow }: Props) {
         <span className="topbar-title">{t('webhook.title')}</span>
         <div className="topbar-actions">
           <button className="btn btn-sm" onClick={toggleTheme} title="Toggle dark/light theme">
-            {theme === 'dark' ? '☀' : '◑'}
+            {theme === 'dark' ? <ThemeToggleIcon dark /> : <ThemeToggleIcon dark={false} />}
           </button>
         </div>
       </header>
@@ -320,7 +321,7 @@ export function WebhookPage({ onBack, onOpenWorkflow }: Props) {
                         onClick={() => void handleRotateSecret(wh.token)}
                         title={zh ? '生成新密钥（旧密钥立即失效）' : 'Generate new secret (old secret immediately revoked)'}
                       >
-                        {rotatingToken === wh.token ? '…' : (zh ? '🔑 轮换密钥' : '🔑 Rotate Secret')}
+                        {rotatingToken === wh.token ? '…' : (zh ? '轮换密钥' : 'Rotate Secret')}
                       </button>
                       <button
                         className="btn btn-sm btn-danger"
@@ -336,7 +337,7 @@ export function WebhookPage({ onBack, onOpenWorkflow }: Props) {
                     )}
                     {wh.condition_expr && (
                       <div style={{ fontSize: 10, color: 'var(--muted)', fontFamily: 'monospace', marginTop: 2 }}>
-                        🔍 {wh.condition_expr}
+                        {wh.condition_expr}
                       </div>
                     )}
                     {wh.max_calls_per_minute && (
@@ -564,7 +565,7 @@ export function WebhookPage({ onBack, onOpenWorkflow }: Props) {
         <div className="modal-backdrop" onClick={() => setRotatedSecret(null)}>
           <div className="modal" style={{ maxWidth: 480 }} onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
-              <h3>🔑 {zh ? '新密钥已生成' : 'New Secret Generated'}</h3>
+              <h3>{zh ? '新密钥已生成' : 'New Secret Generated'}</h3>
               <button className="btn btn-sm" onClick={() => setRotatedSecret(null)}>✕</button>
             </div>
             <div style={{ padding: '1rem', display: 'flex', flexDirection: 'column', gap: 12 }}>

@@ -2,11 +2,19 @@
 // https://www.qzso.com/ · managecode@gmail.com
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { IconKey, IconSearch, ThemeToggleIcon } from './uiIcons'
 import { useAuth } from '../AuthContext'
 import * as api from '../api/client'
 import { getStoredAuth } from '../auth'
 import type { WorkflowRecord, WorkflowVersionRecord, ExecutionRecord, ExecutionSummary, NodeExecutionRecord, NodeType, InputField, EnvSetSummary } from '../types'
 import { Canvas, graphFromApi, fromFlowGraph, type FlowNode, type FlowEdge } from './Canvas'
+import { NodeIcon } from './nodeIcons'
+import {
+  PiChartBar, PiFire, PiCheckCircle, PiCalendarBlank, PiListBullets,
+  PiTestTube, PiChatCircle, PiBookOpen,
+} from 'react-icons/pi'
+
+const TB_ICON: React.CSSProperties = { verticalAlign: '-2px', marginRight: 4 }
 import { NodeConfigPanel } from './NodeConfigPanel'
 import { ExecutionPanel } from './ExecutionPanel'
 import { TestCasesModal } from './TestCasesModal'
@@ -22,191 +30,191 @@ interface Props {
 
 type Toast = { id: number; message: string; kind: 'success' | 'error' }
 
-const NODE_TYPE_LIST: { type: NodeType; label: string; color: string; icon: string; desc: string; category: string }[] = [
-  { type: 'trigger',      label: 'Trigger',      color: 'var(--node-trigger)',      icon: '▶',   desc: 'Starts the workflow. Passes input_json to downstream nodes. Supports manual, webhook, and scheduled runs.',  category: 'Control' },
-  { type: 'condition',    label: 'Condition',     color: 'var(--node-condition)',    icon: '◇',   desc: 'Routes to true/false branches by comparing a field. Operators: equals, not_equals, contains, gt, lt, gte, lte, exists.', category: 'Control' },
-  { type: 'approval',     label: 'Approval',      color: 'var(--node-approval)',     icon: '✋',  desc: 'Pauses execution until a human approves or rejects. Approve/Reject buttons appear in the execution panel.', category: 'Control' },
-  { type: 'assert',       label: 'Assert',        color: 'var(--node-assert)',       icon: '⊘',   desc: 'Fails the execution with a custom message if a condition expression is falsy.', category: 'Control' },
-  { type: 'catch',        label: 'Catch',         color: 'var(--node-catch)',        icon: '↻',   desc: 'Receives control when an upstream node fails (connected via an "error" edge). Auto-detects the error.', category: 'Control' },
-  { type: 'fan_out',      label: 'Fan-Out',       color: 'var(--node-fan)',          icon: '⇉',   desc: 'Splits execution into parallel branches. All branches run concurrently; use Fan-In to collect results.', category: 'Control' },
-  { type: 'fan_in',       label: 'Fan-In',        color: 'var(--node-fan)',          icon: '⇇',   desc: 'Collects outputs from all upstream parallel branches into a single {count, results} object.', category: 'Control' },
-  { type: 'delay',        label: 'Delay',         color: 'var(--node-delay)',        icon: '⏱',   desc: 'Waits for N seconds (0–3600) before continuing. Returns {waited_secs}.', category: 'Control' },
-  { type: 'wait',         label: 'Wait',          color: 'var(--node-approval)',     icon: '⏳',  desc: 'Pause the run: mode=duration (seconds or until RFC3339, auto-resumes) or mode=resume (suspend until resumed via the execution approve/resume endpoint). Returns {resumed, mode, waited_secs}.', category: 'Control' },
-  { type: 'sub_workflow', label: 'Sub-Workflow',  color: 'var(--node-sub-workflow)', icon: '⤵',   desc: 'Runs another published workflow as a sub-call. Returns its status and output.', category: 'Control' },
-  { type: 'http',         label: 'HTTP',          color: 'var(--node-http)',         icon: '↗',   desc: 'Makes an HTTP request (GET/POST/PUT/PATCH/DELETE). Supports Bearer, OAuth2 auth and custom headers.', category: 'Integration' },
-  { type: 'graphql',      label: 'GraphQL',       color: 'var(--node-graphql)',      icon: '◈',   desc: 'Sends a GraphQL query or mutation to an endpoint. Variables support {{...}} templates. Fails on GraphQL errors.', category: 'Integration' },
-  { type: 'database',     label: 'Database',      color: 'var(--node-database)',     icon: '⊞',   desc: 'Executes a SQL query against a PostgreSQL database. SELECT returns {rows, count}; DML returns {rows_affected}.', category: 'Integration' },
-  { type: 'mysql',        label: 'MySQL',         color: 'var(--node-database)',     icon: '🐬',  desc: 'Run a SQL query against MySQL. Config: url (mysql://…), query. SELECT returns {rows, count}; DML returns {rows_affected}.', category: 'Integration' },
-  { type: 'snowflake',    label: 'Snowflake',     color: 'var(--node-database)',     icon: '❄️',  desc: 'Snowflake SQL API v2. Config: account, token, token_type, statement, warehouse, database, schema, role. Returns {status, body}.', category: 'Integration' },
-  { type: 'bigquery',     label: 'BigQuery',      color: 'var(--node-database)',     icon: '🔍',  desc: 'BigQuery jobs.query REST. Config: project, access_token, query, use_legacy_sql, max_results, location. Returns {status, body}.', category: 'Integration' },
-  { type: 'sqlserver',    label: 'SQL Server',    color: 'var(--node-database)',     icon: '🗃️',  desc: 'Microsoft SQL Server (pure-Rust TDS). Config: host, port, username, password, database, query. SELECT → {rows, count}; DML → {rows_affected}.', category: 'Integration' },
-  { type: 'ftp',          label: 'FTP',           color: 'var(--node-awss3)',        icon: '📁',  desc: 'FTP / FTPS file transfer. Config: host, port, username, password, secure (FTPS), operation (list/download/upload/delete), path, content (base64). Returns file list or base64 content.', category: 'Integration' },
-  { type: 'sftp',         label: 'SFTP',          color: 'var(--node-awss3)',        icon: '🔐',  desc: 'SFTP over SSH (pure-Rust). Config: host, port, username, password or private_key (+passphrase), operation (list/download/upload/delete), path, content (base64).', category: 'Integration' },
-  { type: 'ssh',          label: 'SSH',           color: 'var(--node-code)',         icon: '🖥️',  desc: 'Run a command over SSH. Config: host, port, username, password or private_key (+passphrase), command. Returns {stdout, stderr, exit_status}.', category: 'Integration' },
-  { type: 'imap',         label: 'IMAP',          color: 'var(--node-slack)',        icon: '📬',  desc: 'Read an IMAP mailbox over TLS. Config: host, port, username, password, operation (list_messages/list_mailboxes), mailbox, limit. Returns {messages, count}.', category: 'Integration' },
-  { type: 'slack',        label: 'Slack',         color: 'var(--node-slack)',        icon: '#',   desc: 'Sends a message to a Slack channel via an Incoming Webhook URL. Supports {{...}} templates in text.', category: 'Integration' },
-  { type: 'email',        label: 'Email',         color: 'var(--node-email)',        icon: '@',   desc: 'Sends an email via the SendGrid API. Configure to, subject, body, and API key (use {{credential.*}}).', category: 'Integration' },
-  { type: 'openai',       label: 'OpenAI',        color: 'var(--node-openai)',       icon: '⬡',   desc: 'Calls OpenAI Chat Completions (gpt-4o, gpt-4o-mini, o1). Returns {content, model, usage}.', category: 'AI' },
-  { type: 'gemini',       label: 'Gemini',        color: 'var(--node-gemini)',       icon: '✦',   desc: 'Calls Google Gemini (2.0-flash, 1.5-pro, 1.5-flash, thinking). Returns {content, model, usage}.', category: 'AI' },
-  { type: 'vertex',       label: 'Vertex AI',     color: 'var(--node-gemini)',       icon: '🔷',  desc: 'Google Vertex AI (Gemini generateContent) via an OAuth2 access token. Config: access_token, project, location, model, prompt_template, system_prompt, max_tokens, temperature. Returns {content, model, usage}.', category: 'AI' },
-  { type: 'bedrock',      label: 'AWS Bedrock',   color: 'var(--node-awss3)',        icon: '🧱',  desc: 'AWS Bedrock InvokeModel (SigV4-signed). Config: access_key_id, secret_access_key, region, model_id, body (model-native JSON). Returns {status, body}.', category: 'AI' },
-  { type: 'claude',       label: 'Claude',        color: 'var(--node-claude)',        icon: '◆',   desc: 'Calls Anthropic Claude (claude-opus-4-7, claude-sonnet-4-6, claude-haiku-4-5). Returns {content, model, usage}.', category: 'AI' },
-  { type: 'agent',        label: 'Agent',         color: 'var(--node-agent)',        icon: '✦',   desc: 'Runs a Python AI agent via the AI Runtime. Configures model, prompt and system instructions.', category: 'AI' },
-  { type: 'rag',          label: 'RAG',           color: 'var(--node-rag)',          icon: '⌕',   desc: 'Retrieves the most relevant chunks from a pgvector knowledge base via the AI Runtime. Returns {results}.', category: 'AI' },
-  { type: 'rag_ingest',   label: 'RAG Ingest',    color: 'var(--node-rag)',          icon: '⊕',   desc: 'Ingests a document into a pgvector knowledge base via the AI Runtime (chunk + embed + store). Returns {doc_id, chunks}.', category: 'AI' },
-  { type: 'embedding',    label: 'Embedding',     color: 'var(--node-openai)',       icon: '🧮',  desc: 'Embed text via an OpenAI-compatible endpoint. Config: api_key, base_url, model, input. Returns {embeddings, model, usage}.', category: 'AI' },
-  { type: 'reranker',     label: 'Reranker',      color: 'var(--node-cohere)',       icon: '🎚️',  desc: 'Rerank documents against a query (Cohere/Jina-style). Config: api_key, base_url, model, query, documents, top_n. Returns {status, body}.', category: 'AI' },
-  { type: 'text_splitter', label: 'Text Splitter', color: 'var(--node-transform)',   icon: '✂️',  desc: 'Split text into overlapping, UTF-8-safe chunks. Config: text, chunk_size, chunk_overlap. Returns {chunks, count}.', category: 'AI' },
-  { type: 'structured_output', label: 'Structured Output', color: 'var(--node-openai)', icon: '🧾', desc: 'Get a JSON object from an LLM (json_object mode). Config: api_key, base_url, model, prompt_template, schema. Returns {data, raw, model}.', category: 'AI' },
-  { type: 'classifier',   label: 'Classifier',    color: 'var(--node-openai)',       icon: '🏷️',  desc: 'Classify input into one of N categories via an LLM. Config: api_key, base_url, model, input, categories. Returns {category, raw}.', category: 'AI' },
-  { type: 'image_gen',    label: 'Image Gen',     color: 'var(--node-openai)',       icon: '🎨',  desc: 'Generate images (OpenAI-compatible). Config: api_key, base_url, model, prompt, size, n. Returns {status, body}.', category: 'AI' },
-  { type: 'speech_to_text', label: 'Speech → Text', color: 'var(--node-openai)',     icon: '🎙️',  desc: 'Transcribe audio (Whisper-compatible). Config: api_key, base_url, model, audio_base64, filename, language. Returns {status, text}.', category: 'AI' },
-  { type: 'tts',          label: 'Text → Speech', color: 'var(--node-openai)',       icon: '🔊',  desc: 'Synthesize speech (OpenAI-compatible). Config: api_key, base_url, model, input, voice, format. Returns {audio_base64, format}.', category: 'AI' },
-  { type: 'custom',       label: 'Custom',        color: 'var(--node-custom)',       icon: '⚙',   desc: 'Runs a community/third-party node served over HTTP (node SDK). Pick a registered custom node.', category: 'AI' },
-  { type: 'code',         label: 'Code',          color: 'var(--node-code)',         icon: '{ }', desc: 'Executes a sandboxed Rhai script. Access input and node outputs as maps. Returns the script result.', category: 'Transform' },
-  { type: 'transform',    label: 'Transform',     color: 'var(--node-transform)',    icon: '⇄',   desc: 'Renders a JSON template with {{...}} interpolation. The template can be an object, array, or string.', category: 'Transform' },
-  { type: 'map',          label: 'Map',           color: 'var(--node-map)',          icon: '⟳',   desc: 'Applies an optional item_template to every element of a JSON array. Returns {count, items}.', category: 'Transform' },
-  { type: 'filter',       label: 'Filter',        color: 'var(--node-filter)',       icon: '⊃',   desc: 'Filters a JSON array by field + operator (exists, equals, contains, gt, lt). Returns {count, items}.', category: 'Transform' },
-  { type: 'aggregate',    label: 'Aggregate',     color: 'var(--node-aggregate)',    icon: 'Σ',   desc: 'Reduces an array to a scalar via count, sum, avg, min, max, join, first, or last.', category: 'Transform' },
-  { type: 'sort',         label: 'Sort',          color: 'var(--node-sort)',         icon: '⇅',   desc: 'Sorts a JSON array by a field, ascending or descending, using string or numeric comparison.', category: 'Transform' },
-  { type: 'extract',      label: 'Extract',       color: 'var(--node-extract)',      icon: '⊙',   desc: 'Extracts a single value from a JSON source using a dot-path (e.g. data.users.0.email). Returns {value, found}.', category: 'Transform' },
-  { type: 'merge',        label: 'Merge',         color: 'var(--node-merge)',        icon: '⊕',   desc: 'Combines fields from multiple node outputs into one flat object. Each field can have an optional key alias.', category: 'Transform' },
-  { type: 'loop',         label: 'Loop',          color: 'var(--node-loop)',         icon: '↻',   desc: 'Iterates over a JSON array, applying an optional template per item. Supports until-path early exit and max_iterations cap.', category: 'Transform' },
-  { type: 'validate',     label: 'Validate',      color: 'var(--node-validate)',     icon: '✔',   desc: 'Validates a JSON payload against a simple field schema (required, type checks). Returns {valid, errors[]}. Fails node if invalid.', category: 'Transform' },
-  { type: 'note',         label: 'Note',          color: '#b45309',                  icon: '✎',   desc: 'A documentation annotation (sticky note). Does not execute or affect workflow data flow.', category: 'Utility' },
-  { type: 'split',        label: 'Split',         color: 'var(--node-split)',        icon: '⊸',   desc: 'Splits a string into an array by a delimiter (default comma). Returns {parts: string[], count}. Trims whitespace by default.', category: 'Transform' },
-  { type: 'join',         label: 'Join',          color: 'var(--node-join)',         icon: '⊷',   desc: 'Joins an array into a string by a delimiter (default comma). Optionally extracts a field from each object element. Returns {result, count}.', category: 'Transform' },
-  { type: 'switch',       label: 'Switch',        color: 'var(--node-switch)',       icon: '⇢',   desc: 'Evaluates a value expression and routes to a named case branch. Outgoing edges use the case label as condition_label. Returns {value, matched_case, matched}.', category: 'Control' },
-  { type: 'random',       label: 'Random',        color: 'var(--node-random)',       icon: '⚂',   desc: 'Generates a random value: UUID, number (with optional min/max), boolean, or a random pick from an items array. Returns {value}.', category: 'Utility' },
-  { type: 'dedupe',       label: 'Dedupe',        color: 'var(--node-dedupe)',       icon: '⊟',   desc: 'Removes duplicate elements from a JSON array. Compares by a dot-path field or the entire item. Returns {items, count, removed_count}.', category: 'Transform' },
-  { type: 'regex',        label: 'Regex',         color: 'var(--node-regex)',        icon: '.*',  desc: 'Tests a source string against a pattern. Returns {matched, full_match, groups}. Supports case-insensitive "i" flag.', category: 'Transform' },
-  { type: 'csv',          label: 'CSV Parse',     color: 'var(--node-csv)',          icon: '⊞',   desc: 'Parses a CSV string into an array of row objects (with headers) or arrays (without). Config: source, delimiter, has_header, trim. Returns {rows, count, headers}.', category: 'Transform' },
-  { type: 'rename',       label: 'Rename',        color: 'var(--node-rename)',       icon: '≫',   desc: 'Renames keys in a JSON object. Config: source (object expression), mappings [{from, to}]. Unmapped keys are preserved. Returns the renamed object.', category: 'Transform' },
-  { type: 'format',       label: 'Format',        color: 'var(--node-format)',       icon: 'Aa',  desc: 'Formats a string or value: uppercase, lowercase, trim, reverse, length, word_count, to_number, to_bool, replace, pad_start, truncate. Returns {result, operation}.', category: 'Transform' },
-  { type: 'github',       label: 'GitHub',        color: 'var(--node-github)',       icon: '⬡',  desc: 'Call GitHub REST API. Config: token (required), endpoint (e.g. /repos/owner/repo/issues), method (GET/POST/PATCH/DELETE), body (optional JSON template). Returns {status, body}.', category: 'Integration' },
-  { type: 'webhook',      label: 'Webhook Send',  color: 'var(--node-webhook)',      icon: '↗',  desc: 'Send an HTTP POST to an external webhook URL. Config: url (required), headers (optional object), body_template (optional JSON template). Returns {status, ok}.', category: 'Integration' },
-  { type: 'jira',         label: 'Jira',          color: 'var(--node-jira)',         icon: 'J',  desc: 'Call Jira REST API v3 using Basic auth (email + API token). Config: base_url, email, token, endpoint (e.g. /rest/api/3/issue/PROJ-1), method, body. Returns {status, body}.', category: 'Integration' },
-  { type: 'notion',       label: 'Notion',        color: 'var(--node-notion)',       icon: 'N',  desc: 'Call Notion REST API using Bearer token. Config: token, endpoint (e.g. /v1/pages), method, body. Returns {status, body}.', category: 'Integration' },
-  { type: 'linear',       label: 'Linear',        color: 'var(--node-linear)',       icon: 'L',  desc: 'Query or mutate Linear issues via GraphQL API. Config: token (required), query (GraphQL string), variables (optional JSON). Returns {status, data}.', category: 'Integration' },
-  { type: 'airtable',     label: 'Airtable',      color: 'var(--node-airtable)',     icon: 'A',  desc: 'Read or write Airtable records. Config: token, base_id, table, method, record_id (optional), body (for writes), filter_formula (for GET). Returns {status, body}.', category: 'Integration' },
-  { type: 'for_each',     label: 'For Each',      color: 'var(--node-for-each)',     icon: '↻',  desc: 'Run a sub-workflow for each item in an array in parallel. Config: items (array expression), workflow_id (resolved to _graph by platform), input_key (default "item"), max_concurrency (default 10). Returns {results, succeeded, failed, total}.', category: 'Control' },
-  { type: 'discord',      label: 'Discord',       color: 'var(--node-discord)',      icon: '◈',  desc: 'Send a message to a Discord channel via an incoming webhook. Config: webhook_url, content (message text), username (optional), avatar_url (optional). Returns {ok, content}.', category: 'Integration' },
-  { type: 'teams',        label: 'MS Teams',      color: 'var(--node-teams)',        icon: 'T',  desc: 'Send a MessageCard to Microsoft Teams via an incoming webhook. Config: webhook_url, text (required), title (optional), color (hex, default 0078D4). Returns {ok, text}.', category: 'Integration' },
-  { type: 'sheets',       label: 'Google Sheets', color: 'var(--node-sheets)',       icon: '⊞',  desc: 'Read or write Google Sheets via Sheets API v4. Config: token (Bearer), spreadsheet_id, range (A1 notation), method (GET/APPEND/UPDATE/CLEAR), values (for writes). Returns {status, body, values}.', category: 'Integration' },
-  { type: 'xml',          label: 'XML Parse',     color: 'var(--node-xml)',          icon: '</>',  desc: 'Parse an XML string into a JSON object. Config: source (XML string or {{template}}). Returns {data: object}. Complex XML with namespaces/mixed content may need preprocessing.', category: 'Transform' },
-  { type: 'yaml',         label: 'YAML',          color: 'var(--node-yaml)',         icon: '≡',   desc: 'Parse a YAML string to JSON (mode=parse, default) or serialize a JSON value to YAML (mode=serialize). Config: source, mode. Returns {data} or {yaml}.', category: 'Transform' },
-  { type: 'twilio',       label: 'Twilio SMS',    color: 'var(--node-twilio)',       icon: '✉',   desc: 'Send an SMS via Twilio REST API. Config: account_sid, auth_token, to, from (E.164 phone numbers), body. Returns {sid, status, to, from}.', category: 'Integration' },
-  { type: 'stripe',       label: 'Stripe',        color: 'var(--node-stripe)',       icon: '$',   desc: 'Call the Stripe API v1. Config: api_key (sk_live_/sk_test_), endpoint (e.g. /customers), method (GET/POST/PATCH/DELETE), body (flat object — form-encoded for POST). Returns {status, id, object, body}.', category: 'Integration' },
-  { type: 'crypto',       label: 'Crypto',        color: 'var(--node-crypto)',       icon: '⊛',   desc: 'Cryptographic utilities. Operations: sha256, sha512, hmac_sha256 (needs key), base64_encode/decode, hex_encode/decode, random_hex, random_base64. Returns {result, operation}.', category: 'Transform' },
-  { type: 'hash',         label: 'Hash / HMAC',   color: 'var(--node-crypto)',       icon: '#️⃣',  desc: 'Compute a SHA-256/384/512 or HMAC digest. Config: operation, input, key (HMAC), encoding (hex/base64/base64url). Returns {hash, algorithm, encoding}.', category: 'Transform' },
-  { type: 'jwt',          label: 'JWT',           color: 'var(--node-crypto)',       icon: '🔑',  desc: 'Sign or verify an HMAC JWT (HS256/384/512). Config: operation (sign/verify), algorithm, secret, payload, expires_in_secs, token. Returns {token} or {valid, payload}.', category: 'Transform' },
-  { type: 'html_extract', label: 'HTML Extract',  color: 'var(--node-transform)',    icon: '🔖',  desc: 'Extract from HTML by CSS selector. Config: html, selector, extract (text/html/attr), attr. Returns {matches, count, first}.', category: 'Transform' },
-  { type: 'rss',          label: 'RSS Feed',      color: 'var(--node-transform)',    icon: '📡',  desc: 'Read an RSS/Atom/JSON feed. Config: url, limit. Returns {feed_title, items, count}.', category: 'Transform' },
-  { type: 'zip',          label: 'Zip',           color: 'var(--node-transform)',    icon: '🗜️',  desc: 'Create or extract a zip archive (base64). Config: operation (zip/unzip), files [{name, content, base64?}], zip_base64. Returns {zip_base64,…} or {files:[…]}.', category: 'Transform' },
-  { type: 'image',        label: 'Image',         color: 'var(--node-transform)',    icon: '🖼️',  desc: 'Resize / convert / inspect an image (base64). Config: operation (resize/convert/metadata), image_base64, width, height, format. Returns {image_base64,…} or {width,height,color}.', category: 'Transform' },
-  { type: 'pdf_extract',  label: 'PDF Extract',   color: 'var(--node-transform)',    icon: '📄',  desc: 'Extract text from a base64 PDF. Config: pdf_base64. Returns {text, char_count}.', category: 'Transform' },
-  { type: 'ocr',          label: 'OCR',           color: 'var(--node-transform)',    icon: '👁️',  desc: 'OCR an image via the tesseract CLI (must be installed on the executor host). Config: image_base64, lang. Returns {text, lang}.', category: 'Transform' },
-  { type: 'hubspot',      label: 'HubSpot',       color: 'var(--node-hubspot)',      icon: 'H',   desc: 'Call HubSpot CRM API (api.hubapi.com). Config: token (Bearer), endpoint (e.g. /crm/v3/objects/contacts), method, body. Returns {status, body}.', category: 'Integration' },
-  { type: 'date',         label: 'Date/Time',     color: 'var(--node-date)',         icon: '⏲',   desc: 'Date/time operations: now, parse, format, add, subtract, diff. Config: operation, source (ISO or unix), amount, unit (seconds/minutes/hours/days), format (strftime). Returns {unix, iso, formatted}.', category: 'Transform' },
-  { type: 'zendesk',      label: 'Zendesk',       color: 'var(--node-zendesk)',      icon: 'Z',   desc: 'Call Zendesk Support API. Config: subdomain, token (Bearer), endpoint (e.g. /tickets.json), method, body. Returns {status, body}.', category: 'Integration' },
-  { type: 'redis',         label: 'Redis Cache',   color: 'var(--node-redis)',        icon: '⊕',   desc: 'Redis key-value cache operations: get/set/del/exists/incr/decr/expire/hget/hset/hgetall/lpush/lpop/keys/ping. Config: url, operation, key, value, field, ttl_secs. Returns {value, operation, key}.', category: 'Integration' },
-  { type: 'elasticsearch', label: 'Elasticsearch', color: 'var(--node-elasticsearch)', icon: '🔍',  desc: 'Query or write Elasticsearch/OpenSearch. Config: url, endpoint (e.g. /my-index/_search), method, body, optional api_key or username/password. Returns {status, body, took, hits_total}.', category: 'Integration' },
-  { type: 'pagerduty',     label: 'PagerDuty',     color: 'var(--node-pagerduty)',    icon: '🔔',  desc: 'Send events to PagerDuty Events API v2. Config: routing_key, summary, event_action (trigger/acknowledge/resolve), severity, source, dedup_key. Returns {status, message, dedup_key}.', category: 'Integration' },
-  { type: 'handlebars',    label: 'HB Template',   color: 'var(--node-handlebars)',   icon: '{}',  desc: 'Render a Handlebars template. Supports {{var}}, {{#if}}, {{#each}}, {{#unless}}, partials. Config: template (string), data (JSON expression used as context). Returns {result}.', category: 'Transform' },
-  { type: 'math',          label: 'Math',          color: 'var(--node-math)',         icon: '∑',   desc: 'Numeric operations: add/abs/round/ceil/floor/sqrt/pow/mod/min/max/clamp/log/pct_change/sum/avg/eval. Config: operation, a, b, precision, items (array), expression (for eval). Returns {result, operation}.', category: 'Transform' },
-  { type: 'array_utils',   label: 'Array Utils',   color: 'var(--node-array-utils)',  icon: '[]',  desc: 'Array manipulation: chunk/flatten/compact/zip/reverse/shuffle/sample/range/pluck/first_n/last_n. Config: operation, source, size, n, source2, field, start/end/step (for range). Returns {items, count}.', category: 'Transform' },
-  { type: 'shopify',       label: 'Shopify',       color: 'var(--node-shopify)',      icon: '🛍',  desc: 'Call Shopify Admin REST API. Config: shop (store subdomain), token (access token), endpoint (e.g. /products.json), method, body, api_version (default 2024-01). Returns {status, body}.', category: 'Integration' },
-  { type: 'datadog',       label: 'Datadog',       color: 'var(--node-datadog)',      icon: '📊',  desc: 'Call Datadog API. Config: api_key, endpoint (e.g. /api/v1/validate), method, body, app_key (optional), site (default datadoghq.com). Returns {status, body}.', category: 'Integration' },
-  { type: 'salesforce',   label: 'Salesforce',    color: 'var(--node-salesforce)',   icon: '☁',   desc: 'Call Salesforce REST API. Config: token (OAuth access token), instance_url (e.g. https://myorg.salesforce.com), endpoint, method, body. Returns {status, body}.', category: 'Integration' },
-  { type: 'freshdesk',    label: 'Freshdesk',     color: 'var(--node-freshdesk)',    icon: '🎫',  desc: 'Call Freshdesk REST API. Config: api_key, domain (e.g. yourco.freshdesk.com), endpoint (e.g. /api/v2/tickets), method, body. Returns {status, body}.', category: 'Integration' },
-  { type: 'mailgun',      label: 'Mailgun',       color: 'var(--node-mailgun)',      icon: '✉',   desc: 'Send email via Mailgun. Config: api_key, domain (sending domain), to, from, subject, html or text, region (us/eu). Returns {status, body}.', category: 'Integration' },
-  { type: 'asana',        label: 'Asana',         color: 'var(--node-asana)',        icon: '✅',  desc: 'Call Asana API. Config: token (Personal Access Token), endpoint (e.g. /tasks), method, body. Returns {status, body}.', category: 'Integration' },
-  { type: 'servicenow',   label: 'ServiceNow',    color: 'var(--node-servicenow)',   icon: '⚙',   desc: 'Call ServiceNow REST API (Table API, etc.). Config: instance (e.g. myco.service-now.com), username, password, endpoint, method, body. Returns {status, body}.', category: 'Integration' },
-  { type: 'confluence',   label: 'Confluence',    color: 'var(--node-confluence)',   icon: '📄',  desc: 'Call Atlassian Confluence REST API. Config: base_url, token (Bearer) OR email+api_token (Basic), endpoint, method, body. Returns {status, body}.', category: 'Integration' },
-  { type: 'bitbucket',    label: 'Bitbucket',     color: 'var(--node-bitbucket)',    icon: '⑂',   desc: 'Call Bitbucket REST API v2. Config: username, app_password, endpoint (e.g. /repositories/ws/repo), method, body. Returns {status, body}.', category: 'Integration' },
-  { type: 'azure_devops', label: 'Azure DevOps',  color: 'var(--node-azure-devops)', icon: '🔷',  desc: 'Call Azure DevOps REST API. Config: pat (Personal Access Token), organization, project (optional), endpoint (e.g. /build/builds), method, body, api_version. Returns {status, body}.', category: 'Integration' },
-  { type: 'twitch',       label: 'Twitch',        color: 'var(--node-twitch)',       icon: '🎮',  desc: 'Call Twitch Helix API. Config: client_id, access_token (OAuth), endpoint (e.g. /helix/streams), method, body. Returns {status, body}.', category: 'Integration' },
-  { type: 'figma',        label: 'Figma',         color: 'var(--node-figma)',        icon: '✏',   desc: 'Call Figma REST API. Config: token (personal access token), endpoint (e.g. /v1/files/KEY), method. Returns {status, body}.', category: 'Integration' },
-  { type: 'dropbox',      label: 'Dropbox',       color: 'var(--node-dropbox)',      icon: '📦',  desc: 'Dropbox file operations: list_folder/get_metadata/delete/create_folder/search. Config: token (OAuth2), operation, path (for most ops), query (for search). Returns {status, body, operation}.', category: 'Integration' },
-  { type: 'cloudflare',   label: 'Cloudflare',    color: 'var(--node-cloudflare)',   icon: '☁',   desc: 'Call Cloudflare API v4. Config: api_token, endpoint (e.g. /zones/ZONE_ID/dns_records), method, body. Returns {status, body, success}.', category: 'Integration' },
-  { type: 'box',          label: 'Box',           color: 'var(--node-box)',          icon: '📂',  desc: 'Call Box Content API. Config: token (OAuth2), endpoint (e.g. /folders/0/items), method, body. Returns {status, body}.', category: 'Integration' },
-  { type: 'okta',         label: 'Okta',          color: 'var(--node-okta)',         icon: '🔑',  desc: 'Call Okta API. Config: domain (e.g. myco.okta.com), token (SSWS API token or Bearer OAuth), token_type (SSWS/Bearer), endpoint (e.g. /api/v1/users), method, body. Returns {status, body}.', category: 'Integration' },
-  { type: 'zoom',         label: 'Zoom',          color: 'var(--node-zoom)',         icon: '📹',  desc: 'Call Zoom API v2. Config: token (OAuth2 access token), endpoint (e.g. /users/me/meetings), method, body. Returns {status, body}.', category: 'Integration' },
-  { type: 'spotify',      label: 'Spotify',       color: 'var(--node-spotify)',      icon: '🎵',  desc: 'Call Spotify Web API. Config: token (OAuth2 access token), endpoint (e.g. /me/player/currently-playing), method, body. Returns {status, body}.', category: 'Integration' },
-  { type: 'typeform',     label: 'Typeform',      color: 'var(--node-typeform)',     icon: '📋',  desc: 'Call Typeform API. Config: token (personal token), endpoint (e.g. /forms/FORM_ID/responses), method, body. Returns {status, body}.', category: 'Integration' },
-  { type: 'webflow',      label: 'Webflow',       color: 'var(--node-webflow)',      icon: '🌐',  desc: 'Call Webflow CMS API v2. Config: token (OAuth2/API token), endpoint (e.g. /sites), method, body. Returns {status, body}.', category: 'Integration' },
-  { type: 'intercom',     label: 'Intercom',      color: 'var(--node-intercom)',     icon: '💬',  desc: 'Call Intercom API. Config: token (access token), endpoint (e.g. /contacts), method, body. Returns {status, body}.', category: 'Integration' },
-  { type: 'pipedrive',    label: 'Pipedrive',     color: 'var(--node-pipedrive)',    icon: '🔗',  desc: 'Call Pipedrive CRM API. Config: api_token, endpoint (e.g. /deals), method, body. Returns {status, body}.', category: 'Integration' },
-  { type: 'trello',       label: 'Trello',        color: 'var(--node-trello)',       icon: '📌',  desc: 'Call Trello REST API. Config: api_key, token, endpoint (e.g. /boards/BOARD_ID), method, body. Returns {status, body}.', category: 'Integration' },
-  { type: 'monday',       label: 'Monday',        color: 'var(--node-monday)',       icon: '📅',  desc: 'Call Monday.com GraphQL API. Config: token (API token), query (GraphQL string), variables (object). Returns {status, body}.', category: 'Integration' },
-  { type: 'clickup',      label: 'ClickUp',       color: 'var(--node-clickup)',      icon: '✅',  desc: 'Call ClickUp API v2. Config: token (personal/OAuth token), endpoint (e.g. /team), method, body. Returns {status, body}.', category: 'Integration' },
-  { type: 'amplitude',    label: 'Amplitude',     color: 'var(--node-amplitude)',    icon: '📈',  desc: 'Call Amplitude Analytics API. Config: api_key, secret_key, operation (track/identify/export), events/identification array or start/end dates. Returns {status, body}.', category: 'Integration' },
-  { type: 'mixpanel',     label: 'Mixpanel',      color: 'var(--node-mixpanel)',     icon: '📊',  desc: 'Call Mixpanel API. Config: project_token, api_secret, operation (track/import/query), events array or params. Returns {status, body}.', category: 'Integration' },
-  { type: 'segment',      label: 'Segment',       color: 'var(--node-segment)',      icon: '🔀',  desc: 'Call Segment Tracking API. Config: write_key, operation (track/identify/page/group/alias/batch), body object. Returns {status, body}.', category: 'Integration' },
-  { type: 'sendgrid',     label: 'SendGrid',      color: 'var(--node-sendgrid)',     icon: '📧',  desc: 'Call SendGrid API v3. Config: api_key (SG.xxx), endpoint (e.g. /mail/send), method, body. Returns {status, body}.', category: 'Integration' },
-  { type: 'braintree',    label: 'Braintree',     color: 'var(--node-braintree)',    icon: '💳',  desc: 'Call Braintree Gateway API. Config: merchant_id, public_key, private_key, environment (sandbox/production), endpoint, method, body. Returns {status, body}.', category: 'Integration' },
-  { type: 'paypal',       label: 'PayPal',        color: 'var(--node-paypal)',       icon: '🅿',  desc: 'Call PayPal REST API. Config: client_id, client_secret, endpoint (e.g. /v2/checkout/orders), method, body, environment (sandbox/live). Optionally provide access_token to skip token exchange. Returns {status, body}.', category: 'Integration' },
-  { type: 'razorpay',     label: 'Razorpay',      color: 'var(--node-razorpay)',     icon: '💸',  desc: 'Call Razorpay API v1. Config: key_id, key_secret, endpoint (e.g. /orders), method, body. Returns {status, body}.', category: 'Integration' },
-  { type: 'firebase',     label: 'Firebase',      color: 'var(--node-firebase)',     icon: '🔥',  desc: 'Call Firebase REST API. Config: project_id, id_token, service (firestore/rtdb/storage), endpoint, method, body. Returns {status, body}.', category: 'Integration' },
-  { type: 'supabase',     label: 'Supabase',      color: 'var(--node-supabase)',     icon: '⚡',  desc: 'Call Supabase PostgREST or Functions API. Config: project_url (https://xyz.supabase.co), api_key (anon or service_role), endpoint (e.g. /rest/v1/users), method, body, prefer. Returns {status, body}.', category: 'Integration' },
-  { type: 'mailchimp',    label: 'Mailchimp',     color: 'var(--node-mailchimp)',    icon: '🐒',  desc: 'Call Mailchimp Marketing API v3. Config: api_key (format: key-us1), server (e.g. us1, auto-extracted from key), endpoint (e.g. /lists), method, body. Returns {status, body}.', category: 'Integration' },
-  { type: 'activecampaign', label: 'ActiveCampaign', color: 'var(--node-activecampaign)', icon: '📣', desc: 'Call ActiveCampaign API v3. Config: api_key, base_url (https://ACCOUNT.api-us1.com), endpoint (e.g. /contacts), method, body. Returns {status, body}.', category: 'Integration' },
-  { type: 'klaviyo',      label: 'Klaviyo',       color: 'var(--node-klaviyo)',      icon: '📩',  desc: 'Call Klaviyo API. Config: api_key (private key), endpoint (e.g. /profiles), method, body. Returns {status, body}.', category: 'Integration' },
-  { type: 'resend',       label: 'Resend',        color: 'var(--node-resend)',       icon: '✉',  desc: 'Call Resend email API. Config: api_key (re_xxx), endpoint (e.g. /emails), method, body. Returns {status, body}.', category: 'Integration' },
-  { type: 'contentful',   label: 'Contentful',    color: 'var(--node-contentful)',   icon: '📄',  desc: 'Call Contentful API. Config: access_token, space_id, api_type (delivery/preview/management), endpoint, method, body. Returns {status, body}.', category: 'Integration' },
-  { type: 'algolia',      label: 'Algolia',       color: 'var(--node-algolia)',      icon: '🔍',  desc: 'Call Algolia Search API. Config: app_id, api_key, endpoint (e.g. /1/indexes/INDEX/query), method, body. Returns {status, body}.', category: 'Integration' },
-  { type: 'postmark',     label: 'Postmark',      color: 'var(--node-postmark)',     icon: '📮',  desc: 'Call Postmark API. Config: server_token, endpoint (e.g. /email), method, body. Returns {status, body}.', category: 'Integration' },
-  { type: 'vonage',       label: 'Vonage',        color: 'var(--node-vonage)',       icon: '📱',  desc: 'Call Vonage/Nexmo API. Config: api_key, api_secret, operation (sms/voice/verify), to/from/text (SMS) or endpoint/body (voice/verify). Returns {status, body}.', category: 'Integration' },
-  { type: 'telegram',     label: 'Telegram',      color: 'var(--node-telegram)',     icon: '✈',   desc: 'Send Telegram Bot API requests. Config: bot_token, operation (e.g. sendMessage), chat_id, text, parse_mode, extra (additional fields). Returns Telegram API response.', category: 'Integration' },
-  { type: 'feishu',       label: '飞书 / Lark',    color: 'var(--node-slack)',        icon: '🛫',  desc: 'Send a Feishu/Lark message. Config: webhook_url (custom bot) or tenant_access_token + receive_id (+ receive_id_type), msg_type (text/interactive), text, card. Returns {status, body}.', category: 'Integration' },
-  { type: 'dingtalk',     label: '钉钉',          color: 'var(--node-slack)',        icon: '🔔',  desc: 'Send a DingTalk custom-robot message. Config: access_token, secret (加签, optional), msg_type (text/markdown), title, content. Returns {status, body}.', category: 'Integration' },
-  { type: 'wecom',        label: '企业微信',       color: 'var(--node-slack)',        icon: '💼',  desc: 'Send a WeChat Work group-robot message. Config: key, msg_type (text/markdown), content. Returns {status, body}.', category: 'Integration' },
-  { type: 'replicate',    label: 'Replicate',     color: 'var(--node-replicate)',    icon: '🔁',  desc: 'Run AI models via Replicate. Config: api_token, operation (run/get_prediction/list_models), version (model version ID), input (JSON). Returns {status, body}.', category: 'AI' },
-  { type: 'mistral',      label: 'Mistral',       color: 'var(--node-mistral)',      icon: '🌬',  desc: 'Call Mistral AI API. Config: api_key, operation (chat/embeddings/list_models), model, messages or prompt, temperature, max_tokens. Returns {status, body}.', category: 'AI' },
-  { type: 'whatsapp',     label: 'WhatsApp',      color: 'var(--node-whatsapp)',     icon: '💬',  desc: 'Send WhatsApp Business messages via Meta API. Config: access_token, phone_number_id, to, message_type (text/template/image), body or template_name. Returns {status, body}.', category: 'Integration' },
-  { type: 'googledocs',   label: 'Google Docs',   color: 'var(--node-googledocs)',   icon: '📝',  desc: 'Read and write Google Docs. Config: access_token, operation (get/create/batch_update), document_id, title (create), requests (batch_update). Returns {status, body}.', category: 'Integration' },
-  { type: 'perplexity',   label: 'Perplexity',    color: 'var(--node-perplexity)',   icon: '🔎',  desc: 'AI-powered search via Perplexity API. Config: api_key, model, prompt or messages, temperature, max_tokens, return_citations. Returns {status, body}.', category: 'AI' },
-  { type: 'cohere',       label: 'Cohere',         color: 'var(--node-cohere)',       icon: '🧠',  desc: 'Call Cohere NLP API. Config: api_key, operation (chat/embed/classify/rerank), message/texts/inputs/query per operation. Returns {status, body}.', category: 'AI' },
-  { type: 'googledrive',  label: 'Google Drive',   color: 'var(--node-googledrive)',  icon: '📁',  desc: 'Manage Google Drive files. Config: access_token, operation (list/get/delete/create_folder), file_id, query, name, parent_id. Returns {status, body}.', category: 'Integration' },
-  { type: 'woocommerce',  label: 'WooCommerce',    color: 'var(--node-woocommerce)',  icon: '🛒',  desc: 'Call WooCommerce REST API. Config: consumer_key, consumer_secret, site_url, endpoint (e.g. /wp-json/wc/v3/products), method, body. Returns {status, body}.', category: 'Integration' },
-  { type: 'pinecone',     label: 'Pinecone',       color: 'var(--node-pinecone)',     icon: '🌲',  desc: 'Vector database operations via Pinecone. Config: api_key, index_host, operation (query/upsert/delete/fetch), vector/vectors/ids, top_k, namespace. Returns {status, body}.', category: 'AI' },
-  { type: 'togetherai',   label: 'Together AI',    color: 'var(--node-togetherai)',   icon: '🤝',  desc: 'Run open-source LLMs via Together AI. Config: api_key, operation (chat/completions/embeddings), model, prompt or messages, temperature. Returns {status, body}.', category: 'AI' },
-  { type: 'awss3',        label: 'AWS S3',         color: 'var(--node-awss3)',        icon: '🪣',  desc: 'Interact with AWS S3. Config: access_key_id, secret_access_key, bucket, region, operation (list/get_object/put_object/delete_object), key, body. Returns {status, body}.', category: 'Integration' },
-  { type: 'gcs',          label: 'Cloud Storage',  color: 'var(--node-awss3)',        icon: '🪣',  desc: 'Google Cloud Storage (JSON API). Config: access_token (OAuth2), bucket, operation (list/get/download/upload/delete), object, prefix, content, content_type. Returns {status, body}.', category: 'Integration' },
-  { type: 'azure_blob',   label: 'Azure Blob',     color: 'var(--node-awss3)',        icon: '📦',  desc: 'Azure Blob Storage (REST + SAS). Config: account, container, sas_token, operation (list/get/put/delete), blob, content, content_type. Returns {status, body}.', category: 'Integration' },
-  { type: 'sqs',          label: 'AWS SQS',        color: 'var(--node-awss3)',        icon: '📨',  desc: 'AWS SQS (SigV4-signed). Config: access_key_id, secret_access_key, region, queue_url, operation (send/receive/delete), message_body, message_group_id, max_messages, receipt_handle. Returns {status, body}.', category: 'Integration' },
-  { type: 'sns',          label: 'AWS SNS',        color: 'var(--node-awss3)',        icon: '📢',  desc: 'AWS SNS Publish (SigV4-signed). Config: access_key_id, secret_access_key, region, topic_arn/target_arn/phone_number, subject, message. Returns {status, body}.', category: 'Integration' },
-  { type: 'kafka',        label: 'Kafka',          color: 'var(--node-redis)',        icon: '🟧',  desc: 'Produce to a Kafka topic via the Confluent REST Proxy. Config: proxy_url, topic, value, key, partition, api_key, api_secret. Returns {status, body}.', category: 'Integration' },
-  { type: 'rabbitmq',     label: 'RabbitMQ',       color: 'var(--node-redis)',        icon: '🐰',  desc: 'RabbitMQ Management HTTP API. Config: host, username, password, vhost, operation (publish/get/list_queues), exchange, routing_key, payload, queue, count. Returns {status, body}.', category: 'Integration' },
-  { type: 'huggingface',  label: 'Hugging Face',   color: 'var(--node-huggingface)',  icon: '🤗',  desc: 'Call Hugging Face Inference API. Config: api_token, model (e.g. gpt2), operation (inference/model_info/list_models), inputs, parameters. Returns {status, body}.', category: 'AI' },
-  { type: 'groq',         label: 'Groq',           color: 'var(--node-groq)',         icon: '⚡',  desc: 'Run fast LLM inference via Groq. Config: api_key, operation (chat/models), model (e.g. llama3-8b-8192), messages, temperature, max_tokens. Returns {status, body}.', category: 'AI' },
-  { type: 'grok',         label: 'xAI Grok',       color: 'var(--node-claude)',       icon: '🤖',  desc: 'Call xAI Grok (OpenAI-compatible). Config: api_key, model (grok-2-latest), prompt_template, system_prompt, max_tokens, temperature. Returns {content, model, usage}.', category: 'AI' },
-  { type: 'ollama',       label: 'Ollama',         color: 'var(--node-openai)',       icon: '🦙',  desc: 'Call a self-hosted Ollama server (OpenAI-compatible). Config: base_url, model (llama3.2), api_key (optional), prompt_template, system_prompt, max_tokens, temperature. Returns {content, model, usage}.', category: 'AI' },
-  { type: 'deepseek',     label: 'DeepSeek',       color: 'var(--node-deepseek)',     icon: '🐋',  desc: 'Call DeepSeek (OpenAI-compatible). Config: api_key, model (deepseek-chat), prompt_template, system_prompt, max_tokens, temperature. Returns {content, model, usage}.', category: 'AI' },
-  { type: 'qwen',         label: 'Qwen 通义千问',   color: 'var(--node-qwen)',         icon: '🧩',  desc: 'Call Alibaba Qwen / DashScope (OpenAI-compatible). Config: api_key, model (qwen-max), prompt_template, system_prompt, max_tokens, temperature. Returns {content, model, usage}.', category: 'AI' },
-  { type: 'zhipu',        label: 'Zhipu GLM 智谱',  color: 'var(--node-zhipu)',        icon: '🔮',  desc: 'Call Zhipu GLM (OpenAI-compatible). Config: api_key, model (glm-4), prompt_template, system_prompt, max_tokens, temperature. Returns {content, model, usage}.', category: 'AI' },
-  { type: 'moonshot',     label: 'Moonshot (Kimi)', color: 'var(--node-moonshot)',    icon: '🌙',  desc: 'Call Moonshot / Kimi (OpenAI-compatible). Config: api_key, model (moonshot-v1-8k), prompt_template, system_prompt, max_tokens, temperature. Returns {content, model, usage}.', category: 'AI' },
-  { type: 'doubao',       label: 'Doubao 豆包',     color: 'var(--node-doubao)',       icon: '🫧',  desc: 'Call Volcengine Doubao (OpenAI-compatible). Config: api_key, model (endpoint id), prompt_template, system_prompt, max_tokens, temperature. Returns {content, model, usage}.', category: 'AI' },
-  { type: 'minimax',      label: 'MiniMax',        color: 'var(--node-minimax)',      icon: '🔥',  desc: 'Call MiniMax (OpenAI-compatible). Config: api_key, model (abab6.5-chat), prompt_template, system_prompt, max_tokens, temperature. Returns {content, model, usage}.', category: 'AI' },
-  { type: 'ernie',        label: 'ERNIE 文心一言',  color: 'var(--node-ernie)',        icon: '🦅',  desc: 'Call Baidu ERNIE (Wenxin) via OAuth token exchange. Config: api_key, secret_key, model, prompt_template, system_prompt, max_tokens, temperature. Returns {content, model, usage}.', category: 'AI' },
-  { type: 'hunyuan',      label: 'Hunyuan 混元',    color: 'var(--node-hunyuan)',      icon: '☯',  desc: 'Call Tencent Hunyuan (OpenAI-compatible). Config: api_key, model, prompt_template, system_prompt, max_tokens, temperature. Returns {content, model, usage}.', category: 'AI' },
-  { type: 'azure_openai', label: 'Azure OpenAI',   color: 'var(--node-openai)',       icon: '☁️',  desc: 'Call Azure OpenAI deployments. Config: endpoint, deployment, api_version (2024-02-01), api_key, prompt_template, system_prompt, max_tokens, temperature. Returns {content, model, usage}.', category: 'AI' },
-  { type: 'openrouter',   label: 'OpenRouter',     color: 'var(--node-openrouter)',   icon: '🔀',  desc: 'Access 100+ LLMs via OpenRouter. Config: api_key, operation (chat/models), model (e.g. openai/gpt-4o), messages, temperature, max_tokens. Returns {status, body}.', category: 'AI' },
-  { type: 'qdrant',       label: 'Qdrant',         color: 'var(--node-qdrant)',       icon: '🎯',  desc: 'Vector search with Qdrant. Config: url, api_key, collection, operation (search/upsert/delete/get_collection/create_collection), vector, top, points. Returns {status, body}.', category: 'AI' },
-  { type: 'weaviate',     label: 'Weaviate',       color: 'var(--node-qdrant)',       icon: '🧬',  desc: 'Weaviate vector store. Config: host, api_key, operation (query/create_object/get_object/delete_object), query (GraphQL), class, properties, vector, id. Returns {status, body}.', category: 'AI' },
-  { type: 'chroma',       label: 'Chroma',         color: 'var(--node-qdrant)',       icon: '🌈',  desc: 'Chroma vector store. Config: host, api_key, operation (query/add/delete/get_collection), collection, collection_id, query_embeddings, n_results, ids, embeddings, documents. Returns {status, body}.', category: 'AI' },
-  { type: 'milvus',       label: 'Milvus',         color: 'var(--node-qdrant)',       icon: '🐦',  desc: 'Milvus / Zilliz vector store (REST API v2). Config: host, token, collection, operation (search/insert/query/delete), data, anns_field, filter, output_fields, limit. Returns {status, body}.', category: 'AI' },
-  { type: 'mongodb',      label: 'MongoDB',        color: 'var(--node-database)',     icon: '🍃',  desc: 'MongoDB via the Atlas Data API. Config: data_api_url, api_key, data_source, database, collection, operation (find/findOne/insert*/update*/delete*/aggregate), filter, document(s), update, pipeline, limit, sort. Returns {status, body}.', category: 'Integration' },
-  { type: 'clickhouse',   label: 'ClickHouse',     color: 'var(--node-database)',     icon: '🗄️',  desc: 'Run SQL against ClickHouse over HTTP. Config: host, user, password, database, query, format (JSON/JSONEachRow/…). FORMAT is appended to SELECTs. Returns {status, body}.', category: 'Integration' },
-  { type: 'cloudinary',   label: 'Cloudinary',     color: 'var(--node-cloudinary)',   icon: '☁',  desc: 'Media management via Cloudinary. Config: cloud_name, api_key, api_secret, operation (upload/transform_url/get_resource/delete), file, public_id, transformation. Returns {status, body}.', category: 'Integration' },
-  { type: 'gcal',         label: 'Google Calendar',color: 'var(--node-gcal)',         icon: '📅',  desc: 'Manage Google Calendar events. Config: access_token, calendar_id (default: primary), operation (list_calendars/list_events/get_event/create_event/delete_event), event_id, summary, start_time, end_time. Returns {status, body}.', category: 'Integration' },
-  { type: 'docusign',     label: 'DocuSign',       color: 'var(--node-docusign)',     icon: '✍',  desc: 'E-signature workflows via DocuSign. Config: access_token, account_id, base_url, operation (list_envelopes/get_envelope/create_envelope/void_envelope), envelope_id, body. Returns {status, body}.', category: 'Integration' },
-  { type: 'xero',         label: 'Xero',           color: 'var(--node-xero)',         icon: '💹',  desc: 'Accounting automation via Xero. Config: access_token, tenant_id, endpoint (e.g. /Contacts), method, body. Returns {status, body}.', category: 'Integration' },
-  { type: 'calendly',     label: 'Calendly',       color: 'var(--node-calendly)',     icon: '🗓',  desc: 'Scheduling automation via Calendly. Config: api_key, operation (get_current_user/list_event_types/list_scheduled_events/get_scheduled_event/cancel_event), user_uri, event_uuid. Returns {status, body}.', category: 'Integration' },
-  { type: 'apify',        label: 'Apify',          color: 'var(--node-apify)',        icon: '🕷',  desc: 'Web scraping via Apify. Config: api_token, operation (run_actor/get_run/get_dataset_items/list_actors), actor_id, run_id, dataset_id, input. Returns {status, body}.', category: 'Integration' },
-  { type: 'ganalytics',   label: 'Google Analytics',color: 'var(--node-ganalytics)', icon: '📊',  desc: 'Query Google Analytics 4. Config: access_token, property_id, operation (run_report/run_realtime_report/get_metadata), date_ranges, dimensions, metrics. Returns {status, body}.', category: 'Integration' },
-  { type: 'neon',         label: 'Neon',           color: 'var(--node-neon)',         icon: '🌀',  desc: 'Manage Neon serverless Postgres. Config: api_key, operation (list_projects/get_project/create_project/list_branches), project_id, name. Returns {status, body}.', category: 'Integration' },
-  { type: 'copper',       label: 'Copper CRM',     color: 'var(--node-copper)',       icon: '🔶',  desc: 'CRM automation via Copper. Config: api_key, user_email, resource (people/leads/opportunities/companies), operation (list/get/create/update/delete), record_id, body, filter. Returns {status, body}.', category: 'Integration' },
+const NODE_TYPE_LIST: { type: NodeType; label: string; color: string; desc: string; category: string }[] = [
+  { type: 'trigger',      label: 'Trigger',      color: 'var(--node-trigger)',   desc: 'Starts the workflow. Passes input_json to downstream nodes. Supports manual, webhook, and scheduled runs.',  category: 'Control' },
+  { type: 'condition',    label: 'Condition',     color: 'var(--node-condition)',   desc: 'Routes to true/false branches by comparing a field. Operators: equals, not_equals, contains, gt, lt, gte, lte, exists.', category: 'Control' },
+  { type: 'approval',     label: 'Approval',      color: 'var(--node-approval)',  desc: 'Pauses execution until a human approves or rejects. Approve/Reject buttons appear in the execution panel.', category: 'Control' },
+  { type: 'assert',       label: 'Assert',        color: 'var(--node-assert)',   desc: 'Fails the execution with a custom message if a condition expression is falsy.', category: 'Control' },
+  { type: 'catch',        label: 'Catch',         color: 'var(--node-catch)',   desc: 'Receives control when an upstream node fails (connected via an "error" edge). Auto-detects the error.', category: 'Control' },
+  { type: 'fan_out',      label: 'Fan-Out',       color: 'var(--node-fan)',   desc: 'Splits execution into parallel branches. All branches run concurrently; use Fan-In to collect results.', category: 'Control' },
+  { type: 'fan_in',       label: 'Fan-In',        color: 'var(--node-fan)',   desc: 'Collects outputs from all upstream parallel branches into a single {count, results} object.', category: 'Control' },
+  { type: 'delay',        label: 'Delay',         color: 'var(--node-delay)',   desc: 'Waits for N seconds (0–3600) before continuing. Returns {waited_secs}.', category: 'Control' },
+  { type: 'wait',         label: 'Wait',          color: 'var(--node-approval)',  desc: 'Pause the run: mode=duration (seconds or until RFC3339, auto-resumes) or mode=resume (suspend until resumed via the execution approve/resume endpoint). Returns {resumed, mode, waited_secs}.', category: 'Control' },
+  { type: 'sub_workflow', label: 'Sub-Workflow',  color: 'var(--node-sub-workflow)',   desc: 'Runs another published workflow as a sub-call. Returns its status and output.', category: 'Control' },
+  { type: 'http',         label: 'HTTP',          color: 'var(--node-http)',   desc: 'Makes an HTTP request (GET/POST/PUT/PATCH/DELETE). Supports Bearer, OAuth2 auth and custom headers.', category: 'Integration' },
+  { type: 'graphql',      label: 'GraphQL',       color: 'var(--node-graphql)',   desc: 'Sends a GraphQL query or mutation to an endpoint. Variables support {{...}} templates. Fails on GraphQL errors.', category: 'Integration' },
+  { type: 'database',     label: 'Database',      color: 'var(--node-database)',   desc: 'Executes a SQL query against a PostgreSQL database. SELECT returns {rows, count}; DML returns {rows_affected}.', category: 'Integration' },
+  { type: 'mysql',        label: 'MySQL',         color: 'var(--node-database)',  desc: 'Run a SQL query against MySQL. Config: url (mysql://…), query. SELECT returns {rows, count}; DML returns {rows_affected}.', category: 'Integration' },
+  { type: 'snowflake',    label: 'Snowflake',     color: 'var(--node-database)',  desc: 'Snowflake SQL API v2. Config: account, token, token_type, statement, warehouse, database, schema, role. Returns {status, body}.', category: 'Integration' },
+  { type: 'bigquery',     label: 'BigQuery',      color: 'var(--node-database)',  desc: 'BigQuery jobs.query REST. Config: project, access_token, query, use_legacy_sql, max_results, location. Returns {status, body}.', category: 'Integration' },
+  { type: 'sqlserver',    label: 'SQL Server',    color: 'var(--node-database)',  desc: 'Microsoft SQL Server (pure-Rust TDS). Config: host, port, username, password, database, query. SELECT → {rows, count}; DML → {rows_affected}.', category: 'Integration' },
+  { type: 'ftp',          label: 'FTP',           color: 'var(--node-awss3)',  desc: 'FTP / FTPS file transfer. Config: host, port, username, password, secure (FTPS), operation (list/download/upload/delete), path, content (base64). Returns file list or base64 content.', category: 'Integration' },
+  { type: 'sftp',         label: 'SFTP',          color: 'var(--node-awss3)',  desc: 'SFTP over SSH (pure-Rust). Config: host, port, username, password or private_key (+passphrase), operation (list/download/upload/delete), path, content (base64).', category: 'Integration' },
+  { type: 'ssh',          label: 'SSH',           color: 'var(--node-code)',  desc: 'Run a command over SSH. Config: host, port, username, password or private_key (+passphrase), command. Returns {stdout, stderr, exit_status}.', category: 'Integration' },
+  { type: 'imap',         label: 'IMAP',          color: 'var(--node-slack)',  desc: 'Read an IMAP mailbox over TLS. Config: host, port, username, password, operation (list_messages/list_mailboxes), mailbox, limit. Returns {messages, count}.', category: 'Integration' },
+  { type: 'slack',        label: 'Slack',         color: 'var(--node-slack)',   desc: 'Sends a message to a Slack channel via an Incoming Webhook URL. Supports {{...}} templates in text.', category: 'Integration' },
+  { type: 'email',        label: 'Email',         color: 'var(--node-email)',   desc: 'Sends an email via the SendGrid API. Configure to, subject, body, and API key (use {{credential.*}}).', category: 'Integration' },
+  { type: 'openai',       label: 'OpenAI',        color: 'var(--node-openai)',   desc: 'Calls OpenAI Chat Completions (gpt-4o, gpt-4o-mini, o1). Returns {content, model, usage}.', category: 'AI' },
+  { type: 'gemini',       label: 'Gemini',        color: 'var(--node-gemini)',   desc: 'Calls Google Gemini (2.0-flash, 1.5-pro, 1.5-flash, thinking). Returns {content, model, usage}.', category: 'AI' },
+  { type: 'vertex',       label: 'Vertex AI',     color: 'var(--node-gemini)',  desc: 'Google Vertex AI (Gemini generateContent) via an OAuth2 access token. Config: access_token, project, location, model, prompt_template, system_prompt, max_tokens, temperature. Returns {content, model, usage}.', category: 'AI' },
+  { type: 'bedrock',      label: 'AWS Bedrock',   color: 'var(--node-awss3)',  desc: 'AWS Bedrock InvokeModel (SigV4-signed). Config: access_key_id, secret_access_key, region, model_id, body (model-native JSON). Returns {status, body}.', category: 'AI' },
+  { type: 'claude',       label: 'Claude',        color: 'var(--node-claude)',   desc: 'Calls Anthropic Claude (claude-opus-4-7, claude-sonnet-4-6, claude-haiku-4-5). Returns {content, model, usage}.', category: 'AI' },
+  { type: 'agent',        label: 'Agent',         color: 'var(--node-agent)',   desc: 'Runs a Python AI agent via the AI Runtime. Configures model, prompt and system instructions.', category: 'AI' },
+  { type: 'rag',          label: 'RAG',           color: 'var(--node-rag)',   desc: 'Retrieves the most relevant chunks from a pgvector knowledge base via the AI Runtime. Returns {results}.', category: 'AI' },
+  { type: 'rag_ingest',   label: 'RAG Ingest',    color: 'var(--node-rag)',   desc: 'Ingests a document into a pgvector knowledge base via the AI Runtime (chunk + embed + store). Returns {doc_id, chunks}.', category: 'AI' },
+  { type: 'embedding',    label: 'Embedding',     color: 'var(--node-openai)',  desc: 'Embed text via an OpenAI-compatible endpoint. Config: api_key, base_url, model, input. Returns {embeddings, model, usage}.', category: 'AI' },
+  { type: 'reranker',     label: 'Reranker',      color: 'var(--node-cohere)',  desc: 'Rerank documents against a query (Cohere/Jina-style). Config: api_key, base_url, model, query, documents, top_n. Returns {status, body}.', category: 'AI' },
+  { type: 'text_splitter', label: 'Text Splitter', color: 'var(--node-transform)',  desc: 'Split text into overlapping, UTF-8-safe chunks. Config: text, chunk_size, chunk_overlap. Returns {chunks, count}.', category: 'AI' },
+  { type: 'structured_output', label: 'Structured Output', color: 'var(--node-openai)', desc: 'Get a JSON object from an LLM (json_object mode). Config: api_key, base_url, model, prompt_template, schema. Returns {data, raw, model}.', category: 'AI' },
+  { type: 'classifier',   label: 'Classifier',    color: 'var(--node-openai)',  desc: 'Classify input into one of N categories via an LLM. Config: api_key, base_url, model, input, categories. Returns {category, raw}.', category: 'AI' },
+  { type: 'image_gen',    label: 'Image Gen',     color: 'var(--node-openai)',  desc: 'Generate images (OpenAI-compatible). Config: api_key, base_url, model, prompt, size, n. Returns {status, body}.', category: 'AI' },
+  { type: 'speech_to_text', label: 'Speech → Text', color: 'var(--node-openai)',  desc: 'Transcribe audio (Whisper-compatible). Config: api_key, base_url, model, audio_base64, filename, language. Returns {status, text}.', category: 'AI' },
+  { type: 'tts',          label: 'Text → Speech', color: 'var(--node-openai)',  desc: 'Synthesize speech (OpenAI-compatible). Config: api_key, base_url, model, input, voice, format. Returns {audio_base64, format}.', category: 'AI' },
+  { type: 'custom',       label: 'Custom',        color: 'var(--node-custom)',   desc: 'Runs a community/third-party node served over HTTP (node SDK). Pick a registered custom node.', category: 'AI' },
+  { type: 'code',         label: 'Code',          color: 'var(--node-code)', desc: 'Executes a sandboxed Rhai script. Access input and node outputs as maps. Returns the script result.', category: 'Transform' },
+  { type: 'transform',    label: 'Transform',     color: 'var(--node-transform)',   desc: 'Renders a JSON template with {{...}} interpolation. The template can be an object, array, or string.', category: 'Transform' },
+  { type: 'map',          label: 'Map',           color: 'var(--node-map)',   desc: 'Applies an optional item_template to every element of a JSON array. Returns {count, items}.', category: 'Transform' },
+  { type: 'filter',       label: 'Filter',        color: 'var(--node-filter)',   desc: 'Filters a JSON array by field + operator (exists, equals, contains, gt, lt). Returns {count, items}.', category: 'Transform' },
+  { type: 'aggregate',    label: 'Aggregate',     color: 'var(--node-aggregate)',   desc: 'Reduces an array to a scalar via count, sum, avg, min, max, join, first, or last.', category: 'Transform' },
+  { type: 'sort',         label: 'Sort',          color: 'var(--node-sort)',   desc: 'Sorts a JSON array by a field, ascending or descending, using string or numeric comparison.', category: 'Transform' },
+  { type: 'extract',      label: 'Extract',       color: 'var(--node-extract)',   desc: 'Extracts a single value from a JSON source using a dot-path (e.g. data.users.0.email). Returns {value, found}.', category: 'Transform' },
+  { type: 'merge',        label: 'Merge',         color: 'var(--node-merge)',   desc: 'Combines fields from multiple node outputs into one flat object. Each field can have an optional key alias.', category: 'Transform' },
+  { type: 'loop',         label: 'Loop',          color: 'var(--node-loop)',   desc: 'Iterates over a JSON array, applying an optional template per item. Supports until-path early exit and max_iterations cap.', category: 'Transform' },
+  { type: 'validate',     label: 'Validate',      color: 'var(--node-validate)',   desc: 'Validates a JSON payload against a simple field schema (required, type checks). Returns {valid, errors[]}. Fails node if invalid.', category: 'Transform' },
+  { type: 'note',         label: 'Note',          color: '#b45309',   desc: 'A documentation annotation (sticky note). Does not execute or affect workflow data flow.', category: 'Utility' },
+  { type: 'split',        label: 'Split',         color: 'var(--node-split)',   desc: 'Splits a string into an array by a delimiter (default comma). Returns {parts: string[], count}. Trims whitespace by default.', category: 'Transform' },
+  { type: 'join',         label: 'Join',          color: 'var(--node-join)',   desc: 'Joins an array into a string by a delimiter (default comma). Optionally extracts a field from each object element. Returns {result, count}.', category: 'Transform' },
+  { type: 'switch',       label: 'Switch',        color: 'var(--node-switch)',   desc: 'Evaluates a value expression and routes to a named case branch. Outgoing edges use the case label as condition_label. Returns {value, matched_case, matched}.', category: 'Control' },
+  { type: 'random',       label: 'Random',        color: 'var(--node-random)',   desc: 'Generates a random value: UUID, number (with optional min/max), boolean, or a random pick from an items array. Returns {value}.', category: 'Utility' },
+  { type: 'dedupe',       label: 'Dedupe',        color: 'var(--node-dedupe)',   desc: 'Removes duplicate elements from a JSON array. Compares by a dot-path field or the entire item. Returns {items, count, removed_count}.', category: 'Transform' },
+  { type: 'regex',        label: 'Regex',         color: 'var(--node-regex)',  desc: 'Tests a source string against a pattern. Returns {matched, full_match, groups}. Supports case-insensitive "i" flag.', category: 'Transform' },
+  { type: 'csv',          label: 'CSV Parse',     color: 'var(--node-csv)',   desc: 'Parses a CSV string into an array of row objects (with headers) or arrays (without). Config: source, delimiter, has_header, trim. Returns {rows, count, headers}.', category: 'Transform' },
+  { type: 'rename',       label: 'Rename',        color: 'var(--node-rename)',   desc: 'Renames keys in a JSON object. Config: source (object expression), mappings [{from, to}]. Unmapped keys are preserved. Returns the renamed object.', category: 'Transform' },
+  { type: 'format',       label: 'Format',        color: 'var(--node-format)',  desc: 'Formats a string or value: uppercase, lowercase, trim, reverse, length, word_count, to_number, to_bool, replace, pad_start, truncate. Returns {result, operation}.', category: 'Transform' },
+  { type: 'github',       label: 'GitHub',        color: 'var(--node-github)',  desc: 'Call GitHub REST API. Config: token (required), endpoint (e.g. /repos/owner/repo/issues), method (GET/POST/PATCH/DELETE), body (optional JSON template). Returns {status, body}.', category: 'Integration' },
+  { type: 'webhook',      label: 'Webhook Send',  color: 'var(--node-webhook)',  desc: 'Send an HTTP POST to an external webhook URL. Config: url (required), headers (optional object), body_template (optional JSON template). Returns {status, ok}.', category: 'Integration' },
+  { type: 'jira',         label: 'Jira',          color: 'var(--node-jira)',  desc: 'Call Jira REST API v3 using Basic auth (email + API token). Config: base_url, email, token, endpoint (e.g. /rest/api/3/issue/PROJ-1), method, body. Returns {status, body}.', category: 'Integration' },
+  { type: 'notion',       label: 'Notion',        color: 'var(--node-notion)',  desc: 'Call Notion REST API using Bearer token. Config: token, endpoint (e.g. /v1/pages), method, body. Returns {status, body}.', category: 'Integration' },
+  { type: 'linear',       label: 'Linear',        color: 'var(--node-linear)',  desc: 'Query or mutate Linear issues via GraphQL API. Config: token (required), query (GraphQL string), variables (optional JSON). Returns {status, data}.', category: 'Integration' },
+  { type: 'airtable',     label: 'Airtable',      color: 'var(--node-airtable)',  desc: 'Read or write Airtable records. Config: token, base_id, table, method, record_id (optional), body (for writes), filter_formula (for GET). Returns {status, body}.', category: 'Integration' },
+  { type: 'for_each',     label: 'For Each',      color: 'var(--node-for-each)',  desc: 'Run a sub-workflow for each item in an array in parallel. Config: items (array expression), workflow_id (resolved to _graph by platform), input_key (default "item"), max_concurrency (default 10). Returns {results, succeeded, failed, total}.', category: 'Control' },
+  { type: 'discord',      label: 'Discord',       color: 'var(--node-discord)',  desc: 'Send a message to a Discord channel via an incoming webhook. Config: webhook_url, content (message text), username (optional), avatar_url (optional). Returns {ok, content}.', category: 'Integration' },
+  { type: 'teams',        label: 'MS Teams',      color: 'var(--node-teams)',  desc: 'Send a MessageCard to Microsoft Teams via an incoming webhook. Config: webhook_url, text (required), title (optional), color (hex, default 0078D4). Returns {ok, text}.', category: 'Integration' },
+  { type: 'sheets',       label: 'Google Sheets', color: 'var(--node-sheets)',  desc: 'Read or write Google Sheets via Sheets API v4. Config: token (Bearer), spreadsheet_id, range (A1 notation), method (GET/APPEND/UPDATE/CLEAR), values (for writes). Returns {status, body, values}.', category: 'Integration' },
+  { type: 'xml',          label: 'XML Parse',     color: 'var(--node-xml)',  desc: 'Parse an XML string into a JSON object. Config: source (XML string or {{template}}). Returns {data: object}. Complex XML with namespaces/mixed content may need preprocessing.', category: 'Transform' },
+  { type: 'yaml',         label: 'YAML',          color: 'var(--node-yaml)',   desc: 'Parse a YAML string to JSON (mode=parse, default) or serialize a JSON value to YAML (mode=serialize). Config: source, mode. Returns {data} or {yaml}.', category: 'Transform' },
+  { type: 'twilio',       label: 'Twilio SMS',    color: 'var(--node-twilio)',   desc: 'Send an SMS via Twilio REST API. Config: account_sid, auth_token, to, from (E.164 phone numbers), body. Returns {sid, status, to, from}.', category: 'Integration' },
+  { type: 'stripe',       label: 'Stripe',        color: 'var(--node-stripe)',   desc: 'Call the Stripe API v1. Config: api_key (sk_live_/sk_test_), endpoint (e.g. /customers), method (GET/POST/PATCH/DELETE), body (flat object — form-encoded for POST). Returns {status, id, object, body}.', category: 'Integration' },
+  { type: 'crypto',       label: 'Crypto',        color: 'var(--node-crypto)',   desc: 'Cryptographic utilities. Operations: sha256, sha512, hmac_sha256 (needs key), base64_encode/decode, hex_encode/decode, random_hex, random_base64. Returns {result, operation}.', category: 'Transform' },
+  { type: 'hash',         label: 'Hash / HMAC',   color: 'var(--node-crypto)',  desc: 'Compute a SHA-256/384/512 or HMAC digest. Config: operation, input, key (HMAC), encoding (hex/base64/base64url). Returns {hash, algorithm, encoding}.', category: 'Transform' },
+  { type: 'jwt',          label: 'JWT',           color: 'var(--node-crypto)',  desc: 'Sign or verify an HMAC JWT (HS256/384/512). Config: operation (sign/verify), algorithm, secret, payload, expires_in_secs, token. Returns {token} or {valid, payload}.', category: 'Transform' },
+  { type: 'html_extract', label: 'HTML Extract',  color: 'var(--node-transform)',  desc: 'Extract from HTML by CSS selector. Config: html, selector, extract (text/html/attr), attr. Returns {matches, count, first}.', category: 'Transform' },
+  { type: 'rss',          label: 'RSS Feed',      color: 'var(--node-transform)',  desc: 'Read an RSS/Atom/JSON feed. Config: url, limit. Returns {feed_title, items, count}.', category: 'Transform' },
+  { type: 'zip',          label: 'Zip',           color: 'var(--node-transform)',  desc: 'Create or extract a zip archive (base64). Config: operation (zip/unzip), files [{name, content, base64?}], zip_base64. Returns {zip_base64,…} or {files:[…]}.', category: 'Transform' },
+  { type: 'image',        label: 'Image',         color: 'var(--node-transform)',  desc: 'Resize / convert / inspect an image (base64). Config: operation (resize/convert/metadata), image_base64, width, height, format. Returns {image_base64,…} or {width,height,color}.', category: 'Transform' },
+  { type: 'pdf_extract',  label: 'PDF Extract',   color: 'var(--node-transform)',  desc: 'Extract text from a base64 PDF. Config: pdf_base64. Returns {text, char_count}.', category: 'Transform' },
+  { type: 'ocr',          label: 'OCR',           color: 'var(--node-transform)',  desc: 'OCR an image via the tesseract CLI (must be installed on the executor host). Config: image_base64, lang. Returns {text, lang}.', category: 'Transform' },
+  { type: 'hubspot',      label: 'HubSpot',       color: 'var(--node-hubspot)',   desc: 'Call HubSpot CRM API (api.hubapi.com). Config: token (Bearer), endpoint (e.g. /crm/v3/objects/contacts), method, body. Returns {status, body}.', category: 'Integration' },
+  { type: 'date',         label: 'Date/Time',     color: 'var(--node-date)',   desc: 'Date/time operations: now, parse, format, add, subtract, diff. Config: operation, source (ISO or unix), amount, unit (seconds/minutes/hours/days), format (strftime). Returns {unix, iso, formatted}.', category: 'Transform' },
+  { type: 'zendesk',      label: 'Zendesk',       color: 'var(--node-zendesk)',   desc: 'Call Zendesk Support API. Config: subdomain, token (Bearer), endpoint (e.g. /tickets.json), method, body. Returns {status, body}.', category: 'Integration' },
+  { type: 'redis',         label: 'Redis Cache',   color: 'var(--node-redis)',   desc: 'Redis key-value cache operations: get/set/del/exists/incr/decr/expire/hget/hset/hgetall/lpush/lpop/keys/ping. Config: url, operation, key, value, field, ttl_secs. Returns {value, operation, key}.', category: 'Integration' },
+  { type: 'elasticsearch', label: 'Elasticsearch', color: 'var(--node-elasticsearch)',  desc: 'Query or write Elasticsearch/OpenSearch. Config: url, endpoint (e.g. /my-index/_search), method, body, optional api_key or username/password. Returns {status, body, took, hits_total}.', category: 'Integration' },
+  { type: 'pagerduty',     label: 'PagerDuty',     color: 'var(--node-pagerduty)',  desc: 'Send events to PagerDuty Events API v2. Config: routing_key, summary, event_action (trigger/acknowledge/resolve), severity, source, dedup_key. Returns {status, message, dedup_key}.', category: 'Integration' },
+  { type: 'handlebars',    label: 'HB Template',   color: 'var(--node-handlebars)',  desc: 'Render a Handlebars template. Supports {{var}}, {{#if}}, {{#each}}, {{#unless}}, partials. Config: template (string), data (JSON expression used as context). Returns {result}.', category: 'Transform' },
+  { type: 'math',          label: 'Math',          color: 'var(--node-math)',   desc: 'Numeric operations: add/abs/round/ceil/floor/sqrt/pow/mod/min/max/clamp/log/pct_change/sum/avg/eval. Config: operation, a, b, precision, items (array), expression (for eval). Returns {result, operation}.', category: 'Transform' },
+  { type: 'array_utils',   label: 'Array Utils',   color: 'var(--node-array-utils)',  desc: 'Array manipulation: chunk/flatten/compact/zip/reverse/shuffle/sample/range/pluck/first_n/last_n. Config: operation, source, size, n, source2, field, start/end/step (for range). Returns {items, count}.', category: 'Transform' },
+  { type: 'shopify',       label: 'Shopify',       color: 'var(--node-shopify)',  desc: 'Call Shopify Admin REST API. Config: shop (store subdomain), token (access token), endpoint (e.g. /products.json), method, body, api_version (default 2024-01). Returns {status, body}.', category: 'Integration' },
+  { type: 'datadog',       label: 'Datadog',       color: 'var(--node-datadog)',  desc: 'Call Datadog API. Config: api_key, endpoint (e.g. /api/v1/validate), method, body, app_key (optional), site (default datadoghq.com). Returns {status, body}.', category: 'Integration' },
+  { type: 'salesforce',   label: 'Salesforce',    color: 'var(--node-salesforce)',   desc: 'Call Salesforce REST API. Config: token (OAuth access token), instance_url (e.g. https://myorg.salesforce.com), endpoint, method, body. Returns {status, body}.', category: 'Integration' },
+  { type: 'freshdesk',    label: 'Freshdesk',     color: 'var(--node-freshdesk)',  desc: 'Call Freshdesk REST API. Config: api_key, domain (e.g. yourco.freshdesk.com), endpoint (e.g. /api/v2/tickets), method, body. Returns {status, body}.', category: 'Integration' },
+  { type: 'mailgun',      label: 'Mailgun',       color: 'var(--node-mailgun)',   desc: 'Send email via Mailgun. Config: api_key, domain (sending domain), to, from, subject, html or text, region (us/eu). Returns {status, body}.', category: 'Integration' },
+  { type: 'asana',        label: 'Asana',         color: 'var(--node-asana)',  desc: 'Call Asana API. Config: token (Personal Access Token), endpoint (e.g. /tasks), method, body. Returns {status, body}.', category: 'Integration' },
+  { type: 'servicenow',   label: 'ServiceNow',    color: 'var(--node-servicenow)',   desc: 'Call ServiceNow REST API (Table API, etc.). Config: instance (e.g. myco.service-now.com), username, password, endpoint, method, body. Returns {status, body}.', category: 'Integration' },
+  { type: 'confluence',   label: 'Confluence',    color: 'var(--node-confluence)',  desc: 'Call Atlassian Confluence REST API. Config: base_url, token (Bearer) OR email+api_token (Basic), endpoint, method, body. Returns {status, body}.', category: 'Integration' },
+  { type: 'bitbucket',    label: 'Bitbucket',     color: 'var(--node-bitbucket)',   desc: 'Call Bitbucket REST API v2. Config: username, app_password, endpoint (e.g. /repositories/ws/repo), method, body. Returns {status, body}.', category: 'Integration' },
+  { type: 'azure_devops', label: 'Azure DevOps',  color: 'var(--node-azure-devops)',  desc: 'Call Azure DevOps REST API. Config: pat (Personal Access Token), organization, project (optional), endpoint (e.g. /build/builds), method, body, api_version. Returns {status, body}.', category: 'Integration' },
+  { type: 'twitch',       label: 'Twitch',        color: 'var(--node-twitch)',  desc: 'Call Twitch Helix API. Config: client_id, access_token (OAuth), endpoint (e.g. /helix/streams), method, body. Returns {status, body}.', category: 'Integration' },
+  { type: 'figma',        label: 'Figma',         color: 'var(--node-figma)',   desc: 'Call Figma REST API. Config: token (personal access token), endpoint (e.g. /v1/files/KEY), method. Returns {status, body}.', category: 'Integration' },
+  { type: 'dropbox',      label: 'Dropbox',       color: 'var(--node-dropbox)',  desc: 'Dropbox file operations: list_folder/get_metadata/delete/create_folder/search. Config: token (OAuth2), operation, path (for most ops), query (for search). Returns {status, body, operation}.', category: 'Integration' },
+  { type: 'cloudflare',   label: 'Cloudflare',    color: 'var(--node-cloudflare)',   desc: 'Call Cloudflare API v4. Config: api_token, endpoint (e.g. /zones/ZONE_ID/dns_records), method, body. Returns {status, body, success}.', category: 'Integration' },
+  { type: 'box',          label: 'Box',           color: 'var(--node-box)',  desc: 'Call Box Content API. Config: token (OAuth2), endpoint (e.g. /folders/0/items), method, body. Returns {status, body}.', category: 'Integration' },
+  { type: 'okta',         label: 'Okta',          color: 'var(--node-okta)',  desc: 'Call Okta API. Config: domain (e.g. myco.okta.com), token (SSWS API token or Bearer OAuth), token_type (SSWS/Bearer), endpoint (e.g. /api/v1/users), method, body. Returns {status, body}.', category: 'Integration' },
+  { type: 'zoom',         label: 'Zoom',          color: 'var(--node-zoom)',  desc: 'Call Zoom API v2. Config: token (OAuth2 access token), endpoint (e.g. /users/me/meetings), method, body. Returns {status, body}.', category: 'Integration' },
+  { type: 'spotify',      label: 'Spotify',       color: 'var(--node-spotify)',  desc: 'Call Spotify Web API. Config: token (OAuth2 access token), endpoint (e.g. /me/player/currently-playing), method, body. Returns {status, body}.', category: 'Integration' },
+  { type: 'typeform',     label: 'Typeform',      color: 'var(--node-typeform)',  desc: 'Call Typeform API. Config: token (personal token), endpoint (e.g. /forms/FORM_ID/responses), method, body. Returns {status, body}.', category: 'Integration' },
+  { type: 'webflow',      label: 'Webflow',       color: 'var(--node-webflow)',  desc: 'Call Webflow CMS API v2. Config: token (OAuth2/API token), endpoint (e.g. /sites), method, body. Returns {status, body}.', category: 'Integration' },
+  { type: 'intercom',     label: 'Intercom',      color: 'var(--node-intercom)',  desc: 'Call Intercom API. Config: token (access token), endpoint (e.g. /contacts), method, body. Returns {status, body}.', category: 'Integration' },
+  { type: 'pipedrive',    label: 'Pipedrive',     color: 'var(--node-pipedrive)',  desc: 'Call Pipedrive CRM API. Config: api_token, endpoint (e.g. /deals), method, body. Returns {status, body}.', category: 'Integration' },
+  { type: 'trello',       label: 'Trello',        color: 'var(--node-trello)',  desc: 'Call Trello REST API. Config: api_key, token, endpoint (e.g. /boards/BOARD_ID), method, body. Returns {status, body}.', category: 'Integration' },
+  { type: 'monday',       label: 'Monday',        color: 'var(--node-monday)',  desc: 'Call Monday.com GraphQL API. Config: token (API token), query (GraphQL string), variables (object). Returns {status, body}.', category: 'Integration' },
+  { type: 'clickup',      label: 'ClickUp',       color: 'var(--node-clickup)',  desc: 'Call ClickUp API v2. Config: token (personal/OAuth token), endpoint (e.g. /team), method, body. Returns {status, body}.', category: 'Integration' },
+  { type: 'amplitude',    label: 'Amplitude',     color: 'var(--node-amplitude)',  desc: 'Call Amplitude Analytics API. Config: api_key, secret_key, operation (track/identify/export), events/identification array or start/end dates. Returns {status, body}.', category: 'Integration' },
+  { type: 'mixpanel',     label: 'Mixpanel',      color: 'var(--node-mixpanel)',  desc: 'Call Mixpanel API. Config: project_token, api_secret, operation (track/import/query), events array or params. Returns {status, body}.', category: 'Integration' },
+  { type: 'segment',      label: 'Segment',       color: 'var(--node-segment)',  desc: 'Call Segment Tracking API. Config: write_key, operation (track/identify/page/group/alias/batch), body object. Returns {status, body}.', category: 'Integration' },
+  { type: 'sendgrid',     label: 'SendGrid',      color: 'var(--node-sendgrid)',  desc: 'Call SendGrid API v3. Config: api_key (SG.xxx), endpoint (e.g. /mail/send), method, body. Returns {status, body}.', category: 'Integration' },
+  { type: 'braintree',    label: 'Braintree',     color: 'var(--node-braintree)',  desc: 'Call Braintree Gateway API. Config: merchant_id, public_key, private_key, environment (sandbox/production), endpoint, method, body. Returns {status, body}.', category: 'Integration' },
+  { type: 'paypal',       label: 'PayPal',        color: 'var(--node-paypal)',  desc: 'Call PayPal REST API. Config: client_id, client_secret, endpoint (e.g. /v2/checkout/orders), method, body, environment (sandbox/live). Optionally provide access_token to skip token exchange. Returns {status, body}.', category: 'Integration' },
+  { type: 'razorpay',     label: 'Razorpay',      color: 'var(--node-razorpay)',  desc: 'Call Razorpay API v1. Config: key_id, key_secret, endpoint (e.g. /orders), method, body. Returns {status, body}.', category: 'Integration' },
+  { type: 'firebase',     label: 'Firebase',      color: 'var(--node-firebase)',  desc: 'Call Firebase REST API. Config: project_id, id_token, service (firestore/rtdb/storage), endpoint, method, body. Returns {status, body}.', category: 'Integration' },
+  { type: 'supabase',     label: 'Supabase',      color: 'var(--node-supabase)',  desc: 'Call Supabase PostgREST or Functions API. Config: project_url (https://xyz.supabase.co), api_key (anon or service_role), endpoint (e.g. /rest/v1/users), method, body, prefer. Returns {status, body}.', category: 'Integration' },
+  { type: 'mailchimp',    label: 'Mailchimp',     color: 'var(--node-mailchimp)',  desc: 'Call Mailchimp Marketing API v3. Config: api_key (format: key-us1), server (e.g. us1, auto-extracted from key), endpoint (e.g. /lists), method, body. Returns {status, body}.', category: 'Integration' },
+  { type: 'activecampaign', label: 'ActiveCampaign', color: 'var(--node-activecampaign)', desc: 'Call ActiveCampaign API v3. Config: api_key, base_url (https://ACCOUNT.api-us1.com), endpoint (e.g. /contacts), method, body. Returns {status, body}.', category: 'Integration' },
+  { type: 'klaviyo',      label: 'Klaviyo',       color: 'var(--node-klaviyo)',  desc: 'Call Klaviyo API. Config: api_key (private key), endpoint (e.g. /profiles), method, body. Returns {status, body}.', category: 'Integration' },
+  { type: 'resend',       label: 'Resend',        color: 'var(--node-resend)',  desc: 'Call Resend email API. Config: api_key (re_xxx), endpoint (e.g. /emails), method, body. Returns {status, body}.', category: 'Integration' },
+  { type: 'contentful',   label: 'Contentful',    color: 'var(--node-contentful)',  desc: 'Call Contentful API. Config: access_token, space_id, api_type (delivery/preview/management), endpoint, method, body. Returns {status, body}.', category: 'Integration' },
+  { type: 'algolia',      label: 'Algolia',       color: 'var(--node-algolia)',  desc: 'Call Algolia Search API. Config: app_id, api_key, endpoint (e.g. /1/indexes/INDEX/query), method, body. Returns {status, body}.', category: 'Integration' },
+  { type: 'postmark',     label: 'Postmark',      color: 'var(--node-postmark)',  desc: 'Call Postmark API. Config: server_token, endpoint (e.g. /email), method, body. Returns {status, body}.', category: 'Integration' },
+  { type: 'vonage',       label: 'Vonage',        color: 'var(--node-vonage)',  desc: 'Call Vonage/Nexmo API. Config: api_key, api_secret, operation (sms/voice/verify), to/from/text (SMS) or endpoint/body (voice/verify). Returns {status, body}.', category: 'Integration' },
+  { type: 'telegram',     label: 'Telegram',      color: 'var(--node-telegram)',   desc: 'Send Telegram Bot API requests. Config: bot_token, operation (e.g. sendMessage), chat_id, text, parse_mode, extra (additional fields). Returns Telegram API response.', category: 'Integration' },
+  { type: 'feishu',       label: '飞书 / Lark',    color: 'var(--node-slack)',  desc: 'Send a Feishu/Lark message. Config: webhook_url (custom bot) or tenant_access_token + receive_id (+ receive_id_type), msg_type (text/interactive), text, card. Returns {status, body}.', category: 'Integration' },
+  { type: 'dingtalk',     label: '钉钉',          color: 'var(--node-slack)',  desc: 'Send a DingTalk custom-robot message. Config: access_token, secret (加签, optional), msg_type (text/markdown), title, content. Returns {status, body}.', category: 'Integration' },
+  { type: 'wecom',        label: '企业微信',       color: 'var(--node-slack)',  desc: 'Send a WeChat Work group-robot message. Config: key, msg_type (text/markdown), content. Returns {status, body}.', category: 'Integration' },
+  { type: 'replicate',    label: 'Replicate',     color: 'var(--node-replicate)',  desc: 'Run AI models via Replicate. Config: api_token, operation (run/get_prediction/list_models), version (model version ID), input (JSON). Returns {status, body}.', category: 'AI' },
+  { type: 'mistral',      label: 'Mistral',       color: 'var(--node-mistral)',  desc: 'Call Mistral AI API. Config: api_key, operation (chat/embeddings/list_models), model, messages or prompt, temperature, max_tokens. Returns {status, body}.', category: 'AI' },
+  { type: 'whatsapp',     label: 'WhatsApp',      color: 'var(--node-whatsapp)',  desc: 'Send WhatsApp Business messages via Meta API. Config: access_token, phone_number_id, to, message_type (text/template/image), body or template_name. Returns {status, body}.', category: 'Integration' },
+  { type: 'googledocs',   label: 'Google Docs',   color: 'var(--node-googledocs)',  desc: 'Read and write Google Docs. Config: access_token, operation (get/create/batch_update), document_id, title (create), requests (batch_update). Returns {status, body}.', category: 'Integration' },
+  { type: 'perplexity',   label: 'Perplexity',    color: 'var(--node-perplexity)',  desc: 'AI-powered search via Perplexity API. Config: api_key, model, prompt or messages, temperature, max_tokens, return_citations. Returns {status, body}.', category: 'AI' },
+  { type: 'cohere',       label: 'Cohere',         color: 'var(--node-cohere)',  desc: 'Call Cohere NLP API. Config: api_key, operation (chat/embed/classify/rerank), message/texts/inputs/query per operation. Returns {status, body}.', category: 'AI' },
+  { type: 'googledrive',  label: 'Google Drive',   color: 'var(--node-googledrive)',  desc: 'Manage Google Drive files. Config: access_token, operation (list/get/delete/create_folder), file_id, query, name, parent_id. Returns {status, body}.', category: 'Integration' },
+  { type: 'woocommerce',  label: 'WooCommerce',    color: 'var(--node-woocommerce)',  desc: 'Call WooCommerce REST API. Config: consumer_key, consumer_secret, site_url, endpoint (e.g. /wp-json/wc/v3/products), method, body. Returns {status, body}.', category: 'Integration' },
+  { type: 'pinecone',     label: 'Pinecone',       color: 'var(--node-pinecone)',  desc: 'Vector database operations via Pinecone. Config: api_key, index_host, operation (query/upsert/delete/fetch), vector/vectors/ids, top_k, namespace. Returns {status, body}.', category: 'AI' },
+  { type: 'togetherai',   label: 'Together AI',    color: 'var(--node-togetherai)',  desc: 'Run open-source LLMs via Together AI. Config: api_key, operation (chat/completions/embeddings), model, prompt or messages, temperature. Returns {status, body}.', category: 'AI' },
+  { type: 'awss3',        label: 'AWS S3',         color: 'var(--node-awss3)',  desc: 'Interact with AWS S3. Config: access_key_id, secret_access_key, bucket, region, operation (list/get_object/put_object/delete_object), key, body. Returns {status, body}.', category: 'Integration' },
+  { type: 'gcs',          label: 'Cloud Storage',  color: 'var(--node-awss3)',  desc: 'Google Cloud Storage (JSON API). Config: access_token (OAuth2), bucket, operation (list/get/download/upload/delete), object, prefix, content, content_type. Returns {status, body}.', category: 'Integration' },
+  { type: 'azure_blob',   label: 'Azure Blob',     color: 'var(--node-awss3)',  desc: 'Azure Blob Storage (REST + SAS). Config: account, container, sas_token, operation (list/get/put/delete), blob, content, content_type. Returns {status, body}.', category: 'Integration' },
+  { type: 'sqs',          label: 'AWS SQS',        color: 'var(--node-awss3)',  desc: 'AWS SQS (SigV4-signed). Config: access_key_id, secret_access_key, region, queue_url, operation (send/receive/delete), message_body, message_group_id, max_messages, receipt_handle. Returns {status, body}.', category: 'Integration' },
+  { type: 'sns',          label: 'AWS SNS',        color: 'var(--node-awss3)',  desc: 'AWS SNS Publish (SigV4-signed). Config: access_key_id, secret_access_key, region, topic_arn/target_arn/phone_number, subject, message. Returns {status, body}.', category: 'Integration' },
+  { type: 'kafka',        label: 'Kafka',          color: 'var(--node-redis)',  desc: 'Produce to a Kafka topic via the Confluent REST Proxy. Config: proxy_url, topic, value, key, partition, api_key, api_secret. Returns {status, body}.', category: 'Integration' },
+  { type: 'rabbitmq',     label: 'RabbitMQ',       color: 'var(--node-redis)',  desc: 'RabbitMQ Management HTTP API. Config: host, username, password, vhost, operation (publish/get/list_queues), exchange, routing_key, payload, queue, count. Returns {status, body}.', category: 'Integration' },
+  { type: 'huggingface',  label: 'Hugging Face',   color: 'var(--node-huggingface)',  desc: 'Call Hugging Face Inference API. Config: api_token, model (e.g. gpt2), operation (inference/model_info/list_models), inputs, parameters. Returns {status, body}.', category: 'AI' },
+  { type: 'groq',         label: 'Groq',           color: 'var(--node-groq)',  desc: 'Run fast LLM inference via Groq. Config: api_key, operation (chat/models), model (e.g. llama3-8b-8192), messages, temperature, max_tokens. Returns {status, body}.', category: 'AI' },
+  { type: 'grok',         label: 'xAI Grok',       color: 'var(--node-claude)',  desc: 'Call xAI Grok (OpenAI-compatible). Config: api_key, model (grok-2-latest), prompt_template, system_prompt, max_tokens, temperature. Returns {content, model, usage}.', category: 'AI' },
+  { type: 'ollama',       label: 'Ollama',         color: 'var(--node-openai)',  desc: 'Call a self-hosted Ollama server (OpenAI-compatible). Config: base_url, model (llama3.2), api_key (optional), prompt_template, system_prompt, max_tokens, temperature. Returns {content, model, usage}.', category: 'AI' },
+  { type: 'deepseek',     label: 'DeepSeek',       color: 'var(--node-deepseek)',  desc: 'Call DeepSeek (OpenAI-compatible). Config: api_key, model (deepseek-v4-flash), prompt_template, system_prompt, max_tokens, temperature. Returns {content, model, usage}.', category: 'AI' },
+  { type: 'qwen',         label: 'Qwen 通义千问',   color: 'var(--node-qwen)',  desc: 'Call Alibaba Qwen / DashScope (OpenAI-compatible). Config: api_key, model (qwen-max), prompt_template, system_prompt, max_tokens, temperature. Returns {content, model, usage}.', category: 'AI' },
+  { type: 'zhipu',        label: 'Zhipu GLM 智谱',  color: 'var(--node-zhipu)',  desc: 'Call Zhipu GLM (OpenAI-compatible). Config: api_key, model (glm-4.6), prompt_template, system_prompt, max_tokens, temperature. Returns {content, model, usage}.', category: 'AI' },
+  { type: 'moonshot',     label: 'Moonshot (Kimi)', color: 'var(--node-moonshot)',  desc: 'Call Moonshot / Kimi (OpenAI-compatible). Config: api_key, model (kimi-latest), prompt_template, system_prompt, max_tokens, temperature. Returns {content, model, usage}.', category: 'AI' },
+  { type: 'doubao',       label: 'Doubao 豆包',     color: 'var(--node-doubao)',  desc: 'Call Volcengine Doubao (OpenAI-compatible). Config: api_key, model (endpoint id), prompt_template, system_prompt, max_tokens, temperature. Returns {content, model, usage}.', category: 'AI' },
+  { type: 'minimax',      label: 'MiniMax',        color: 'var(--node-minimax)',  desc: 'Call MiniMax (OpenAI-compatible). Config: api_key, model (MiniMax-Text-01), prompt_template, system_prompt, max_tokens, temperature. Returns {content, model, usage}.', category: 'AI' },
+  { type: 'ernie',        label: 'ERNIE 文心一言',  color: 'var(--node-ernie)',  desc: 'Call Baidu ERNIE (Wenxin) via OAuth token exchange. Config: api_key, secret_key, model, prompt_template, system_prompt, max_tokens, temperature. Returns {content, model, usage}.', category: 'AI' },
+  { type: 'hunyuan',      label: 'Hunyuan 混元',    color: 'var(--node-hunyuan)',  desc: 'Call Tencent Hunyuan (OpenAI-compatible). Config: api_key, model, prompt_template, system_prompt, max_tokens, temperature. Returns {content, model, usage}.', category: 'AI' },
+  { type: 'azure_openai', label: 'Azure OpenAI',   color: 'var(--node-openai)',  desc: 'Call Azure OpenAI deployments. Config: endpoint, deployment, api_version (2024-02-01), api_key, prompt_template, system_prompt, max_tokens, temperature. Returns {content, model, usage}.', category: 'AI' },
+  { type: 'openrouter',   label: 'OpenRouter',     color: 'var(--node-openrouter)',  desc: 'Access 100+ LLMs via OpenRouter. Config: api_key, operation (chat/models), model (e.g. openai/gpt-4o), messages, temperature, max_tokens. Returns {status, body}.', category: 'AI' },
+  { type: 'qdrant',       label: 'Qdrant',         color: 'var(--node-qdrant)',  desc: 'Vector search with Qdrant. Config: url, api_key, collection, operation (search/upsert/delete/get_collection/create_collection), vector, top, points. Returns {status, body}.', category: 'AI' },
+  { type: 'weaviate',     label: 'Weaviate',       color: 'var(--node-qdrant)',  desc: 'Weaviate vector store. Config: host, api_key, operation (query/create_object/get_object/delete_object), query (GraphQL), class, properties, vector, id. Returns {status, body}.', category: 'AI' },
+  { type: 'chroma',       label: 'Chroma',         color: 'var(--node-qdrant)',  desc: 'Chroma vector store. Config: host, api_key, operation (query/add/delete/get_collection), collection, collection_id, query_embeddings, n_results, ids, embeddings, documents. Returns {status, body}.', category: 'AI' },
+  { type: 'milvus',       label: 'Milvus',         color: 'var(--node-qdrant)',  desc: 'Milvus / Zilliz vector store (REST API v2). Config: host, token, collection, operation (search/insert/query/delete), data, anns_field, filter, output_fields, limit. Returns {status, body}.', category: 'AI' },
+  { type: 'mongodb',      label: 'MongoDB',        color: 'var(--node-database)',  desc: 'MongoDB via the Atlas Data API. Config: data_api_url, api_key, data_source, database, collection, operation (find/findOne/insert*/update*/delete*/aggregate), filter, document(s), update, pipeline, limit, sort. Returns {status, body}.', category: 'Integration' },
+  { type: 'clickhouse',   label: 'ClickHouse',     color: 'var(--node-database)',  desc: 'Run SQL against ClickHouse over HTTP. Config: host, user, password, database, query, format (JSON/JSONEachRow/…). FORMAT is appended to SELECTs. Returns {status, body}.', category: 'Integration' },
+  { type: 'cloudinary',   label: 'Cloudinary',     color: 'var(--node-cloudinary)',  desc: 'Media management via Cloudinary. Config: cloud_name, api_key, api_secret, operation (upload/transform_url/get_resource/delete), file, public_id, transformation. Returns {status, body}.', category: 'Integration' },
+  { type: 'gcal',         label: 'Google Calendar',color: 'var(--node-gcal)',  desc: 'Manage Google Calendar events. Config: access_token, calendar_id (default: primary), operation (list_calendars/list_events/get_event/create_event/delete_event), event_id, summary, start_time, end_time. Returns {status, body}.', category: 'Integration' },
+  { type: 'docusign',     label: 'DocuSign',       color: 'var(--node-docusign)',  desc: 'E-signature workflows via DocuSign. Config: access_token, account_id, base_url, operation (list_envelopes/get_envelope/create_envelope/void_envelope), envelope_id, body. Returns {status, body}.', category: 'Integration' },
+  { type: 'xero',         label: 'Xero',           color: 'var(--node-xero)',  desc: 'Accounting automation via Xero. Config: access_token, tenant_id, endpoint (e.g. /Contacts), method, body. Returns {status, body}.', category: 'Integration' },
+  { type: 'calendly',     label: 'Calendly',       color: 'var(--node-calendly)',  desc: 'Scheduling automation via Calendly. Config: api_key, operation (get_current_user/list_event_types/list_scheduled_events/get_scheduled_event/cancel_event), user_uri, event_uuid. Returns {status, body}.', category: 'Integration' },
+  { type: 'apify',        label: 'Apify',          color: 'var(--node-apify)',  desc: 'Web scraping via Apify. Config: api_token, operation (run_actor/get_run/get_dataset_items/list_actors), actor_id, run_id, dataset_id, input. Returns {status, body}.', category: 'Integration' },
+  { type: 'ganalytics',   label: 'Google Analytics',color: 'var(--node-ganalytics)',  desc: 'Query Google Analytics 4. Config: access_token, property_id, operation (run_report/run_realtime_report/get_metadata), date_ranges, dimensions, metrics. Returns {status, body}.', category: 'Integration' },
+  { type: 'neon',         label: 'Neon',           color: 'var(--node-neon)',  desc: 'Manage Neon serverless Postgres. Config: api_key, operation (list_projects/get_project/create_project/list_branches), project_id, name. Returns {status, body}.', category: 'Integration' },
+  { type: 'copper',       label: 'Copper CRM',     color: 'var(--node-copper)',  desc: 'CRM automation via Copper. Config: api_key, user_email, resource (people/leads/opportunities/companies), operation (list/get/create/update/delete), record_id, body, filter. Returns {status, body}.', category: 'Integration' },
 ]
 
 const PALETTE_CATEGORY_ORDER = ['Control', 'Integration', 'AI', 'Transform', 'Utility']
@@ -615,16 +623,11 @@ export function WorkflowEditor({ workflowId, onBack, initialInput }: Props) {
   })
 
   // Add node from palette
-  const addNode = useCallback((type: NodeType) => {
+  // Add a node at a specific canvas position (used by palette drag-and-drop).
+  const addNodeAt = useCallback((type: NodeType, position: { x: number; y: number }) => {
     pushHistory()
     const id = `${type}-${Date.now()}`
-    const existing = nodes.length
-    const newNode: FlowNode = {
-      id,
-      type,
-      position: { x: (existing % 4) * 280 + 80, y: Math.floor(existing / 4) * 140 + 80 },
-      data: { label: id, nodeType: type, config: {} },
-    }
+    const newNode: FlowNode = { id, type, position, data: { label: id, nodeType: type, config: {} } }
     setNodes((prev) => [...prev, newNode])
     setSelectedNodeId(id)
     // Track recently used
@@ -633,7 +636,19 @@ export function WorkflowEditor({ workflowId, onBack, initialInput }: Props) {
       try { localStorage.setItem('af:recentNodes', JSON.stringify(next)) } catch { /* ignore */ }
       return next
     })
-  }, [nodes.length])
+  }, [])
+
+  // Click-to-add: drop into a tidy grid slot based on current node count.
+  const addNode = useCallback((type: NodeType) => {
+    const existing = nodes.length
+    addNodeAt(type, { x: (existing % 4) * 280 + 80, y: Math.floor(existing / 4) * 140 + 80 })
+  }, [nodes.length, addNodeAt])
+
+  // Palette → canvas drag-and-drop: stash the node type for the canvas drop handler.
+  const onPaletteDragStart = useCallback((e: React.DragEvent, type: NodeType) => {
+    e.dataTransfer.setData('application/trigix-node', type)
+    e.dataTransfer.effectAllowed = 'move'
+  }, [])
 
   // Update node config from panel
   const handleUpdateConfig = useCallback((nodeId: string, config: Record<string, unknown>) => {
@@ -643,6 +658,42 @@ export function WorkflowEditor({ workflowId, onBack, initialInput }: Props) {
       ),
     )
   }, [])
+
+  // Rename a node's id. The id is referenced by edges (source/target) and by
+  // template variables ({{id.field}}) inside other nodes' configs, so we rewrite
+  // all of those atomically. Returns ok/error for inline panel feedback.
+  const renameNodeId = useCallback((oldId: string, rawNewId: string): { ok: boolean; error?: string } => {
+    const newId = rawNewId.trim()
+    if (newId === oldId) return { ok: true }
+    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(newId)) {
+      return { ok: false, error: zh ? 'ID 只能用字母/数字/下划线，且不以数字开头' : 'Use letters, digits, underscore; cannot start with a digit' }
+    }
+    if (nodesRef.current.some((n) => n.id === newId)) {
+      return { ok: false, error: zh ? 'ID 已被占用' : 'ID already in use' }
+    }
+    pushHistory()
+    // Rewrite {{oldId.field}} / {{oldId}} references in every config object.
+    const esc = oldId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    const re = new RegExp('(\\{\\{\\s*)' + esc + '(?=[.}\\s|])', 'g')
+    const rewriteCfg = (cfg: Record<string, unknown>): Record<string, unknown> => {
+      try { return JSON.parse(JSON.stringify(cfg).replace(re, '$1' + newId)) } catch { return cfg }
+    }
+    setNodes((prev) => prev.map((n) => {
+      const config = rewriteCfg(n.data.config)
+      if (n.id === oldId) {
+        return { ...n, id: newId, data: { ...n.data, config, label: n.data.label === oldId ? newId : n.data.label } }
+      }
+      return { ...n, data: { ...n.data, config } }
+    }))
+    setEdges((prev) => prev.map((e) => ({
+      ...e,
+      source: e.source === oldId ? newId : e.source,
+      target: e.target === oldId ? newId : e.target,
+      id: e.id && e.id.includes(oldId) ? e.id.split(oldId).join(newId) : e.id,
+    })))
+    setSelectedNodeId(newId)
+    return { ok: true }
+  }, [zh])
 
   // Duplicate the currently selected node
   const handleDuplicateNode = useCallback(() => {
@@ -1761,7 +1812,7 @@ export function WorkflowEditor({ workflowId, onBack, initialInput }: Props) {
               title={zh ? '查看此工作流的性能分析报告' : 'View workflow performance report'}
               style={{ fontSize: 11 }}
             >
-              📊 {zh ? '报告' : 'Report'}
+              <PiChartBar size={13} style={TB_ICON} />{zh ? '报告' : 'Report'}
             </button>
           )}
           <button
@@ -1841,18 +1892,18 @@ export function WorkflowEditor({ workflowId, onBack, initialInput }: Props) {
             title={zh ? '查找节点 (Ctrl+F)' : 'Find node (Ctrl+F)'}
             style={{ fontSize: 11 }}
           >
-            🔍 {zh ? '查找' : 'Find'}
+            <IconSearch size={13} style={TB_ICON} />{zh ? '查找' : 'Find'}
           </button>
           <span className="tb-pop-wrap">
             <button className="btn btn-sm" onClick={() => setShowMoreActions((v) => !v)} title={zh ? '更多操作' : 'More actions'}>⋯ {zh ? '更多' : 'More'}</button>
             {showMoreActions && (
               <div className="tb-popover tb-menu" style={{ right: 0, left: 'auto' }} onMouseLeave={() => setShowMoreActions(false)}>
-                <button className="tb-menu-item" onClick={() => { setShowMoreActions(false); const w = collectPublishWarnings(); setValidateWarnings(w); setShowValidate(true) }}>{t('we.validate')}</button>
-                <button className="tb-menu-item" onClick={() => { setShowMoreActions(false); setShowSchedule(true) }}>{t('we.schedule')}</button>
-                <button className="tb-menu-item" onClick={() => { setShowMoreActions(false); setShowForms(true) }}>{t('we.form')}</button>
-                <button className="tb-menu-item" onClick={() => { setShowMoreActions(false); setShowTests(true) }}>{t('we.tests')}</button>
-                <button className="tb-menu-item" onClick={() => { setShowMoreActions(false); setShowComments(true) }}>{t('we.comments')}</button>
-                <button className="tb-menu-item" onClick={() => { setShowMoreActions(false); setShowApiDocs(true) }}>📖 {zh ? 'API 文档' : 'API Docs'}</button>
+                <button className="tb-menu-item" onClick={() => { setShowMoreActions(false); const w = collectPublishWarnings(); setValidateWarnings(w); setShowValidate(true) }}><span className="tb-menu-ic"><PiCheckCircle size={14} />{t('we.validate')}</span></button>
+                <button className="tb-menu-item" onClick={() => { setShowMoreActions(false); setShowSchedule(true) }}><span className="tb-menu-ic"><PiCalendarBlank size={14} />{t('we.schedule')}</span></button>
+                <button className="tb-menu-item" onClick={() => { setShowMoreActions(false); setShowForms(true) }}><span className="tb-menu-ic"><PiListBullets size={14} />{t('we.form')}</span></button>
+                <button className="tb-menu-item" onClick={() => { setShowMoreActions(false); setShowTests(true) }}><span className="tb-menu-ic"><PiTestTube size={14} />{t('we.tests')}</span></button>
+                <button className="tb-menu-item" onClick={() => { setShowMoreActions(false); setShowComments(true) }}><span className="tb-menu-ic"><PiChatCircle size={14} />{t('we.comments')}</span></button>
+                <button className="tb-menu-item" onClick={() => { setShowMoreActions(false); setShowApiDocs(true) }}><span className="tb-menu-ic"><PiBookOpen size={14} />{zh ? 'API 文档' : 'API Docs'}</span></button>
               </div>
             )}
           </span>
@@ -1910,7 +1961,7 @@ export function WorkflowEditor({ workflowId, onBack, initialInput }: Props) {
             </button>
           )}
           <button className="btn btn-sm" onClick={toggleTheme} title="Toggle dark/light theme">
-            {theme === 'dark' ? '☀' : '◑'}
+            {theme === 'dark' ? <ThemeToggleIcon dark /> : <ThemeToggleIcon dark={false} />}
           </button>
           <button className="btn btn-sm" onClick={toggleLocale} title="切换语言 / Switch language">
             {locale === 'zh' ? 'EN' : '中'}
@@ -2020,7 +2071,7 @@ export function WorkflowEditor({ workflowId, onBack, initialInput }: Props) {
                   }
                 }}
               >
-                🔥 {zh ? '热图' : 'Heat'}
+<PiFire size={13} style={TB_ICON} />{zh ? '热图' : 'Heat'}
               </button>
             </>
           )}
@@ -2045,9 +2096,9 @@ export function WorkflowEditor({ workflowId, onBack, initialInput }: Props) {
                   const labelDisplay = zh ? (NODE_ZH[type]?.labelZh ?? entry.label) : entry.label
                   const descDisplay  = zh ? (NODE_ZH[type]?.descZh  ?? entry.desc)  : entry.desc
                   return (
-                    <button key={`recent-${type}`} className="palette-node" onClick={() => addNode(type)} title={descDisplay}>
+                    <button key={`recent-${type}`} className="palette-node" draggable onDragStart={(e) => onPaletteDragStart(e, type)} onClick={() => addNode(type)} title={descDisplay}>
                       <span className="palette-dot" style={{ background: entry.color }} />
-                      <span>{entry.icon} {labelDisplay}</span>
+                      <span className="palette-node-label"><NodeIcon type={type} size={15} /> {labelDisplay}</span>
                     </button>
                   )
                 })}
@@ -2061,13 +2112,13 @@ export function WorkflowEditor({ workflowId, onBack, initialInput }: Props) {
                     const q = paletteSearch.toLowerCase()
                     return label.toLowerCase().includes(q) || (zh && lz.includes(q))
                   })
-                  .map(({ type, label, color, icon, desc }) => {
+                  .map(({ type, label, color, desc }) => {
                     const labelDisplay = zh ? (NODE_ZH[type]?.labelZh ?? label) : label
                     const descDisplay  = zh ? (NODE_ZH[type]?.descZh  ?? desc)  : desc
                     return (
                       <button key={type} className="palette-node" onClick={() => addNode(type)} title={descDisplay}>
                         <span className="palette-dot" style={{ background: color }} />
-                        <span>{icon} {highlightMatch(labelDisplay, paletteSearch)}</span>
+                        <span className="palette-node-label"><NodeIcon type={type} size={15} /> {highlightMatch(labelDisplay, paletteSearch)}</span>
                       </button>
                     )
                   })}
@@ -2085,13 +2136,13 @@ export function WorkflowEditor({ workflowId, onBack, initialInput }: Props) {
                       <span>{zh ? { Control: '控制流', Integration: '集成', AI: 'AI', Transform: '数据处理', Utility: '工具' }[cat] ?? cat : cat}</span>
                       <span style={{ fontSize: 9, opacity: 0.7, background: 'var(--panel)', padding: '0 5px', borderRadius: 8 }}>{catNodes.length}</span>
                     </div>
-                    {catNodes.map(({ type, label, color, icon, desc }) => {
+                    {catNodes.map(({ type, label, color, desc }) => {
                       const labelDisplay = zh ? (NODE_ZH[type]?.labelZh ?? label) : label
                       const descDisplay  = zh ? (NODE_ZH[type]?.descZh  ?? desc)  : desc
                       return (
-                        <button key={type} className="palette-node" onClick={() => addNode(type)} title={descDisplay}>
+                        <button key={type} className="palette-node" draggable onDragStart={(e) => onPaletteDragStart(e, type)} onClick={() => addNode(type)} title={descDisplay}>
                           <span className="palette-dot" style={{ background: color }} />
-                          <span>{icon} {labelDisplay}</span>
+                          <span className="palette-node-label"><NodeIcon type={type} size={15} /> {labelDisplay}</span>
                         </button>
                       )
                     })}
@@ -2128,7 +2179,7 @@ export function WorkflowEditor({ workflowId, onBack, initialInput }: Props) {
                   borderRadius: 8, padding: '6px 10px', boxShadow: '0 4px 16px rgba(0,0,0,0.2)',
                   minWidth: 280,
                 }}>
-                  <span style={{ fontSize: 12, color: 'var(--muted)', flexShrink: 0 }}>🔍</span>
+                  <span style={{ fontSize: 12, color: 'var(--muted)', flexShrink: 0 }}><IconSearch size={12} /></span>
                   <input
                     ref={nodeFindInputRef}
                     value={nodeFindQuery}
@@ -2164,6 +2215,7 @@ export function WorkflowEditor({ workflowId, onBack, initialInput }: Props) {
                 onSelectionChange={setSelectedNodeId}
                 onNodesUpdated={setNodes}
                 onEdgesUpdated={setEdges}
+                onDropNode={addNodeAt}
                 nodeStatuses={nodeStatuses}
                 warningNodeIds={warningNodeIds}
                 snapToGrid={snapToGrid}
@@ -2194,6 +2246,7 @@ export function WorkflowEditor({ workflowId, onBack, initialInput }: Props) {
           <NodeConfigPanel
             node={selectedNode}
             onUpdateConfig={handleUpdateConfig}
+            onRenameId={renameNodeId}
             recentExecutions={recentExecutions}
             executionResult={selectedNode ? (nodeStatuses[selectedNode.id] ?? null) : null}
             webhookUrl={webhookUrl}
@@ -2699,7 +2752,7 @@ export function WorkflowEditor({ workflowId, onBack, initialInput }: Props) {
         return (
           <div className="modal-backdrop" onClick={() => setShowApiDocs(false)}>
             <div className="modal" style={{ width: 680, maxHeight: '85vh', overflowY: 'auto' }} onClick={(e) => e.stopPropagation()}>
-              <h2>📖 {zh ? 'API 文档' : 'API Documentation'}</h2>
+              <h2>{zh ? 'API 文档' : 'API Documentation'}</h2>
               <p style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 20 }}>
                 {zh ? '以下是调用此工作流的 API 示例。' : 'API usage examples for triggering this workflow.'}
               </p>
@@ -2804,7 +2857,7 @@ export function WorkflowEditor({ workflowId, onBack, initialInput }: Props) {
       {showReport && (
         <div className="modal-backdrop" onClick={() => setShowReport(false)}>
           <div className="modal" style={{ width: 700, maxHeight: '85vh', overflowY: 'auto' }} onClick={(e) => e.stopPropagation()}>
-            <h2>📊 {zh ? '工作流性能报告' : 'Workflow Performance Report'}</h2>
+            <h2>{zh ? '工作流性能报告' : 'Workflow Performance Report'}</h2>
 
             {/* Overview */}
             {wfStats && (
@@ -3644,7 +3697,7 @@ function CopilotPanel({ onClose, graphJson, tenantId, zh }: CopilotPanelProps) {
       <div style={{ padding: '10px 12px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 8 }}>
         <span style={{ fontWeight: 700, fontSize: 14, color: 'var(--node-claude)' }}>✦ {zh ? 'AI 助手' : 'Copilot'}</span>
         <span style={{ fontSize: 11, color: 'var(--muted)', flex: 1 }}>{zh ? '询问关于此工作流的任何问题' : 'Ask anything about this workflow'}</span>
-        <button onClick={() => setShowKeyInput((v) => !v)} title={zh ? 'API Key' : 'API Key'} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--muted)', fontSize: 14 }}>🔑</button>
+        <button onClick={() => setShowKeyInput((v) => !v)} title={zh ? 'API Key' : 'API Key'} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--muted)', fontSize: 14 }}><IconKey size={14} /></button>
         <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--muted)', fontSize: 18, lineHeight: 1 }}>×</button>
       </div>
 

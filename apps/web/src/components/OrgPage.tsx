@@ -2,6 +2,7 @@
 // https://www.qzso.com/ · managecode@gmail.com
 
 import { useEffect, useState } from 'react'
+import { IconBuildings, IconTrash, ThemeToggleIcon } from './uiIcons'
 import { useAuth } from '../AuthContext'
 import { useLocale } from '../useLocale'
 import { useTheme } from '../useTheme'
@@ -147,7 +148,7 @@ export function OrgPage({ onBack }: Props) {
             + {zh ? '新建组织' : 'New Org'}
           </button>
           <button className="btn btn-sm" onClick={toggleTheme} title="Toggle dark/light theme">
-            {theme === 'dark' ? '☀' : '◑'}
+            {theme === 'dark' ? <ThemeToggleIcon dark /> : <ThemeToggleIcon dark={false} />}
           </button>
           <button className="btn btn-sm" onClick={toggleLocale} title="切换语言 / Switch language">
             {locale === 'zh' ? 'EN' : '中'}
@@ -203,7 +204,7 @@ export function OrgPage({ onBack }: Props) {
           <p style={{ color: 'var(--muted)' }}>{zh ? '加载中…' : 'Loading…'}</p>
         ) : orgs.length === 0 ? (
           <div style={{ textAlign: 'center', padding: '3rem', color: 'var(--muted)' }}>
-            <div style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>🏢</div>
+            <div style={{ fontSize: '2rem', marginBottom: '0.5rem' }}><IconBuildings size={28} /></div>
             <p>{zh ? '暂无组织，创建一个以开始团队协作。' : 'No organizations yet. Create one to collaborate with your team.'}</p>
           </div>
         ) : (
@@ -261,7 +262,7 @@ export function OrgPage({ onBack }: Props) {
                       onClick={() => void handleDelete(org.id)}
                       style={{ fontSize: '0.75rem' }}
                     >
-                      🗑
+                      <IconTrash size={14} />
                     </button>
                   </div>
 

@@ -2,6 +2,7 @@
 // https://www.qzso.com/ · managecode@gmail.com
 
 import { useEffect, useState } from 'react'
+import { ThemeToggleIcon } from './uiIcons'
 import { useAuth } from '../AuthContext'
 import { useLocale } from '../useLocale'
 import * as api from '../api/client'
@@ -91,7 +92,7 @@ export function EventSubscriptionsPage({ onBack }: Props) {
         <span className="topbar-title">{t('events.title')}</span>
         <div className="topbar-spacer" />
         <button className="btn btn-sm btn-icon" onClick={toggleTheme} title={zh ? '切换主题' : 'Toggle theme'}>
-          {theme === 'dark' ? '☀️' : '🌙'}
+          {theme === 'dark' ? <ThemeToggleIcon dark /> : <ThemeToggleIcon dark={false} />}
         </button>
       </header>
 

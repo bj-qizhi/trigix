@@ -2,6 +2,7 @@
 // https://www.qzso.com/ · managecode@gmail.com
 
 import { useEffect, useState } from 'react'
+import { ThemeToggleIcon } from './uiIcons'
 import { useLocale } from '../useLocale'
 import { useTheme } from '../useTheme'
 import * as api from '../api/client'
@@ -95,7 +96,7 @@ export function CustomNodesPage({ onBack }: Props) {
         <span className="topbar-title">{zh ? '自定义节点' : 'Custom Nodes'}</span>
         <div className="topbar-actions">
           <button className="btn btn-sm" onClick={toggleTheme} title={zh ? '切换主题' : 'Toggle theme'}>
-            {theme === 'dark' ? '☀' : '◑'}
+            {theme === 'dark' ? <ThemeToggleIcon dark /> : <ThemeToggleIcon dark={false} />}
           </button>
         </div>
       </header>

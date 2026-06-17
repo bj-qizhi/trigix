@@ -69,8 +69,8 @@ const NODE_DESCRIPTIONS: Partial<Record<NodeType, { en: string; zh: string }>> =
   code:         { en: 'Executes a Rhai script in a sandboxed environment. Access {{input}} and {{node_id}} variables.', zh: '在沙箱中执行 Rhai 脚本。可访问 {{input}} 和上游节点输出变量。' },
   slack:        { en: 'Sends a message to a Slack channel via Incoming Webhook or Bot token.', zh: '通过 Incoming Webhook 或 Bot Token 向 Slack 频道发送消息。' },
   email:        { en: 'Sends an email via SMTP. Configure host, port, credentials, and recipients.', zh: '通过 SMTP 发送邮件，可配置服务器、端口、凭证和收件人。' },
-  openai:       { en: 'Calls OpenAI Chat Completions API (GPT-4o, GPT-4o-mini, o1). Returns content and token usage.', zh: '调用 OpenAI 对话 API（GPT-4o、GPT-4o-mini、o1），返回内容和 Token 用量。' },
-  gemini:       { en: 'Calls Google Gemini API (gemini-2.0-flash, 1.5-pro, thinking). Returns content and usage.', zh: '调用 Google Gemini API，返回内容和用量。' },
+  openai:       { en: 'Calls OpenAI Chat Completions API (gpt-5.5, gpt-5.4 / -mini, gpt-4.1). Returns content and token usage.', zh: '调用 OpenAI 对话 API（gpt-5.5、gpt-5.4/-mini、gpt-4.1 等），返回内容和 Token 用量。' },
+  gemini:       { en: 'Calls Google Gemini API (gemini-3.5-flash, gemini-2.5-pro/flash). Returns content and usage.', zh: '调用 Google Gemini API（gemini-3.5-flash、gemini-2.5-pro/flash 等），返回内容和用量。' },
   claude:       { en: 'Calls Anthropic Claude API (claude-opus-4, sonnet-4, haiku-4). Returns content and usage.', zh: '调用 Anthropic Claude API，返回内容和 Token 用量。' },
   database:     { en: 'Executes a SQL query against a PostgreSQL database. SELECT returns rows; DML returns rows_affected.', zh: '对 PostgreSQL 数据库执行 SQL 查询。SELECT 返回行数据，DML 返回影响行数。' },
   extract:      { en: 'Extracts a value from a JSON object using a dot-path (e.g. user.address.city).', zh: '使用点路径（如 user.address.city）从 JSON 对象中提取字段值。' },
@@ -142,14 +142,14 @@ const NODE_DESCRIPTIONS: Partial<Record<NodeType, { en: string; zh: string }>> =
   ssh:       { en: 'Run a command over SSH (password or private key); returns stdout/stderr/exit.', zh: 'SSH 执行命令（密码或私钥），返回 stdout/stderr/exit。' },
   imap:      { en: 'Read an IMAP mailbox over TLS: recent messages or mailbox list.', zh: 'IMAP over TLS 读邮箱：最近邮件或邮箱列表。' },
   wait:      { en: 'Pause the run for a duration / until a timestamp, or suspend until externally resumed.', zh: '暂停一段时间/到某时刻，或挂起直到外部恢复。' },
-  deepseek:  { en: 'Calls DeepSeek API (deepseek-chat V3, deepseek-reasoner R1). Returns content and usage.', zh: '调用 DeepSeek API（deepseek-chat V3、deepseek-reasoner R1），返回内容和 Token 用量。' },
-  qwen:      { en: 'Calls Alibaba Qwen via DashScope (qwen-max, qwen-plus, qwen-turbo, qwen-long). Returns content and usage.', zh: '通过 DashScope 调用通义千问，返回内容和 Token 用量。' },
-  zhipu:     { en: 'Calls Zhipu AI GLM (glm-4, glm-4-air, glm-4-flash, glm-3-turbo). Returns content and usage.', zh: '调用智谱 AI GLM 系列模型，返回内容和 Token 用量。' },
-  moonshot:  { en: 'Calls Moonshot AI (Kimi) with 8K/32K/128K context windows. Returns content and usage.', zh: '调用月之暗面（Kimi），支持 8K/32K/128K 上下文，返回内容和 Token 用量。' },
+  deepseek:  { en: 'Calls DeepSeek API (deepseek-v4-flash, deepseek-v4-pro; legacy deepseek-chat/reasoner retire 2026-07-24). Returns content and usage.', zh: '调用 DeepSeek API（deepseek-v4-flash、deepseek-v4-pro；旧版 deepseek-chat/reasoner 将于 2026-07-24 下线），返回内容和 Token 用量。' },
+  qwen:      { en: 'Calls Alibaba Qwen via DashScope (qwen3-max, qwen3.5-plus/flash; qwen-max/plus aliases). Returns content and usage.', zh: '通过 DashScope 调用通义千问（qwen3-max、qwen3.5-plus/flash 等），返回内容和 Token 用量。' },
+  zhipu:     { en: 'Calls Zhipu AI GLM (glm-4.7, glm-4.6, glm-4.5-air, glm-4-flash). Returns content and usage.', zh: '调用智谱 AI GLM 系列（glm-4.7 / glm-4.6 等），返回内容和 Token 用量。' },
+  moonshot:  { en: 'Calls Moonshot AI Kimi (kimi-latest, kimi-k2.6, kimi-k2.7-code; moonshot-v1-* legacy). Returns content and usage.', zh: '调用月之暗面 Kimi（kimi-latest、kimi-k2.6 等；moonshot-v1-* 为旧版），返回内容和 Token 用量。' },
   doubao:    { en: 'Calls Bytedance Doubao via Volces Ark. Uses endpoint_id instead of model name. Returns content and usage.', zh: '通过火山引擎方舟调用字节豆包，使用推理接入点 ID，返回内容和 Token 用量。' },
-  minimax:   { en: 'Calls MiniMax chatcompletion API. Requires group_id in addition to api_key. Returns content and usage.', zh: '调用 MiniMax 对话 API，需要 group_id，返回内容和 Token 用量。' },
-  ernie:     { en: 'Calls Baidu ERNIE via OAuth2 token exchange (ernie-4.0, 3.5, speed). Returns content and usage.', zh: '通过 OAuth2 换取令牌后调用百度文心一言，返回内容和 Token 用量。' },
-  hunyuan:   { en: 'Calls Tencent Hunyuan (hunyuan-standard, turbo, lite) via OpenAI-compatible API. Returns content and usage.', zh: '通过 OpenAI 兼容接口调用腾讯混元，返回内容和 Token 用量。' },
+  minimax:   { en: 'Calls MiniMax chatcompletion API (MiniMax-Text-01; abab6.5 legacy). Requires group_id. Returns content and usage.', zh: '调用 MiniMax 对话 API（MiniMax-Text-01；abab6.5 为旧版），需要 group_id，返回内容和 Token 用量。' },
+  ernie:     { en: 'Calls Baidu ERNIE via OAuth2 (ernie-4.0/3.5/speed; 4.5/5.0/X1 need newer Qianfan v2). Returns content and usage.', zh: '通过 OAuth2 调用百度文心（ernie-4.0/3.5/speed；4.5/5.0/X1 需新版千帆 v2 接口），返回内容和 Token 用量。' },
+  hunyuan:   { en: 'Calls Tencent Hunyuan (hunyuan-turbos-latest, hunyuan-t1-latest, hunyuan-lite) via OpenAI-compatible API. Returns content and usage.', zh: '通过 OpenAI 兼容接口调用腾讯混元（hunyuan-turbos-latest、hunyuan-t1-latest 等），返回内容和 Token 用量。' },
 }
 
 const NODE_LABELS: Partial<Record<NodeType, string>> = {
@@ -423,6 +423,7 @@ interface Props {
   webhookSecret?: string | null
   onDuplicate?: () => void
   upstreamNodes?: FlowNode[]
+  onRenameId?: (oldId: string, newId: string) => { ok: boolean; error?: string }
 }
 
 function CopyIdButton({ id }: { id: string }) {
@@ -500,7 +501,7 @@ function PasteConfigButton({ onPaste }: { onPaste: (cfg: Record<string, unknown>
 }
 
 
-export function NodeConfigPanel({ node, onUpdateConfig, recentExecutions, onSelectExecution, executionResult, webhookUrl, webhookSecret, onDuplicate, upstreamNodes }: Props) {
+export function NodeConfigPanel({ node, onUpdateConfig, recentExecutions, onSelectExecution, executionResult, webhookUrl, webhookSecret, onDuplicate, upstreamNodes, onRenameId }: Props) {
   const { locale, t } = useLocale()
 
   // ── Hooks must all be called before any early return (Rules of Hooks) ──
@@ -510,6 +511,8 @@ export function NodeConfigPanel({ node, onUpdateConfig, recentExecutions, onSele
   const [presets, setPresets] = useState<Array<{ name: string; config: Record<string, unknown> }>>([])
   const [showPresetInput, setShowPresetInput] = useState(false)
   const [presetName, setPresetName] = useState('')
+  const [idError, setIdError] = useState('')
+  useEffect(() => { setIdError('') }, [node?.id])
   useEffect(() => { setPresets(loadPresets()) }, [nt]) // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!node) {
@@ -646,6 +649,28 @@ export function NodeConfigPanel({ node, onUpdateConfig, recentExecutions, onSele
             lineHeight: 1.5,
           }}>
             {locale === 'zh' ? NODE_DESCRIPTIONS[nt]!.zh : NODE_DESCRIPTIONS[nt]!.en}
+          </div>
+        )}
+        {onRenameId && (
+          <div className="field" style={{ marginBottom: 6 }}>
+            <label style={{ fontSize: 11 }}>{t('node.id')} <span style={{ color: 'var(--muted)' }}>{t('node.id.hint')}</span></label>
+            <input
+              key={node.id}
+              defaultValue={node.id}
+              style={{ fontSize: 12, fontFamily: 'var(--mono, monospace)' }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') (e.target as HTMLInputElement).blur()
+                else if (e.key === 'Escape') { (e.target as HTMLInputElement).value = node.id; setIdError('') }
+              }}
+              onBlur={(e) => {
+                const v = e.target.value.trim()
+                if (!v || v === node.id) { e.target.value = node.id; setIdError(''); return }
+                const res = onRenameId(node.id, v)
+                if (!res.ok) { e.target.value = node.id; setIdError(res.error ?? 'Invalid ID') }
+                else setIdError('')
+              }}
+            />
+            {idError && <div style={{ fontSize: 11, color: 'var(--danger-text, #f87171)', marginTop: 3 }}>{idError}</div>}
           </div>
         )}
         <div className="field" style={{ marginBottom: 6 }}>

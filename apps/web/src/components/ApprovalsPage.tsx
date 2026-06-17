@@ -242,7 +242,7 @@ export function ApprovalsPage({ onBack, onOpenExecution, onOpenWorkflow }: Props
                             style={{ fontSize: 11 }}
                             onClick={() => openComment(exec.id)}
                           >
-                            {commentFor === exec.id ? (zh ? '▲ 收起' : '▲ Hide') : (zh ? '💬 备注' : '💬 Comment')}
+                            {commentFor === exec.id ? (zh ? '▲ 收起' : '▲ Hide') : (zh ? '备注' : 'Comment')}
                           </button>
                           <button
                             className="btn btn-sm btn-primary"

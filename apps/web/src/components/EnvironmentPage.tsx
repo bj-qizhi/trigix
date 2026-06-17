@@ -2,6 +2,7 @@
 // https://www.qzso.com/ · managecode@gmail.com
 
 import { useEffect, useRef, useState } from 'react'
+import { ThemeToggleIcon } from './uiIcons'
 import { useAuth } from '../AuthContext'
 import { useLocale } from '../useLocale'
 import * as api from '../api/client'
@@ -204,7 +205,7 @@ export function EnvironmentPage({ onBack }: Props) {
           >
             {importing ? '…' : `↑ ${zh ? '导入 .env' : 'Import .env'}`}
           </button>
-          <button className="btn btn-sm" onClick={toggleTheme} title={zh ? '切换主题' : 'Toggle dark/light theme'}>{theme === 'dark' ? '☀' : '◑'}</button>
+          <button className="btn btn-sm" onClick={toggleTheme} title={zh ? '切换主题' : 'Toggle dark/light theme'}>{theme === 'dark' ? <ThemeToggleIcon dark /> : <ThemeToggleIcon dark={false} />}</button>
         </div>
       </header>
 

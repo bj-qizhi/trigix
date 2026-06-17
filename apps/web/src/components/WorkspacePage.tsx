@@ -2,6 +2,7 @@
 // https://www.qzso.com/ · managecode@gmail.com
 
 import { useEffect, useState } from 'react'
+import { ThemeToggleIcon } from './uiIcons'
 import { useAuth } from '../AuthContext'
 import { useLocale } from '../useLocale'
 import * as api from '../api/client'
@@ -134,7 +135,7 @@ export function WorkspacePage({ onBack }: Props) {
             + {zh ? '新建工作空间' : 'New Workspace'}
           </button>
           <button className="btn btn-sm" onClick={toggleTheme} title={zh ? '切换主题' : 'Toggle dark/light theme'}>
-            {theme === 'dark' ? '☀' : '◑'}
+            {theme === 'dark' ? <ThemeToggleIcon dark /> : <ThemeToggleIcon dark={false} />}
           </button>
         </div>
       </header>

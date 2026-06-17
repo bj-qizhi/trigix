@@ -2,6 +2,7 @@
 // https://www.qzso.com/ · managecode@gmail.com
 
 import { useTheme } from '../useTheme'
+import { ThemeToggleIcon } from './uiIcons'
 import { useLocale } from '../useLocale'
 import { useEffect, useRef, useState } from 'react'
 import { useAuth } from '../AuthContext'
@@ -420,7 +421,7 @@ export function RunsPage({ onBack, onOpenExecution, onOpenWorkflow, initialWorkf
                 const n = [...selected].filter((id) => { const r = runs.find((x) => x.id === id); return r && !LIVE_STATUSES.has(r.status) }).length
                 return n > 0 ? (
                   <button className="btn btn-sm btn-danger" disabled={batchDeleting} onClick={handleBatchDelete}>
-                    {batchDeleting ? '…' : `🗑 ${n}`}
+                    {batchDeleting ? '…' : `${n}`}
                   </button>
                 ) : null
               })()}
@@ -536,7 +537,7 @@ export function RunsPage({ onBack, onOpenExecution, onOpenWorkflow, initialWorkf
               </div>
             )}
           </div>
-          <button className="btn btn-sm" onClick={toggleTheme}>{theme === 'dark' ? '☀' : '◑'}</button>
+          <button className="btn btn-sm" onClick={toggleTheme}>{theme === 'dark' ? <ThemeToggleIcon dark /> : <ThemeToggleIcon dark={false} />}</button>
           <button className="btn btn-sm" onClick={toggleLocale}>{locale === 'zh' ? 'EN' : '中'}</button>
           <button className="btn btn-sm" onClick={onBack}>{t('nav.back')}</button>
         </div>

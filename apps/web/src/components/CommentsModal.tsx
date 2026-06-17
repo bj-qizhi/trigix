@@ -80,7 +80,7 @@ export function CommentsModal({ tenantId, workflowId, author, onClose }: Props) 
         onClick={(e) => e.stopPropagation()}
       >
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-          <h2 style={{ margin: 0 }}>💬 {zh ? '评论' : 'Comments'}</h2>
+          <h2 style={{ margin: 0 }}>{zh ? '评论' : 'Comments'}</h2>
           <button className="btn btn-sm" onClick={onClose}>✕</button>
         </div>
 

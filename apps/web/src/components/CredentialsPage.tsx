@@ -2,6 +2,7 @@
 // https://www.qzso.com/ · managecode@gmail.com
 
 import { useEffect, useState, useCallback } from 'react'
+import { ThemeToggleIcon } from './uiIcons'
 import { useAuth } from '../AuthContext'
 import { useLocale } from '../useLocale'
 import * as api from '../api/client'
@@ -152,7 +153,7 @@ export function CredentialsPage({ onBack }: Props) {
           <button className="btn btn-sm btn-primary" onClick={() => setAdding(true)}>
             + {zh ? '添加凭证' : 'Add Credential'}
           </button>
-          <button className="btn btn-sm" onClick={toggleTheme} title={zh ? '切换主题' : 'Toggle dark/light theme'}>{theme === 'dark' ? '☀' : '◑'}</button>
+          <button className="btn btn-sm" onClick={toggleTheme} title={zh ? '切换主题' : 'Toggle dark/light theme'}>{theme === 'dark' ? <ThemeToggleIcon dark /> : <ThemeToggleIcon dark={false} />}</button>
         </div>
       </header>
 
@@ -251,7 +252,7 @@ export function CredentialsPage({ onBack }: Props) {
                       <td>
                         {expInfo ? (
                           <span style={{ fontSize: 12, color: expInfo.color, fontWeight: 500 }}>
-                            {expInfo.label === 'Expired' ? '🔴 Expired' : `⏱ ${expInfo.label}`}
+                            {expInfo.label === 'Expired' ? 'Expired' : `⏱ ${expInfo.label}`}
                           </span>
                         ) : (
                           <span style={{ fontSize: 12, color: 'var(--muted)' }}>—</span>

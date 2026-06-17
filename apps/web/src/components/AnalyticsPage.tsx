@@ -2,6 +2,7 @@
 // https://www.qzso.com/ · managecode@gmail.com
 
 import { useEffect, useRef, useState } from 'react'
+import { ThemeToggleIcon } from './uiIcons'
 import { useAuth } from '../AuthContext'
 import { useLocale } from '../useLocale'
 import * as api from '../api/client'
@@ -328,7 +329,7 @@ export function AnalyticsPage({ onBack }: Props) {
           {showExport && (
             <div style={{ position: 'absolute', right: 0, top: '100%', marginTop: 4, background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', boxShadow: '0 4px 16px rgba(0,0,0,.25)', zIndex: 200, minWidth: 150 }}>
               <button onClick={handleExportCSV} style={{ display: 'block', width: '100%', padding: '9px 14px', textAlign: 'left', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text)', fontSize: 13 }}>
-                📄 {zh ? '导出 CSV' : 'Export CSV'}
+                {zh ? '导出 CSV' : 'Export CSV'}
               </button>
               <button onClick={handleExportJSON} style={{ display: 'block', width: '100%', padding: '9px 14px', textAlign: 'left', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text)', fontSize: 13 }}>
                 {'{ }'} {zh ? '导出 JSON' : 'Export JSON'}
@@ -353,7 +354,7 @@ export function AnalyticsPage({ onBack }: Props) {
         >
           ⇆ {zh ? '依赖图' : 'Deps'}
         </button>
-        <button className="btn btn-sm" onClick={toggleTheme} title="Toggle dark/light theme">{theme === 'dark' ? '☀' : '◑'}</button>
+        <button className="btn btn-sm" onClick={toggleTheme} title="Toggle dark/light theme">{theme === 'dark' ? <ThemeToggleIcon dark /> : <ThemeToggleIcon dark={false} />}</button>
       </header>
 
       <main className="list-page" style={{ maxWidth: 960, margin: '0 auto', width: '100%' }}>
@@ -894,7 +895,7 @@ export function AnalyticsPage({ onBack }: Props) {
               return (
                 <div style={{ marginBottom: 28 }}>
                   <h2 style={{ marginBottom: 12 }}>
-                    📋 {zh ? 'SLA 合规率（已完成执行）' : 'SLA Compliance (Completed Executions)'}
+                    {zh ? 'SLA 合规率（已完成执行）' : 'SLA Compliance (Completed Executions)'}
                   </h2>
                   <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
                     {SLA_TARGETS.map(({ label, secs }) => {
@@ -928,7 +929,7 @@ export function AnalyticsPage({ onBack }: Props) {
             {slaBreaches && slaBreaches.total_workflows_with_sla > 0 && (
               <div style={{ marginBottom: 28 }}>
                 <h2 style={{ marginBottom: 8 }}>
-                  🎯 {zh ? '工作流 SLA 合规报告（过去 30 天）' : 'Per-Workflow SLA Compliance (Last 30 Days)'}
+                  {zh ? '工作流 SLA 合规报告（过去 30 天）' : 'Per-Workflow SLA Compliance (Last 30 Days)'}
                 </h2>
                 <div style={{ display: 'flex', gap: 12, marginBottom: 16, flexWrap: 'wrap' }}>
                   {[

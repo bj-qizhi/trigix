@@ -2,6 +2,7 @@
 // https://www.qzso.com/ · managecode@gmail.com
 
 import { useMemo, useState } from 'react'
+import { IconSave } from './uiIcons'
 import type { ExecutionRecord, NodeExecutionRecord, InputField, EnvSetSummary } from '../types'
 import { useLocale } from '../useLocale'
 
@@ -225,7 +226,7 @@ export function ExecutionPanel({ execution, running, inputJson, onInputChange, o
                   title={zh ? '保存当前输入为预设' : 'Save current input as a preset'}
                   style={{ fontSize: 11, padding: '2px 6px' }}
                 >
-                  💾
+                  <IconSave size={15} />
                 </button>
                 {Object.keys(presets).length > 0 && (
                   <select

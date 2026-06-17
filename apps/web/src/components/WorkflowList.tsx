@@ -2,6 +2,13 @@
 // https://www.qzso.com/ · managecode@gmail.com
 
 import { useEffect, useRef, useState } from 'react'
+import { IconBell, IconFolder, IconGlobe, IconLock, ThemeToggleIcon } from './uiIcons'
+import type { IconType } from 'react-icons'
+import {
+  PiListChecks, PiSealCheck, PiGraph, PiChartLine, PiGift, PiClock, PiPulse,
+  PiClipboardText, PiSlidersHorizontal, PiSquaresFour, PiWebhooksLogo, PiKey,
+  PiShieldCheck, PiBooks, PiPuzzlePiece, PiBroadcast, PiBuildings, PiLockKey,
+} from 'react-icons/pi'
 import { useAuth } from '../AuthContext'
 import logoWordmark from '../assets/logo-wordmark.svg'
 import * as api from '../api/client'
@@ -798,25 +805,25 @@ export function WorkflowList({ onOpen, onOpenExecution, onCredentials, onAuditLo
                 overflowY: 'auto',
               }}>
                 {([
-                  { label: t('wl.btn.runs'), action: () => { onRuns(); setShowNavMenu(false) } },
-                  { label: locale === 'zh' ? '✓ 审批队列' : '✓ Approvals', action: () => { onApprovals(); setShowNavMenu(false) }, badge: execSummaries.filter((r) => r.status === 'waiting_approval').length || undefined },
-                  { label: locale === 'zh' ? '⬡ 依赖图' : '⬡ Dep Graph', action: () => { onWorkflowDeps(); setShowNavMenu(false) } },
-                  { label: t('wl.btn.analytics'), action: () => { onAnalytics(); setShowNavMenu(false) } },
-                  { label: locale === 'zh' ? '🎁 推荐返佣' : '🎁 Affiliate', action: () => { onAffiliate(); setShowNavMenu(false) } },
-                  { label: locale === 'zh' ? '⏱ 计划任务' : '⏱ Schedules', action: () => { onSchedules(); setShowNavMenu(false) } },
-                  { label: locale === 'zh' ? '📊 监控中心' : '📊 Monitoring', action: () => { onMonitoring(); setShowNavMenu(false) } },
-                  { label: t('wl.btn.audit'), action: () => { onAuditLog(); setShowNavMenu(false) } },
-                  { label: t('wl.btn.environment'), action: () => { onEnvironment(); setShowNavMenu(false) } },
-                  { label: t('wl.btn.workspaces'), action: () => { onWorkspaces(); setShowNavMenu(false) } },
-                  { label: t('wl.btn.webhooks'), action: () => { onWebhooks(); setShowNavMenu(false) } },
-                  { label: t('wl.btn.apikeys'), action: () => { onApiKeys(); setShowNavMenu(false) } },
-                  { label: locale === 'zh' ? '🔐 企业 SSO' : '🔐 Enterprise SSO', action: () => { onSso(); setShowNavMenu(false) } },
-                  { label: locale === 'zh' ? '📚 知识库' : '📚 Knowledge Bases', action: () => { onKnowledge(); setShowNavMenu(false) } },
-                  { label: locale === 'zh' ? '⚙ 自定义节点' : '⚙ Custom Nodes', action: () => { onCustomNodes(); setShowNavMenu(false) } },
-                  { label: t('wl.btn.events'), action: () => { onEventSubscriptions(); setShowNavMenu(false) } },
-                  { label: t('wl.btn.orgs'), action: () => { onOrgs(); setShowNavMenu(false) } },
-                  { label: '🔑 ' + t('wl.btn.credentials'), action: () => { onCredentials(); setShowNavMenu(false) } },
-                ] as { label: string; action: () => void; badge?: number }[]).map((item) => (
+                  { icon: PiListChecks, label: t('wl.btn.runs'), action: () => { onRuns(); setShowNavMenu(false) } },
+                  { icon: PiSealCheck, label: locale === 'zh' ? '审批队列' : 'Approvals', action: () => { onApprovals(); setShowNavMenu(false) }, badge: execSummaries.filter((r) => r.status === 'waiting_approval').length || undefined },
+                  { icon: PiGraph, label: locale === 'zh' ? '依赖图' : 'Dep Graph', action: () => { onWorkflowDeps(); setShowNavMenu(false) } },
+                  { icon: PiChartLine, label: t('wl.btn.analytics'), action: () => { onAnalytics(); setShowNavMenu(false) } },
+                  { icon: PiGift, label: locale === 'zh' ? '推荐返佣' : 'Affiliate', action: () => { onAffiliate(); setShowNavMenu(false) } },
+                  { icon: PiClock, label: locale === 'zh' ? '计划任务' : 'Schedules', action: () => { onSchedules(); setShowNavMenu(false) } },
+                  { icon: PiPulse, label: locale === 'zh' ? '监控中心' : 'Monitoring', action: () => { onMonitoring(); setShowNavMenu(false) } },
+                  { icon: PiClipboardText, label: t('wl.btn.audit'), action: () => { onAuditLog(); setShowNavMenu(false) } },
+                  { icon: PiSlidersHorizontal, label: t('wl.btn.environment'), action: () => { onEnvironment(); setShowNavMenu(false) } },
+                  { icon: PiSquaresFour, label: t('wl.btn.workspaces'), action: () => { onWorkspaces(); setShowNavMenu(false) } },
+                  { icon: PiWebhooksLogo, label: t('wl.btn.webhooks'), action: () => { onWebhooks(); setShowNavMenu(false) } },
+                  { icon: PiKey, label: t('wl.btn.apikeys'), action: () => { onApiKeys(); setShowNavMenu(false) } },
+                  { icon: PiShieldCheck, label: locale === 'zh' ? '企业 SSO' : 'Enterprise SSO', action: () => { onSso(); setShowNavMenu(false) } },
+                  { icon: PiBooks, label: locale === 'zh' ? '知识库' : 'Knowledge Bases', action: () => { onKnowledge(); setShowNavMenu(false) } },
+                  { icon: PiPuzzlePiece, label: locale === 'zh' ? '自定义节点' : 'Custom Nodes', action: () => { onCustomNodes(); setShowNavMenu(false) } },
+                  { icon: PiBroadcast, label: t('wl.btn.events'), action: () => { onEventSubscriptions(); setShowNavMenu(false) } },
+                  { icon: PiBuildings, label: t('wl.btn.orgs'), action: () => { onOrgs(); setShowNavMenu(false) } },
+                  { icon: PiLockKey, label: t('wl.btn.credentials'), action: () => { onCredentials(); setShowNavMenu(false) } },
+                ] as { icon: IconType; label: string; action: () => void; badge?: number }[]).map((item) => (
                   <button
                     key={item.label}
                     onClick={item.action}
@@ -836,7 +843,10 @@ export function WorkflowList({ onOpen, onOpenExecution, onCredentials, onAuditLo
                     onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--hover)')}
                     onMouseLeave={(e) => (e.currentTarget.style.background = 'none')}
                   >
-                    <span>{item.label}</span>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 10 }}>
+                      <item.icon size={16} style={{ opacity: 0.75, flexShrink: 0 }} />
+                      {item.label}
+                    </span>
                     {!!item.badge && (
                       <span style={{
                         background: 'var(--approval-text)',
@@ -910,7 +920,7 @@ export function WorkflowList({ onOpen, onOpenExecution, onCredentials, onAuditLo
                   title={locale === 'zh' ? '通知' : 'Notifications'}
                   style={{ position: 'relative' }}
                 >
-                  🔔
+                  <IconBell size={15} />
                   {total > 0 && (
                     <span style={{
                       position: 'absolute', top: -4, right: -4,
@@ -1060,7 +1070,7 @@ export function WorkflowList({ onOpen, onOpenExecution, onCredentials, onAuditLo
           })()}
 
           <button className="btn btn-sm" onClick={toggleTheme} title="Toggle dark/light theme">
-            {theme === 'dark' ? '☀' : '◑'}
+            {theme === 'dark' ? <ThemeToggleIcon dark /> : <ThemeToggleIcon dark={false} />}
           </button>
           <button className="btn btn-sm" onClick={toggleLocale} title="切换语言 / Switch language">
             {locale === 'zh' ? 'EN' : '中'}
@@ -1173,7 +1183,7 @@ export function WorkflowList({ onOpen, onOpenExecution, onCredentials, onAuditLo
                     onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--hover)')}
                     onMouseLeave={(e) => (e.currentTarget.style.background = 'none')}
                   >
-                    {locale === 'zh' ? '💸 提现审批' : '💸 Payout approvals'}
+                    {locale === 'zh' ? '提现审批' : 'Payout approvals'}
                   </button>
                 )}
                 <div style={{ borderTop: '1px solid var(--border)', margin: '4px 0' }} />
@@ -1242,7 +1252,7 @@ export function WorkflowList({ onOpen, onOpenExecution, onCredentials, onAuditLo
           gap: 8,
         }}>
           <span style={{ fontWeight: 600 }}>
-            🔑 {zh
+            {zh
               ? `${expiringCreds.length} 个凭据将在 7 天内过期：`
               : `${expiringCreds.length} credential${expiringCreds.length !== 1 ? 's' : ''} expiring within 7 days:`}
           </span>
@@ -1374,7 +1384,7 @@ export function WorkflowList({ onOpen, onOpenExecution, onCredentials, onAuditLo
                 }}
                 title={`Filter by folder: ${folder}`}
               >
-                📁 {folder}
+                {folder}
               </button>
             ))}
             <select
@@ -1568,9 +1578,9 @@ export function WorkflowList({ onOpen, onOpenExecution, onCredentials, onAuditLo
                     <span className={`status-badge status-${wf.status}`} style={{ fontSize: 10 }}>{wf.status}</span>
                     {isRunning && <span className="running-dot" />}
                     {wf.pinned && <span title="Pinned" style={{ fontSize: 12 }}>★</span>}
-                    {wf.locked && <span title="Locked" style={{ fontSize: 11 }}>🔒</span>}
+                    {wf.locked && <span title="Locked" style={{ fontSize: 11 }}><IconLock size={12} /></span>}
                     {sched && !sched.paused && <span title={`Scheduled: ${sched.cron_expression ?? `every ${sched.interval_secs}s`}`} style={{ fontSize: 11 }}>⏱</span>}
-                    {wf.folder && <span style={{ fontSize: 10, color: 'var(--muted)', marginLeft: 'auto' }}>📁 {wf.folder}</span>}
+                    {wf.folder && <span style={{ fontSize: 10, color: 'var(--muted)', marginLeft: 'auto' }}>{wf.folder}</span>}
                   </div>
 
                   {/* Name */}
@@ -1684,7 +1694,7 @@ export function WorkflowList({ onOpen, onOpenExecution, onCredentials, onAuditLo
                     borderBottom: '1px solid var(--border)', background: 'var(--surface)',
                     display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                   }}>
-                    <span>📁 {folderName}</span>
+                    <span>{folderName}</span>
                     <span style={{ fontSize: 11, fontWeight: 400, color: 'var(--muted)', background: 'var(--panel)', borderRadius: 10, padding: '1px 7px' }}>{wfs.length}</span>
                   </div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
@@ -1720,7 +1730,7 @@ export function WorkflowList({ onOpen, onOpenExecution, onCredentials, onAuditLo
                               <span key={tag} style={{ fontSize: 10, background: 'var(--border)', borderRadius: 4, padding: '1px 5px', color: 'var(--muted)' }}>{tag}</span>
                             ))}
                             {hasSchedule && <span style={{ fontSize: 10, color: '#58a6ff' }}>⏱</span>}
-                            {wf.locked && <span style={{ fontSize: 10, color: '#f85149' }}>🔒</span>}
+                            {wf.locked && <span style={{ fontSize: 10, color: '#f85149' }}><IconLock size={12} /></span>}
                           </div>
                         </div>
                       )
@@ -1885,9 +1895,9 @@ export function WorkflowList({ onOpen, onOpenExecution, onCredentials, onAuditLo
                             {wf.description && <div style={{ color: 'var(--text-secondary)', marginBottom: 8, fontSize: 12 }}>{wf.description}</div>}
                             <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 8 }}>
                               <span className={`badge badge-${wf.status}`}>{wf.status}</span>
-                              {wf.locked && <span className="badge">🔒 {zh ? '已锁定' : 'Locked'}</span>}
+                              {wf.locked && <span className="badge">{zh ? '已锁定' : 'Locked'}</span>}
                               {wf.pinned && <span className="badge">★ {zh ? '已置顶' : 'Pinned'}</span>}
-                              {wf.folder && <span className="badge">📁 {wf.folder}</span>}
+                              {wf.folder && <span className="badge">{wf.folder}</span>}
                             </div>
                             {stats && stats.total > 0 && (
                               <div style={{ display: 'flex', gap: 12, marginBottom: 8, fontSize: 12 }}>
@@ -1944,7 +1954,7 @@ export function WorkflowList({ onOpen, onOpenExecution, onCredentials, onAuditLo
                           onClick={(e) => { e.stopPropagation(); setFolderFilter(folderFilter === wf.folder ? '' : (wf.folder ?? '')) }}
                           title={`Folder: ${wf.folder} — click to filter`}
                         >
-                          📁 <span style={{ textDecoration: 'underline dotted' }}>{wf.folder}</span>
+                          <span style={{ textDecoration: 'underline dotted' }}>{wf.folder}</span>
                         </div>
                       )}
                     </td>
@@ -2064,7 +2074,7 @@ export function WorkflowList({ onOpen, onOpenExecution, onCredentials, onAuditLo
                         title={wf.visibility === 'private' ? (zh ? '私有 — 点击设为所有人可见' : 'Private — click to make visible to all') : (zh ? '所有人可见 — 点击设为私有' : 'Visible to all — click to make private')}
                         style={{ fontSize: 13, opacity: wf.visibility === 'private' ? 1 : 0.4 }}
                       >
-                        {wf.visibility === 'private' ? '🔒' : '🌐'}
+                        {wf.visibility === 'private' ? <IconLock size={12} /> : <IconGlobe size={12} />}
                       </button>
                       <button
                         className="btn btn-sm"
@@ -2080,7 +2090,7 @@ export function WorkflowList({ onOpen, onOpenExecution, onCredentials, onAuditLo
                         title={wf.folder ? (zh ? `文件夹：${wf.folder} — 点击移动` : `Folder: ${wf.folder} — click to move`) : (zh ? '移至文件夹' : 'Move to folder')}
                         style={{ fontSize: 12, opacity: wf.folder ? 0.9 : 0.45 }}
                       >
-                        📁
+                        <IconFolder size={14} />
                       </button>
                       {wf.status === 'archived' && (
                         <button

@@ -2,6 +2,7 @@
 // https://www.qzso.com/ · managecode@gmail.com
 
 import { useEffect, useState } from 'react'
+import { ThemeToggleIcon } from './uiIcons'
 import { useAuth } from '../AuthContext'
 import { useLocale } from '../useLocale'
 import * as api from '../api/client'
@@ -122,7 +123,7 @@ export function UsersPage({ onBack }: Props) {
         <div className="topbar-actions">
           <button className="btn btn-sm" onClick={onBack}>{zh ? '← 返回' : '← Back'}</button>
           <button className="btn btn-sm" onClick={toggleTheme} title={zh ? '切换主题' : 'Toggle theme'}>
-            {theme === 'dark' ? '☀' : '◑'}
+            {theme === 'dark' ? <ThemeToggleIcon dark /> : <ThemeToggleIcon dark={false} />}
           </button>
         </div>
       </header>
@@ -168,7 +169,7 @@ export function UsersPage({ onBack }: Props) {
                         onClick={() => handleDelete(user)}
                         title={zh ? `删除 ${user.email}` : `Delete ${user.email}`}
                       >
-                        {deleting === user.id ? '…' : (zh ? '🗑 删除' : '🗑 Delete')}
+                        {deleting === user.id ? '…' : (zh ? '删除' : 'Delete')}
                       </button>
                     )}
                   </td>
@@ -244,7 +245,7 @@ export function UsersPage({ onBack }: Props) {
                         onClick={() => copyLink(inv)}
                         title={zh ? '复制邀请链接' : 'Copy invite link'}
                       >
-                        {copiedId === inv.id ? (zh ? '✓ 已复制' : '✓ Copied') : (zh ? '📋 链接' : '📋 Link')}
+                        {copiedId === inv.id ? (zh ? '✓ 已复制' : '✓ Copied') : (zh ? '链接' : 'Link')}
                       </button>
                       <button
                         className="btn btn-sm"
