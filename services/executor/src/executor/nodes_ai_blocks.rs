@@ -446,7 +446,11 @@ pub(super) async fn execute_video_gen(
             // Seedance encodes parameters as --flags appended to the text prompt.
             let mut text = prompt.to_string();
             for (key, flag) in [("ratio", "rt"), ("duration", "dur"), ("resolution", "rs")] {
-                if let Some(val) = cfg.get(key).and_then(|v| v.as_str()).filter(|s| !s.is_empty()) {
+                if let Some(val) = cfg
+                    .get(key)
+                    .and_then(|v| v.as_str())
+                    .filter(|s| !s.is_empty())
+                {
                     let f = if key == "ratio" { "ratio" } else { flag };
                     text.push_str(&format!(" --{f} {val}"));
                 }
@@ -476,7 +480,9 @@ pub(super) async fn execute_video_gen(
                     }
                     body
                 }
-                Err(e) => return NodeExecutionResult::failed(format!("Seedance request error: {e}")),
+                Err(e) => {
+                    return NodeExecutionResult::failed(format!("Seedance request error: {e}"))
+                }
             };
             let task_id = match created.get("id").and_then(|v| v.as_str()) {
                 Some(id) => id.to_string(),
@@ -562,7 +568,10 @@ pub(super) async fn execute_video_gen(
             let input = cfg.get("input").cloned().unwrap_or_else(|| {
                 let mut m = serde_json::Map::new();
                 if !prompt.is_empty() {
-                    m.insert("prompt".into(), serde_json::Value::String(prompt.to_string()));
+                    m.insert(
+                        "prompt".into(),
+                        serde_json::Value::String(prompt.to_string()),
+                    );
                 }
                 if let Some(url) = image_url {
                     m.insert("image".into(), serde_json::Value::String(url.to_string()));
@@ -661,7 +670,11 @@ pub(super) async fn execute_video_gen(
                 Ok(k) => k,
                 Err(e) => return e,
             };
-            let base_url = match cfg.get("base_url").and_then(|v| v.as_str()).filter(|s| !s.is_empty()) {
+            let base_url = match cfg
+                .get("base_url")
+                .and_then(|v| v.as_str())
+                .filter(|s| !s.is_empty())
+            {
                 Some(u) => u.to_string(),
                 None => {
                     return NodeExecutionResult::failed(
@@ -686,7 +699,9 @@ pub(super) async fn execute_video_gen(
                             .to_string(),
                     )
                 }
-                Err(e) => NodeExecutionResult::failed(format!("Video generation request error: {e}")),
+                Err(e) => {
+                    NodeExecutionResult::failed(format!("Video generation request error: {e}"))
+                }
             }
         }
     }
