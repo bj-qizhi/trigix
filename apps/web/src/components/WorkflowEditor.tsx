@@ -9,6 +9,7 @@ import type { WorkflowRecord, WorkflowVersionRecord, ExecutionSummary, NodeExecu
 import { Canvas, graphFromApi, fromFlowGraph, type FlowNode } from './Canvas'
 import { useGraphState } from './editor/useGraphState'
 import { useWorkflowRun } from './editor/useWorkflowRun'
+import { useWorkflowPersistence } from './editor/useWorkflowPersistence'
 import { NodeIcon } from './nodeIcons'
 import {
   PiChartBar, PiFire, PiCheckCircle, PiCalendarBlank, PiListBullets,
@@ -445,8 +446,6 @@ export function WorkflowEditor({ workflowId, onBack, initialInput }: Props) {
   setLabelLocale(locale)
   const [workflow, setWorkflow]       = useState<WorkflowRecord | null>(null)
   const [version, setVersion]         = useState<WorkflowVersionRecord | null>(null)
-  const [saving, setSaving]           = useState(false)
-  const [publishing, setPublishing]   = useState(false)
   const [toasts, setToasts]           = useState<Toast[]>([])
   const [renaming, setRenaming]       = useState(false)
   const [newName, setNewName]         = useState('')
@@ -464,13 +463,6 @@ export function WorkflowEditor({ workflowId, onBack, initialInput }: Props) {
   const [newBudgetInput, setNewBudgetInput] = useState('')
   const [webhookUrl, setWebhookUrl]   = useState<string | null>(null)
   const [webhookSecret, setWebhookSecret] = useState<string | null>(null)
-  const [showVersions, setShowVersions] = useState(false)
-  const [versions, setVersions]       = useState<WorkflowVersionRecord[]>([])
-  const [loadingVersions, setLoadingVersions] = useState(false)
-  const [diffVersionId, setDiffVersionId] = useState<string | null>(null)
-  const [diffCompareId, setDiffCompareId] = useState<string | null>(null)
-  const [showComparePicker, setShowComparePicker] = useState<string | null>(null)
-  const [rollingBack, setRollingBack] = useState<string | null>(null)
   const [inputSchema, setInputSchema] = useState<InputField[]>([])
   const [showSchema, setShowSchema]   = useState(false)
   const [showVars, setShowVars]       = useState(false)
@@ -506,8 +498,6 @@ export function WorkflowEditor({ workflowId, onBack, initialInput }: Props) {
   const [nodeStats, setNodeStats] = useState<api.NodeStat[]>([])
   const [showReport, setShowReport] = useState(false)
   const [reportExecs, setReportExecs] = useState<api.ExecutionSummary[]>([])
-  const [saveMessage, setSaveMessage] = useState('')
-  const [showSaveMessage, setShowSaveMessage] = useState(false)
   const [showSchedule, setShowSchedule] = useState(false)
   const [showLimits, setShowLimits] = useState(false)
   const [showMoreActions, setShowMoreActions] = useState(false)
@@ -677,30 +667,6 @@ export function WorkflowEditor({ workflowId, onBack, initialInput }: Props) {
   }, [])
 
   // Save new version
-  const handleSave = async () => {
-    if (!workflow) return
-    setSaving(true)
-    try {
-      const { nodes: apiNodes, edges: apiEdges } = fromFlowGraph(nodes, edges)
-      const tempVersionId = `v-${Date.now()}`
-      const graph = {
-        workflow_version_id: tempVersionId,
-        nodes: apiNodes,
-        edges: apiEdges,
-        input_schema: inputSchema,
-      }
-      const ver = await api.createVersion(auth!.tenantId, workflowId, graph, saveMessage.trim() || undefined)
-      setVersion(ver)
-      setSaveMessage('')
-      setShowSaveMessage(false)
-      toast(zh ? '版本已保存' : 'Version saved')
-    } catch (e) {
-      toast(String(e), 'error')
-    } finally {
-      setSaving(false)
-    }
-  }
-
   // Validate node configs before publishing — returns list of warnings
   const collectPublishWarnings = (): string[] => {
     const warnings: string[] = []
@@ -922,128 +888,27 @@ export function WorkflowEditor({ workflowId, onBack, initialInput }: Props) {
   const [showValidate, setShowValidate] = useState(false)
   const [validateWarnings, setValidateWarnings] = useState<string[]>([])
 
-  // Publish latest draft version
-  const handlePublish = async () => {
-    if (!version || version.status === 'published') return
-    const warnings = collectPublishWarnings()
-    if (warnings.length > 0) {
-      const msg = `Publishing with ${warnings.length} warning${warnings.length > 1 ? 's' : ''}:\n\n${warnings.map((w) => `• ${w}`).join('\n')}\n\nPublish anyway?`
-      if (!window.confirm(msg)) return
-    }
-    setPublishing(true)
-    try {
-      const ver = await api.publishVersion(auth!.tenantId, version.id)
-      setVersion(ver)
-      const wf = await api.getWorkflow(auth!.tenantId, workflowId)
-      setWorkflow(wf)
-      const info = await api.getWebhook(auth!.tenantId, ver.id)
-      setWebhookUrl(window.location.origin + info.url)
-      setWebhookSecret(info.secret ?? null)
-      toast(zh ? '版本已发布' : 'Version published')
-    } catch (e) {
-      toast(String(e), 'error')
-    } finally {
-      setPublishing(false)
-    }
-  }
-
-  const [publishingAndRunning, setPublishingAndRunning] = useState(false)
-  const handlePublishAndRun = async () => {
-    if (!version || version.status === 'published') return
-    const warnings = collectPublishWarnings()
-    if (warnings.length > 0) {
-      const msg = `Publishing with ${warnings.length} warning${warnings.length > 1 ? 's' : ''}:\n\n${warnings.map((w) => `• ${w}`).join('\n')}\n\nPublish and run anyway?`
-      if (!window.confirm(msg)) return
-    }
-    setPublishingAndRunning(true)
-    try {
-      const ver = await api.publishVersion(auth!.tenantId, version.id)
-      setVersion(ver)
-      const wf = await api.getWorkflow(auth!.tenantId, workflowId)
-      setWorkflow(wf)
-      const info = await api.getWebhook(auth!.tenantId, ver.id)
-      setWebhookUrl(window.location.origin + info.url)
-      setWebhookSecret(info.secret ?? null)
-      const rec = await api.startExecutionFromVersion(auth!.tenantId, ver.id, inputJson || '{}')
-      setExecution(rec)
-      toast(zh ? '已发布并开始运行' : 'Published and started run')
-    } catch (e) {
-      toast(String(e), 'error')
-    } finally {
-      setPublishingAndRunning(false)
-    }
-  }
-
-  // Export current published version as JSON download
-  const handleExport = async () => {
-    if (!workflow?.latest_version_id) { toast(zh ? '请先发布一个版本后再导出' : 'Publish a version first to export', 'error'); return }
-    try {
-      const exported = await api.exportWorkflow(auth!.tenantId, workflowId)
-      const blob = new Blob([JSON.stringify(exported, null, 2)], { type: 'application/json' })
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = `${exported.name.replace(/\s+/g, '-').toLowerCase()}.json`
-      a.click()
-      URL.revokeObjectURL(url)
-    } catch (e) {
-      toast(String(e), 'error')
-    }
-  }
-
-  // Open version history modal
-  const handleShowVersions = async () => {
-    setShowVersions(true)
-    setLoadingVersions(true)
-    try {
-      const vers = await api.listVersions(auth!.tenantId, workflowId)
-      setVersions(vers.sort((a, b) => b.version - a.version))
-    } catch (e) {
-      toast(String(e), 'error')
-      setShowVersions(false)
-    } finally {
-      setLoadingVersions(false)
-    }
-  }
-
-  // Load a specific version's graph into the canvas
-  const handleLoadVersion = async (versionId: string) => {
-    try {
-      const ver = await api.getVersion(auth!.tenantId, versionId)
-      setVersion(ver)
-      const { nodes: fn, edges: fe } = graphFromApi(ver.graph.nodes, ver.graph.edges)
-      setNodes(fn)
-      setEdges(fe)
-      setInputSchema(ver.graph.input_schema ?? [])
-      setSelectedNodeId(null)
-      setShowVersions(false)
-      toast(zh ? `已加载 v${ver.version}` : `Loaded v${ver.version}`)
-    } catch (e) {
-      toast(String(e), 'error')
-    }
-  }
-
-  // Rollback to a historical version (creates new draft version)
-  const handleRollback = async (versionId: string, versionNum: number) => {
-    if (!window.confirm(zh ? `回滚到 v${versionNum}？这将基于 v${versionNum} 创建一个新草稿版本。` : `Rollback to v${versionNum}? This creates a new draft version based on v${versionNum}.`)) return
-    setRollingBack(versionId)
-    try {
-      const newVer = await api.rollbackVersion(auth!.tenantId, workflowId, versionId)
-      setVersions((prev) => [newVer, ...prev])
-      setVersion(newVer)
-      const { nodes: fn, edges: fe } = graphFromApi(newVer.graph.nodes, newVer.graph.edges)
-      setNodes(fn)
-      setEdges(fe)
-      setInputSchema(newVer.graph.input_schema ?? [])
-      setSelectedNodeId(null)
-      setShowVersions(false)
-      toast(zh ? `已回滚到 v${versionNum} — 新草稿 v${newVer.version} 已创建` : `Rolled back to v${versionNum} — new draft v${newVer.version} created`)
-    } catch (e) {
-      toast(String(e), 'error')
-    } finally {
-      setRollingBack(null)
-    }
-  }
+  // Version persistence — save/publish/publish-and-run, version history
+  // (list/diff/load/rollback) and JSON export — lives in a dedicated hook
+  // (see editor/useWorkflowPersistence). `version` stays in the component.
+  const persistence = useWorkflowPersistence({
+    workflowId, zh, toast,
+    workflow, setWorkflow, version, setVersion,
+    nodes, edges, inputSchema, setInputSchema,
+    setNodes, setEdges, setSelectedNodeId,
+    setWebhookUrl, setWebhookSecret,
+    inputJson, setExecution,
+    collectPublishWarnings,
+  })
+  const {
+    saving, publishing, publishingAndRunning,
+    versions, showVersions, setShowVersions, loadingVersions,
+    diffVersionId, setDiffVersionId, diffCompareId, setDiffCompareId,
+    showComparePicker, setShowComparePicker, rollingBack,
+    saveMessage, setSaveMessage, showSaveMessage, setShowSaveMessage,
+    handleSave, handlePublish, handlePublishAndRun, handleExport,
+    handleShowVersions, handleLoadVersion, handleRollback,
+  } = persistence
 
   // Rename workflow
   const handleRename = async () => {
