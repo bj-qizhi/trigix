@@ -191,6 +191,15 @@ test('saving an unchanged graph round-trips the loaded nodes and edges', async (
   expect(errors, errors.join('\n')).toHaveLength(0)
 })
 
+test('canvas node shows its data-driven preview', async ({ page }) => {
+  const errors = trackErrors(page)
+  await mockBackend(page)
+  await openEditor(page)
+  // nodePreview() renders the http node's URL as its on-canvas subtitle.
+  await expect(page.getByTestId('rf__node-http').getByText('https://example.com')).toBeVisible()
+  expect(errors, errors.join('\n')).toHaveLength(0)
+})
+
 test('integration node config panel renders after the domain split', async ({ page }) => {
   const errors = trackErrors(page)
   await mockBackend(page)
