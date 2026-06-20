@@ -191,6 +191,20 @@ test('saving an unchanged graph round-trips the loaded nodes and edges', async (
   expect(errors, errors.join('\n')).toHaveLength(0)
 })
 
+test('integration node config panel renders after the domain split', async ({ page }) => {
+  const errors = trackErrors(page)
+  await mockBackend(page)
+  await openEditor(page)
+
+  // structured_output's panel (StructuredOutputConfig) now lives in
+  // integrations/ai.tsx and pulls llmEndpointFields from integrations/_helpers.
+  // Selecting it exercises the barrel → domain-file → helpers wiring at runtime.
+  await page.getByTestId('rf__node-structured_output').click({ position: { x: 10, y: 10 } })
+  await expect(page.locator('.config-panel-body textarea, .config-panel-body input').first()).toBeVisible()
+
+  expect(errors, errors.join('\n')).toHaveLength(0)
+})
+
 test('Ctrl+Enter dispatches an execution with the run input', async ({ page }) => {
   const errors = trackErrors(page)
   await mockBackend(page)
