@@ -43,12 +43,23 @@ secrets:
   databaseUrl: ""
   jwtSecret: ""
   devApiKey: ""
+  # Encrypts stored credentials/SSO secrets at rest (AES-256-GCM). Required for a
+  # persistent deployment: the platform fails closed (refuses to start) without
+  # it. Set a strong, stable value — losing it makes encrypted secrets
+  # unrecoverable. For a throwaway/dev install you may instead set
+  # allowPlaintextCredentials=true below to accept plaintext-at-rest.
+  credentialMasterKey: ""
   smtpHost: ""
   smtpPort: "587"
   smtpUser: ""
   smtpPassword: ""
   smtpFrom: ""
   appBaseUrl: ""
+
+# Explicitly accept plaintext-at-rest for credentials when no
+# secrets.credentialMasterKey is set (dev/throwaway installs only). Leave false
+# in production — the platform fails closed without a master key.
+allowPlaintextCredentials: false
 
 postgresql:
   enabled: true

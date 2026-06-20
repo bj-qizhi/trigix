@@ -78,6 +78,9 @@ services:
       DEV_API_KEY: ${API_KEY:-changeme}
       JWT_SECRET: ${JWT_SECRET:-change-me-in-production}
       AUTH_REQUIRED: "true"
+      # Encrypts stored credentials/SSO secrets at rest (AES-256-GCM). Required:
+      # the platform refuses to start without it when a database is configured.
+      CREDENTIAL_MASTER_KEY: ${CREDENTIAL_MASTER_KEY:?set a strong CREDENTIAL_MASTER_KEY in your .env}
       RUST_LOG: ${RUST_LOG:-info}
       # Set USE_QUEUE=true to run executions through the Redis Streams queue.
       USE_QUEUE: ${USE_QUEUE:-false}

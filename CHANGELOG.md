@@ -2,6 +2,31 @@
 
 All notable changes to Trigix will be documented in this file.
 
+## [Unreleased]
+
+### Security
+
+- **Credential encryption is now fail-closed.** Stored secrets (credential
+  values and SSO/OIDC client secrets) are encrypted at rest with AES-256-GCM via
+  `CREDENTIAL_MASTER_KEY`. Previously a missing key — or even an encryption error
+  while a key *was* configured — silently fell back to writing **plaintext** to
+  the database. Now:
+  - When a key is configured, an encryption failure fails closed (never
+    downgrades to plaintext-at-rest).
+  - When a persistent `DATABASE_URL` is configured but no `CREDENTIAL_MASTER_KEY`
+    is set, the platform refuses to start. Set `ALLOW_PLAINTEXT_CREDENTIALS=true`
+    to explicitly opt into plaintext-at-rest for local/dev use.
+
+### Changed
+
+- **BREAKING (ops):** Persistent deployments must now provide
+  `CREDENTIAL_MASTER_KEY` (or explicitly set `ALLOW_PLAINTEXT_CREDENTIALS=true`).
+  The Helm chart fails the install with a clear message when neither is set
+  (`secrets.credentialMasterKey` / `allowPlaintextCredentials`), and the
+  production Compose file requires `CREDENTIAL_MASTER_KEY` at parse time.
+  Existing installs that relied on the silent plaintext fallback must set one of
+  these to start. In-memory (no-database) mode is unaffected.
+
 ## [1.3.0] - 2026-06-16
 
 A large expansion of the workflow node catalog — **44 new node types

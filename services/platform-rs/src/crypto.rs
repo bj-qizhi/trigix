@@ -6,6 +6,13 @@
 //!
 //! Design notes:
 //! - When `CREDENTIAL_MASTER_KEY` is unset (dev), values are stored as-is.
+//!   In a persistent deployment this is fail-closed at startup via
+//!   [`validate_config`]: the platform refuses to boot rather than silently
+//!   write secrets as plaintext, unless `ALLOW_PLAINTEXT_CREDENTIALS=true` is
+//!   set to explicitly opt into the insecure legacy behavior.
+//! - When a key *is* configured, [`encrypt`] never falls back to plaintext: an
+//!   encryption error fails closed (panics) instead of downgrading at-rest
+//!   protection.
 //! - `decrypt` transparently passes through legacy plaintext (anything without
 //!   the `enc:v1:` marker), so rows written before this feature keep working —
 //!   no data migration required.
@@ -58,11 +65,67 @@ fn decrypt_with_key(key: &[u8; 32], stored: &str) -> String {
     }
 }
 
-/// Encrypt a secret for at-rest storage. Returns the plaintext unchanged when no
-/// master key is configured.
+/// Whether at-rest encryption is active (a `CREDENTIAL_MASTER_KEY` is set).
+pub fn encryption_enabled() -> bool {
+    master_key().is_some()
+}
+
+/// Fail-closed startup gate for secret-at-rest encryption.
+///
+/// `persistent` is true whenever secrets are written to durable storage (i.e. a
+/// real `DATABASE_URL` is configured). In that case a missing
+/// `CREDENTIAL_MASTER_KEY` would cause credentials and SSO client secrets to be
+/// stored as **plaintext** — so we refuse to start. Operators who genuinely want
+/// plaintext-at-rest (local/dev only) must opt in explicitly with
+/// `ALLOW_PLAINTEXT_CREDENTIALS=true`, which is logged loudly.
+///
+/// Returns `Err(message)` when the platform must not start.
+pub fn validate_config(persistent: bool) -> Result<(), String> {
+    if encryption_enabled() || !persistent {
+        return Ok(());
+    }
+    let opt_in = std::env::var("ALLOW_PLAINTEXT_CREDENTIALS")
+        .map(|v| {
+            matches!(
+                v.trim().to_ascii_lowercase().as_str(),
+                "1" | "true" | "yes" | "on"
+            )
+        })
+        .unwrap_or(false);
+    if opt_in {
+        tracing::warn!(
+            "CREDENTIAL_MASTER_KEY is not set and ALLOW_PLAINTEXT_CREDENTIALS is enabled: \
+             credentials and SSO client secrets will be stored as PLAINTEXT. Do not use this \
+             in production."
+        );
+        return Ok(());
+    }
+    Err(
+        "CREDENTIAL_MASTER_KEY is not set but a persistent database is configured. Stored \
+         credentials and SSO client secrets would be written as PLAINTEXT. Set \
+         CREDENTIAL_MASTER_KEY to a strong secret, or set ALLOW_PLAINTEXT_CREDENTIALS=true to \
+         explicitly accept plaintext-at-rest (not recommended)."
+            .to_string(),
+    )
+}
+
+/// Encrypt a secret for at-rest storage.
+///
+/// - When a master key is configured, the value is always encrypted; an
+///   encryption failure fails closed (panics) rather than silently storing
+///   plaintext.
+/// - When no key is configured, the plaintext is returned unchanged (legacy/dev
+///   mode — gated at startup by [`validate_config`]).
 pub fn encrypt(plaintext: &str) -> String {
     match master_key() {
-        Some(key) => encrypt_with_key(&key, plaintext).unwrap_or_else(|| plaintext.to_string()),
+        Some(key) => encrypt_with_key(&key, plaintext).unwrap_or_else(|| {
+            // A key is configured, so encryption was intended. Never downgrade
+            // to plaintext-at-rest on error — fail closed.
+            panic!(
+                "credential encryption failed despite a configured CREDENTIAL_MASTER_KEY; \
+                 refusing to store the secret as plaintext"
+            )
+        }),
         None => plaintext.to_string(),
     }
 }
@@ -129,5 +192,53 @@ mod tests {
         let mut bad = enc.clone();
         bad.push('A'); // corrupt the base64 tail
         assert_ne!(decrypt_with_key(&k, &bad), "secret");
+    }
+
+    // Note: `validate_config` and `encryption_enabled` read the process-wide
+    // CREDENTIAL_MASTER_KEY / ALLOW_PLAINTEXT_CREDENTIALS env vars. These tests
+    // mutate that shared state, so they run serially under one #[test] to avoid
+    // cross-test interference from cargo's parallel runner.
+    #[test]
+    fn validate_config_is_fail_closed() {
+        let prev_key = std::env::var("CREDENTIAL_MASTER_KEY").ok();
+        let prev_optin = std::env::var("ALLOW_PLAINTEXT_CREDENTIALS").ok();
+
+        // No key + persistent storage => refuse to start.
+        std::env::remove_var("CREDENTIAL_MASTER_KEY");
+        std::env::remove_var("ALLOW_PLAINTEXT_CREDENTIALS");
+        assert!(!encryption_enabled());
+        assert!(
+            validate_config(true).is_err(),
+            "must fail closed without a key"
+        );
+        // Ephemeral (in-memory) mode is allowed without a key.
+        assert!(validate_config(false).is_ok());
+
+        // Explicit opt-in re-enables plaintext-at-rest.
+        std::env::set_var("ALLOW_PLAINTEXT_CREDENTIALS", "true");
+        assert!(
+            validate_config(true).is_ok(),
+            "explicit opt-in must be honored"
+        );
+
+        // A configured key satisfies the gate regardless of the opt-in flag.
+        std::env::remove_var("ALLOW_PLAINTEXT_CREDENTIALS");
+        std::env::set_var("CREDENTIAL_MASTER_KEY", "a-strong-master-key");
+        assert!(encryption_enabled());
+        assert!(validate_config(true).is_ok());
+        // And with a key set, encrypt() actually encrypts (never plaintext).
+        let enc = encrypt("topsecret");
+        assert!(enc.starts_with(PREFIX));
+        assert!(!enc.contains("topsecret"));
+
+        // Restore prior environment.
+        match prev_key {
+            Some(v) => std::env::set_var("CREDENTIAL_MASTER_KEY", v),
+            None => std::env::remove_var("CREDENTIAL_MASTER_KEY"),
+        }
+        match prev_optin {
+            Some(v) => std::env::set_var("ALLOW_PLAINTEXT_CREDENTIALS", v),
+            None => std::env::remove_var("ALLOW_PLAINTEXT_CREDENTIALS"),
+        }
     }
 }

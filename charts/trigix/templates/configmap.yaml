@@ -9,6 +9,9 @@ data:
   {{- range $key, $value := .Values.env }}
   {{ $key }}: {{ $value | quote }}
   {{- end }}
+  {{- if .Values.allowPlaintextCredentials }}
+  ALLOW_PLAINTEXT_CREDENTIALS: "true"
+  {{- end }}
   {{- if .Values.postgresql.enabled }}
   POSTGRES_HOST: {{ printf "%s-postgresql" (include "trigix.fullname" .) | quote }}
   POSTGRES_PORT: "5432"

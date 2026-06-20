@@ -37,6 +37,13 @@ async fn main() {
 
     let router = match std::env::var("DATABASE_URL") {
         Ok(database_url) => {
+            // Fail closed: a persistent database without CREDENTIAL_MASTER_KEY
+            // would store credentials/SSO secrets as plaintext.
+            if let Err(msg) = trigix_platform::crypto::validate_config(true) {
+                tracing::error!("{msg}");
+                std::process::exit(1);
+            }
+
             let pool = sqlx::postgres::PgPoolOptions::new()
                 .max_connections(db_max_conn)
                 .connect(&database_url)
