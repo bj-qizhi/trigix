@@ -292,3 +292,14 @@ test('toolbar Limits popover opens and toggles an edit field', async ({ page }) 
 
   expect(errors, errors.join('\n')).toHaveLength(0)
 })
+
+test('toolbar tag editor toggles an add input', async ({ page }) => {
+  const errors = trackErrors(page)
+  await mockBackend(page)
+  await openEditor(page)
+
+  await page.getByText('+ tag', { exact: true }).click()
+  await expect(page.getByPlaceholder(/标签名|tag name/)).toBeVisible()
+
+  expect(errors, errors.join('\n')).toHaveLength(0)
+})
