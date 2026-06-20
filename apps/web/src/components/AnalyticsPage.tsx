@@ -86,6 +86,7 @@ export function AnalyticsPage({ onBack }: Props) {
       .then(([execs, wfs, usage, ntStats]) => {
         setAllExecutions(execs); setWorkflows(wfs); setTokenUsage(usage); setNodeTypeStats(ntStats)
       })
+      .catch(() => { /* forbidden / no data — leave empty rather than reject unhandled */ })
       .finally(() => setLoading(false))
     api.getWorkflowStatsAnalytics(auth!.tenantId, 30).then(setWfStatsAnalytics).catch(() => {})
     api.getSlaBreaches(auth!.tenantId, 30).then(setSlaBreaches).catch(() => {})
