@@ -1,0 +1,208 @@
+// Copyright © 2026 北京祺智科技有限公司. All rights reserved.
+// https://www.qzso.com/ · managecode@gmail.com
+
+import { test, expect, type Page } from '@playwright/test'
+
+// Behavioural safety net for the WorkflowEditor graph-mutation surface BEFORE it
+// is refactored. These pin the contract that survives a rewrite: palette add,
+// config edits, node deletion, edge round-trip, and run dispatch must all flow
+// through to the serialized graph (POST .../versions) and execution
+// (POST .../executions). Backend is route-mocked; we also assert no pageerror.
+
+const AUTH = {
+  token: 'h.' + Buffer.from(JSON.stringify({ tenant_id: 't' })).toString('base64') + '.s',
+  tenantId: 't', workspaceId: 'w', projectId: 'p', role: 'admin',
+  email: 'a@example.com', emailVerified: true,
+}
+
+const WF = {
+  id: 'wf1', tenant_id: 't', workspace_id: 'w', project_id: 'p',
+  name: 'Editor WF', status: 'published', latest_version_id: 'v1',
+  updated_at: 1, created_at: 1,
+}
+
+const VERSION = {
+  id: 'v1', tenant_id: 't', workflow_id: 'wf1', version: 1, status: 'published',
+  graph: {
+    workflow_version_id: 'v1',
+    nodes: [
+      { id: 'trigger', type: 'trigger', config: {} },
+      { id: 'structured_output', type: 'structured_output', config: {} },
+      { id: 'http', type: 'http', config: { url: 'https://example.com' } },
+      { id: 'slack', type: 'slack', config: {} },
+    ],
+    edges: [
+      { source: 'trigger', target: 'structured_output' },
+      { source: 'structured_output', target: 'slack' },
+    ],
+  },
+}
+
+type Graph = { nodes: { id: string; type: string; config: Record<string, unknown> }[]; edges: { source: string; target: string }[] }
+type VersionPost = { tenant_id: string; graph: Graph; message?: string }
+type ExecPost = { tenant_id: string; input_json: string }
+
+function trackErrors(page: Page): string[] {
+  const errors: string[] = []
+  page.on('pageerror', (e) => errors.push(String(e)))
+  return errors
+}
+
+// Auth + the WorkflowList critical-path reads so the list renders, plus the
+// editor's workflow + version GETs. Everything else falls through to 403.
+async function mockBackend(page: Page) {
+  await page.addInitScript((auth) => localStorage.setItem('af_auth', JSON.stringify(auth)), AUTH)
+  await page.route('**/v1/**', (r) => r.fulfill({ status: 403, json: {} }))
+  await page.route(/\/v1\/schedules/, (r) => r.fulfill({ json: [] }))
+  await page.route(/\/v1\/executions\/stats/, (r) => r.fulfill({ json: {} }))
+  await page.route(/\/v1\/executions(\?|$)/, (r) => r.fulfill({ json: [] }))
+  await page.route(/\/v1\/workflows(\?|$)/, (r) => r.fulfill({ json: [WF] }))
+  await page.route(/\/v1\/workflows\/wf1(\?|$)/, (r) => r.fulfill({ json: WF }))
+  await page.route(/\/v1\/workflow-versions\/v1/, (r) => r.fulfill({ json: VERSION }))
+}
+
+// Capture every POST .../versions body and answer with a fresh draft version.
+function captureVersionPosts(page: Page): VersionPost[] {
+  const calls: VersionPost[] = []
+  page.route(/\/v1\/workflows\/wf1\/versions/, async (r) => {
+    if (r.request().method() === 'POST') calls.push(r.request().postDataJSON() as VersionPost)
+    await r.fulfill({ json: { ...VERSION, id: 'v2', version: 2, status: 'draft' } })
+  })
+  return calls
+}
+
+// Capture every POST .../executions body and answer with a queued execution.
+function captureExecutionPosts(page: Page): ExecPost[] {
+  const calls: ExecPost[] = []
+  page.route(/\/v1\/workflows\/wf1\/executions/, async (r) => {
+    if (r.request().method() === 'POST') calls.push(r.request().postDataJSON() as ExecPost)
+    await r.fulfill({
+      json: {
+        id: 'ex1', tenant_id: 't', workflow_id: 'wf1', workflow_version_id: 'v1',
+        status: 'queued', started_at: 1, created_at: 1, node_results: [],
+      },
+    })
+  })
+  return calls
+}
+
+async function openEditor(page: Page) {
+  await page.goto('/')
+  await page.getByText('Editor WF').click()
+  // Canvas mounted once a loaded node is on screen.
+  await expect(page.getByTestId('rf__node-http')).toBeVisible({ timeout: 10_000 })
+}
+
+const rfNodes = (page: Page) => page.locator('[data-testid^="rf__node-"]')
+
+// Blur any focused config field — the editor's Ctrl+S / Ctrl+Enter / Delete
+// keymap intentionally ignores keystrokes while an INPUT/TEXTAREA/SELECT holds
+// focus, so we click the canvas pane first.
+async function blurToCanvas(page: Page) {
+  await page.locator('.react-flow__pane').click({ position: { x: 5, y: 5 } })
+}
+
+test('palette click adds a node to the canvas', async ({ page }) => {
+  const errors = trackErrors(page)
+  await mockBackend(page)
+  await openEditor(page)
+
+  const before = await rfNodes(page).count()
+  await page.locator('.palette-node').first().click()
+  await expect(rfNodes(page)).toHaveCount(before + 1, { timeout: 10_000 })
+
+  expect(errors, errors.join('\n')).toHaveLength(0)
+})
+
+test('editing a node config and saving sends the new value in the version graph', async ({ page }) => {
+  const errors = trackErrors(page)
+  await mockBackend(page)
+  const posts = captureVersionPosts(page)
+  await openEditor(page)
+
+  // Open the HTTP node config and rewrite its URL field (located by its current
+  // value, so the test is independent of field labels/order).
+  await page.getByTestId('rf__node-http').click({ position: { x: 10, y: 10 } })
+  const inputs = page.locator('.config-panel-body input')
+  await expect(inputs.first()).toBeVisible()
+  let urlField = null
+  for (let i = 0; i < (await inputs.count()); i++) {
+    if ((await inputs.nth(i).inputValue()).includes('example.com')) { urlField = inputs.nth(i); break }
+  }
+  expect(urlField, 'HTTP node URL field should be present').not.toBeNull()
+  await urlField!.fill('https://changed.example.com/new')
+
+  await blurToCanvas(page)
+  await page.keyboard.press('Control+s')
+
+  await expect.poll(() => posts.length).toBeGreaterThan(0)
+  const httpNode = posts.at(-1)!.graph.nodes.find((n) => n.id === 'http')
+  expect(httpNode?.config.url).toBe('https://changed.example.com/new')
+
+  expect(errors, errors.join('\n')).toHaveLength(0)
+})
+
+test('deleting a node removes it (and its edges) from the saved graph', async ({ page }) => {
+  const errors = trackErrors(page)
+  await mockBackend(page)
+  const posts = captureVersionPosts(page)
+  await openEditor(page)
+
+  // Select the slack node and delete it.
+  await page.getByTestId('rf__node-slack').click({ position: { x: 10, y: 10 } })
+  await blurToCanvas(page)
+  // Re-select (pane click cleared selection) then delete.
+  await page.getByTestId('rf__node-slack').click({ position: { x: 10, y: 10 } })
+  await page.keyboard.press('Delete')
+  await expect(page.getByTestId('rf__node-slack')).toHaveCount(0)
+
+  await page.keyboard.press('Control+s')
+
+  await expect.poll(() => posts.length).toBeGreaterThan(0)
+  const graph = posts.at(-1)!.graph
+  expect(graph.nodes.find((n) => n.id === 'slack')).toBeUndefined()
+  expect(graph.nodes.find((n) => n.id === 'http')).toBeDefined()
+  // The edge into slack must be gone; the trigger→structured_output edge stays.
+  expect(graph.edges.some((e) => e.target === 'slack')).toBe(false)
+  expect(graph.edges.some((e) => e.source === 'trigger' && e.target === 'structured_output')).toBe(true)
+
+  expect(errors, errors.join('\n')).toHaveLength(0)
+})
+
+test('saving an unchanged graph round-trips the loaded nodes and edges', async ({ page }) => {
+  const errors = trackErrors(page)
+  await mockBackend(page)
+  const posts = captureVersionPosts(page)
+  await openEditor(page)
+
+  await blurToCanvas(page)
+  await page.keyboard.press('Control+s')
+
+  await expect.poll(() => posts.length).toBeGreaterThan(0)
+  const graph = posts.at(-1)!.graph
+  expect(graph.nodes.map((n) => n.id).sort()).toEqual(['http', 'slack', 'structured_output', 'trigger'])
+  expect(graph.edges).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({ source: 'trigger', target: 'structured_output' }),
+      expect.objectContaining({ source: 'structured_output', target: 'slack' }),
+    ]),
+  )
+
+  expect(errors, errors.join('\n')).toHaveLength(0)
+})
+
+test('Ctrl+Enter dispatches an execution with the run input', async ({ page }) => {
+  const errors = trackErrors(page)
+  await mockBackend(page)
+  const posts = captureExecutionPosts(page)
+  await openEditor(page)
+
+  await blurToCanvas(page)
+  await page.keyboard.press('Control+Enter')
+
+  await expect.poll(() => posts.length).toBeGreaterThan(0)
+  expect(posts.at(-1)!.tenant_id).toBe('t')
+  expect(() => JSON.parse(posts.at(-1)!.input_json)).not.toThrow()
+
+  expect(errors, errors.join('\n')).toHaveLength(0)
+})
