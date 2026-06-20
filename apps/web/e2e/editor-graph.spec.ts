@@ -277,3 +277,18 @@ test('toolbar View and More menus open and trigger actions', async ({ page }) =>
 
   expect(errors, errors.join('\n')).toHaveLength(0)
 })
+
+test('toolbar Limits popover opens and toggles an edit field', async ({ page }) => {
+  const errors = trackErrors(page)
+  await mockBackend(page)
+  await openEditor(page)
+
+  await page.locator('button[title="SLA、速率、并发与 AI 预算"], button[title="SLA, rate limit, concurrency & AI budget"]').click()
+  await expect(page.getByText(/限额与预算|Limits & budget/)).toBeVisible()
+
+  // Clicking a "not set" value enters inline-edit mode (a number input appears).
+  await page.locator('.tb-popover').getByRole('button', { name: /未设置|not set/ }).first().click()
+  await expect(page.locator('.tb-popover input[type="number"]')).toBeVisible()
+
+  expect(errors, errors.join('\n')).toHaveLength(0)
+})
