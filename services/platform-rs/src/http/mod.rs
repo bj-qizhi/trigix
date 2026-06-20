@@ -8,6 +8,7 @@ mod auth;
 mod billing;
 mod credentials;
 mod custom_nodes;
+mod event_subscriptions;
 mod executions;
 mod forms;
 mod orgs;
@@ -15,6 +16,11 @@ mod rag;
 mod sso;
 mod system;
 mod webhooks;
+mod workflow_ai;
+mod workflow_comments;
+mod workflow_forms;
+mod workflow_test_cases;
+mod workflow_variables;
 mod workflows;
 mod workspaces;
 
@@ -765,6 +771,7 @@ pub(crate) fn build_router(state: AppState) -> Router {
         .merge(billing::routes())
         .merge(credentials::routes())
         .merge(custom_nodes::routes())
+        .merge(event_subscriptions::routes())
         .merge(executions::routes())
         .merge(forms::routes())
         .merge(orgs::routes())
@@ -772,6 +779,11 @@ pub(crate) fn build_router(state: AppState) -> Router {
         .merge(sso::routes())
         .merge(system::routes())
         .merge(webhooks::routes())
+        .merge(workflow_ai::routes())
+        .merge(workflow_comments::routes())
+        .merge(workflow_forms::routes())
+        .merge(workflow_test_cases::routes())
+        .merge(workflow_variables::routes())
         .merge(workflows::routes())
         .merge(workspaces::routes())
         .layer(middleware::from_fn_with_state(
