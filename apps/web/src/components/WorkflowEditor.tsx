@@ -12,6 +12,8 @@ import { useWorkflowRun } from './editor/useWorkflowRun'
 import { useWorkflowPersistence } from './editor/useWorkflowPersistence'
 import { VersionHistoryModal } from './editor/VersionHistoryModal'
 import { CommandPalette } from './editor/CommandPalette'
+import { HelpModal } from './editor/HelpModal'
+import { ValidationModal } from './editor/ValidationModal'
 import { NodeIcon } from './nodeIcons'
 import {
   PiChartBar, PiFire, PiCheckCircle, PiCalendarBlank, PiListBullets,
@@ -2089,94 +2091,11 @@ export function WorkflowEditor({ workflowId, onBack, initialInput }: Props) {
       )}
 
       {/* Help modal */}
-      {showHelp && (
-        <div className="modal-backdrop" onClick={() => setShowHelp(false)}>
-          <div className="modal" style={{ width: 480, maxHeight: '80vh', overflowY: 'auto' }} onClick={(e) => e.stopPropagation()}>
-            <h2>{zh ? '键盘快捷键与提示' : 'Keyboard Shortcuts & Tips'}</h2>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, marginBottom: 16 }}>
-              <tbody>
-                {(zh ? [
-                  ['Ctrl+S', '将当前图保存为新版本'],
-                  ['Ctrl+Enter', '运行工作流'],
-                  ['Ctrl+K', '打开节点命令面板（搜索/跳转到节点）'],
-                  ['Escape', '取消选中节点'],
-                  ['Ctrl+D', '复制选中节点'],
-                  ['Ctrl+Z', '撤销最近的节点添加/删除/布局'],
-                  ['Ctrl+Shift+Z / Ctrl+Y', '重做'],
-                  ['Delete / Backspace', '删除选中节点及其关联边'],
-                  ['f', '将所有节点适配到视图'],
-                  ['点击边标签', '切换条件分支（true ↔ false）'],
-                ] : [
-                  ['Ctrl+S', 'Save current graph as a new version'],
-                  ['Ctrl+Enter', 'Run the workflow'],
-                  ['Ctrl+K', 'Open node command palette (search/jump to node)'],
-                  ['Escape', 'Deselect selected node'],
-                  ['Ctrl+D', 'Duplicate selected node'],
-                  ['Ctrl+Z', 'Undo last node add/delete/layout'],
-                  ['Ctrl+Shift+Z / Ctrl+Y', 'Redo'],
-                  ['Delete / Backspace', 'Delete selected node and its edges'],
-                  ['f', 'Fit all nodes into view'],
-                  ['Click edge label', 'Toggle condition branch (true ↔ false)'],
-                ]).map(([k, v]) => (
-                  <tr key={k} style={{ borderBottom: '1px solid var(--border)' }}>
-                    <td style={{ padding: '6px 8px', fontFamily: 'monospace', fontWeight: 700, whiteSpace: 'nowrap', color: 'var(--link)' }}>{k}</td>
-                    <td style={{ padding: '6px 8px', color: 'var(--fg)' }}>{v}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            <h3 style={{ fontSize: 13, marginBottom: 6 }}>{zh ? '画布提示' : 'Canvas tips'}</h3>
-            <ul style={{ fontSize: 12, color: 'var(--fg)', lineHeight: 1.7, paddingLeft: 18, marginBottom: 14 }}>
-              <li>{zh ? '从节点连接点拖出以连线' : 'Drag from a node handle to connect nodes'}</li>
-              <li>{zh ? <>使用 <strong>⊞ 布局</strong> 自动拓扑排列节点</> : <>Use <strong>⊞ Layout</strong> to auto-arrange nodes topologically</>}</li>
-              <li>{zh ? <>启用 <strong>⊹ 对齐</strong> 以在拖拽时 16px 网格对齐</> : <>Enable <strong>⊹ Snap</strong> for 16px grid alignment while dragging</>}</li>
-              <li>{zh ? <>切换 <strong>▣ 地图</strong> 以显示/隐藏小地图</> : <>Toggle <strong>▣ Map</strong> to hide/show the minimap</>}</li>
-              <li>{zh ? <>按 <strong>f</strong> 或点击 <strong>⊡ 适配</strong> 将所有节点适配到视图</> : <>Press <strong>f</strong> or click <strong>⊡ Fit</strong> to fit all nodes into view</>}</li>
-              <li>{zh ? '点击节点以在右侧面板中打开其配置' : 'Click a node to open its config in the right panel'}</li>
-              <li>{zh ? <>在配置面板标题栏中使用 <strong>⧉</strong> 复制节点</> : <>Use <strong>⧉</strong> in the config panel header to duplicate a node</>}</li>
-            </ul>
-            <h3 style={{ fontSize: 13, marginBottom: 6 }}>{zh ? '模板变量' : 'Template variables'}</h3>
-            <ul style={{ fontSize: 12, color: 'var(--fg)', lineHeight: 1.7, paddingLeft: 18, marginBottom: 14 }}>
-              <li><code>{'{{input.field}}'}</code> — {zh ? '工作流输入 JSON 字段' : 'workflow input JSON field'}</li>
-              <li><code>{'{{node_id.field}}'}</code> — {zh ? '前置节点的输出字段' : 'output field from a previous node'}</li>
-              <li><code>{'{{credential.name}}'}</code> — {zh ? '已存储的凭证值' : 'stored credential value'}</li>
-              <li><code>{'{{env.KEY}}'}</code> — {zh ? '当前环境集中的环境变量' : 'environment variable from active env set'}</li>
-              <li><code>{'{{variable.KEY}}'}</code> — {zh ? '持久化工作流变量' : 'persistent workflow variable'}</li>
-            </ul>
-            <div className="modal-actions">
-              <button className="btn btn-primary" onClick={() => setShowHelp(false)}>{zh ? '关闭' : 'Close'}</button>
-            </div>
-          </div>
-        </div>
-      )}
+      {showHelp && <HelpModal zh={zh} onClose={() => setShowHelp(false)} />}
 
       {/* Validate modal */}
       {showValidate && (
-        <div className="modal-backdrop" onClick={() => setShowValidate(false)}>
-          <div className="modal" style={{ width: 480 }} onClick={(e) => e.stopPropagation()}>
-            <h2 style={{ marginBottom: 8 }}>
-              {zh ? '工作流校验' : 'Workflow Validation'}
-              {validateWarnings.length === 0
-                ? <span style={{ color: 'var(--success-text)', fontSize: 14, fontWeight: 400, marginLeft: 8 }}>✓ {zh ? '无问题' : 'No issues'}</span>
-                : <span style={{ color: 'var(--warning-text)', fontSize: 14, fontWeight: 400, marginLeft: 8 }}>{zh ? `${validateWarnings.length} 个问题` : `${validateWarnings.length} issue${validateWarnings.length !== 1 ? 's' : ''}`}</span>
-              }
-            </h2>
-            {validateWarnings.length === 0 ? (
-              <p style={{ color: 'var(--muted)', fontSize: 13 }}>
-                {zh ? '所有节点均已连接并配置完成。工作流已准备好发布。' : 'All nodes are connected and configured. The workflow is ready to publish.'}
-              </p>
-            ) : (
-              <ul style={{ margin: '8px 0 16px', padding: '0 0 0 18px', fontSize: 13, lineHeight: 1.8 }}>
-                {validateWarnings.map((w, i) => (
-                  <li key={i} style={{ color: 'var(--warning-text)' }}>{w}</li>
-                ))}
-              </ul>
-            )}
-            <div className="modal-actions">
-              <button className="btn btn-primary" onClick={() => setShowValidate(false)}>{zh ? '关闭' : 'Close'}</button>
-            </div>
-          </div>
-        </div>
+        <ValidationModal warnings={validateWarnings} zh={zh} onClose={() => setShowValidate(false)} />
       )}
 
       {/* Readme modal */}
