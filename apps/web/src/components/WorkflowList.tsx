@@ -14,6 +14,7 @@ import logoWordmark from '../assets/logo-wordmark.svg'
 import * as api from '../api/client'
 import type { WorkflowExport, WorkflowRecord, ScheduleSummary, ExecutionSummary, WorkflowGraph } from '../types'
 import { TemplatesModal, type Template } from './TemplatesModal'
+import { CreateWorkflowModal, SystemInfoModal, ShortcutsModal } from './workflowlist/WorkflowListModals'
 import { GenerateWorkflowModal } from './GenerateWorkflowModal'
 import { useTheme } from '../useTheme'
 import { useLocale } from '../useLocale'
@@ -155,9 +156,6 @@ export function WorkflowList({ onOpen, onOpenExecution, onCredentials, onAuditLo
   const [loading, setLoading]      = useState(true)
   const [error, setError]          = useState<string | null>(null)
   const [creating, setCreating]    = useState(false)
-  const [newName, setNewName]      = useState('')
-  const [newDescription, setNewDescription] = useState('')
-  const [saving, setSaving]        = useState(false)
   const [importing, setImporting]  = useState(false)
   const [duplicating, setDuplicating] = useState<string | null>(null)
   const [quickRunning, setQuickRunning] = useState<string | null>(null)
@@ -313,21 +311,10 @@ export function WorkflowList({ onOpen, onOpenExecution, onCredentials, onAuditLo
 
   useEffect(() => { void load() }, [])
 
-  const handleCreate = async () => {
-    if (!newName.trim()) return
-    setSaving(true)
-    try {
-      const wf = await api.createWorkflow(auth!.tenantId, auth!.workspaceId, auth!.projectId, newName.trim(), newDescription.trim() || undefined)
-      setWorkflows((prev) => [wf, ...prev])
-      setCreating(false)
-      setNewName('')
-      setNewDescription('')
-      openWorkflow(wf.id)
-    } catch (e) {
-      alert(String(e))
-    } finally {
-      setSaving(false)
-    }
+  const handleCreate = async (name: string, description?: string) => {
+    const wf = await api.createWorkflow(auth!.tenantId, auth!.workspaceId, auth!.projectId, name, description)
+    setWorkflows((prev) => [wf, ...prev])
+    openWorkflow(wf.id)
   }
 
   const handleQuickRun = async (e: React.MouseEvent, wf: WorkflowRecord) => {
@@ -2223,46 +2210,7 @@ export function WorkflowList({ onOpen, onOpenExecution, onCredentials, onAuditLo
       )}
 
       {showSystemInfo && (
-        <div className="modal-backdrop" onClick={() => setShowSystemInfo(false)}>
-          <div className="modal" style={{ width: 400 }} onClick={(e) => e.stopPropagation()}>
-            <h2>{zh ? '平台信息' : 'Platform Info'}</h2>
-            {!systemInfo ? (
-              <p style={{ color: 'var(--muted)' }}>{zh ? '加载中…' : 'Loading…'}</p>
-            ) : (
-              <>
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, marginBottom: 16 }}>
-                  <tbody>
-                    {[
-                      [zh ? '版本' : 'Version', systemInfo.version],
-                      [zh ? '节点类型数' : 'Node types', String(systemInfo.node_types)],
-                      [zh ? 'Rust 版本' : 'Rust edition', systemInfo.rust_edition],
-                      [zh ? '需要鉴权' : 'Auth required', systemInfo.auth_required ? (zh ? '是' : 'Yes') : (zh ? '否（开发模式）' : 'No (dev mode)')],
-                    ].map(([k, v]) => (
-                      <tr key={k} style={{ borderBottom: '1px solid var(--border)' }}>
-                        <td style={{ padding: '6px 8px', color: 'var(--muted)', width: 130 }}>{k}</td>
-                        <td style={{ padding: '6px 8px', fontWeight: 600 }}>{v}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-                <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 16 }}>
-                  <strong>{zh ? '功能特性：' : 'Features:'}</strong>
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 6 }}>
-                    {systemInfo.features.map((f) => (
-                      <span key={f} style={{
-                        background: 'var(--panel)', border: '1px solid var(--border)',
-                        borderRadius: 4, padding: '2px 6px', fontSize: 11, fontFamily: 'monospace',
-                      }}>{f}</span>
-                    ))}
-                  </div>
-                </div>
-              </>
-            )}
-            <div className="modal-footer">
-              <button className="btn btn-sm" onClick={() => setShowSystemInfo(false)}>{zh ? '关闭' : 'Close'}</button>
-            </div>
-          </div>
-        </div>
+        <SystemInfoModal info={systemInfo} onClose={() => setShowSystemInfo(false)} zh={zh} />
       )}
 
       {/* ── Global search modal ── */}
@@ -2331,40 +2279,7 @@ export function WorkflowList({ onOpen, onOpenExecution, onCredentials, onAuditLo
       )}
 
       {creating && (
-        <div className="modal-backdrop" onClick={() => setCreating(false)}>
-          <div className="modal" onClick={(e) => e.stopPropagation()}>
-            <h2>{zh ? '新建工作流' : 'New Workflow'}</h2>
-            <div className="field">
-              <label>{zh ? '名称' : 'Name'}</label>
-              <input
-                autoFocus
-                placeholder={zh ? '如：线索富化' : 'e.g. Lead Enrichment'}
-                value={newName}
-                onChange={(e) => setNewName(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && handleCreate()}
-              />
-            </div>
-            <div className="field">
-              <label>{zh ? '描述' : 'Description'} <span style={{ color: 'var(--muted)', fontWeight: 400 }}>{zh ? '（可选）' : '(optional)'}</span></label>
-              <input
-                placeholder={zh ? '此工作流的用途？' : 'What does this workflow do?'}
-                value={newDescription}
-                onChange={(e) => setNewDescription(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && handleCreate()}
-              />
-            </div>
-            <div className="modal-actions">
-              <button className="btn" onClick={() => setCreating(false)}>{zh ? '取消' : 'Cancel'}</button>
-              <button
-                className="btn btn-primary"
-                disabled={!newName.trim() || saving}
-                onClick={handleCreate}
-              >
-                {saving ? (zh ? '创建中…' : 'Creating…') : (zh ? '创建' : 'Create')}
-              </button>
-            </div>
-          </div>
-        </div>
+        <CreateWorkflowModal onCreate={handleCreate} onClose={() => setCreating(false)} zh={zh} />
       )}
 
       {editingTags && (
@@ -2576,42 +2491,7 @@ export function WorkflowList({ onOpen, onOpenExecution, onCredentials, onAuditLo
       })()}
 
       {showShortcuts && (
-        <div className="modal-backdrop" onClick={() => setShowShortcuts(false)}>
-          <div className="modal" style={{ maxWidth: 480 }} onClick={(e) => e.stopPropagation()}>
-            <div className="modal-header">
-              <h3>⌨ {zh ? '键盘快捷键' : 'Keyboard Shortcuts'}</h3>
-              <button className="btn btn-sm" onClick={() => setShowShortcuts(false)}>✕</button>
-            </div>
-            <div style={{ padding: '0 24px 20px' }}>
-              {[
-                { section: zh ? '导航' : 'Navigation', items: [
-                  { key: '/', desc: zh ? '聚焦搜索框' : 'Focus search' },
-                  { key: 'j / ↓', desc: zh ? '下移光标' : 'Move cursor down' },
-                  { key: 'k / ↑', desc: zh ? '上移光标' : 'Move cursor up' },
-                  { key: 'Enter', desc: zh ? '打开选中工作流' : 'Open focused workflow' },
-                ]},
-                { section: zh ? '操作' : 'Actions', items: [
-                  { key: 'n', desc: zh ? '新建工作流' : 'New workflow' },
-                  { key: 'Ctrl+R', desc: zh ? '快速运行' : 'Quick Run modal' },
-                  { key: 'Ctrl+Shift+F', desc: zh ? '全局搜索' : 'Global search' },
-                ]},
-                { section: zh ? '界面' : 'UI', items: [
-                  { key: '? / h', desc: zh ? '显示此帮助' : 'Show this help' },
-                ]},
-              ].map(({ section, items }) => (
-                <div key={section} style={{ marginTop: 16 }}>
-                  <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted)', letterSpacing: 1, textTransform: 'uppercase', marginBottom: 8 }}>{section}</div>
-                  {items.map(({ key, desc }) => (
-                    <div key={key} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '4px 0', borderBottom: '1px solid var(--border)', fontSize: 13 }}>
-                      <code style={{ background: 'var(--panel)', border: '1px solid var(--border)', borderRadius: 4, padding: '2px 7px', fontSize: 12, fontFamily: 'monospace', minWidth: 110, textAlign: 'center' }}>{key}</code>
-                      <span style={{ color: 'var(--muted)' }}>{desc}</span>
-                    </div>
-                  ))}
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
+        <ShortcutsModal onClose={() => setShowShortcuts(false)} zh={zh} />
       )}
     </div>
   )
