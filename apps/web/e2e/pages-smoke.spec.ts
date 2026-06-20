@@ -53,3 +53,53 @@ test('every navigation page mounts without a crash', async ({ page }) => {
     expect(errors, `error after opening "${label}":\n${errors.join('\n')}`).toHaveLength(0)
   }
 })
+
+// Pages reached from the user (avatar) menu rather than the nav menu.
+const USER_MENU_PAGES = ['账号', '用户', '提现审批']
+
+test('user-menu pages mount without a crash', async ({ page }) => {
+  const errors = trackErrors(page)
+  await mockBackend(page)
+
+  for (const label of USER_MENU_PAGES) {
+    await page.goto('/')
+    await page.locator('button[title^="Signed in as"]').click()
+    await page.getByRole('button', { name: label, exact: true }).click()
+
+    await expect(page.locator('button[title="Navigation"]')).toHaveCount(0, { timeout: 10_000 })
+    expect(errors, `error after opening "${label}":\n${errors.join('\n')}`).toHaveLength(0)
+  }
+})
+
+test('public form page mounts', async ({ page }) => {
+  const errors = trackErrors(page)
+  await page.route('**/v1/**', (r) => r.fulfill({ status: 403, json: {} }))
+  await page.route(/\/v1\/forms\/[^/]+/, (r) => r.fulfill({
+    json: { token: 'smoke', title: 'Smoke Form', description: 'A test form', workflow_id: 'wf1', input_schema: [], created_at: 1 },
+  }))
+
+  await page.goto('/forms/smoke-token')
+  await expect(page.getByRole('heading', { name: 'Smoke Form' })).toBeVisible({ timeout: 10_000 })
+  expect(errors, errors.join('\n')).toHaveLength(0)
+})
+
+test('execution detail page mounts', async ({ page }) => {
+  const errors = trackErrors(page)
+  await mockBackend(page)
+  const EXEC = {
+    id: 'ex-smoke', tenant_id: 't', workflow_id: 'wf1', workflow_version_id: 'v1',
+    status: 'succeeded', started_at: 1, created_at: 1, label: 'smoke run',
+  }
+  // The Runs page lists executions; the detail page fetches one by id.
+  await page.route(/\/v1\/executions(\?|$)/, (r) => r.fulfill({ json: [EXEC] }))
+  await page.route(/\/v1\/executions\/ex-smoke(\?|$)/, (r) => r.fulfill({ json: { ...EXEC, node_results: [] } }))
+
+  await page.goto('/')
+  await page.locator('button[title="Navigation"]').click()
+  await page.getByRole('button', { name: '运行记录', exact: true }).click()
+  // Open the execution from its row.
+  await page.getByText('smoke run').first().click()
+
+  await expect(page.locator('button[title="Navigation"]')).toHaveCount(0, { timeout: 10_000 })
+  expect(errors, errors.join('\n')).toHaveLength(0)
+})
