@@ -1822,11 +1822,15 @@ struct ManifestResponse {
 }
 
 fn sso_redirect(location: &str) -> Response {
+    // `location` is derived from SSO/OIDC flow data (callback slugs, provider
+    // authorize URLs, frontend error URLs). A value containing control
+    // characters would make header construction fail — return a 400 instead of
+    // panicking the request.
     Response::builder()
         .status(StatusCode::FOUND)
         .header("Location", location)
         .body(axum::body::Body::empty())
-        .unwrap()
+        .unwrap_or_else(|_| (StatusCode::BAD_REQUEST, "invalid redirect location").into_response())
 }
 
 fn sso_error_redirect(message: &str) -> Response {
@@ -2524,6 +2528,21 @@ mod tests {
     use axum::http::StatusCode;
     use serde_json::json;
     use tower::ServiceExt;
+
+    #[test]
+    fn sso_redirect_is_fail_safe_on_bad_location() {
+        // A well-formed location yields a 302 with the Location header.
+        let ok = sso_redirect("https://example.com/authorize?state=abc");
+        assert_eq!(ok.status(), StatusCode::FOUND);
+        assert_eq!(
+            ok.headers().get("Location").map(|v| v.to_str().unwrap()),
+            Some("https://example.com/authorize?state=abc"),
+        );
+        // A location with control characters must not panic — it fails closed
+        // to a 400 instead.
+        let bad = sso_redirect("https://example.com/\r\nSet-Cookie: x=1");
+        assert_eq!(bad.status(), StatusCode::BAD_REQUEST);
+    }
 
     #[tokio::test]
     async fn creates_lists_and_deletes_credentials_over_http() {
