@@ -222,14 +222,25 @@ jobs:
           version: v3.16.3
 
       - name: Lint
-        run: helm lint charts/trigix
+        run: helm lint charts/trigix --set secrets.credentialMasterKey=ci-render-key
+
+      - name: Fail closed without a credential master key (security guard)
+        run: |
+          if helm template t charts/trigix > /dev/null 2>&1; then
+            echo "::error::chart rendered without secrets.credentialMasterKey — the fail-closed credential-encryption guard is broken"
+            exit 1
+          fi
+          echo "OK: chart fails closed when no master key is configured"
 
       - name: Template (default + value permutations)
         run: |
-          helm template t charts/trigix > /tmp/default.yaml
-          helm template t charts/trigix --set executor.enabled=true > /tmp/executor.yaml
-          helm template t charts/trigix --set aiRuntime.enabled=false > /tmp/no-ai.yaml
-          helm template t charts/trigix --set secrets.databaseUrl=postgres://u:p@h:5432/d > /tmp/extdb.yaml
+          KEY="--set secrets.credentialMasterKey=ci-render-key"
+          helm template t charts/trigix $KEY > /tmp/default.yaml
+          helm template t charts/trigix $KEY --set executor.enabled=true > /tmp/executor.yaml
+          helm template t charts/trigix $KEY --set aiRuntime.enabled=false > /tmp/no-ai.yaml
+          helm template t charts/trigix --set secrets.databaseUrl=postgres://u:p@h:5432/d $KEY > /tmp/extdb.yaml
+          # Dev escape hatch must also render.
+          helm template t charts/trigix --set allowPlaintextCredentials=true > /tmp/plaintext.yaml
 
       - name: Validate manifests against Kubernetes schemas
         run: |
