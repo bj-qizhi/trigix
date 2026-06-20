@@ -234,3 +234,26 @@ test('version history modal lists versions and diffs them', async ({ page }) => 
 
   expect(errors, errors.join('\n')).toHaveLength(0)
 })
+
+test('Ctrl+K command palette filters nodes and jumps on Enter', async ({ page }) => {
+  const errors = trackErrors(page)
+  await mockBackend(page)
+  await openEditor(page)
+
+  await blurToCanvas(page)
+  await page.keyboard.press('Control+k')
+
+  const search = page.getByPlaceholder(/搜索节点|Search nodes/)
+  await expect(search).toBeVisible()
+
+  // Filtering narrows the list to the matching node.
+  await search.fill('http')
+  await expect(page.locator('.modal code', { hasText: 'http' })).toBeVisible()
+  await expect(page.locator('.modal code', { hasText: 'slack' })).toHaveCount(0)
+
+  // Enter jumps to the first match and closes the palette.
+  await search.press('Enter')
+  await expect(search).toHaveCount(0)
+
+  expect(errors, errors.join('\n')).toHaveLength(0)
+})

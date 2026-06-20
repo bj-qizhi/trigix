@@ -11,6 +11,7 @@ import { useGraphState } from './editor/useGraphState'
 import { useWorkflowRun } from './editor/useWorkflowRun'
 import { useWorkflowPersistence } from './editor/useWorkflowPersistence'
 import { VersionHistoryModal } from './editor/VersionHistoryModal'
+import { CommandPalette } from './editor/CommandPalette'
 import { NodeIcon } from './nodeIcons'
 import {
   PiChartBar, PiFire, PiCheckCircle, PiCalendarBlank, PiListBullets,
@@ -469,7 +470,6 @@ export function WorkflowEditor({ workflowId, onBack, initialInput }: Props) {
   const [showVars, setShowVars]       = useState(false)
   const [variables, setVariables]     = useState<api.Variable[]>([])
   const [showPalette, setShowPalette] = useState(false)
-  const [paletteQuery, setPaletteQuery] = useState('')
   const [showHelp, setShowHelp] = useState(false)
   const [paletteSearch, setPaletteSearch] = useState('')
   const [snapToGrid, setSnapToGrid] = useState(false)
@@ -633,7 +633,7 @@ export function WorkflowEditor({ workflowId, onBack, initialInput }: Props) {
       if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return
       if ((e.ctrlKey || e.metaKey) && e.key === 's') { e.preventDefault(); handleSaveRef.current() }
       if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); handleRunRef.current() }
-      if ((e.ctrlKey || e.metaKey) && e.key === 'k') { e.preventDefault(); setPaletteQuery(''); setShowPalette(true) }
+      if ((e.ctrlKey || e.metaKey) && e.key === 'k') { e.preventDefault(); setShowPalette(true) }
       if ((e.ctrlKey || e.metaKey) && e.key === 'd') { e.preventDefault(); handleDuplicateNodeRef.current() }
       if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key === 'z') {
         e.preventDefault()
@@ -2068,65 +2068,13 @@ export function WorkflowEditor({ workflowId, onBack, initialInput }: Props) {
 
       {/* Node command palette (Ctrl+K) */}
       {showPalette && (
-        <div className="modal-backdrop" onClick={() => setShowPalette(false)}>
-          <div className="modal" style={{ width: 440, padding: 0, overflow: 'hidden' }} onClick={(e) => e.stopPropagation()}>
-            <div style={{ padding: '10px 14px', borderBottom: '1px solid var(--border)' }}>
-              <input
-                autoFocus
-                placeholder={zh ? '搜索节点…（输入筛选，回车跳转）' : 'Search nodes… (type to filter, Enter to select)'}
-                value={paletteQuery}
-                onChange={(e) => setPaletteQuery(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Escape') { setShowPalette(false); return }
-                  if (e.key === 'Enter') {
-                    const q = paletteQuery.toLowerCase()
-                    const match = nodes.find((n) =>
-                      n.id.toLowerCase().includes(q) ||
-                      (n.data.config?.node_label as string | undefined ?? '').toLowerCase().includes(q)
-                    )
-                    if (match) { setSelectedNodeId(match.id); setShowPalette(false) }
-                  }
-                }}
-                style={{ width: '100%', border: 'none', outline: 'none', background: 'transparent', fontSize: 14 }}
-              />
-            </div>
-            <div style={{ maxHeight: 320, overflowY: 'auto' }}>
-              {nodes
-                .filter((n) => {
-                  const q = paletteQuery.toLowerCase()
-                  return !q || n.id.toLowerCase().includes(q) || (n.data.nodeType ?? '').includes(q) || ((n.data.config?.node_label as string | undefined) ?? '').toLowerCase().includes(q)
-                })
-                .map((n) => (
-                  <div
-                    key={n.id}
-                    onClick={() => { setSelectedNodeId(n.id); setShowPalette(false) }}
-                    style={{
-                      display: 'flex', alignItems: 'center', gap: 10,
-                      padding: '8px 14px', cursor: 'pointer',
-                      background: n.id === selectedNodeId ? 'var(--panel)' : undefined,
-                    }}
-                    onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--panel)')}
-                    onMouseLeave={(e) => (e.currentTarget.style.background = n.id === selectedNodeId ? 'var(--panel)' : '')}
-                  >
-                    <span style={{ fontSize: 11, color: 'var(--muted)', width: 70, flexShrink: 0 }}>{n.data.nodeType}</span>
-                    <code style={{ fontSize: 13, flex: 1 }}>{n.id}</code>
-                    {(n.data.config?.node_label as string | undefined) && (
-                      <span style={{ fontSize: 11, color: 'var(--link)' }}>{n.data.config!.node_label as string}</span>
-                    )}
-                  </div>
-                ))}
-              {nodes.filter((n) => {
-                const q = paletteQuery.toLowerCase()
-                return !q || n.id.toLowerCase().includes(q) || (n.data.nodeType ?? '').includes(q) || ((n.data.config?.node_label as string | undefined) ?? '').toLowerCase().includes(q)
-              }).length === 0 && (
-                <div style={{ padding: '16px', color: 'var(--muted)', fontSize: 13, textAlign: 'center' }}>{zh ? '无匹配节点' : 'No nodes match'}</div>
-              )}
-            </div>
-            <div style={{ padding: '6px 14px', borderTop: '1px solid var(--border)', fontSize: 11, color: 'var(--muted)' }}>
-              {zh ? '↑↓ 导航 · Enter 跳转 · Esc 关闭' : '↑↓ navigate · Enter to jump · Esc to close'}
-            </div>
-          </div>
-        </div>
+        <CommandPalette
+          nodes={nodes}
+          selectedNodeId={selectedNodeId}
+          zh={zh}
+          onPick={(id) => { setSelectedNodeId(id); setShowPalette(false) }}
+          onClose={() => setShowPalette(false)}
+        />
       )}
 
       {/* Variables modal */}
