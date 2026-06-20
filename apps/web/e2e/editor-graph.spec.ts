@@ -191,6 +191,15 @@ test('saving an unchanged graph round-trips the loaded nodes and edges', async (
   expect(errors, errors.join('\n')).toHaveLength(0)
 })
 
+test('toolbar title bar renders the workflow name', async ({ page }) => {
+  const errors = trackErrors(page)
+  await mockBackend(page)
+  await openEditor(page)
+  // WorkflowTitleBar renders the workflow name as the click-to-rename title.
+  await expect(page.locator('.topbar-title')).toHaveText('Editor WF')
+  expect(errors, errors.join('\n')).toHaveLength(0)
+})
+
 test('canvas node shows its data-driven preview', async ({ page }) => {
   const errors = trackErrors(page)
   await mockBackend(page)

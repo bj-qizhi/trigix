@@ -21,6 +21,7 @@ import {
 import { ViewMenu, MoreActionsMenu } from './editor/EditorMenus'
 import { LimitsMenu } from './editor/LimitsMenu'
 import { TagEditor } from './editor/TagEditor'
+import { WorkflowTitleBar } from './editor/WorkflowTitleBar'
 import { collectPublishWarnings } from './editor/publishWarnings'
 import { NodeIcon } from './nodeIcons'
 import { PiChartBar, PiFire } from 'react-icons/pi'
@@ -456,10 +457,6 @@ export function WorkflowEditor({ workflowId, onBack, initialInput }: Props) {
   const [workflow, setWorkflow]       = useState<WorkflowRecord | null>(null)
   const [version, setVersion]         = useState<WorkflowVersionRecord | null>(null)
   const [toasts, setToasts]           = useState<Toast[]>([])
-  const [renaming, setRenaming]       = useState(false)
-  const [newName, setNewName]         = useState('')
-  const [editingDescription, setEditingDescription] = useState(false)
-  const [newDescription, setNewDescription] = useState('')
   const [webhookUrl, setWebhookUrl]   = useState<string | null>(null)
   const [webhookSecret, setWebhookSecret] = useState<string | null>(null)
   const [inputSchema, setInputSchema] = useState<InputField[]>([])
@@ -563,7 +560,6 @@ export function WorkflowEditor({ workflowId, onBack, initialInput }: Props) {
   useEffect(() => {
     api.getWorkflow(auth!.tenantId, workflowId).then((wf) => {
       setWorkflow(wf)
-      setNewName(wf.name)
       if (wf.latest_version_id) {
         return api.getVersion(auth!.tenantId, wf.latest_version_id)
       }
@@ -685,32 +681,7 @@ export function WorkflowEditor({ workflowId, onBack, initialInput }: Props) {
   } = persistence
 
   // Rename workflow
-  const handleRename = async () => {
-    if (!newName.trim() || newName === workflow?.name) { setRenaming(false); return }
-    try {
-      const wf = await api.renameWorkflow(auth!.tenantId, workflowId, newName.trim())
-      setWorkflow(wf)
-      toast(zh ? '已重命名' : 'Renamed')
-    } catch (e) {
-      toast(String(e), 'error')
-    } finally {
-      setRenaming(false)
-    }
-  }
 
-  // Update description
-  const handleSaveDescription = async () => {
-    if (!workflow) return
-    try {
-      const wf = await api.updateWorkflowDescription(auth!.tenantId, workflowId, workflow.name, newDescription.trim())
-      setWorkflow(wf)
-      toast(zh ? '描述已保存' : 'Description saved')
-    } catch (e) {
-      toast(String(e), 'error')
-    } finally {
-      setEditingDescription(false)
-    }
-  }
 
 
   const nodeStatuses = useMemo<Record<string, NodeExecutionRecord>>(() => {
@@ -1045,50 +1016,25 @@ export function WorkflowEditor({ workflowId, onBack, initialInput }: Props) {
         <button className="btn btn-sm btn-icon" onClick={onBack} title={zh ? '返回列表' : 'Back to list'}>←</button>
         <span className="topbar-sep">|</span>
 
-        {renaming ? (
-          <input
-            autoFocus
-            value={newName}
-            onChange={(e) => setNewName(e.target.value)}
-            onBlur={handleRename}
-            onKeyDown={(e) => { if (e.key === 'Enter') handleRename(); if (e.key === 'Escape') setRenaming(false) }}
-            style={{ width: 200, fontSize: 14, fontWeight: 600 }}
-          />
-        ) : (
-          <span
-            className="topbar-title"
-            style={{ cursor: 'pointer' }}
-            onClick={() => setRenaming(true)}
-            title={zh ? '点击重命名' : 'Click to rename'}
-          >
-            {workflow?.name ?? '…'}
-          </span>
-        )}
-
-        {workflow && (
-          <span className={`badge badge-${workflow.status}`}>{workflow.status}</span>
-        )}
-        {workflow && (
-          editingDescription ? (
-            <input
-              autoFocus
-              value={newDescription}
-              onChange={(e) => setNewDescription(e.target.value)}
-              onBlur={handleSaveDescription}
-              onKeyDown={(e) => { if (e.key === 'Enter') handleSaveDescription(); if (e.key === 'Escape') setEditingDescription(false) }}
-              placeholder={zh ? '添加描述…' : 'Add a description…'}
-              style={{ width: 260, fontSize: 12, color: 'var(--muted)', fontStyle: 'normal' }}
-            />
-          ) : (
-            <span
-              style={{ fontSize: 12, color: 'var(--muted)', cursor: 'pointer', fontStyle: workflow.description ? 'normal' : 'italic', maxWidth: 260, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
-              onClick={() => { setEditingDescription(true); setNewDescription(workflow.description ?? '') }}
-              title={workflow.description ? (zh ? '点击编辑描述' : 'Click to edit description') : (zh ? '点击添加描述' : 'Click to add description')}
-            >
-              {workflow.description ?? (zh ? '添加描述…' : 'Add description…')}
-            </span>
-          )
-        )}
+        <WorkflowTitleBar
+          workflow={workflow}
+          zh={zh}
+          onRename={async (name) => {
+            try {
+              const wf = await api.renameWorkflow(auth!.tenantId, workflowId, name)
+              setWorkflow(wf)
+              toast(zh ? '已重命名' : 'Renamed')
+            } catch (e) { toast(String(e), 'error') }
+          }}
+          onSaveDescription={async (description) => {
+            if (!workflow) return
+            try {
+              const wf = await api.updateWorkflowDescription(auth!.tenantId, workflowId, workflow.name, description)
+              setWorkflow(wf)
+              toast(zh ? '描述已保存' : 'Description saved')
+            } catch (e) { toast(String(e), 'error') }
+          }}
+        />
         {workflow && (
           <LimitsMenu workflow={workflow} workflowId={workflowId} zh={zh} toast={toast} onUpdate={setWorkflow} />
         )}
@@ -1983,27 +1929,6 @@ export function WorkflowEditor({ workflowId, onBack, initialInput }: Props) {
         </div>
       )}
 
-      {/* Rename modal */}
-      {renaming && (
-        <div className="modal-backdrop" onClick={() => setRenaming(false)}>
-          <div className="modal" onClick={(e) => e.stopPropagation()}>
-            <h2>{zh ? '重命名工作流' : 'Rename Workflow'}</h2>
-            <div className="field">
-              <label>{zh ? '名称' : 'Name'}</label>
-              <input
-                autoFocus
-                value={newName}
-                onChange={(e) => setNewName(e.target.value)}
-                onKeyDown={(e) => { if (e.key === 'Enter') handleRename(); if (e.key === 'Escape') setRenaming(false) }}
-              />
-            </div>
-            <div className="modal-actions">
-              <button className="btn" onClick={() => setRenaming(false)}>{zh ? '取消' : 'Cancel'}</button>
-              <button className="btn btn-primary" onClick={handleRename}>{zh ? '保存' : 'Save'}</button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   )
 }
