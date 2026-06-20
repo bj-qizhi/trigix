@@ -284,10 +284,12 @@ test('toolbar View and More menus open and trigger actions', async ({ page }) =>
   await viewBtn.click()
   await expect(page.getByText(/对齐网格|Snap to grid/)).toHaveCount(0)
 
-  // More menu → first item (Validate) opens the validation modal.
+  // More menu → first item (Validate) opens the validation modal, and the
+  // data-driven required-field check flags the slack node's missing webhook URL.
   await page.locator('button[title="更多操作"], button[title="More actions"]').click()
   await page.locator('.tb-popover .tb-menu-item').first().click()
   await expect(page.getByText(/工作流校验|Workflow Validation/)).toBeVisible()
+  await expect(page.getByText('Slack node "slack" has no Webhook URL')).toBeVisible()
 
   expect(errors, errors.join('\n')).toHaveLength(0)
 })

@@ -21,6 +21,7 @@ import {
 import { ViewMenu, MoreActionsMenu } from './editor/EditorMenus'
 import { LimitsMenu } from './editor/LimitsMenu'
 import { TagEditor } from './editor/TagEditor'
+import { collectPublishWarnings } from './editor/publishWarnings'
 import { NodeIcon } from './nodeIcons'
 import { PiChartBar, PiFire } from 'react-icons/pi'
 
@@ -660,225 +661,6 @@ export function WorkflowEditor({ workflowId, onBack, initialInput }: Props) {
     return () => window.removeEventListener('beforeunload', handler)
   }, [])
 
-  // Save new version
-  // Validate node configs before publishing — returns list of warnings
-  const collectPublishWarnings = (): string[] => {
-    const warnings: string[] = []
-    const connectedSources = new Set(edges.map((e) => e.source))
-    const connectedTargets = new Set(edges.map((e) => e.target))
-    const triggers = nodes.filter((n) => n.data.nodeType === 'trigger')
-
-    // Structural checks
-    if (triggers.length === 0) warnings.push('No trigger node — add a Trigger to start the workflow')
-    if (triggers.length > 1) warnings.push(`Multiple trigger nodes (${triggers.length}) — only one should exist`)
-    if (nodes.length === 1 && triggers.length === 1) warnings.push('Only a trigger node — add more nodes to build a workflow')
-
-    for (const node of nodes) {
-      const nt = node.data.nodeType
-      const c = node.data.config ?? {}
-      const id = node.id
-      const label = (c.node_label as string) || id
-
-      // Orphaned node checks (skip trigger, fan-in, catch which can have no incoming)
-      if (nt !== 'trigger' && nt !== 'note' && !connectedTargets.has(id)) {
-        warnings.push(`Node "${label}" has no incoming connections`)
-      }
-      if (nt !== 'note' && nt !== 'approval' && !connectedSources.has(id)) {
-        warnings.push(`Node "${label}" has no outgoing connections`)
-      }
-
-      // Config checks
-      if (nt === 'http' && !c.url) warnings.push(`HTTP node "${label}" has no URL`)
-      if (nt === 'openai' && !c.api_key) warnings.push(`OpenAI node "${label}" has no API key`)
-      if (nt === 'gemini' && !c.api_key) warnings.push(`Gemini node "${label}" has no API key`)
-      if (nt === 'claude' && !c.api_key) warnings.push(`Claude node "${label}" has no API key`)
-      if (nt === 'slack' && !c.webhook_url) warnings.push(`Slack node "${label}" has no Webhook URL`)
-      if (nt === 'email' && !c.to) warnings.push(`Email node "${label}" has no recipient`)
-      if (nt === 'email' && !c.api_key) warnings.push(`Email node "${label}" has no API key`)
-      if (nt === 'github' && !c.token) warnings.push(`GitHub node "${label}" has no token`)
-      if (nt === 'github' && !c.endpoint) warnings.push(`GitHub node "${label}" has no endpoint`)
-      if (nt === 'webhook' && !c.url) warnings.push(`Webhook Send node "${label}" has no URL`)
-      if (nt === 'jira' && !c.base_url) warnings.push(`Jira node "${label}" has no base URL`)
-      if (nt === 'jira' && !c.token) warnings.push(`Jira node "${label}" has no API token`)
-      if (nt === 'jira' && !c.endpoint) warnings.push(`Jira node "${label}" has no endpoint`)
-      if (nt === 'notion' && !c.token) warnings.push(`Notion node "${label}" has no token`)
-      if (nt === 'notion' && !c.endpoint) warnings.push(`Notion node "${label}" has no endpoint`)
-      if (nt === 'linear' && !c.token) warnings.push(`Linear node "${label}" has no token`)
-      if (nt === 'linear' && !c.query) warnings.push(`Linear node "${label}" has no GraphQL query`)
-      if (nt === 'airtable' && !c.token) warnings.push(`Airtable node "${label}" has no token`)
-      if (nt === 'airtable' && !c.base_id) warnings.push(`Airtable node "${label}" has no base ID`)
-      if (nt === 'airtable' && !c.table) warnings.push(`Airtable node "${label}" has no table name`)
-      if (nt === 'for_each' && !c.workflow_id) warnings.push(`For Each node "${label}" has no target workflow`)
-      if (nt === 'discord' && !c.webhook_url) warnings.push(`Discord node "${label}" has no webhook URL`)
-      if (nt === 'discord' && !c.content) warnings.push(`Discord node "${label}" has no message content`)
-      if (nt === 'teams' && !c.webhook_url) warnings.push(`Teams node "${label}" has no webhook URL`)
-      if (nt === 'teams' && !c.text) warnings.push(`Teams node "${label}" has no message text`)
-      if (nt === 'sheets' && !c.token) warnings.push(`Google Sheets node "${label}" has no token`)
-      if (nt === 'sheets' && !c.spreadsheet_id) warnings.push(`Google Sheets node "${label}" has no spreadsheet ID`)
-      if (nt === 'xml' && !c.source) warnings.push(`XML Parse node "${label}" has no source`)
-      if (nt === 'yaml' && !c.source) warnings.push(`YAML node "${label}" has no source`)
-      if (nt === 'twilio' && !c.account_sid) warnings.push(`Twilio node "${label}" has no account SID`)
-      if (nt === 'twilio' && !c.auth_token) warnings.push(`Twilio node "${label}" has no auth token`)
-      if (nt === 'twilio' && !c.to) warnings.push(`Twilio node "${label}" has no 'to' number`)
-      if (nt === 'twilio' && !c.from) warnings.push(`Twilio node "${label}" has no 'from' number`)
-      if (nt === 'stripe' && !c.api_key) warnings.push(`Stripe node "${label}" has no API key`)
-      if (nt === 'stripe' && !c.endpoint) warnings.push(`Stripe node "${label}" has no endpoint`)
-      if (nt === 'crypto' && !c.source) warnings.push(`Crypto node "${label}" has no source`)
-      if (nt === 'hubspot' && !c.token) warnings.push(`HubSpot node "${label}" has no token`)
-      if (nt === 'hubspot' && !c.endpoint) warnings.push(`HubSpot node "${label}" has no endpoint`)
-      if (nt === 'zendesk' && !c.subdomain) warnings.push(`Zendesk node "${label}" has no subdomain`)
-      if (nt === 'zendesk' && !c.token) warnings.push(`Zendesk node "${label}" has no token`)
-      if (nt === 'zendesk' && !c.endpoint) warnings.push(`Zendesk node "${label}" has no endpoint`)
-      if (nt === 'redis' && !c.url) warnings.push(`Redis node "${label}" has no URL`)
-      if (nt === 'redis' && !c.key) warnings.push(`Redis node "${label}" has no key (ping doesn't need one)`)
-      if (nt === 'elasticsearch' && !c.url) warnings.push(`Elasticsearch node "${label}" has no URL`)
-      if (nt === 'pagerduty' && !c.routing_key) warnings.push(`PagerDuty node "${label}" has no routing key`)
-      if (nt === 'pagerduty' && !c.summary) warnings.push(`PagerDuty node "${label}" has no summary`)
-      if (nt === 'handlebars' && !c.template) warnings.push(`HB Template node "${label}" has no template`)
-      if (nt === 'math' && !c.operation) warnings.push(`Math node "${label}" has no operation set`)
-      if (nt === 'array_utils' && !c.operation) warnings.push(`Array Utils node "${label}" has no operation set`)
-      if (nt === 'shopify' && !c.shop) warnings.push(`Shopify node "${label}" has no shop name`)
-      if (nt === 'shopify' && !c.token) warnings.push(`Shopify node "${label}" has no access token`)
-      if (nt === 'datadog' && !c.api_key) warnings.push(`Datadog node "${label}" has no API key`)
-      if (nt === 'datadog' && !c.endpoint) warnings.push(`Datadog node "${label}" has no endpoint`)
-      if (nt === 'salesforce' && !c.token) warnings.push(`Salesforce node "${label}" has no access token`)
-      if (nt === 'salesforce' && !c.instance_url) warnings.push(`Salesforce node "${label}" has no instance URL`)
-      if (nt === 'freshdesk' && !c.api_key) warnings.push(`Freshdesk node "${label}" has no API key`)
-      if (nt === 'freshdesk' && !c.domain) warnings.push(`Freshdesk node "${label}" has no domain`)
-      if (nt === 'mailgun' && !c.api_key) warnings.push(`Mailgun node "${label}" has no API key`)
-      if (nt === 'mailgun' && !c.domain) warnings.push(`Mailgun node "${label}" has no sending domain`)
-      if (nt === 'mailgun' && !c.to) warnings.push(`Mailgun node "${label}" has no recipient address`)
-      if (nt === 'asana' && !c.token) warnings.push(`Asana node "${label}" has no access token`)
-      if (nt === 'asana' && !c.endpoint) warnings.push(`Asana node "${label}" has no endpoint`)
-      if (nt === 'servicenow' && !c.instance) warnings.push(`ServiceNow node "${label}" has no instance`)
-      if (nt === 'servicenow' && !c.username) warnings.push(`ServiceNow node "${label}" has no username`)
-      if (nt === 'confluence' && !c.base_url) warnings.push(`Confluence node "${label}" has no base URL`)
-      if (nt === 'confluence' && !c.endpoint) warnings.push(`Confluence node "${label}" has no endpoint`)
-      if (nt === 'bitbucket' && !c.username) warnings.push(`Bitbucket node "${label}" has no username`)
-      if (nt === 'bitbucket' && !c.app_password) warnings.push(`Bitbucket node "${label}" has no app password`)
-      if (nt === 'azure_devops' && !c.pat) warnings.push(`Azure DevOps node "${label}" has no PAT`)
-      if (nt === 'azure_devops' && !c.organization) warnings.push(`Azure DevOps node "${label}" has no organization`)
-      if (nt === 'twitch' && !c.client_id) warnings.push(`Twitch node "${label}" has no client ID`)
-      if (nt === 'twitch' && !c.access_token) warnings.push(`Twitch node "${label}" has no access token`)
-      if (nt === 'figma' && !c.token) warnings.push(`Figma node "${label}" has no access token`)
-      if (nt === 'figma' && !c.endpoint) warnings.push(`Figma node "${label}" has no endpoint`)
-      if (nt === 'dropbox' && !c.token) warnings.push(`Dropbox node "${label}" has no access token`)
-      if (nt === 'cloudflare' && !c.api_token) warnings.push(`Cloudflare node "${label}" has no API token`)
-      if (nt === 'cloudflare' && !c.endpoint) warnings.push(`Cloudflare node "${label}" has no endpoint`)
-      if (nt === 'box' && !c.token) warnings.push(`Box node "${label}" has no access token`)
-      if (nt === 'box' && !c.endpoint) warnings.push(`Box node "${label}" has no endpoint`)
-      if (nt === 'okta' && !c.domain) warnings.push(`Okta node "${label}" has no domain`)
-      if (nt === 'okta' && !c.token) warnings.push(`Okta node "${label}" has no token`)
-      if (nt === 'zoom' && !c.token) warnings.push(`Zoom node "${label}" has no access token`)
-      if (nt === 'zoom' && !c.endpoint) warnings.push(`Zoom node "${label}" has no endpoint`)
-      if (nt === 'spotify' && !c.token) warnings.push(`Spotify node "${label}" has no access token`)
-      if (nt === 'spotify' && !c.endpoint) warnings.push(`Spotify node "${label}" has no endpoint`)
-      if (nt === 'typeform' && !c.token) warnings.push(`Typeform node "${label}" has no token`)
-      if (nt === 'typeform' && !c.endpoint) warnings.push(`Typeform node "${label}" has no endpoint`)
-      if (nt === 'webflow' && !c.token) warnings.push(`Webflow node "${label}" has no token`)
-      if (nt === 'webflow' && !c.endpoint) warnings.push(`Webflow node "${label}" has no endpoint`)
-      if (nt === 'intercom' && !c.token) warnings.push(`Intercom node "${label}" has no token`)
-      if (nt === 'intercom' && !c.endpoint) warnings.push(`Intercom node "${label}" has no endpoint`)
-      if (nt === 'pipedrive' && !c.api_token) warnings.push(`Pipedrive node "${label}" has no API token`)
-      if (nt === 'pipedrive' && !c.endpoint) warnings.push(`Pipedrive node "${label}" has no endpoint`)
-      if (nt === 'trello' && !c.api_key) warnings.push(`Trello node "${label}" has no API key`)
-      if (nt === 'trello' && !c.token) warnings.push(`Trello node "${label}" has no token`)
-      if (nt === 'trello' && !c.endpoint) warnings.push(`Trello node "${label}" has no endpoint`)
-      if (nt === 'monday' && !c.token) warnings.push(`Monday node "${label}" has no token`)
-      if (nt === 'monday' && !c.query) warnings.push(`Monday node "${label}" has no GraphQL query`)
-      if (nt === 'clickup' && !c.token) warnings.push(`ClickUp node "${label}" has no token`)
-      if (nt === 'clickup' && !c.endpoint) warnings.push(`ClickUp node "${label}" has no endpoint`)
-      if (nt === 'amplitude' && !c.api_key) warnings.push(`Amplitude node "${label}" has no API key`)
-      if (nt === 'amplitude' && !c.secret_key) warnings.push(`Amplitude node "${label}" has no secret key`)
-      if (nt === 'mixpanel' && !c.project_token) warnings.push(`Mixpanel node "${label}" has no project token`)
-      if (nt === 'mixpanel' && !c.api_secret) warnings.push(`Mixpanel node "${label}" has no API secret`)
-      if (nt === 'segment' && !c.write_key) warnings.push(`Segment node "${label}" has no write key`)
-      if (nt === 'sendgrid' && !c.api_key) warnings.push(`SendGrid node "${label}" has no API key`)
-      if (nt === 'sendgrid' && !c.endpoint) warnings.push(`SendGrid node "${label}" has no endpoint`)
-      if (nt === 'braintree' && !c.merchant_id) warnings.push(`Braintree node "${label}" has no merchant ID`)
-      if (nt === 'braintree' && !c.public_key) warnings.push(`Braintree node "${label}" has no public key`)
-      if (nt === 'braintree' && !c.private_key) warnings.push(`Braintree node "${label}" has no private key`)
-      if (nt === 'braintree' && !c.endpoint) warnings.push(`Braintree node "${label}" has no endpoint`)
-      if (nt === 'paypal' && !c.client_id) warnings.push(`PayPal node "${label}" has no client ID`)
-      if (nt === 'paypal' && !c.client_secret) warnings.push(`PayPal node "${label}" has no client secret`)
-      if (nt === 'paypal' && !c.endpoint) warnings.push(`PayPal node "${label}" has no endpoint`)
-      if (nt === 'razorpay' && !c.key_id) warnings.push(`Razorpay node "${label}" has no key ID`)
-      if (nt === 'razorpay' && !c.key_secret) warnings.push(`Razorpay node "${label}" has no key secret`)
-      if (nt === 'razorpay' && !c.endpoint) warnings.push(`Razorpay node "${label}" has no endpoint`)
-      if (nt === 'firebase' && !c.project_id) warnings.push(`Firebase node "${label}" has no project ID`)
-      if (nt === 'firebase' && !c.id_token) warnings.push(`Firebase node "${label}" has no ID token`)
-      if (nt === 'firebase' && !c.endpoint) warnings.push(`Firebase node "${label}" has no endpoint`)
-      if (nt === 'supabase' && !c.project_url) warnings.push(`Supabase node "${label}" has no project URL`)
-      if (nt === 'supabase' && !c.api_key) warnings.push(`Supabase node "${label}" has no API key`)
-      if (nt === 'supabase' && !c.endpoint) warnings.push(`Supabase node "${label}" has no endpoint`)
-      if (nt === 'mailchimp' && !c.api_key) warnings.push(`Mailchimp node "${label}" has no API key`)
-      if (nt === 'mailchimp' && !c.endpoint) warnings.push(`Mailchimp node "${label}" has no endpoint`)
-      if (nt === 'activecampaign' && !c.api_key) warnings.push(`ActiveCampaign node "${label}" has no API key`)
-      if (nt === 'activecampaign' && !c.base_url) warnings.push(`ActiveCampaign node "${label}" has no base URL`)
-      if (nt === 'activecampaign' && !c.endpoint) warnings.push(`ActiveCampaign node "${label}" has no endpoint`)
-      if (nt === 'klaviyo' && !c.api_key) warnings.push(`Klaviyo node "${label}" has no API key`)
-      if (nt === 'klaviyo' && !c.endpoint) warnings.push(`Klaviyo node "${label}" has no endpoint`)
-      if (nt === 'resend' && !c.api_key) warnings.push(`Resend node "${label}" has no API key`)
-      if (nt === 'resend' && !c.endpoint) warnings.push(`Resend node "${label}" has no endpoint`)
-      if (nt === 'contentful' && !c.access_token) warnings.push(`Contentful node "${label}" has no access token`)
-      if (nt === 'contentful' && !c.space_id) warnings.push(`Contentful node "${label}" has no space ID`)
-      if (nt === 'contentful' && !c.endpoint) warnings.push(`Contentful node "${label}" has no endpoint`)
-      if (nt === 'algolia' && !c.app_id) warnings.push(`Algolia node "${label}" has no app ID`)
-      if (nt === 'algolia' && !c.api_key) warnings.push(`Algolia node "${label}" has no API key`)
-      if (nt === 'algolia' && !c.endpoint) warnings.push(`Algolia node "${label}" has no endpoint`)
-      if (nt === 'postmark' && !c.server_token) warnings.push(`Postmark node "${label}" has no server token`)
-      if (nt === 'postmark' && !c.endpoint) warnings.push(`Postmark node "${label}" has no endpoint`)
-      if (nt === 'vonage' && !c.api_key) warnings.push(`Vonage node "${label}" has no API key`)
-      if (nt === 'vonage' && !c.api_secret) warnings.push(`Vonage node "${label}" has no API secret`)
-      if (nt === 'telegram' && !c.bot_token) warnings.push(`Telegram node "${label}" has no bot token`)
-      if (nt === 'telegram' && !c.chat_id) warnings.push(`Telegram node "${label}" has no chat ID`)
-      if (nt === 'replicate' && !c.api_token) warnings.push(`Replicate node "${label}" has no API token`)
-      if (nt === 'replicate' && !c.version) warnings.push(`Replicate node "${label}" has no model version`)
-      if (nt === 'mistral' && !c.api_key) warnings.push(`Mistral node "${label}" has no API key`)
-      if (nt === 'whatsapp' && !c.access_token) warnings.push(`WhatsApp node "${label}" has no access token`)
-      if (nt === 'whatsapp' && !c.phone_number_id) warnings.push(`WhatsApp node "${label}" has no phone number ID`)
-      if (nt === 'whatsapp' && !c.to) warnings.push(`WhatsApp node "${label}" has no recipient`)
-      if (nt === 'googledocs' && !c.access_token) warnings.push(`Google Docs node "${label}" has no access token`)
-      if (nt === 'perplexity' && !c.api_key) warnings.push(`Perplexity node "${label}" has no API key`)
-      if (nt === 'cohere' && !c.api_key) warnings.push(`Cohere node "${label}" has no API key`)
-      if (nt === 'googledrive' && !c.access_token) warnings.push(`Google Drive node "${label}" has no access token`)
-      if (nt === 'woocommerce' && !c.consumer_key) warnings.push(`WooCommerce node "${label}" has no consumer key`)
-      if (nt === 'woocommerce' && !c.site_url) warnings.push(`WooCommerce node "${label}" has no site URL`)
-      if (nt === 'pinecone' && !c.api_key) warnings.push(`Pinecone node "${label}" has no API key`)
-      if (nt === 'pinecone' && !c.index_host) warnings.push(`Pinecone node "${label}" has no index host`)
-      if (nt === 'togetherai' && !c.api_key) warnings.push(`Together AI node "${label}" has no API key`)
-      if (nt === 'awss3' && !c.access_key_id) warnings.push(`AWS S3 node "${label}" has no access key ID`)
-      if (nt === 'awss3' && !c.bucket) warnings.push(`AWS S3 node "${label}" has no bucket`)
-      if (nt === 'huggingface' && !c.api_token) warnings.push(`Hugging Face node "${label}" has no API token`)
-      if (nt === 'huggingface' && !c.model) warnings.push(`Hugging Face node "${label}" has no model`)
-      if (nt === 'groq' && !c.api_key) warnings.push(`Groq node "${label}" has no API key`)
-      if (nt === 'openrouter' && !c.api_key) warnings.push(`OpenRouter node "${label}" has no API key`)
-      if (nt === 'qdrant' && !c.url) warnings.push(`Qdrant node "${label}" has no server URL`)
-      if (nt === 'qdrant' && !c.collection) warnings.push(`Qdrant node "${label}" has no collection`)
-      if (nt === 'cloudinary' && !c.cloud_name) warnings.push(`Cloudinary node "${label}" has no cloud name`)
-      if (nt === 'gcal' && !c.access_token) warnings.push(`Google Calendar node "${label}" has no access token`)
-      if (nt === 'docusign' && !c.access_token) warnings.push(`DocuSign node "${label}" has no access token`)
-      if (nt === 'docusign' && !c.account_id) warnings.push(`DocuSign node "${label}" has no account ID`)
-      if (nt === 'xero' && !c.access_token) warnings.push(`Xero node "${label}" has no access token`)
-      if (nt === 'xero' && !c.tenant_id) warnings.push(`Xero node "${label}" has no tenant ID`)
-      if (nt === 'calendly' && !c.api_key) warnings.push(`Calendly node "${label}" has no API key`)
-      if (nt === 'apify' && !c.api_token) warnings.push(`Apify node "${label}" has no API token`)
-      if (nt === 'ganalytics' && !c.access_token) warnings.push(`Google Analytics node "${label}" has no access token`)
-      if (nt === 'ganalytics' && !c.property_id) warnings.push(`Google Analytics node "${label}" has no property ID`)
-      if (nt === 'neon' && !c.api_key) warnings.push(`Neon node "${label}" has no API key`)
-      if (nt === 'copper' && !c.api_key) warnings.push(`Copper CRM node "${label}" has no API key`)
-      if (nt === 'copper' && !c.user_email) warnings.push(`Copper CRM node "${label}" has no user email`)
-      if (nt === 'database' && !c.query) warnings.push(`Database node "${label}" has no SQL query`)
-      if (nt === 'condition' && !c.field) warnings.push(`Condition node "${label}" has no field set`)
-      if (nt === 'sub_workflow' && !c.workflow_id) warnings.push(`Sub-Workflow node "${label}" has no target workflow`)
-      if (nt === 'graphql' && !c.url) warnings.push(`GraphQL node "${label}" has no endpoint URL`)
-      if (nt === 'validate' && !c.source) warnings.push(`Validate node "${label}" has no source expression`)
-      if (nt === 'agent' && !c.prompt_template) warnings.push(`Agent node "${label}" has no prompt template`)
-      if (nt === 'code' && !c.code) warnings.push(`Code node "${label}" has no script`)
-    }
-    return warnings
-  }
-
   const [showValidate, setShowValidate] = useState(false)
   const [validateWarnings, setValidateWarnings] = useState<string[]>([])
 
@@ -892,7 +674,7 @@ export function WorkflowEditor({ workflowId, onBack, initialInput }: Props) {
     setNodes, setEdges, setSelectedNodeId,
     setWebhookUrl, setWebhookSecret,
     inputJson, setExecution,
-    collectPublishWarnings,
+    collectPublishWarnings: () => collectPublishWarnings(nodes, edges),
   })
   const {
     saving, publishing, publishingAndRunning,
@@ -1435,7 +1217,7 @@ export function WorkflowEditor({ workflowId, onBack, initialInput }: Props) {
           </button>
           <MoreActionsMenu
             zh={zh} t={t}
-            onValidate={() => { const w = collectPublishWarnings(); setValidateWarnings(w); setShowValidate(true) }}
+            onValidate={() => { const w = collectPublishWarnings(nodes, edges); setValidateWarnings(w); setShowValidate(true) }}
             onSchedule={() => setShowSchedule(true)}
             onForms={() => setShowForms(true)}
             onTests={() => setShowTests(true)}
@@ -1552,7 +1334,7 @@ export function WorkflowEditor({ workflowId, onBack, initialInput }: Props) {
             <span
               style={{ color: 'var(--warning-text)', cursor: 'pointer', fontWeight: 600 }}
               title={zh ? '点击校验' : 'Click to validate'}
-              onClick={() => { const w = collectPublishWarnings(); setValidateWarnings(w); setShowValidate(true) }}
+              onClick={() => { const w = collectPublishWarnings(nodes, edges); setValidateWarnings(w); setShowValidate(true) }}
             >
               ⚠ {zh ? `${liveWarningCount} 个问题` : `${liveWarningCount} issue${liveWarningCount !== 1 ? 's' : ''}`}
             </span>
