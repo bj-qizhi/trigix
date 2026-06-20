@@ -5,10 +5,10 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import { IconKey, IconSearch, ThemeToggleIcon } from './uiIcons'
 import { useAuth } from '../AuthContext'
 import * as api from '../api/client'
-import { getStoredAuth } from '../auth'
-import type { WorkflowRecord, WorkflowVersionRecord, ExecutionRecord, ExecutionSummary, NodeExecutionRecord, NodeType, InputField, EnvSetSummary } from '../types'
+import type { WorkflowRecord, WorkflowVersionRecord, ExecutionSummary, NodeExecutionRecord, NodeType, InputField } from '../types'
 import { Canvas, graphFromApi, fromFlowGraph, type FlowNode } from './Canvas'
 import { useGraphState } from './editor/useGraphState'
+import { useWorkflowRun } from './editor/useWorkflowRun'
 import { NodeIcon } from './nodeIcons'
 import {
   PiChartBar, PiFire, PiCheckCircle, PiCalendarBlank, PiListBullets,
@@ -445,10 +445,6 @@ export function WorkflowEditor({ workflowId, onBack, initialInput }: Props) {
   setLabelLocale(locale)
   const [workflow, setWorkflow]       = useState<WorkflowRecord | null>(null)
   const [version, setVersion]         = useState<WorkflowVersionRecord | null>(null)
-  const [execution, setExecution]     = useState<ExecutionRecord | null>(null)
-  const [recentExecutions, setRecentExecutions] = useState<ExecutionSummary[]>([])
-  const [inputJson, setInputJson]     = useState(initialInput ?? '{}')
-  const [running, setRunning]         = useState(false)
   const [saving, setSaving]           = useState(false)
   const [publishing, setPublishing]   = useState(false)
   const [toasts, setToasts]           = useState<Toast[]>([])
@@ -482,11 +478,6 @@ export function WorkflowEditor({ workflowId, onBack, initialInput }: Props) {
   const [showPalette, setShowPalette] = useState(false)
   const [paletteQuery, setPaletteQuery] = useState('')
   const [showHelp, setShowHelp] = useState(false)
-  const [envSets, setEnvSets]         = useState<EnvSetSummary[]>([{ name: 'default', var_count: 0 }])
-  const [envSet, setEnvSet]           = useState('default')
-  const [runLabel, setRunLabel]         = useState('')
-  const [callbackUrl, setCallbackUrl]   = useState('')
-  const [dryRun, setDryRun]             = useState(false)
   const [paletteSearch, setPaletteSearch] = useState('')
   const [snapToGrid, setSnapToGrid] = useState(false)
   const [showMinimap, setShowMinimap] = useState(true)
@@ -515,7 +506,6 @@ export function WorkflowEditor({ workflowId, onBack, initialInput }: Props) {
   const [nodeStats, setNodeStats] = useState<api.NodeStat[]>([])
   const [showReport, setShowReport] = useState(false)
   const [reportExecs, setReportExecs] = useState<api.ExecutionSummary[]>([])
-  const [latestExec, setLatestExec] = useState<api.ExecutionSummary | null>(null)
   const [saveMessage, setSaveMessage] = useState('')
   const [showSaveMessage, setShowSaveMessage] = useState(false)
   const [showSchedule, setShowSchedule] = useState(false)
@@ -557,6 +547,20 @@ export function WorkflowEditor({ workflowId, onBack, initialInput }: Props) {
     deleteSelected,
   } = graph
 
+  // Run/execution surface — inputs, active execution + live updates, history,
+  // and run/approve/reject — lives in a dedicated hook (see editor/useWorkflowRun).
+  const run = useWorkflowRun({ workflowId, workflow, zh, toast, initialInput })
+  const {
+    execution, setExecution, recentExecutions, running,
+    inputJson, setInputJson,
+    envSets, envSet, setEnvSet,
+    runLabel, setRunLabel,
+    callbackUrl, setCallbackUrl,
+    dryRun, setDryRun,
+    latestExec, setLatestExec,
+    refreshHistory, handleRun, handleApprove, handleReject,
+  } = run
+
   // Scroll canvas to focused node find match
   useEffect(() => {
     if (!showNodeFind || !nodeFindQuery) return
@@ -569,24 +573,6 @@ export function WorkflowEditor({ workflowId, onBack, initialInput }: Props) {
     const idx = nodeFindIdx % matches.length
     fitToNodeRef.current?.(matches[idx].id)
   }, [nodeFindIdx, nodeFindQuery, showNodeFind])
-
-  const refreshHistory = useCallback(() => {
-    api.listExecutions(auth!.tenantId, workflowId)
-      .then(setRecentExecutions)
-      .catch(() => {})
-  }, [workflowId])
-
-  // Load env sets once
-  useEffect(() => {
-    api.listEnvSets(auth!.tenantId)
-      .then((s) => {
-        if (s.length > 0) {
-          const hasDefault = s.some((x) => x.name === 'default')
-          setEnvSets(hasDefault ? s : [{ name: 'default', var_count: 0 }, ...s])
-        }
-      })
-      .catch(() => {})
-  }, [])
 
   // Load workflow + latest version
   useEffect(() => {
@@ -632,59 +618,6 @@ export function WorkflowEditor({ workflowId, onBack, initialInput }: Props) {
     api.getLatestExecution(auth!.tenantId, workflowId).then(setLatestExec).catch(() => {})
     api.getWorkflowHealth(auth!.tenantId, workflowId).then(setWfHealth).catch(() => {})
   }, [workflowId, toast, refreshHistory])
-
-  // Stream live execution updates via SSE (fall back to polling)
-  useEffect(() => {
-    if (!execution || execution.status !== 'running') return
-    const stored = getStoredAuth()
-    let source: EventSource | null = null
-    let pollTimer: ReturnType<typeof setInterval> | null = null
-
-    if (typeof EventSource !== 'undefined' && stored?.token) {
-      try {
-        source = new EventSource(`/v1/executions/${execution.id}/events?token=${encodeURIComponent(stored.token)}`)
-        source.onmessage = (ev) => {
-          try {
-            const updated = JSON.parse(ev.data) as ExecutionRecord
-            setExecution(updated)
-            if (updated.status !== 'running') {
-              refreshHistory()
-              source?.close()
-            }
-          } catch { /* ignore parse errors */ }
-        }
-        source.onerror = () => {
-          source?.close()
-          source = null
-          // Fall back to polling
-          pollTimer = setInterval(async () => {
-            try {
-              const updated = await api.getExecution(auth!.tenantId, execution.id)
-              setExecution(updated)
-              if (updated.status !== 'running') { refreshHistory(); clearInterval(pollTimer!) }
-            } catch { /* ignore */ }
-          }, 1500)
-        }
-      } catch {
-        source = null
-      }
-    }
-
-    if (!source) {
-      pollTimer = setInterval(async () => {
-        try {
-          const updated = await api.getExecution(auth!.tenantId, execution.id)
-          setExecution(updated)
-          if (updated.status !== 'running') { refreshHistory(); clearInterval(pollTimer!) }
-        } catch { /* ignore */ }
-      }, 1000)
-    }
-
-    return () => {
-      source?.close()
-      if (pollTimer) clearInterval(pollTimer)
-    }
-  }, [execution?.id, execution?.status, refreshHistory])
 
   // Palette → canvas drag-and-drop: stash the node type for the canvas drop handler.
   const onPaletteDragStart = useCallback((e: React.DragEvent, type: NodeType) => {
@@ -1038,44 +971,6 @@ export function WorkflowEditor({ workflowId, onBack, initialInput }: Props) {
       toast(String(e), 'error')
     } finally {
       setPublishingAndRunning(false)
-    }
-  }
-
-  // Approve / Reject human approval gate
-  const handleApprove = async (comment?: string) => {
-    if (!execution) return
-    try {
-      await api.approveExecution(execution.id, comment)
-    } catch (e) {
-      toast(String(e), 'error')
-    }
-  }
-
-  const handleReject = async (comment?: string) => {
-    if (!execution) return
-    try {
-      await api.rejectExecution(execution.id, comment)
-    } catch (e) {
-      toast(String(e), 'error')
-    }
-  }
-
-  // Run execution
-  const handleRun = async () => {
-    if (!workflow?.latest_version_id) return
-    let parsed: unknown
-    try { parsed = JSON.parse(inputJson) } catch { toast(zh ? '输入 JSON 格式无效' : 'Input JSON is invalid', 'error'); return }
-    void parsed
-    setRunning(true)
-    setExecution(null)
-    try {
-      const result = await api.startExecutionFromWorkflow(auth!.tenantId, workflowId, inputJson, envSet === 'default' ? undefined : envSet, runLabel || undefined, callbackUrl || undefined, dryRun || undefined)
-      setExecution(result)
-      refreshHistory()
-    } catch (e) {
-      toast(String(e), 'error')
-    } finally {
-      setRunning(false)
     }
   }
 
