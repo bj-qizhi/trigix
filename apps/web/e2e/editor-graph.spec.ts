@@ -206,3 +206,31 @@ test('Ctrl+Enter dispatches an execution with the run input', async ({ page }) =
 
   expect(errors, errors.join('\n')).toHaveLength(0)
 })
+
+test('version history modal lists versions and diffs them', async ({ page }) => {
+  const errors = trackErrors(page)
+  await mockBackend(page)
+
+  const V1 = { ...VERSION, id: 'v1', version: 1, status: 'published', message: 'first' }
+  const V2 = {
+    ...VERSION, id: 'v2', version: 2, status: 'draft', message: 'add delay',
+    graph: { ...VERSION.graph, nodes: [...VERSION.graph.nodes, { id: 'delay', type: 'delay', config: {} }] },
+  }
+  // GET = version list; POST = save (unused here).
+  await page.route(/\/v1\/workflows\/wf1\/versions/, (r) =>
+    r.fulfill({ json: r.request().method() === 'GET' ? [V2, V1] : V2 }))
+
+  await openEditor(page)
+  await page.locator('button[title="Browse version history"]').click()
+
+  // Modal renders and lists both versions.
+  await expect(page.getByText(/版本历史|Version History/)).toBeVisible()
+  await expect(page.getByText('v2', { exact: true })).toBeVisible()
+  await expect(page.getByText('v1', { exact: true })).toBeVisible()
+
+  // Diffing the latest (v2) against its predecessor (v1) surfaces the added node.
+  await page.getByRole('button', { name: /差异|Diff/ }).first().click()
+  await expect(page.getByText(/\+ node: delay/)).toBeVisible()
+
+  expect(errors, errors.join('\n')).toHaveLength(0)
+})

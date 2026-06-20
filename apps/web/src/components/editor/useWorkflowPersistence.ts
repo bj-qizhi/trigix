@@ -27,12 +27,6 @@ export interface WorkflowPersistenceState {
   showVersions: boolean
   setShowVersions: Dispatch<SetStateAction<boolean>>
   loadingVersions: boolean
-  diffVersionId: string | null
-  setDiffVersionId: Dispatch<SetStateAction<string | null>>
-  diffCompareId: string | null
-  setDiffCompareId: Dispatch<SetStateAction<string | null>>
-  showComparePicker: string | null
-  setShowComparePicker: Dispatch<SetStateAction<string | null>>
   rollingBack: string | null
   saveMessage: string
   setSaveMessage: Dispatch<SetStateAction<string>>
@@ -87,9 +81,6 @@ export function useWorkflowPersistence(opts: WorkflowPersistenceOptions): Workfl
   const [versions, setVersions] = useState<WorkflowVersionRecord[]>([])
   const [showVersions, setShowVersions] = useState(false)
   const [loadingVersions, setLoadingVersions] = useState(false)
-  const [diffVersionId, setDiffVersionId] = useState<string | null>(null)
-  const [diffCompareId, setDiffCompareId] = useState<string | null>(null)
-  const [showComparePicker, setShowComparePicker] = useState<string | null>(null)
   const [rollingBack, setRollingBack] = useState<string | null>(null)
   const [saveMessage, setSaveMessage] = useState('')
   const [showSaveMessage, setShowSaveMessage] = useState(false)
@@ -242,9 +233,7 @@ export function useWorkflowPersistence(opts: WorkflowPersistenceOptions): Workfl
 
   return {
     saving, publishing, publishingAndRunning,
-    versions, setVersions, showVersions, setShowVersions, loadingVersions,
-    diffVersionId, setDiffVersionId, diffCompareId, setDiffCompareId,
-    showComparePicker, setShowComparePicker, rollingBack,
+    versions, setVersions, showVersions, setShowVersions, loadingVersions, rollingBack,
     saveMessage, setSaveMessage, showSaveMessage, setShowSaveMessage,
     handleSave, handlePublish, handlePublishAndRun, handleExport,
     handleShowVersions, handleLoadVersion, handleRollback,
