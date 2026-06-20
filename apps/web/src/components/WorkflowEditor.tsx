@@ -18,11 +18,9 @@ import {
   InputSchemaModal, VariablesModal, ReadmeModal, ScheduleModal,
   RecentRunsMini, FormsModal, CopilotPanel,
 } from './editor/WorkflowEditorPanels'
+import { ViewMenu, MoreActionsMenu } from './editor/EditorMenus'
 import { NodeIcon } from './nodeIcons'
-import {
-  PiChartBar, PiFire, PiCheckCircle, PiCalendarBlank, PiListBullets,
-  PiTestTube, PiChatCircle, PiBookOpen,
-} from 'react-icons/pi'
+import { PiChartBar, PiFire } from 'react-icons/pi'
 
 const TB_ICON: React.CSSProperties = { verticalAlign: '-2px', marginRight: 4 }
 import { NodeConfigPanel } from './NodeConfigPanel'
@@ -507,8 +505,6 @@ export function WorkflowEditor({ workflowId, onBack, initialInput }: Props) {
   const [reportExecs, setReportExecs] = useState<api.ExecutionSummary[]>([])
   const [showSchedule, setShowSchedule] = useState(false)
   const [showLimits, setShowLimits] = useState(false)
-  const [showMoreActions, setShowMoreActions] = useState(false)
-  const [showViewMenu, setShowViewMenu] = useState(false)
   const [showReadme, setShowReadme] = useState(false)
   const [showForms, setShowForms] = useState(false)
   const [showTests, setShowTests] = useState(false)
@@ -1582,32 +1578,12 @@ export function WorkflowEditor({ workflowId, onBack, initialInput }: Props) {
           >
             {t('we.layout')}
           </button>
-          <span className="tb-pop-wrap">
-            <button className="btn btn-sm" onClick={() => setShowViewMenu((v) => !v)} title={zh ? '画布视图选项' : 'Canvas view options'}>{zh ? '视图' : 'View'} ▾</button>
-            {showViewMenu && (
-              <div className="tb-popover tb-menu" onMouseLeave={() => setShowViewMenu(false)}>
-                <button className="tb-menu-item" onClick={() => setSnapToGrid((v) => !v)}>
-                  <span>{zh ? '对齐网格' : 'Snap to grid'}</span><span className={`tb-menu-state${snapToGrid ? ' on' : ''}`}>{snapToGrid ? 'ON' : 'OFF'}</span>
-                </button>
-                <button className="tb-menu-item" onClick={() => setShowMinimap((v) => !v)}>
-                  <span>{zh ? '小地图' : 'Minimap'}</span><span className={`tb-menu-state${showMinimap ? ' on' : ''}`}>{showMinimap ? 'ON' : 'OFF'}</span>
-                </button>
-                <div className="tb-menu-item" style={{ cursor: 'default' }}>
-                  <span>{zh ? '背景' : 'Background'}</span>
-                  <select
-                    value={bgVariant}
-                    onChange={(e) => { const v = e.target.value as 'dots' | 'grid' | 'lines' | 'none'; setBgVariant(v); try { localStorage.setItem('af:canvas_bg', v) } catch { /* ignore */ } }}
-                    style={{ fontSize: 11, padding: '2px 6px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)', background: 'var(--panel)', color: 'var(--text)', cursor: 'pointer' }}
-                  >
-                    <option value="dots">{zh ? '· 点' : '· Dots'}</option>
-                    <option value="grid">{zh ? '⊹ 网格' : '⊹ Grid'}</option>
-                    <option value="lines">{zh ? '— 线' : '— Lines'}</option>
-                    <option value="none">{zh ? '□ 无' : '□ None'}</option>
-                  </select>
-                </div>
-              </div>
-            )}
-          </span>
+          <ViewMenu
+            snapToGrid={snapToGrid} setSnapToGrid={setSnapToGrid}
+            showMinimap={showMinimap} setShowMinimap={setShowMinimap}
+            bgVariant={bgVariant} setBgVariant={setBgVariant}
+            zh={zh}
+          />
           <button
             className="btn btn-sm"
             onClick={() => fitViewRef.current?.()}
@@ -1624,19 +1600,15 @@ export function WorkflowEditor({ workflowId, onBack, initialInput }: Props) {
           >
             <IconSearch size={13} style={TB_ICON} />{zh ? '查找' : 'Find'}
           </button>
-          <span className="tb-pop-wrap">
-            <button className="btn btn-sm" onClick={() => setShowMoreActions((v) => !v)} title={zh ? '更多操作' : 'More actions'}>⋯ {zh ? '更多' : 'More'}</button>
-            {showMoreActions && (
-              <div className="tb-popover tb-menu" style={{ right: 0, left: 'auto' }} onMouseLeave={() => setShowMoreActions(false)}>
-                <button className="tb-menu-item" onClick={() => { setShowMoreActions(false); const w = collectPublishWarnings(); setValidateWarnings(w); setShowValidate(true) }}><span className="tb-menu-ic"><PiCheckCircle size={14} />{t('we.validate')}</span></button>
-                <button className="tb-menu-item" onClick={() => { setShowMoreActions(false); setShowSchedule(true) }}><span className="tb-menu-ic"><PiCalendarBlank size={14} />{t('we.schedule')}</span></button>
-                <button className="tb-menu-item" onClick={() => { setShowMoreActions(false); setShowForms(true) }}><span className="tb-menu-ic"><PiListBullets size={14} />{t('we.form')}</span></button>
-                <button className="tb-menu-item" onClick={() => { setShowMoreActions(false); setShowTests(true) }}><span className="tb-menu-ic"><PiTestTube size={14} />{t('we.tests')}</span></button>
-                <button className="tb-menu-item" onClick={() => { setShowMoreActions(false); setShowComments(true) }}><span className="tb-menu-ic"><PiChatCircle size={14} />{t('we.comments')}</span></button>
-                <button className="tb-menu-item" onClick={() => { setShowMoreActions(false); setShowApiDocs(true) }}><span className="tb-menu-ic"><PiBookOpen size={14} />{zh ? 'API 文档' : 'API Docs'}</span></button>
-              </div>
-            )}
-          </span>
+          <MoreActionsMenu
+            zh={zh} t={t}
+            onValidate={() => { const w = collectPublishWarnings(); setValidateWarnings(w); setShowValidate(true) }}
+            onSchedule={() => setShowSchedule(true)}
+            onForms={() => setShowForms(true)}
+            onTests={() => setShowTests(true)}
+            onComments={() => setShowComments(true)}
+            onApiDocs={() => setShowApiDocs(true)}
+          />
           <button
             className={`btn btn-sm${showCopilot ? ' btn-primary' : ''}`}
             onClick={() => setShowCopilot((v) => !v)}

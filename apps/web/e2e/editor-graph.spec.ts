@@ -257,3 +257,23 @@ test('Ctrl+K command palette filters nodes and jumps on Enter', async ({ page })
 
   expect(errors, errors.join('\n')).toHaveLength(0)
 })
+
+test('toolbar View and More menus open and trigger actions', async ({ page }) => {
+  const errors = trackErrors(page)
+  await mockBackend(page)
+  await openEditor(page)
+
+  // View menu toggles open/closed (located by its title — the label is ambiguous).
+  const viewBtn = page.locator('button[title="画布视图选项"], button[title="Canvas view options"]')
+  await viewBtn.click()
+  await expect(page.getByText(/对齐网格|Snap to grid/)).toBeVisible()
+  await viewBtn.click()
+  await expect(page.getByText(/对齐网格|Snap to grid/)).toHaveCount(0)
+
+  // More menu → first item (Validate) opens the validation modal.
+  await page.locator('button[title="更多操作"], button[title="More actions"]').click()
+  await page.locator('.tb-popover .tb-menu-item').first().click()
+  await expect(page.getByText(/工作流校验|Workflow Validation/)).toBeVisible()
+
+  expect(errors, errors.join('\n')).toHaveLength(0)
+})
