@@ -16,14 +16,23 @@ use workflow_core::{Node, NodeType};
 use crate::approval::ApprovalGate;
 use crate::runtime::{ExecutionContext, NodeExecutionResult, NodeExecutor};
 
-// Late-stage integrations (slices 274+) live in real submodules (executor/late*.rs)
-// instead of being textually `include!`d into this file.
-mod late;
-mod late2;
-mod late3;
-use late::*;
-use late2::*;
-use late3::*;
+// Third-party integration nodes, grouped by domain.
+mod nodes_ai_ext;
+mod nodes_data_ext;
+mod nodes_messaging_ext;
+mod nodes_saas_commerce;
+mod nodes_saas_crm;
+mod nodes_saas_marketing;
+mod nodes_saas_misc;
+mod nodes_storage_ext;
+use nodes_ai_ext::*;
+use nodes_data_ext::*;
+use nodes_messaging_ext::*;
+use nodes_saas_commerce::*;
+use nodes_saas_crm::*;
+use nodes_saas_marketing::*;
+use nodes_saas_misc::*;
+use nodes_storage_ext::*;
 
 // Chinese-vendor LLM nodes extracted into their own submodule.
 mod nodes_cn_llm;
