@@ -7,7 +7,8 @@ import { useAuth } from '../AuthContext'
 import * as api from '../api/client'
 import { getStoredAuth } from '../auth'
 import type { WorkflowRecord, WorkflowVersionRecord, ExecutionRecord, ExecutionSummary, NodeExecutionRecord, NodeType, InputField, EnvSetSummary } from '../types'
-import { Canvas, graphFromApi, fromFlowGraph, type FlowNode, type FlowEdge } from './Canvas'
+import { Canvas, graphFromApi, fromFlowGraph, type FlowNode } from './Canvas'
+import { useGraphState } from './editor/useGraphState'
 import { NodeIcon } from './nodeIcons'
 import {
   PiChartBar, PiFire, PiCheckCircle, PiCalendarBlank, PiListBullets,
@@ -444,9 +445,6 @@ export function WorkflowEditor({ workflowId, onBack, initialInput }: Props) {
   setLabelLocale(locale)
   const [workflow, setWorkflow]       = useState<WorkflowRecord | null>(null)
   const [version, setVersion]         = useState<WorkflowVersionRecord | null>(null)
-  const [nodes, setNodes]             = useState<FlowNode[]>([])
-  const [edges, setEdges]             = useState<FlowEdge[]>([])
-  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
   const [execution, setExecution]     = useState<ExecutionRecord | null>(null)
   const [recentExecutions, setRecentExecutions] = useState<ExecutionSummary[]>([])
   const [inputJson, setInputJson]     = useState(initialInput ?? '{}')
@@ -534,15 +532,30 @@ export function WorkflowEditor({ workflowId, onBack, initialInput }: Props) {
   const handleSaveRef = useRef<() => void>(() => {})
   const handleRunRef  = useRef<() => void>(() => {})
   const handleDuplicateNodeRef = useRef<() => void>(() => {})
-  const nodesRef = useRef<FlowNode[]>([])
-  const edgesRef = useRef<FlowEdge[]>([])
-  const selectedNodeIdRef = useRef<string | null>(null)
-  const undoStack = useRef<{ nodes: FlowNode[]; edges: FlowEdge[] }[]>([])
-  const redoStack = useRef<{ nodes: FlowNode[]; edges: FlowEdge[] }[]>([])
 
-  // Keep refs in sync with latest nodes/edges/selectedNodeId for the keyboard handler
-  useEffect(() => { nodesRef.current = nodes; edgesRef.current = edges }, [nodes, edges])
-  useEffect(() => { selectedNodeIdRef.current = selectedNodeId }, [selectedNodeId])
+  // toast is defined here (before useGraphState) because the graph mutations
+  // surface user feedback through it.
+  const toast = useCallback((message: string, kind: 'success' | 'error' = 'success') => {
+    const id = ++toastId.current
+    setToasts((t) => [...t, { id, message, kind }])
+    setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), 3000)
+  }, [])
+
+  // The editable graph — nodes/edges/selection, undo-redo history, and node
+  // CRUD — lives in a dedicated hook (see editor/useGraphState).
+  const graph = useGraphState({ zh, toast })
+  const {
+    nodes, edges, setNodes, setEdges,
+    selectedNodeId, setSelectedNodeId,
+    selectedNodeIdRef,
+    recentNodeTypes,
+    pushHistory, undo: undoGraph, redo: redoGraph,
+    addNode, addNodeAt,
+    updateConfig: handleUpdateConfig,
+    renameNodeId,
+    duplicateNode: handleDuplicateNode,
+    deleteSelected,
+  } = graph
 
   // Scroll canvas to focused node find match
   useEffect(() => {
@@ -556,17 +569,6 @@ export function WorkflowEditor({ workflowId, onBack, initialInput }: Props) {
     const idx = nodeFindIdx % matches.length
     fitToNodeRef.current?.(matches[idx].id)
   }, [nodeFindIdx, nodeFindQuery, showNodeFind])
-
-  const pushHistory = () => {
-    undoStack.current = [...undoStack.current, { nodes: nodesRef.current, edges: edgesRef.current }].slice(-50)
-    redoStack.current = []
-  }
-
-  const toast = useCallback((message: string, kind: 'success' | 'error' = 'success') => {
-    const id = ++toastId.current
-    setToasts((t) => [...t, { id, message, kind }])
-    setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), 3000)
-  }, [])
 
   const refreshHistory = useCallback(() => {
     api.listExecutions(auth!.tenantId, workflowId)
@@ -684,99 +686,11 @@ export function WorkflowEditor({ workflowId, onBack, initialInput }: Props) {
     }
   }, [execution?.id, execution?.status, refreshHistory])
 
-  const [recentNodeTypes, setRecentNodeTypes] = useState<NodeType[]>(() => {
-    try { return JSON.parse(localStorage.getItem('af:recentNodes') ?? '[]') as NodeType[] } catch { return [] }
-  })
-
-  // Add node from palette
-  // Add a node at a specific canvas position (used by palette drag-and-drop).
-  const addNodeAt = useCallback((type: NodeType, position: { x: number; y: number }) => {
-    pushHistory()
-    const id = `${type}-${Date.now()}`
-    const newNode: FlowNode = { id, type, position, data: { label: id, nodeType: type, config: {} } }
-    setNodes((prev) => [...prev, newNode])
-    setSelectedNodeId(id)
-    // Track recently used
-    setRecentNodeTypes((prev) => {
-      const next = [type, ...prev.filter((t) => t !== type)].slice(0, 5)
-      try { localStorage.setItem('af:recentNodes', JSON.stringify(next)) } catch { /* ignore */ }
-      return next
-    })
-  }, [])
-
-  // Click-to-add: drop into a tidy grid slot based on current node count.
-  const addNode = useCallback((type: NodeType) => {
-    const existing = nodes.length
-    addNodeAt(type, { x: (existing % 4) * 280 + 80, y: Math.floor(existing / 4) * 140 + 80 })
-  }, [nodes.length, addNodeAt])
-
   // Palette → canvas drag-and-drop: stash the node type for the canvas drop handler.
   const onPaletteDragStart = useCallback((e: React.DragEvent, type: NodeType) => {
     e.dataTransfer.setData('application/trigix-node', type)
     e.dataTransfer.effectAllowed = 'move'
   }, [])
-
-  // Update node config from panel
-  const handleUpdateConfig = useCallback((nodeId: string, config: Record<string, unknown>) => {
-    setNodes((prev) =>
-      prev.map((n) =>
-        n.id === nodeId ? { ...n, data: { ...n.data, config } } : n,
-      ),
-    )
-  }, [])
-
-  // Rename a node's id. The id is referenced by edges (source/target) and by
-  // template variables ({{id.field}}) inside other nodes' configs, so we rewrite
-  // all of those atomically. Returns ok/error for inline panel feedback.
-  const renameNodeId = useCallback((oldId: string, rawNewId: string): { ok: boolean; error?: string } => {
-    const newId = rawNewId.trim()
-    if (newId === oldId) return { ok: true }
-    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(newId)) {
-      return { ok: false, error: zh ? 'ID 只能用字母/数字/下划线，且不以数字开头' : 'Use letters, digits, underscore; cannot start with a digit' }
-    }
-    if (nodesRef.current.some((n) => n.id === newId)) {
-      return { ok: false, error: zh ? 'ID 已被占用' : 'ID already in use' }
-    }
-    pushHistory()
-    // Rewrite {{oldId.field}} / {{oldId}} references in every config object.
-    const esc = oldId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-    const re = new RegExp('(\\{\\{\\s*)' + esc + '(?=[.}\\s|])', 'g')
-    const rewriteCfg = (cfg: Record<string, unknown>): Record<string, unknown> => {
-      try { return JSON.parse(JSON.stringify(cfg).replace(re, '$1' + newId)) } catch { return cfg }
-    }
-    setNodes((prev) => prev.map((n) => {
-      const config = rewriteCfg(n.data.config)
-      if (n.id === oldId) {
-        return { ...n, id: newId, data: { ...n.data, config, label: n.data.label === oldId ? newId : n.data.label } }
-      }
-      return { ...n, data: { ...n.data, config } }
-    }))
-    setEdges((prev) => prev.map((e) => ({
-      ...e,
-      source: e.source === oldId ? newId : e.source,
-      target: e.target === oldId ? newId : e.target,
-      id: e.id && e.id.includes(oldId) ? e.id.split(oldId).join(newId) : e.id,
-    })))
-    setSelectedNodeId(newId)
-    return { ok: true }
-  }, [zh])
-
-  // Duplicate the currently selected node
-  const handleDuplicateNode = useCallback(() => {
-    const node = nodes.find((n) => n.id === selectedNodeId)
-    if (!node) return
-    pushHistory()
-    const newId = `${node.data.nodeType ?? 'node'}-${Date.now()}`
-    const newNode: FlowNode = {
-      ...node,
-      id: newId,
-      position: { x: node.position.x + 60, y: node.position.y + 60 },
-      data: { ...node.data, label: newId, config: { ...(node.data.config ?? {}) } },
-    }
-    setNodes((prev) => [...prev, newNode])
-    setSelectedNodeId(newId)
-    toast(zh ? `已复制为 ${newId}` : `Duplicated as ${newId}`)
-  }, [nodes, selectedNodeId, toast])
 
   // Re-run topological layout on current graph
   const handleAutoLayout = useCallback(() => {
@@ -799,31 +713,16 @@ export function WorkflowEditor({ workflowId, onBack, initialInput }: Props) {
       if ((e.ctrlKey || e.metaKey) && e.key === 'd') { e.preventDefault(); handleDuplicateNodeRef.current() }
       if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key === 'z') {
         e.preventDefault()
-        const snap = undoStack.current.pop()
-        if (snap) {
-          redoStack.current.push({ nodes: nodesRef.current, edges: edgesRef.current })
-          setNodes(snap.nodes)
-          setEdges(snap.edges)
-        }
+        undoGraph()
       }
       if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || (e.shiftKey && e.key === 'z'))) {
         e.preventDefault()
-        const snap = redoStack.current.pop()
-        if (snap) {
-          undoStack.current.push({ nodes: nodesRef.current, edges: edgesRef.current })
-          setNodes(snap.nodes)
-          setEdges(snap.edges)
-        }
+        redoGraph()
       }
       if (e.key === 'Delete' || e.key === 'Backspace') {
-        const id = selectedNodeIdRef.current
-        if (id) {
+        if (selectedNodeIdRef.current) {
           e.preventDefault()
-          undoStack.current.push({ nodes: nodesRef.current, edges: edgesRef.current })
-          redoStack.current = []
-          setNodes((prev) => prev.filter((n) => n.id !== id))
-          setEdges((prev) => prev.filter((ed) => ed.source !== id && ed.target !== id))
-          setSelectedNodeId(null)
+          deleteSelected()
         }
       }
       if (e.key === '?') { e.preventDefault(); setShowHelp(true) }
