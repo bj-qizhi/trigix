@@ -23,6 +23,7 @@ import { LimitsMenu } from './editor/LimitsMenu'
 import { TagEditor } from './editor/TagEditor'
 import { WorkflowTitleBar } from './editor/WorkflowTitleBar'
 import { collectPublishWarnings } from './editor/publishWarnings'
+import { EditorActions } from './editor/EditorActions'
 import { NodeIcon } from './nodeIcons'
 import { PiChartBar, PiFire } from 'react-icons/pi'
 
@@ -1178,51 +1179,22 @@ export function WorkflowEditor({ workflowId, onBack, initialInput }: Props) {
           >
             ✦ {locale === 'zh' ? 'AI 助手' : 'Copilot'}
           </button>
-          <div style={{ position: 'relative', display: 'inline-flex', alignItems: 'center' }}>
-            <button
-              className={`btn btn-sm${isDirty ? ' btn-primary' : ''}`}
-              disabled={saving}
-              onClick={showSaveMessage ? handleSave : () => setShowSaveMessage(true)}
-              title={isDirty ? 'Unsaved changes — save a new version' : 'Save current graph as a new version'}
-            >
-              {saving ? (locale === 'zh' ? '保存中…' : 'Saving…') : isDirty ? t('we.save.dirty') : t('we.save')}
-            </button>
-            {showSaveMessage && (
-              <div style={{ position: 'absolute', top: '100%', right: 0, zIndex: 200, background: 'var(--panel)', border: '1px solid var(--border)', borderRadius: 6, padding: '8px 10px', width: 240, marginTop: 4, boxShadow: '0 4px 12px rgba(0,0,0,0.3)' }}>
-                <input
-                  autoFocus
-                  placeholder={zh ? '保存备注（可选）' : 'Save message (optional)'}
-                  value={saveMessage}
-                  onChange={(e) => setSaveMessage(e.target.value)}
-                  onKeyDown={(e) => { if (e.key === 'Enter') handleSave(); if (e.key === 'Escape') { setShowSaveMessage(false); setSaveMessage('') } }}
-                  style={{ width: '100%', fontSize: 12, marginBottom: 6, boxSizing: 'border-box' }}
-                />
-                <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
-                  <button className="btn btn-sm" onClick={() => { setShowSaveMessage(false); setSaveMessage('') }}>{zh ? '取消' : 'Cancel'}</button>
-                  <button className="btn btn-sm btn-primary" disabled={saving} onClick={handleSave}>{zh ? '保存' : 'Save'}</button>
-                </div>
-              </div>
-            )}
-          </div>
-          <button
-            className="btn btn-sm btn-primary"
-            disabled={!canPublish || publishing}
-            onClick={handlePublish}
-            title={canPublish ? 'Publish this draft version' : 'No draft version to publish'}
-          >
-            {publishing ? (locale === 'zh' ? '发布中…' : 'Publishing…') : t('we.publish')}
-          </button>
-          {canPublish && (
-            <button
-              className="btn btn-sm"
-              disabled={publishingAndRunning || publishing}
-              onClick={handlePublishAndRun}
-              title={zh ? '发布版本并立即运行' : 'Publish and immediately run'}
-              style={{ fontSize: 11 }}
-            >
-              {publishingAndRunning ? '…' : (zh ? '▶ 发布并运行' : '▶ Publish & Run')}
-            </button>
-          )}
+          <EditorActions
+            isDirty={isDirty}
+            saving={saving}
+            publishing={publishing}
+            publishingAndRunning={publishingAndRunning}
+            canPublish={canPublish}
+            saveMessage={saveMessage}
+            setSaveMessage={setSaveMessage}
+            showSaveMessage={showSaveMessage}
+            setShowSaveMessage={setShowSaveMessage}
+            onSave={handleSave}
+            onPublish={handlePublish}
+            onPublishAndRun={handlePublishAndRun}
+            zh={zh}
+            t={t}
+          />
           <button className="btn btn-sm" onClick={toggleTheme} title="Toggle dark/light theme">
             {theme === 'dark' ? <ThemeToggleIcon dark /> : <ThemeToggleIcon dark={false} />}
           </button>
