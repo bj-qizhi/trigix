@@ -13,6 +13,7 @@ import { useAuth } from '../AuthContext'
 import logoWordmark from '../assets/logo-wordmark.svg'
 import * as api from '../api/client'
 import type { WorkflowExport, WorkflowRecord, ScheduleSummary, ExecutionSummary, WorkflowGraph } from '../types'
+import { filterAndSortWorkflows, computeWorkflowStats } from './workflowListFilter'
 import { TemplatesModal, type Template } from './TemplatesModal'
 import { CreateWorkflowModal, SystemInfoModal, ShortcutsModal } from './workflowlist/WorkflowListModals'
 import { GenerateWorkflowModal } from './GenerateWorkflowModal'
@@ -446,20 +447,7 @@ export function WorkflowList({ onOpen, onOpenExecution, onCredentials, onAuditLo
   const allTags = Array.from(new Set(workflows.flatMap((wf) => wf.tags ?? []))).sort()
   const allFolders = Array.from(new Set(workflows.map((wf) => wf.folder).filter(Boolean) as string[])).sort()
 
-  // Compute per-workflow stats from execution summaries
-  const statsByWorkflow = (() => {
-    const map = new Map<string, { total: number; succeeded: number; failed: number; running: number; lastAt: number }>()
-    for (const ex of execSummaries) {
-      const cur = map.get(ex.workflow_id) ?? { total: 0, succeeded: 0, failed: 0, running: 0, lastAt: 0 }
-      cur.total++
-      if (ex.status === 'succeeded') cur.succeeded++
-      else if (ex.status === 'failed') cur.failed++
-      else if (ex.status === 'running' || ex.status === 'waiting_approval') cur.running++
-      if (ex.started_at > cur.lastAt) cur.lastAt = ex.started_at
-      map.set(ex.workflow_id, cur)
-    }
-    return map
-  })()
+  const statsByWorkflow = computeWorkflowStats(execSummaries)
 
   const todayStart = Math.floor(new Date().setHours(0, 0, 0, 0) / 1000)
 
@@ -478,30 +466,12 @@ export function WorkflowList({ onOpen, onOpenExecution, onCredentials, onAuditLo
     return map
   })()
 
-  const filteredWorkflows = (() => {
-    const base = workflows.filter((wf) => {
-      const q = search.trim().toLowerCase()
-      const matchesSearch = !q || wf.name.toLowerCase().includes(q) || (wf.description?.toLowerCase().includes(q)) || (wf.tags ?? []).some((t) => t.toLowerCase().includes(q))
-      const matchesTag = !tagFilter || (wf.tags ?? []).includes(tagFilter)
-      const matchesStatus = statusFilter === 'all' || wf.status === statusFilter
-      const matchesRunToday = !runTodayOnly || (statsByWorkflow.get(wf.id)?.lastAt ?? 0) >= todayStart
-      const matchesFolder = !folderFilter || wf.folder === folderFilter
-      return matchesSearch && matchesTag && matchesStatus && matchesRunToday && matchesFolder
-    })
-    // Pinned always float to top; within each group apply sort
-    const pinned = base.filter((w) => w.pinned)
-    const unpinned = base.filter((w) => !w.pinned)
-    const cmp = (a: WorkflowRecord, b: WorkflowRecord): number => {
-      if (sortBy === 'name') return a.name.localeCompare(b.name)
-      if (sortBy === 'status') return a.status.localeCompare(b.status)
-      if (sortBy === 'runs') return (statsByWorkflow.get(b.id)?.total ?? 0) - (statsByWorkflow.get(a.id)?.total ?? 0)
-      if (sortBy === 'recent') return (statsByWorkflow.get(b.id)?.lastAt ?? 0) - (statsByWorkflow.get(a.id)?.lastAt ?? 0)
-      if (sortBy === 'created') return (b.created_at ?? 0) - (a.created_at ?? 0)
-      if (sortBy === 'modified') return (b.updated_at ?? 0) - (a.updated_at ?? 0)
-      return 0
-    }
-    return [...pinned.sort(cmp), ...unpinned.sort(cmp)]
-  })()
+  const filteredWorkflows = filterAndSortWorkflows(
+    workflows,
+    { search, tagFilter, statusFilter, folderFilter, runTodayOnly, sortBy },
+    statsByWorkflow,
+    todayStart,
+  )
   filteredWorkflowsRef.current = filteredWorkflows
   focusedIdxRef.current = focusedIdx
 
