@@ -15,7 +15,7 @@ import * as api from '../api/client'
 import type { WorkflowExport, WorkflowRecord, ScheduleSummary, ExecutionSummary, WorkflowGraph } from '../types'
 import { filterAndSortWorkflows, computeWorkflowStats } from './workflowListFilter'
 import { TemplatesModal, type Template } from './TemplatesModal'
-import { CreateWorkflowModal, SystemInfoModal, ShortcutsModal } from './workflowlist/WorkflowListModals'
+import { CreateWorkflowModal, SystemInfoModal, ShortcutsModal, EditTagsModal, MoveFolderModal } from './workflowlist/WorkflowListModals'
 import { GenerateWorkflowModal } from './GenerateWorkflowModal'
 import { useTheme } from '../useTheme'
 import { useLocale } from '../useLocale'
@@ -176,14 +176,12 @@ export function WorkflowList({ onOpen, onOpenExecution, onCredentials, onAuditLo
   const [showColSettings, setShowColSettings] = useState(false)
   const colSettingsRef = useRef<HTMLDivElement>(null)
   const [editingTags, setEditingTags] = useState<WorkflowRecord | null>(null)
-  const [tagInput, setTagInput] = useState('')
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [bulkArchiving, setBulkArchiving] = useState(false)
   const [restoring, setRestoring] = useState<string | null>(null)
   const [editingDescId, setEditingDescId] = useState<string | null>(null)
   const [descInput, setDescInput] = useState('')
   const [movingFolder, setMovingFolder] = useState<WorkflowRecord | null>(null)
-  const [folderInput, setFolderInput] = useState('')
   const [focusedIdx, setFocusedIdx] = useState<number>(-1)
   const [recentIds, setRecentIds] = useState<string[]>(getRecentIds)
   const [showSystemInfo, setShowSystemInfo] = useState(false)
@@ -475,29 +473,7 @@ export function WorkflowList({ onOpen, onOpenExecution, onCredentials, onAuditLo
   filteredWorkflowsRef.current = filteredWorkflows
   focusedIdxRef.current = focusedIdx
 
-  const handleSaveTags = async () => {
-    if (!editingTags) return
-    const tags = tagInput.split(',').map((t) => t.trim().toLowerCase().replace(/[^a-z0-9_-]/g, '')).filter(Boolean)
-    try {
-      const updated = await api.updateWorkflowTags(auth!.tenantId, editingTags.id, editingTags.name, tags)
-      setWorkflows((prev) => prev.map((wf) => wf.id === updated.id ? updated : wf))
-      setEditingTags(null)
-    } catch (e) {
-      alert(String(e))
-    }
-  }
 
-  const handleMoveFolder = async () => {
-    if (!movingFolder) return
-    const folder = folderInput.trim() || null
-    try {
-      const updated = await api.moveWorkflowToFolder(auth!.tenantId, movingFolder.id, folder)
-      setWorkflows((prev) => prev.map((w) => w.id === updated.id ? updated : w))
-      setMovingFolder(null)
-    } catch (e) {
-      alert(String(e))
-    }
-  }
 
   const handleSaveDescription = async (wf: WorkflowRecord) => {
     const newDesc = descInput.trim() || undefined
@@ -1940,7 +1916,7 @@ export function WorkflowList({ onOpen, onOpenExecution, onCredentials, onAuditLo
                           <button
                             className="btn btn-sm btn-icon"
                             style={{ fontSize: 11, padding: '0 4px', opacity: 0.5 }}
-                            onClick={(e) => { e.stopPropagation(); setEditingTags(wf); setTagInput((wf.tags ?? []).join(', ')) }}
+                            onClick={(e) => { e.stopPropagation(); setEditingTags(wf) }}
                             title="Edit tags"
                           >
                             ✎
@@ -2043,7 +2019,7 @@ export function WorkflowList({ onOpen, onOpenExecution, onCredentials, onAuditLo
                       </button>
                       <button
                         className="btn btn-sm btn-icon"
-                        onClick={(e) => { e.stopPropagation(); setMovingFolder(wf); setFolderInput(wf.folder ?? '') }}
+                        onClick={(e) => { e.stopPropagation(); setMovingFolder(wf) }}
                         title={wf.folder ? (zh ? `文件夹：${wf.folder} — 点击移动` : `Folder: ${wf.folder} — click to move`) : (zh ? '移至文件夹' : 'Move to folder')}
                         style={{ fontSize: 12, opacity: wf.folder ? 0.9 : 0.45 }}
                       >
@@ -2253,57 +2229,30 @@ export function WorkflowList({ onOpen, onOpenExecution, onCredentials, onAuditLo
       )}
 
       {editingTags && (
-        <div className="modal-backdrop" onClick={() => setEditingTags(null)}>
-          <div className="modal" onClick={(e) => e.stopPropagation()}>
-            <h2>{zh ? `编辑标签 — ${editingTags.name}` : `Edit Tags — ${editingTags.name}`}</h2>
-            <div className="field">
-              <label>{zh ? '标签' : 'Tags'} <span style={{ color: 'var(--muted)', fontWeight: 400 }}>{zh ? '（逗号分隔）' : '(comma-separated)'}</span></label>
-              <input
-                autoFocus
-                placeholder="production, team-a, ml"
-                value={tagInput}
-                onChange={(e) => setTagInput(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && handleSaveTags()}
-              />
-              <span style={{ fontSize: 11, color: 'var(--muted)' }}>
-                {zh ? '小写字母、数字、连字符和下划线。标签显示为筛选标签。' : 'Lowercase letters, numbers, hyphens and underscores. Tags appear as filter chips.'}
-              </span>
-            </div>
-            <div className="modal-actions">
-              <button className="btn" onClick={() => setEditingTags(null)}>{zh ? '取消' : 'Cancel'}</button>
-              <button className="btn btn-primary" onClick={handleSaveTags}>{zh ? '保存标签' : 'Save Tags'}</button>
-            </div>
-          </div>
-        </div>
+        <EditTagsModal
+          workflow={editingTags}
+          zh={zh}
+          onClose={() => setEditingTags(null)}
+          onSave={async (rawTags) => {
+            const tags = rawTags.split(',').map((t) => t.trim().toLowerCase().replace(/[^a-z0-9_-]/g, '')).filter(Boolean)
+            const updated = await api.updateWorkflowTags(auth!.tenantId, editingTags.id, editingTags.name, tags)
+            setWorkflows((prev) => prev.map((wf) => wf.id === updated.id ? updated : wf))
+          }}
+        />
       )}
 
       {movingFolder && (
-        <div className="modal-backdrop" onClick={() => setMovingFolder(null)}>
-          <div className="modal" onClick={(e) => e.stopPropagation()}>
-            <h2>{zh ? `移至文件夹 — ${movingFolder.name}` : `Move to Folder — ${movingFolder.name}`}</h2>
-            <div className="field">
-              <label>{zh ? '文件夹' : 'Folder'} <span style={{ color: 'var(--muted)', fontWeight: 400 }}>{zh ? '（留空以移出文件夹）' : '(leave blank to remove from folder)'}</span></label>
-              <input
-                autoFocus
-                placeholder={zh ? '如 销售、集成、监控' : 'e.g. Sales, Integrations, Monitoring'}
-                value={folderInput}
-                onChange={(e) => setFolderInput(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && handleMoveFolder()}
-                list="af-folder-suggestions"
-              />
-              <datalist id="af-folder-suggestions">
-                {allFolders.map((f) => <option key={f} value={f} />)}
-              </datalist>
-              <span style={{ fontSize: 11, color: 'var(--muted)' }}>
-                {zh ? '文件夹在列表中将工作流分组。已有文件夹会作为自动补全建议显示。' : 'Folders group workflows in the list. Existing folders appear as autocomplete suggestions.'}
-              </span>
-            </div>
-            <div className="modal-actions">
-              <button className="btn" onClick={() => setMovingFolder(null)}>{zh ? '取消' : 'Cancel'}</button>
-              <button className="btn btn-primary" onClick={handleMoveFolder}>{zh ? '保存' : 'Save'}</button>
-            </div>
-          </div>
-        </div>
+        <MoveFolderModal
+          workflow={movingFolder}
+          folders={allFolders}
+          zh={zh}
+          onClose={() => setMovingFolder(null)}
+          onSave={async (folderInput) => {
+            const folder = folderInput.trim() || null
+            const updated = await api.moveWorkflowToFolder(auth!.tenantId, movingFolder.id, folder)
+            setWorkflows((prev) => prev.map((w) => w.id === updated.id ? updated : w))
+          }}
+        />
       )}
 
       {quickRunResult && (

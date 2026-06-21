@@ -3,6 +3,84 @@
 
 import { useState } from 'react'
 import type * as api from '../../api/client'
+import type { WorkflowRecord } from '../../types'
+
+export interface EditTagsModalProps {
+  workflow: WorkflowRecord
+  onSave: (rawTags: string) => Promise<void>
+  onClose: () => void
+  zh: boolean
+}
+
+export function EditTagsModal({ workflow, onSave, onClose, zh }: EditTagsModalProps) {
+  const [tagInput, setTagInput] = useState((workflow.tags ?? []).join(', '))
+  const submit = async () => { try { await onSave(tagInput); onClose() } catch (e) { alert(String(e)) } }
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal" onClick={(e) => e.stopPropagation()}>
+        <h2>{zh ? `编辑标签 — ${workflow.name}` : `Edit Tags — ${workflow.name}`}</h2>
+        <div className="field">
+          <label>{zh ? '标签' : 'Tags'} <span style={{ color: 'var(--muted)', fontWeight: 400 }}>{zh ? '（逗号分隔）' : '(comma-separated)'}</span></label>
+          <input
+            autoFocus
+            placeholder="production, team-a, ml"
+            value={tagInput}
+            onChange={(e) => setTagInput(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && submit()}
+          />
+          <span style={{ fontSize: 11, color: 'var(--muted)' }}>
+            {zh ? '小写字母、数字、连字符和下划线。标签显示为筛选标签。' : 'Lowercase letters, numbers, hyphens and underscores. Tags appear as filter chips.'}
+          </span>
+        </div>
+        <div className="modal-actions">
+          <button className="btn" onClick={onClose}>{zh ? '取消' : 'Cancel'}</button>
+          <button className="btn btn-primary" onClick={submit}>{zh ? '保存标签' : 'Save Tags'}</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+export interface MoveFolderModalProps {
+  workflow: WorkflowRecord
+  folders: string[]
+  onSave: (folder: string) => Promise<void>
+  onClose: () => void
+  zh: boolean
+}
+
+export function MoveFolderModal({ workflow, folders, onSave, onClose, zh }: MoveFolderModalProps) {
+  const [folderInput, setFolderInput] = useState(workflow.folder ?? '')
+  const submit = async () => { try { await onSave(folderInput); onClose() } catch (e) { alert(String(e)) } }
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal" onClick={(e) => e.stopPropagation()}>
+        <h2>{zh ? `移至文件夹 — ${workflow.name}` : `Move to Folder — ${workflow.name}`}</h2>
+        <div className="field">
+          <label>{zh ? '文件夹' : 'Folder'} <span style={{ color: 'var(--muted)', fontWeight: 400 }}>{zh ? '（留空以移出文件夹）' : '(leave blank to remove from folder)'}</span></label>
+          <input
+            autoFocus
+            placeholder={zh ? '如 销售、集成、监控' : 'e.g. Sales, Integrations, Monitoring'}
+            value={folderInput}
+            onChange={(e) => setFolderInput(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && submit()}
+            list="af-folder-suggestions"
+          />
+          <datalist id="af-folder-suggestions">
+            {folders.map((f) => <option key={f} value={f} />)}
+          </datalist>
+          <span style={{ fontSize: 11, color: 'var(--muted)' }}>
+            {zh ? '文件夹在列表中将工作流分组。已有文件夹会作为自动补全建议显示。' : 'Folders group workflows in the list. Existing folders appear as autocomplete suggestions.'}
+          </span>
+        </div>
+        <div className="modal-actions">
+          <button className="btn" onClick={onClose}>{zh ? '取消' : 'Cancel'}</button>
+          <button className="btn btn-primary" onClick={submit}>{zh ? '保存' : 'Save'}</button>
+        </div>
+      </div>
+    </div>
+  )
+}
 
 // Self-contained modals extracted from WorkflowList: the create-workflow form,
 // the platform info dialog and the keyboard-shortcuts cheat sheet. Verbatim
