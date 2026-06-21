@@ -8,6 +8,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useAuth } from '../AuthContext'
 import * as api from '../api/client'
 import type { ExecutionSummary, ExecutionRecord, NodeExecutionRecord } from '../types'
+import { applyRunFilters } from './runsFilter'
 import logoWordmark from '../assets/logo-wordmark.svg'
 
 const LIVE_STATUSES = new Set(['running', 'waiting_approval'])
@@ -338,24 +339,12 @@ export function RunsPage({ onBack, onOpenExecution, onOpenWorkflow, initialWorkf
     acc[r.status] = (acc[r.status] ?? 0) + 1
     return acc
   }, {} as Record<string, number>)
-  const dateThreshold = dateFilter === 'today' ? nowSecs - 86400
-    : dateFilter === '7d' ? nowSecs - 7 * 86400
-    : dateFilter === '30d' ? nowSecs - 30 * 86400
-    : 0
-  const byDate      = dateThreshold > 0 ? runs.filter((r) => r.started_at >= dateThreshold) : runs
-  const byStatus    = statusFilter === 'all' ? byDate : byDate.filter((r) => r.status === statusFilter)
-  const byTrigger   = triggerFilter === 'all' ? byStatus : byStatus.filter((r) => (r.trigger_type ?? 'manual') === triggerFilter)
-  const byStarred   = starredOnly ? byTrigger.filter((r) => r.starred) : byTrigger
-  const byLabel     = labelFilter ? byStarred.filter((r) => r.label === labelFilter) : byStarred
-  const byOutput    = outputFilter ? byLabel.filter((r) => (r as unknown as Record<string, unknown>).output_json != null && String((r as unknown as Record<string, unknown>).output_json).toLowerCase().includes(outputFilter.toLowerCase())) : byLabel
-  const filtered    = searchQuery
-    ? byOutput.filter((r) => {
-        const q = searchQuery.toLowerCase()
-        return r.id.toLowerCase().startsWith(q) ||
-          (workflowNames.get(r.workflow_id) ?? '').toLowerCase().includes(q) ||
-          (r.label ?? '').toLowerCase().includes(q)
-      })
-    : byOutput
+  const filtered = applyRunFilters(
+    runs,
+    { dateFilter, statusFilter, triggerFilter, starredOnly, labelFilter, outputFilter, searchQuery },
+    workflowNames,
+    nowSecs,
+  )
 
   // Stats for mini bar (from full `runs` list, not filtered)
   const todayCutoff = nowSecs - 86400
