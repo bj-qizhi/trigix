@@ -12,9 +12,10 @@ import {
 import { useAuth } from '../AuthContext'
 import logoWordmark from '../assets/logo-wordmark.svg'
 import * as api from '../api/client'
-import type { WorkflowExport, WorkflowRecord, ScheduleSummary, ExecutionSummary, WorkflowGraph } from '../types'
+import type { WorkflowExport, WorkflowRecord, WorkflowGraph } from '../types'
 import { filterAndSortWorkflows, computeWorkflowStats } from './workflowListFilter'
 import { TemplatesModal, type Template } from './TemplatesModal'
+import { useWorkflowListData } from './workflowlist/useWorkflowListData'
 import { CreateWorkflowModal, SystemInfoModal, ShortcutsModal, EditTagsModal, MoveFolderModal } from './workflowlist/WorkflowListModals'
 import { GenerateWorkflowModal } from './GenerateWorkflowModal'
 import { useTheme } from '../useTheme'
@@ -151,11 +152,12 @@ export function WorkflowList({ onOpen, onOpenExecution, onCredentials, onAuditLo
   const { theme, toggle: toggleTheme } = useTheme()
   const { locale, toggle: toggleLocale, t } = useLocale()
   const zh = locale === 'zh'
-  const [workflows, setWorkflows] = useState<WorkflowRecord[]>([])
-  const [schedules, setSchedules]  = useState<ScheduleSummary[]>([])
-  const [execSummaries, setExecSummaries] = useState<ExecutionSummary[]>([])
-  const [loading, setLoading]      = useState(true)
-  const [error, setError]          = useState<string | null>(null)
+  const {
+    workflows, setWorkflows, schedules, setSchedules,
+    execSummaries, setExecSummaries, execStats, billingStatus,
+    serverNotifs, setServerNotifs, serverUnread, setServerUnread,
+    expiringCreds, loading, error, reload,
+  } = useWorkflowListData()
   const [creating, setCreating]    = useState(false)
   const [importing, setImporting]  = useState(false)
   const [duplicating, setDuplicating] = useState<string | null>(null)
@@ -186,15 +188,10 @@ export function WorkflowList({ onOpen, onOpenExecution, onCredentials, onAuditLo
   const [recentIds, setRecentIds] = useState<string[]>(getRecentIds)
   const [showSystemInfo, setShowSystemInfo] = useState(false)
   const [systemInfo, setSystemInfo] = useState<api.SystemInfo | null>(null)
-  const [execStats, setExecStats] = useState<api.ExecutionStats | null>(null)
   const [showGlobalSearch, setShowGlobalSearch] = useState(false)
   const [globalQuery, setGlobalQuery] = useState('')
   const [globalResults, setGlobalResults] = useState<api.SearchResult | null>(null)
   const [globalSearching, setGlobalSearching] = useState(false)
-  const [billingStatus, setBillingStatus] = useState<api.BillingStatus | null>(null)
-  const [serverNotifs, setServerNotifs] = useState<api.AppNotification[]>([])
-  const [serverUnread, setServerUnread] = useState(0)
-  const [expiringCreds, setExpiringCreds] = useState<api.CredentialSummary[]>([])
   const [showNavMenu, setShowNavMenu] = useState(false)
   const [navMenuRect, setNavMenuRect] = useState<{ top: number; right: number }>({ top: 0, right: 0 })
   const [showUserMenu, setShowUserMenu] = useState(false)
@@ -285,30 +282,7 @@ export function WorkflowList({ onOpen, onOpenExecution, onCredentials, onAuditLo
     return () => clearTimeout(timer)
   }, [globalQuery, showGlobalSearch])
 
-  const load = () => {
-    setLoading(true)
-    setError(null)
-    const loaded = Promise.all([
-      api.listWorkflows(auth!.tenantId, auth!.projectId),
-      api.listSchedules(auth!.tenantId),
-      api.listExecutions(auth!.tenantId),
-      api.getExecutionStats(auth!.tenantId),
-    ])
-      .then(([wfs, scheds, execs, stats]) => {
-        setWorkflows(wfs)
-        setSchedules(scheds)
-        setExecSummaries(execs)
-        setExecStats(stats)
-      })
-      .catch((e: unknown) => setError(String(e)))
-      .finally(() => setLoading(false))
-    api.getBillingStatus().then(setBillingStatus).catch(() => {})
-    api.listNotifications(auth!.tenantId, 20).then((r) => { setServerNotifs(r.notifications); setServerUnread(r.unread_count) }).catch(() => {})
-    api.listExpiringCredentials(auth!.tenantId, 7).then(setExpiringCreds).catch(() => {})
-    return loaded
-  }
 
-  useEffect(() => { void load() }, [])
 
   const handleCreate = async (name: string, description?: string) => {
     const wf = await api.createWorkflow(auth!.tenantId, auth!.workspaceId, auth!.projectId, name, description)
@@ -2150,7 +2124,7 @@ export function WorkflowList({ onOpen, onOpenExecution, onCredentials, onAuditLo
           onImport={handleGenerateImport}
           onCreated={(id) => {
             setShowGenerate(false)
-            load().then(() => openWorkflow(id))
+            reload().then(() => openWorkflow(id))
           }}
         />
       )}
