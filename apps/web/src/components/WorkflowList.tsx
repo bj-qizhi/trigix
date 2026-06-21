@@ -16,6 +16,7 @@ import type { WorkflowExport, WorkflowRecord, WorkflowGraph } from '../types'
 import { filterAndSortWorkflows, computeWorkflowStats } from './workflowListFilter'
 import { TemplatesModal, type Template } from './TemplatesModal'
 import { useWorkflowListData } from './workflowlist/useWorkflowListData'
+import { useGlobalSearch } from './workflowlist/useGlobalSearch'
 import { CreateWorkflowModal, SystemInfoModal, ShortcutsModal, EditTagsModal, MoveFolderModal } from './workflowlist/WorkflowListModals'
 import { GenerateWorkflowModal } from './GenerateWorkflowModal'
 import { useTheme } from '../useTheme'
@@ -158,6 +159,10 @@ export function WorkflowList({ onOpen, onOpenExecution, onCredentials, onAuditLo
     serverNotifs, setServerNotifs, serverUnread, setServerUnread,
     expiringCreds, loading, error, reload,
   } = useWorkflowListData()
+  const {
+    showGlobalSearch, setShowGlobalSearch, globalQuery, setGlobalQuery,
+    globalResults, globalSearching,
+  } = useGlobalSearch()
   const [creating, setCreating]    = useState(false)
   const [importing, setImporting]  = useState(false)
   const [duplicating, setDuplicating] = useState<string | null>(null)
@@ -188,10 +193,6 @@ export function WorkflowList({ onOpen, onOpenExecution, onCredentials, onAuditLo
   const [recentIds, setRecentIds] = useState<string[]>(getRecentIds)
   const [showSystemInfo, setShowSystemInfo] = useState(false)
   const [systemInfo, setSystemInfo] = useState<api.SystemInfo | null>(null)
-  const [showGlobalSearch, setShowGlobalSearch] = useState(false)
-  const [globalQuery, setGlobalQuery] = useState('')
-  const [globalResults, setGlobalResults] = useState<api.SearchResult | null>(null)
-  const [globalSearching, setGlobalSearching] = useState(false)
   const [showNavMenu, setShowNavMenu] = useState(false)
   const [navMenuRect, setNavMenuRect] = useState<{ top: number; right: number }>({ top: 0, right: 0 })
   const [showUserMenu, setShowUserMenu] = useState(false)
@@ -270,17 +271,6 @@ export function WorkflowList({ onOpen, onOpenExecution, onCredentials, onAuditLo
     return () => document.removeEventListener('mousedown', handler)
   }, [])
 
-  useEffect(() => {
-    if (!showGlobalSearch || globalQuery.trim().length < 2) { setGlobalResults(null); return }
-    setGlobalSearching(true)
-    const timer = setTimeout(() => {
-      api.search(auth!.tenantId, globalQuery.trim())
-        .then(setGlobalResults)
-        .catch(() => {})
-        .finally(() => setGlobalSearching(false))
-    }, 300)
-    return () => clearTimeout(timer)
-  }, [globalQuery, showGlobalSearch])
 
 
 
