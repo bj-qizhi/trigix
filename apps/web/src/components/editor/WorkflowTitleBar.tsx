@@ -77,27 +77,6 @@ export function WorkflowTitleBar({ workflow, zh, onRename, onSaveDescription }: 
           </span>
         )
       )}
-
-      {renaming && (
-        <div className="modal-backdrop" onClick={() => setRenaming(false)}>
-          <div className="modal" onClick={(e) => e.stopPropagation()}>
-            <h2>{zh ? '重命名工作流' : 'Rename Workflow'}</h2>
-            <div className="field">
-              <label>{zh ? '名称' : 'Name'}</label>
-              <input
-                autoFocus
-                value={newName}
-                onChange={(e) => setNewName(e.target.value)}
-                onKeyDown={(e) => { if (e.key === 'Enter') submitRename(); if (e.key === 'Escape') setRenaming(false) }}
-              />
-            </div>
-            <div className="modal-actions">
-              <button className="btn" onClick={() => setRenaming(false)}>{zh ? '取消' : 'Cancel'}</button>
-              <button className="btn btn-primary" onClick={submitRename}>{zh ? '保存' : 'Save'}</button>
-            </div>
-          </div>
-        </div>
-      )}
     </>
   )
 }

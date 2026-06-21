@@ -191,12 +191,31 @@ test('saving an unchanged graph round-trips the loaded nodes and edges', async (
   expect(errors, errors.join('\n')).toHaveLength(0)
 })
 
-test('toolbar title bar renders the workflow name', async ({ page }) => {
+test('clicking the workflow title renames it', async ({ page }) => {
   const errors = trackErrors(page)
   await mockBackend(page)
+  const patches: { name?: string }[] = []
+  // PATCH /v1/workflows/wf1 renames; route after the catch-all so it wins.
+  await page.route(/\/v1\/workflows\/wf1(\?|$)/, async (r) => {
+    if (r.request().method() === 'PATCH') {
+      patches.push(r.request().postDataJSON() as { name?: string })
+      return r.fulfill({ json: { ...WF, name: 'Renamed WF' } })
+    }
+    return r.fulfill({ json: WF })
+  })
   await openEditor(page)
-  // WorkflowTitleBar renders the workflow name as the click-to-rename title.
+
   await expect(page.locator('.topbar-title')).toHaveText('Editor WF')
+  // Click-to-rename enters an inline editor (regression guard: a stray rename
+  // modal used to steal autofocus and immediately revert this).
+  await page.locator('.topbar-title').click()
+  const input = page.locator('.topbar input').first()
+  await expect(input).toBeVisible()
+  await input.fill('Renamed WF')
+  await input.press('Enter')
+
+  await expect.poll(() => patches.length).toBeGreaterThan(0)
+  expect(patches.at(-1)!.name).toBe('Renamed WF')
   expect(errors, errors.join('\n')).toHaveLength(0)
 })
 
