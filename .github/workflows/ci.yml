@@ -95,6 +95,9 @@ jobs:
       - name: Build (tsc + vite)
         run: npm run build
 
+      - name: Unit tests (vitest)
+        run: npm run test:unit
+
       - name: Node SDK tests
         working-directory: sdk/typescript
         run: node --test
