@@ -2,6 +2,7 @@
 // https://www.qzso.com/ · managecode@gmail.com
 
 import { useState } from 'react'
+import { IconX } from '../uiIcons'
 import { useAuth } from '../../AuthContext'
 import * as api from '../../api/client'
 import type { WorkflowRecord } from '../../types'
@@ -52,7 +53,7 @@ export function TagEditor({ workflow, workflowId, zh, toast, onUpdate }: TagEdit
             onClick={() => handleRemoveTag(tag)}
             style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--muted)', fontSize: 11, padding: '0 1px', lineHeight: 1 }}
             title={zh ? `移除标签 #${tag}` : `Remove tag #${tag}`}
-          >×</button>
+          ><IconX aria-hidden /></button>
         </span>
       ))}
       {addingTag ? (

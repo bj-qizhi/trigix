@@ -2,6 +2,7 @@
 // https://www.qzso.com/ · managecode@gmail.com
 
 import { useEffect, useState } from 'react'
+import { IconX } from './uiIcons'
 import * as api from '../api/client'
 import type { TestCase, TestCaseRunResult } from '../api/client'
 import { useLocale } from '../useLocale'
@@ -88,7 +89,7 @@ export function TestCasesModal({ tenantId, workflowId, onClose }: Props) {
           >
             {zh ? '+ 添加' : '+ Add'}
           </button>
-          <button className="btn btn-sm" onClick={onClose}>✕</button>
+          <button className="btn btn-sm" onClick={onClose}><IconX aria-hidden /></button>
         </div>
 
         {/* Body */}
@@ -161,7 +162,7 @@ export function TestCasesModal({ tenantId, workflowId, onClose }: Props) {
                     onClick={() => handleDelete(tc.id)}
                     style={{ fontSize: 11, padding: '2px 6px' }}
                   >
-                    ✕
+                    <IconX aria-hidden />
                   </button>
                 </div>
 

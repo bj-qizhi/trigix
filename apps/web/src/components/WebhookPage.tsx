@@ -2,7 +2,7 @@
 // https://www.qzso.com/ · managecode@gmail.com
 
 import { Fragment, useEffect, useState } from 'react'
-import { ThemeToggleIcon } from './uiIcons'
+import { ThemeToggleIcon, IconX} from './uiIcons'
 import { useAuth } from '../AuthContext'
 import { useLocale } from '../useLocale'
 import { useToast } from '../toast'
@@ -408,7 +408,7 @@ export function WebhookPage({ onBack, onOpenWorkflow }: Props) {
           <div className="modal" style={{ maxWidth: 500 }} onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <h3>▶ {zh ? '发送测试 Webhook 请求' : 'Send Test Webhook Request'}</h3>
-              <button className="btn btn-sm" onClick={() => setTestingToken(null)}>✕</button>
+              <button className="btn btn-sm" onClick={() => setTestingToken(null)}><IconX aria-hidden /></button>
             </div>
             <div style={{ padding: '16px 20px 20px', display: 'flex', flexDirection: 'column', gap: 12 }}>
               <div>
@@ -466,7 +466,7 @@ export function WebhookPage({ onBack, onOpenWorkflow }: Props) {
           <div className="modal" style={{ maxWidth: 460 }} onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <h3>⚙ {zh ? '设置触发条件' : 'Set Payload Condition Filter'}</h3>
-              <button className="btn btn-sm" onClick={() => setEditingConditionToken(null)}>✕</button>
+              <button className="btn btn-sm" onClick={() => setEditingConditionToken(null)}><IconX aria-hidden /></button>
             </div>
             <div style={{ padding: '16px 20px 20px', display: 'flex', flexDirection: 'column', gap: 12 }}>
               <p style={{ fontSize: 13, color: 'var(--muted)', margin: 0 }}>
@@ -500,7 +500,7 @@ export function WebhookPage({ onBack, onOpenWorkflow }: Props) {
           <div className="modal" style={{ maxWidth: 400 }} onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <h3>⏱ {zh ? '设置频率限制' : 'Set Rate Limit'}</h3>
-              <button className="btn btn-sm" onClick={() => setEditingRateLimitToken(null)}>✕</button>
+              <button className="btn btn-sm" onClick={() => setEditingRateLimitToken(null)}><IconX aria-hidden /></button>
             </div>
             <div style={{ padding: '16px 20px 20px', display: 'flex', flexDirection: 'column', gap: 12 }}>
               <p style={{ fontSize: 13, color: 'var(--muted)', margin: 0 }}>
@@ -536,7 +536,7 @@ export function WebhookPage({ onBack, onOpenWorkflow }: Props) {
           <div className="modal" style={{ maxWidth: 560 }} onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <h3>⚡ {zh ? 'Payload 转换脚本 (Rhai)' : 'Payload Transform Script (Rhai)'}</h3>
-              <button className="btn btn-sm" onClick={() => setEditingTransformToken(null)}>✕</button>
+              <button className="btn btn-sm" onClick={() => setEditingTransformToken(null)}><IconX aria-hidden /></button>
             </div>
             <div style={{ padding: '1rem', display: 'flex', flexDirection: 'column', gap: 12 }}>
               <p style={{ fontSize: 12, color: 'var(--muted)' }}>
@@ -570,7 +570,7 @@ export function WebhookPage({ onBack, onOpenWorkflow }: Props) {
           <div className="modal" style={{ maxWidth: 480 }} onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <h3>{zh ? '新密钥已生成' : 'New Secret Generated'}</h3>
-              <button className="btn btn-sm" onClick={() => setRotatedSecret(null)}>✕</button>
+              <button className="btn btn-sm" onClick={() => setRotatedSecret(null)}><IconX aria-hidden /></button>
             </div>
             <div style={{ padding: '1rem', display: 'flex', flexDirection: 'column', gap: 12 }}>
               <p style={{ fontSize: 13, color: 'var(--danger-text)' }}>

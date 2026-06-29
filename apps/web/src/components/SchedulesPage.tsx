@@ -2,7 +2,7 @@
 // https://www.qzso.com/ · managecode@gmail.com
 
 import { useEffect, useRef, useState } from 'react'
-import { ThemeToggleIcon } from './uiIcons'
+import { ThemeToggleIcon, IconX} from './uiIcons'
 import { useAuth } from '../AuthContext'
 import { useLocale } from '../useLocale'
 import { useTheme } from '../useTheme'
@@ -274,7 +274,7 @@ export function SchedulesPage({ onBack, onOpenWorkflow, onOpenExecution }: Props
                 {zh ? '查看详情' : 'View →'}
               </button>
             )}
-            <button style={{ marginLeft: 'auto', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--muted)', fontSize: 16 }} onClick={() => setRunToast(null)}>×</button>
+            <button style={{ marginLeft: 'auto', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--muted)', fontSize: 16 }} onClick={() => setRunToast(null)}><IconX aria-hidden /></button>
           </div>
         )}
 

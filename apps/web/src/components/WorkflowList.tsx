@@ -893,7 +893,7 @@ export function WorkflowList({ onOpen, onOpenExecution, onCredentials, onAuditLo
                           onMouseEnter={(e2) => (e2.currentTarget.style.background = 'var(--hover)')}
                           onMouseLeave={(e2) => (e2.currentTarget.style.background = 'none')}
                         >
-                          <span style={{ fontSize: 14, marginTop: 1 }}>✕</span>
+                          <span style={{ fontSize: 14, marginTop: 1, color: 'var(--danger-text, #dc2626)' }}><IconX aria-hidden /></span>
                           <div style={{ flex: 1, minWidth: 0 }}>
                             <div style={{ fontWeight: 500, fontSize: 13, color: 'var(--danger-text, #dc2626)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                               {locale === 'zh' ? `失败：${wfName}` : `Failed: ${wfName}`}
@@ -956,7 +956,7 @@ export function WorkflowList({ onOpen, onOpenExecution, onCredentials, onAuditLo
                                   setServerNotifs((prev) => prev.filter((x) => x.id !== n.id))
                                 }}
                               >
-                                ✕
+                                <IconX aria-hidden />
                               </button>
                             </div>
                           )
@@ -1224,7 +1224,7 @@ export function WorkflowList({ onOpen, onOpenExecution, onCredentials, onAuditLo
                   onClick={() => setSearch('')}
                   style={{ position: 'absolute', right: 6, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: 'var(--muted)', cursor: 'pointer', fontSize: 14, padding: 0, lineHeight: 1 }}
                 >
-                  ✕
+                  <IconX aria-hidden />
                 </button>
               )}
             </div>
@@ -2028,7 +2028,7 @@ export function WorkflowList({ onOpen, onOpenExecution, onCredentials, onAuditLo
         }}>
           <div style={{ padding: '10px 14px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             <span style={{ fontWeight: 700, fontSize: 13, display: 'inline-flex', alignItems: 'center', gap: 5 }}><IconActivity aria-hidden />{locale === 'zh' ? '最近活动' : 'Recent Activity'}</span>
-            <button onClick={() => setShowActivity(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--muted)', fontSize: 18, lineHeight: 1 }}>×</button>
+            <button onClick={() => setShowActivity(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--muted)', fontSize: 18, lineHeight: 1 }}><IconX aria-hidden /></button>
           </div>
           <div style={{ flex: 1, overflowY: 'auto' }}>
             {execSummaries.length === 0 ? (
@@ -2139,7 +2139,7 @@ export function WorkflowList({ onOpen, onOpenExecution, onCredentials, onAuditLo
                 onKeyDown={(e) => e.key === 'Escape' && setShowGlobalSearch(false)}
                 style={{ flex: 1 }}
               />
-              <button className="btn btn-sm btn-icon" onClick={() => setShowGlobalSearch(false)}>✕</button>
+              <button className="btn btn-sm btn-icon" onClick={() => setShowGlobalSearch(false)}><IconX aria-hidden /></button>
             </div>
             {globalSearching && <p style={{ color: 'var(--muted)', fontSize: 12 }}>{zh ? '搜索中…' : 'Searching…'}</p>}
             {globalResults && (
@@ -2270,7 +2270,7 @@ export function WorkflowList({ onOpen, onOpenExecution, onCredentials, onAuditLo
             <div className="modal" style={{ width: 480 }} onClick={(e) => e.stopPropagation()}>
               <div className="modal-header">
                 <h3>▶ {zh ? '快速运行工作流' : 'Quick Run Workflow'}</h3>
-                <button className="btn btn-sm btn-icon" onClick={() => setShowQuickRun(false)}>✕</button>
+                <button className="btn btn-sm btn-icon" onClick={() => setShowQuickRun(false)}><IconX aria-hidden /></button>
               </div>
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: 12, padding: '0 0 4px' }}>

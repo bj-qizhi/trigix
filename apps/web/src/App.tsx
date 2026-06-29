@@ -33,6 +33,7 @@ import { ApprovalsPage } from './components/ApprovalsPage'
 import { WorkflowDepsPage } from './components/WorkflowDepsPage'
 import { usePageRouter } from './routing'
 import { ToastProvider } from './toast'
+import { IconX } from './components/uiIcons'
 import logoIcon from './assets/logo.svg'
 
 function EmailVerificationBanner({ email }: { email?: string }) {
@@ -54,7 +55,7 @@ function EmailVerificationBanner({ email }: { email?: string }) {
       )}
       {sent && <span style={{ opacity: 0.8 }}>{t('verify.sent')}</span>}
       <button onClick={() => setDismissed(true)} style={{ marginLeft: 'auto', background: 'none', border: 'none', color: '#fff', cursor: 'pointer', fontSize: '1rem', lineHeight: 1 }}>
-        ×
+        <IconX aria-hidden />
       </button>
     </div>
   )

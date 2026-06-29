@@ -30,6 +30,7 @@ export {
   PiKanban as IconKanban,
   PiTimer as IconTimer,
   PiGraph as IconGraph,
+  PiArrowsLeftRight as IconCompare,
 } from 'react-icons/pi'
 
 import { PiSun, PiMoonStars } from 'react-icons/pi'

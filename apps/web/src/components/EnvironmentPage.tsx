@@ -2,7 +2,7 @@
 // https://www.qzso.com/ · managecode@gmail.com
 
 import { useEffect, useRef, useState } from 'react'
-import { ThemeToggleIcon } from './uiIcons'
+import { ThemeToggleIcon, IconX } from './uiIcons'
 import { useAuth } from '../AuthContext'
 import { useLocale } from '../useLocale'
 import { useToast } from '../toast'
@@ -241,7 +241,7 @@ export function EnvironmentPage({ onBack }: Props) {
                   onClick={(e) => { e.stopPropagation(); handleDeleteSet(s.name) }}
                   title={zh ? `删除变量组"${s.name}"` : `Delete set "${s.name}"`}
                 >
-                  ✕
+                  <IconX aria-hidden />
                 </button>
               )}
             </div>

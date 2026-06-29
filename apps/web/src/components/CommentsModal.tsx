@@ -2,6 +2,7 @@
 // https://www.qzso.com/ · managecode@gmail.com
 
 import { useEffect, useRef, useState } from 'react'
+import { IconX } from './uiIcons'
 import * as api from '../api/client'
 import type { WorkflowComment } from '../types'
 import { useLocale } from '../useLocale'
@@ -81,7 +82,7 @@ export function CommentsModal({ tenantId, workflowId, author, onClose }: Props) 
       >
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
           <h2 style={{ margin: 0 }}>{zh ? '评论' : 'Comments'}</h2>
-          <button className="btn btn-sm" onClick={onClose}>✕</button>
+          <button className="btn btn-sm" onClick={onClose}><IconX aria-hidden /></button>
         </div>
 
         {/* Comment list */}
@@ -133,7 +134,7 @@ export function CommentsModal({ tenantId, workflowId, author, onClose }: Props) 
                       style={{ fontSize: 11, color: 'var(--error, #e55)' }}
                       onClick={() => handleDelete(c.id)}
                       title={zh ? '删除评论' : 'Delete comment'}
-                    >✕</button>
+                    ><IconX aria-hidden /></button>
                   </div>
                 </div>
               )}

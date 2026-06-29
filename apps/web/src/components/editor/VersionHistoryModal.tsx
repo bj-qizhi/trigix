@@ -2,6 +2,7 @@
 // https://www.qzso.com/ · managecode@gmail.com
 
 import { useState } from 'react'
+import { IconX } from '../uiIcons'
 import type { WorkflowVersionRecord } from '../../types'
 import { SkeletonRows } from '../Skeleton'
 
@@ -39,7 +40,7 @@ export function VersionHistoryModal({
               {zh ? '加载某个版本，或与上一版本对比差异。' : 'Load a version or Diff it against the previous one.'}
             </p>
           </div>
-          <button className="btn btn-sm" onClick={onClose}>✕</button>
+          <button className="btn btn-sm" onClick={onClose}><IconX aria-hidden /></button>
         </div>
         <div style={{ overflowY: 'auto', flex: 1 }}>
           {loading && (

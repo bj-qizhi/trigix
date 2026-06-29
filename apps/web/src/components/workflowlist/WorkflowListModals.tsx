@@ -2,6 +2,7 @@
 // https://www.qzso.com/ · managecode@gmail.com
 
 import { useState } from 'react'
+import { IconX } from '../uiIcons'
 import type * as api from '../../api/client'
 import type { WorkflowRecord } from '../../types'
 import { useToast } from '../../toast'
@@ -208,7 +209,7 @@ export function ShortcutsModal({ onClose, zh }: ShortcutsModalProps) {
       <div className="modal" style={{ maxWidth: 480 }} onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
           <h3>⌨ {zh ? '键盘快捷键' : 'Keyboard Shortcuts'}</h3>
-          <button className="btn btn-sm" onClick={onClose}>✕</button>
+          <button className="btn btn-sm" onClick={onClose}><IconX aria-hidden /></button>
         </div>
         <div style={{ padding: '0 24px 20px' }}>
           {[

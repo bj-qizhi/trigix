@@ -2,7 +2,7 @@
 // https://www.qzso.com/ · managecode@gmail.com
 
 import { useEffect, useState, useCallback } from 'react'
-import { ThemeToggleIcon } from './uiIcons'
+import { ThemeToggleIcon, IconX} from './uiIcons'
 import { useAuth } from '../AuthContext'
 import * as api from '../api/client'
 import { useTheme } from '../useTheme'
@@ -369,7 +369,7 @@ export function AccountPage({ onBack }: Props) {
                   <span style={{ color: '#15803d', fontSize: '0.875rem', fontWeight: 500 }}>
                     {zh ? '订阅成功！套餐已升级，立即生效。' : 'Subscription activated! Your plan has been upgraded.'}
                   </span>
-                  <button onClick={() => setBillingSuccess(false)} style={{ background: 'none', border: 'none', color: '#15803d', cursor: 'pointer', fontSize: '1.1rem', lineHeight: 1, padding: '0 0.25rem' }}>×</button>
+                  <button onClick={() => setBillingSuccess(false)} style={{ background: 'none', border: 'none', color: '#15803d', cursor: 'pointer', fontSize: '1.1rem', lineHeight: 1, padding: '0 0.25rem' }}><IconX aria-hidden /></button>
                 </div>
               )}
 

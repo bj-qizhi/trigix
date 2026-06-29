@@ -2,7 +2,7 @@
 // https://www.qzso.com/ · managecode@gmail.com
 
 import { useEffect, useRef, useState } from 'react'
-import { ThemeToggleIcon } from './uiIcons'
+import { ThemeToggleIcon, IconX} from './uiIcons'
 import { useAuth } from '../AuthContext'
 import { useLocale } from '../useLocale'
 import { SkeletonRows } from './Skeleton'
@@ -296,7 +296,7 @@ export function MonitoringPage({ onBack, onOpenExecution, onOpenWorkflow }: Prop
                         setShowThresholdEdit(false)
                       }}
                     >✓</button>
-                    <button className="btn btn-sm" style={{ fontSize: 11 }} onClick={() => { setShowThresholdEdit(false); setThresholdInput(String(failThreshold)) }}>✕</button>
+                    <button className="btn btn-sm" style={{ fontSize: 11 }} onClick={() => { setShowThresholdEdit(false); setThresholdInput(String(failThreshold)) }}><IconX aria-hidden /></button>
                   </>
                 ) : (
                   <button
@@ -336,7 +336,7 @@ export function MonitoringPage({ onBack, onOpenExecution, onOpenWorkflow }: Prop
                     load()
                   }}
                 >
-                  {zh ? '✕ 全部取消' : '✕ Cancel All'}
+                  <IconX aria-hidden style={{ verticalAlign: '-2px', marginRight: 3 }} />{zh ? '全部取消' : 'Cancel All'}
                 </button>
               )}
             </div>
@@ -411,7 +411,7 @@ export function MonitoringPage({ onBack, onOpenExecution, onOpenWorkflow }: Prop
                             disabled={cancelling === r.id}
                             onClick={() => handleCancel(r.id)}
                           >
-                            {cancelling === r.id ? '…' : '✕'}
+                            {cancelling === r.id ? '…' : <IconX aria-hidden />}
                           </button>
                         </div>
                       </td>
@@ -511,7 +511,7 @@ export function MonitoringPage({ onBack, onOpenExecution, onOpenWorkflow }: Prop
                             disabled={cancelling === r.id}
                             onClick={() => handleCancel(r.id)}
                           >
-                            {cancelling === r.id ? '…' : (zh ? '✕ 强制取消' : '✕ Force Cancel')}
+                            {cancelling === r.id ? '…' : <><IconX aria-hidden style={{ verticalAlign: '-2px', marginRight: 3 }} />{zh ? '强制取消' : 'Force Cancel'}</>}
                           </button>
                         </td>
                       </tr>

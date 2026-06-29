@@ -2,6 +2,7 @@
 // https://www.qzso.com/ · managecode@gmail.com
 
 import { useEffect, useMemo, useState } from 'react'
+import { IconX } from './uiIcons'
 import { useAuth } from '../AuthContext'
 import * as api from '../api/client'
 import { SkeletonRows } from './Skeleton'
@@ -155,7 +156,7 @@ export function WorkflowDepsPage({ onBack, onOpenWorkflow }: Props) {
                   <button className="btn btn-sm btn-primary" onClick={() => onOpenWorkflow(selectedId)}>
                     {zh ? '打开编辑器' : 'Open Editor'}
                   </button>
-                  <button className="btn btn-sm" onClick={() => setSelectedId(null)}>✕</button>
+                  <button className="btn btn-sm" onClick={() => setSelectedId(null)}><IconX aria-hidden /></button>
                 </div>
 
                 {selectedDeps.callees.length > 0 && (

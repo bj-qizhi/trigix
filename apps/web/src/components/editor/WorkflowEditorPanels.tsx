@@ -12,7 +12,7 @@ import * as api from '../../api/client'
 import type { ExecutionSummary, InputField } from '../../types'
 import { useLocale } from '../../useLocale'
 import { friendlyError } from '../../errorMessage'
-import { IconKey } from '../uiIcons'
+import { IconKey, IconX} from '../uiIcons'
 import type { FlowNode } from '../Canvas'
 
 export function InputSchemaModal({
@@ -74,7 +74,7 @@ export function InputSchemaModal({
               <input type="checkbox" checked={f.required} onChange={(e) => updateField(i, { required: e.target.checked })} />
               {zh ? '必填' : 'required'}
             </label>
-            <button className="btn btn-sm btn-danger" onClick={() => removeField(i)}>✕</button>
+            <button className="btn btn-sm btn-danger" onClick={() => removeField(i)}><IconX aria-hidden /></button>
             <input
               placeholder={zh ? '描述（可选）' : 'description (optional)'}
               value={f.description}
@@ -189,7 +189,7 @@ export function VariablesModal({
                     {typeof v.value === 'number' && (
                       <button className="btn btn-sm btn-icon" onClick={() => handleIncrement(v.key)} title={zh ? '加 1' : 'Increment by 1'} style={{ fontSize: 11 }}>+1</button>
                     )}
-                    <button className="btn btn-sm btn-danger" onClick={() => handleDelete(v.key)} title={zh ? '删除变量' : 'Delete variable'} style={{ fontSize: 11 }}>✕</button>
+                    <button className="btn btn-sm btn-danger" onClick={() => handleDelete(v.key)} title={zh ? '删除变量' : 'Delete variable'} style={{ fontSize: 11 }}><IconX aria-hidden /></button>
                   </td>
                 </tr>
               ))}
@@ -254,7 +254,7 @@ export function ReadmeModal({
               {zh ? '支持 Markdown。描述输入、输出、依赖项和使用说明。' : 'Markdown supported. Describe inputs, outputs, dependencies, and usage notes.'}
             </p>
           </div>
-          <button className="btn btn-sm" onClick={onClose}>✕</button>
+          <button className="btn btn-sm" onClick={onClose}><IconX aria-hidden /></button>
         </div>
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 0, overflow: 'hidden' }}>
           <textarea
@@ -589,7 +589,7 @@ export function FormsModal({
       <div className="modal" style={{ width: 520 }} onClick={(e) => e.stopPropagation()}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
           <h2 style={{ margin: 0, fontSize: 16 }}>{zh ? '表单发布器' : 'Form Publisher'}</h2>
-          <button className="btn btn-sm" onClick={onClose}>✕</button>
+          <button className="btn btn-sm" onClick={onClose}><IconX aria-hidden /></button>
         </div>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 16, padding: '12px', background: 'var(--bg)', borderRadius: 6, border: '1px solid var(--border)' }}>
@@ -651,7 +651,7 @@ export function FormsModal({
                   title={zh ? '删除表单' : 'Delete form'}
                   style={{ fontSize: 11 }}
                 >
-                  ✕
+                  <IconX aria-hidden />
                 </button>
               </div>
             ))}
@@ -721,7 +721,7 @@ export function CopilotPanel({ onClose, graphJson, tenantId, zh }: CopilotPanelP
         <span style={{ fontWeight: 700, fontSize: 14, color: 'var(--node-claude)' }}>✦ {zh ? 'AI 助手' : 'Copilot'}</span>
         <span style={{ fontSize: 11, color: 'var(--muted)', flex: 1 }}>{zh ? '询问关于此工作流的任何问题' : 'Ask anything about this workflow'}</span>
         <button onClick={() => setShowKeyInput((v) => !v)} title={zh ? 'API Key' : 'API Key'} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--muted)', fontSize: 14 }}><IconKey size={14} /></button>
-        <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--muted)', fontSize: 18, lineHeight: 1 }}>×</button>
+        <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--muted)', fontSize: 18, lineHeight: 1 }}><IconX aria-hidden /></button>
       </div>
 
       {showKeyInput && (

@@ -2,6 +2,7 @@
 // https://www.qzso.com/ · managecode@gmail.com
 
 import type { ConfigProps } from './types'
+import { IconX } from '../uiIcons'
 import { fl, labelLocale } from './i18nLabels'
 
 const CONDITION_OPS: { v: string; l: string }[] = [
@@ -288,7 +289,7 @@ export function SwitchConfig({ config, set, str }: ConfigProps) {
             <button
               onClick={() => setCases(cases.filter((_, j) => j !== i))}
               style={{ background: 'none', border: 'none', color: 'var(--danger-text)', cursor: 'pointer', fontSize: 14, padding: '0 2px' }}
-            >✕</button>
+            ><IconX aria-hidden /></button>
           </div>
         ))}
         <button

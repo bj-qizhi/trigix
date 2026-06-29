@@ -2,7 +2,7 @@
 // https://www.qzso.com/ · managecode@gmail.com
 
 import { useTheme } from '../useTheme'
-import { ThemeToggleIcon } from './uiIcons'
+import { ThemeToggleIcon, IconX, IconCompare } from './uiIcons'
 import { useLocale } from '../useLocale'
 import { useEffect, useRef, useState } from 'react'
 import { useAuth } from '../AuthContext'
@@ -419,10 +419,10 @@ export function RunsPage({ onBack, onOpenExecution, onOpenWorkflow, initialWorkf
                 ) : null
               })()}
               {selected.size === 2 && (
-                <button className="btn btn-sm" onClick={handleCompare}>⇌ {zh ? '对比' : 'Compare'}</button>
+                <button className="btn btn-sm" onClick={handleCompare}><IconCompare aria-hidden style={{ verticalAlign: '-2px', marginRight: 3 }} />{zh ? '对比' : 'Compare'}</button>
               )}
               <button className="btn btn-sm" onClick={() => setSelected(new Set())} title={zh ? '清除选择' : 'Clear selection'}>
-                {zh ? `已选 ${selected.size}` : `${selected.size} sel.`} ✕
+                {zh ? `已选 ${selected.size}` : `${selected.size} sel.`} <IconX aria-hidden style={{ verticalAlign: '-2px' }} />
               </button>
             </>
           )}
@@ -467,7 +467,7 @@ export function RunsPage({ onBack, onOpenExecution, onOpenWorkflow, initialWorkf
                       onClick={() => deletePreset(p.name)}
                       title={zh ? '删除预设' : 'Delete preset'}
                     >
-                      ✕
+                      <IconX aria-hidden />
                     </button>
                   </div>
                 ))}
@@ -547,7 +547,7 @@ export function RunsPage({ onBack, onOpenExecution, onOpenWorkflow, initialWorkf
               style={{ fontSize: 12, padding: '4px 8px', width: 240 }}
             />
             {searchQuery && (
-              <button className="btn btn-sm btn-icon" onClick={() => setSearchQuery('')} title={zh ? '清除搜索' : 'Clear search'}>✕</button>
+              <button className="btn btn-sm btn-icon" onClick={() => setSearchQuery('')} title={zh ? '清除搜索' : 'Clear search'}><IconX aria-hidden /></button>
             )}
             <input
               placeholder={zh ? '输出包含…' : 'Output contains…'}
@@ -557,7 +557,7 @@ export function RunsPage({ onBack, onOpenExecution, onOpenWorkflow, initialWorkf
               title={zh ? '按工作流输出内容过滤' : 'Filter by workflow output content'}
             />
             {outputFilter && (
-              <button className="btn btn-sm btn-icon" onClick={() => setOutputFilter('')} title={zh ? '清除输出过滤' : 'Clear output filter'}>✕</button>
+              <button className="btn btn-sm btn-icon" onClick={() => setOutputFilter('')} title={zh ? '清除输出过滤' : 'Clear output filter'}><IconX aria-hidden /></button>
             )}
             <span style={{ color: 'var(--muted)', fontSize: 13 }}>
               {filtered.length}{(searchQuery || labelFilter || statusFilter !== 'all') ? ` / ${runs.length}` : ''}{total > runs.length ? ` (${zh ? '共' : 'total'} ${total})` : ''} {zh ? '条' : 'runs'}
@@ -1098,7 +1098,7 @@ export function RunsPage({ onBack, onOpenExecution, onOpenWorkflow, initialWorkf
                               onClick={(e) => handleReject(e, run.id)}
                               title={zh ? '拒绝此执行' : 'Reject this execution'}
                             >
-                              {acting[run.id] === 'rejecting' ? '…' : (zh ? '✕ 拒绝' : '✕ Reject')}
+                              {acting[run.id] === 'rejecting' ? '…' : <><IconX aria-hidden style={{ verticalAlign: '-2px', marginRight: 3 }} />{zh ? '拒绝' : 'Reject'}</>}
                             </button>
                           </>
                         )}
@@ -1125,7 +1125,7 @@ export function RunsPage({ onBack, onOpenExecution, onOpenWorkflow, initialWorkf
           <div className="modal" style={{ maxWidth: 960, width: '90vw' }} onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <h3>{zh ? '执行对比' : 'Execution Comparison'}</h3>
-              <button className="btn btn-sm" onClick={() => { setCompareIds(null); setCompareData(null) }}>✕</button>
+              <button className="btn btn-sm" onClick={() => { setCompareIds(null); setCompareData(null) }}><IconX aria-hidden /></button>
             </div>
             {compareLoading && <p style={{ padding: 24 }}>{zh ? '加载执行详情…' : 'Loading execution details…'}</p>}
             {compareData && (

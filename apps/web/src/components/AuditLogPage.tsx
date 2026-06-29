@@ -2,7 +2,7 @@
 // https://www.qzso.com/ · managecode@gmail.com
 
 import { useTheme } from '../useTheme'
-import { ThemeToggleIcon } from './uiIcons'
+import { ThemeToggleIcon, IconX } from './uiIcons'
 import { useEffect, useMemo, useState } from 'react'
 import { useAuth } from '../AuthContext'
 import { useLocale } from '../useLocale'
@@ -178,7 +178,7 @@ export function AuditLogPage({ onBack }: Props) {
           </label>
           {hasFilter && (
             <button className="btn btn-sm" onClick={clearFilters}>
-              ✕ {zh ? '清除筛选' : 'Clear filters'}
+              <IconX aria-hidden style={{ verticalAlign: '-2px', marginRight: 3 }} />{zh ? '清除筛选' : 'Clear filters'}
             </button>
           )}
         </div>

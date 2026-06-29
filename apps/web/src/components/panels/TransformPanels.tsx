@@ -2,6 +2,7 @@
 // https://www.qzso.com/ · managecode@gmail.com
 
 import type { ConfigProps } from './types'
+import { IconX } from '../uiIcons'
 import { fl } from './i18nLabels'
 
 export function TransformConfig({ config, set }: ConfigProps) {
@@ -93,7 +94,7 @@ export function MergeConfig({ set, str }: ConfigProps) {
               onChange={(e) => { const next = [...fields]; next[i] = { ...next[i], key: e.target.value || undefined }; update(next) }}
               style={{ flex: 1, fontSize: 12 }}
             />
-            <button className="btn btn-sm btn-danger" onClick={() => update(fields.filter((_, j) => j !== i))}>✕</button>
+            <button className="btn btn-sm btn-danger" onClick={() => update(fields.filter((_, j) => j !== i))}><IconX aria-hidden /></button>
           </div>
         ))}
         <button className="btn btn-sm" onClick={() => update([...fields, { source: '' }])}>{fl("+ Add field")}</button>
@@ -243,7 +244,7 @@ export function RenameConfig({ config, set, str }: ConfigProps) {
               const next = [...mappings]; next[i] = { ...next[i], to: e.target.value }; setMappings(next)
             }} style={{ flex: 1 }} />
             <button onClick={() => setMappings(mappings.filter((_, j) => j !== i))}
-              style={{ background: 'none', border: 'none', color: 'var(--danger-text)', cursor: 'pointer', fontSize: 14 }}>✕</button>
+              style={{ background: 'none', border: 'none', color: 'var(--danger-text)', cursor: 'pointer', fontSize: 14 }}><IconX aria-hidden /></button>
           </div>
         ))}
         <button className="btn btn-secondary" style={{ marginTop: 4, fontSize: 12 }}

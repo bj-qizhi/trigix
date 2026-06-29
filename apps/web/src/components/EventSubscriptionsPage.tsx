@@ -2,7 +2,7 @@
 // https://www.qzso.com/ · managecode@gmail.com
 
 import { useEffect, useState } from 'react'
-import { ThemeToggleIcon } from './uiIcons'
+import { ThemeToggleIcon, IconX} from './uiIcons'
 import { useAuth } from '../AuthContext'
 import { useLocale } from '../useLocale'
 import * as api from '../api/client'
@@ -102,7 +102,7 @@ export function EventSubscriptionsPage({ onBack }: Props) {
         {error && (
           <div className="alert alert-error" style={{ marginBottom: '1rem' }}>
             {error}
-            <button className="btn btn-sm" style={{ marginLeft: 8 }} onClick={() => setError(null)}>✕</button>
+            <button className="btn btn-sm" style={{ marginLeft: 8 }} onClick={() => setError(null)}><IconX aria-hidden /></button>
           </div>
         )}
 

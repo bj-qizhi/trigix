@@ -2,7 +2,7 @@
 // https://www.qzso.com/ · managecode@gmail.com
 
 import { useEffect, useState } from 'react'
-import { IconBuildings, IconTrash, ThemeToggleIcon } from './uiIcons'
+import { IconBuildings, IconTrash, ThemeToggleIcon, IconX} from './uiIcons'
 import { useAuth } from '../AuthContext'
 import { useLocale } from '../useLocale'
 import { SkeletonRows } from './Skeleton'
@@ -171,7 +171,7 @@ export function OrgPage({ onBack }: Props) {
             border: '1px solid var(--danger-text)',
           }}>
             <span>{error}</span>
-            <button style={{ background: 'none', border: 'none', color: 'var(--danger-text)', cursor: 'pointer' }} onClick={() => setError(null)}>✕</button>
+            <button style={{ background: 'none', border: 'none', color: 'var(--danger-text)', cursor: 'pointer' }} onClick={() => setError(null)}><IconX aria-hidden /></button>
           </div>
         )}
 
@@ -303,7 +303,7 @@ export function OrgPage({ onBack }: Props) {
                             <option value="admin">{t('org.role.admin')}</option>
                           </select>
                           <button type="submit" className="btn btn-sm btn-primary">{t('org.add')}</button>
-                          <button type="button" className="btn btn-sm" onClick={() => setAddingMember(null)}>✕</button>
+                          <button type="button" className="btn btn-sm" onClick={() => setAddingMember(null)}><IconX aria-hidden /></button>
                         </form>
                       )}
 
@@ -343,7 +343,7 @@ export function OrgPage({ onBack }: Props) {
                                   style={{ fontSize: '0.7rem', padding: '0.1rem 0.4rem' }}
                                   onClick={() => void handleRemoveMember(org.id, m.user_id)}
                                 >
-                                  ✕
+                                  <IconX aria-hidden />
                                 </button>
                               </td>
                             </tr>

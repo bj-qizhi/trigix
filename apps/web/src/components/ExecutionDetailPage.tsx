@@ -2,7 +2,7 @@
 // https://www.qzso.com/ · managecode@gmail.com
 
 import { useEffect, useRef, useState } from 'react'
-import { IconTestTube, ThemeToggleIcon, IconCards, IconGraph } from './uiIcons'
+import { IconTestTube, ThemeToggleIcon, IconCards, IconGraph, IconX} from './uiIcons'
 import { useAuth } from '../AuthContext'
 import * as api from '../api/client'
 import { friendlyError } from '../errorMessage'
@@ -514,7 +514,7 @@ export function ExecutionDetailPage({ executionId, onBack, onOpenWorkflow, onRet
                         disabled={approving || rejecting}
                         onClick={handleReject}
                       >
-                        {rejecting ? (zh ? '拒绝中…' : 'Rejecting…') : (zh ? '✕ 拒绝' : '✕ Reject')}
+                        {rejecting ? (zh ? '拒绝中…' : 'Rejecting…') : <><IconX aria-hidden style={{ verticalAlign: '-2px', marginRight: 3 }} />{zh ? '拒绝' : 'Reject'}</>}
                       </button>
                     </div>
                   </div>
@@ -549,7 +549,7 @@ export function ExecutionDetailPage({ executionId, onBack, onOpenWorkflow, onRet
                     border: '1px solid var(--danger-text)',
                     borderRadius: 8,
                   }}>
-                    <span style={{ fontSize: 22, flexShrink: 0, marginTop: 2 }}>✕</span>
+                    <span style={{ fontSize: 22, flexShrink: 0, marginTop: 2, lineHeight: 1, color: 'var(--danger-text)' }}><IconX aria-hidden /></span>
                     <div style={{ flex: 1 }}>
                       <div style={{ fontWeight: 600, color: 'var(--danger-text)', marginBottom: 6 }}>
                         {zh
@@ -841,7 +841,7 @@ export function ExecutionDetailPage({ executionId, onBack, onOpenWorkflow, onRet
           <div className="modal" style={{ maxWidth: 560 }} onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <h2>{zh ? '修改输入后回放' : 'Replay with Modified Input'}</h2>
-              <button className="btn btn-sm btn-icon" onClick={() => setShowReplay(false)}>✕</button>
+              <button className="btn btn-sm btn-icon" onClick={() => setShowReplay(false)}><IconX aria-hidden /></button>
             </div>
             <div className="modal-body">
               <p style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 8 }}>

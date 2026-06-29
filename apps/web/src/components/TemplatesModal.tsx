@@ -2,6 +2,7 @@
 // https://www.qzso.com/ · managecode@gmail.com
 
 import { useState } from 'react'
+import { IconX } from './uiIcons'
 import { useLocale } from '../useLocale'
 import type { WorkflowGraph } from '../types'
 
@@ -1369,7 +1370,7 @@ export function TemplatesModal({ onImport, onClose }: Props) {
                   : 'Start from a pre-built template — configure credentials and URLs to activate.'}
               </p>
             </div>
-            <button className="btn btn-sm" onClick={onClose}>✕</button>
+            <button className="btn btn-sm" onClick={onClose}><IconX aria-hidden /></button>
           </div>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
             <div style={{ position: 'relative', flex: 1, minWidth: 180 }}>
@@ -1385,7 +1386,7 @@ export function TemplatesModal({ onImport, onClose }: Props) {
                   onClick={() => setSearch('')}
                   style={{ position: 'absolute', right: 6, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: 'var(--muted)', cursor: 'pointer', fontSize: 14, padding: 0, lineHeight: 1 }}
                 >
-                  ✕
+                  <IconX aria-hidden />
                 </button>
               )}
             </div>

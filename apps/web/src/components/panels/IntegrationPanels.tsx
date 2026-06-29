@@ -2,6 +2,7 @@
 // https://www.qzso.com/ · managecode@gmail.com
 
 import type { ReactNode } from 'react'
+import { IconX } from '../uiIcons'
 import type { ConfigProps } from './types'
 import { fl } from './i18nLabels'
 
@@ -253,7 +254,7 @@ export function WebhookSendConfig({ config, set, str }: ConfigProps) {
               onChange={(e) => updateHeader(k, e.target.value)}
               style={{ flex: 2, fontFamily: 'monospace', fontSize: 12 }}
             />
-            <button className="btn btn-danger" style={{ padding: '2px 6px' }} onClick={() => removeHeader(k)}>✕</button>
+            <button className="btn btn-danger" style={{ padding: '2px 6px' }} onClick={() => removeHeader(k)}><IconX aria-hidden /></button>
           </div>
         ))}
         <button

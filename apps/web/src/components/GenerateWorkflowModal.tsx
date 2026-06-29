@@ -2,6 +2,7 @@
 // https://www.qzso.com/ · managecode@gmail.com
 
 import { useState } from 'react'
+import { IconX } from './uiIcons'
 import { useAuth } from '../AuthContext'
 import { useLocale } from '../useLocale'
 import * as api from '../api/client'
@@ -153,7 +154,7 @@ export function GenerateWorkflowModal({ onClose, onImport, onCreated }: Props) {
       >
         <div className="modal-header">
           <h2 style={{ margin: 0, fontSize: '1rem' }}>✦ {zh ? 'AI 生成工作流' : 'Generate Workflow with AI'}</h2>
-          <button className="btn btn-sm" onClick={onClose}>✕</button>
+          <button className="btn btn-sm" onClick={onClose}><IconX aria-hidden /></button>
         </div>
 
         {mode === 'generate' ? (

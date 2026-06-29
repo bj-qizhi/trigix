@@ -4,6 +4,7 @@
 //! Presentational sub-components of the execution detail page.
 
 import { useState, useCallback, useRef } from 'react'
+import { IconX } from '../uiIcons'
 import * as api from '../../api/client'
 import type { ExecutionRecord, NodeExecutionRecord } from '../../types'
 import { useLocale } from '../../useLocale'
@@ -480,7 +481,7 @@ export function LabelEditor({
             placeholder={zh ? '输入标签…' : 'Enter label…'}
           />
           <button className="btn btn-sm btn-primary" onClick={save} disabled={saving} style={{ fontSize: 11 }}>✓</button>
-          <button className="btn btn-sm" onClick={() => setEditing(false)} style={{ fontSize: 11 }}>✕</button>
+          <button className="btn btn-sm" onClick={() => setEditing(false)} style={{ fontSize: 11 }}><IconX aria-hidden /></button>
         </div>
       ) : (
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>

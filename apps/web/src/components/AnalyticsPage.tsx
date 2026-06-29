@@ -2,7 +2,7 @@
 // https://www.qzso.com/ · managecode@gmail.com
 
 import { useEffect, useRef, useState } from 'react'
-import { ThemeToggleIcon } from './uiIcons'
+import { ThemeToggleIcon, IconX} from './uiIcons'
 import { useAuth } from '../AuthContext'
 import { useLocale } from '../useLocale'
 import { SkeletonRows } from './Skeleton'
@@ -1143,7 +1143,7 @@ export function AnalyticsPage({ onBack }: Props) {
           <div className="modal" style={{ maxWidth: 640 }} onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <h3>⇆ {zh ? '工作流依赖图' : 'Workflow Dependency Graph'}</h3>
-              <button className="btn btn-sm" onClick={() => setShowDeps(false)}>✕</button>
+              <button className="btn btn-sm" onClick={() => setShowDeps(false)}><IconX aria-hidden /></button>
             </div>
             <div style={{ padding: '16px 24px 20px' }}>
               {depsLoading && <div style={{ padding: '1rem 2rem' }}><SkeletonRows rows={4} /></div>}

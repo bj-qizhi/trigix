@@ -2,7 +2,7 @@
 // https://www.qzso.com/ · managecode@gmail.com
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import { IconSearch, ThemeToggleIcon } from './uiIcons'
+import { IconSearch, ThemeToggleIcon, IconX} from './uiIcons'
 import { useAuth } from '../AuthContext'
 import * as api from '../api/client'
 import type { WorkflowRecord, WorkflowVersionRecord, NodeExecutionRecord, NodeType, InputField } from '../types'
@@ -1414,7 +1414,7 @@ export function WorkflowEditor({ workflowId, onBack, initialInput }: Props) {
                       <button className="btn btn-sm" style={{ fontSize: 10, padding: '1px 6px' }} onClick={() => setNodeFindIdx((i) => (i + 1) % matches.length)}>↓</button>
                     </>
                   )}
-                  <button className="btn btn-sm btn-icon" style={{ fontSize: 11 }} onClick={() => { setShowNodeFind(false); setNodeFindQuery('') }}>✕</button>
+                  <button className="btn btn-sm btn-icon" style={{ fontSize: 11 }} onClick={() => { setShowNodeFind(false); setNodeFindQuery('') }}><IconX aria-hidden /></button>
                 </div>
               )
             })()}
