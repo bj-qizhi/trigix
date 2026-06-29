@@ -31,33 +31,8 @@ import { SchedulesPage } from './components/SchedulesPage'
 import { MonitoringPage } from './components/MonitoringPage'
 import { ApprovalsPage } from './components/ApprovalsPage'
 import { WorkflowDepsPage } from './components/WorkflowDepsPage'
+import { usePageRouter } from './routing'
 import logoIcon from './assets/logo.svg'
-
-type Page =
-  | { name: 'list' }
-  | { name: 'editor'; workflowId: string; initialInput?: string }
-  | { name: 'credentials' }
-  | { name: 'audit' }
-  | { name: 'runs'; workflowFilter?: string }
-  | { name: 'analytics' }
-  | { name: 'environment' }
-  | { name: 'workspaces' }
-  | { name: 'webhooks' }
-  | { name: 'apikeys' }
-  | { name: 'sso' }
-  | { name: 'knowledge' }
-  | { name: 'custom-nodes' }
-  | { name: 'event-subscriptions' }
-  | { name: 'orgs' }
-  | { name: 'account' }
-  | { name: 'affiliate' }
-  | { name: 'payouts' }
-  | { name: 'users' }
-  | { name: 'schedules' }
-  | { name: 'monitoring' }
-  | { name: 'approvals' }
-  | { name: 'workflow-deps' }
-  | { name: 'execution'; executionId: string; fromRuns?: boolean }
 
 function EmailVerificationBanner({ email }: { email?: string }) {
   const [dismissed, setDismissed] = useState(false)
@@ -86,15 +61,14 @@ function EmailVerificationBanner({ email }: { email?: string }) {
 
 function AppInner() {
   const { auth } = useAuth()
-  const [page, setPage] = useState<Page>({ name: 'list' })
+  const [page, setPage] = usePageRouter()
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
     if (params.get('billing') === 'success') {
       setPage({ name: 'account' })
-      window.history.replaceState({}, '', window.location.pathname)
     }
-  }, [])
+  }, [setPage])
 
   if (!auth) {
     return <LoginPage />
