@@ -275,22 +275,40 @@ pub async fn run_workflow_with_progress(
         };
 
         // Process results and check for early-exit conditions.
-        for ((node_id, node), (started_at_ms, start, result)) in
-            to_run.iter().zip(level_results.iter())
+        for ((node_id, node), (started_at_ms, start, mut result)) in
+            to_run.iter().zip(level_results)
         {
             let duration_ms = start.elapsed().as_millis() as u64;
             info!(execution_id = %context.execution_id, node_id = %node_id, status = ?result.status, duration_ms, "node complete");
 
             if result.status == NodeStatus::Succeeded {
                 if let Some(output) = &result.output_json {
-                    context.node_outputs.insert(node_id.clone(), output.clone());
                     if node.node_type == NodeType::Condition {
-                        if let Ok(v) = serde_json::from_str::<serde_json::Value>(output) {
-                            if let Some(b) = v.get("result").and_then(|r| r.as_bool()) {
+                        match serde_json::from_str::<serde_json::Value>(output)
+                            .ok()
+                            .and_then(|v| v.get("result").and_then(|r| r.as_bool()))
+                        {
+                            Some(b) => {
                                 condition_results.insert(node_id.clone(), b);
+                                context.node_outputs.insert(node_id.clone(), output.clone());
+                            }
+                            // No boolean `result` → both true/false branches would
+                            // skip silently and the rest of the flow would vanish
+                            // with no error. Fail loudly instead.
+                            None => {
+                                result.status = NodeStatus::Failed;
+                                result.error = Some(
+                                    "Condition node did not produce a boolean `result` field"
+                                        .to_string(),
+                                );
                             }
                         }
+                    } else {
+                        context.node_outputs.insert(node_id.clone(), output.clone());
                     }
+                } else if node.node_type == NodeType::Condition {
+                    result.status = NodeStatus::Failed;
+                    result.error = Some("Condition node produced no output".to_string());
                 }
             }
 
@@ -300,7 +318,7 @@ pub async fn run_workflow_with_progress(
                 output_json: result.output_json.clone(),
                 error: result.error.clone(),
                 duration_ms,
-                started_at_ms: *started_at_ms,
+                started_at_ms,
                 retry_count: result.retry_count,
             };
             progress.on_node_complete(&node_report);

@@ -261,8 +261,17 @@ pub struct DispatchingNodeExecutor {
 
 impl DispatchingNodeExecutor {
     pub fn new(ai_runtime_base_url: Option<String>) -> Self {
+        // Default timeouts so a hung/unreachable endpoint on a node that didn't
+        // set its own `timeout_secs` can't block its whole parallel level
+        // forever. connect_timeout fails fast on unreachable hosts; the overall
+        // timeout is generous enough for slow LLM / long-poll calls.
+        let http_client = reqwest::Client::builder()
+            .connect_timeout(std::time::Duration::from_secs(15))
+            .timeout(std::time::Duration::from_secs(300))
+            .build()
+            .unwrap_or_else(|_| reqwest::Client::new());
         Self {
-            http_client: reqwest::Client::new(),
+            http_client,
             ai_runtime_base_url,
             approval_gate: None,
         }
@@ -438,6 +447,17 @@ fn is_external_node(nt: &NodeType) -> bool {
             | NodeType::Note
             | NodeType::Validate
             | NodeType::Delay
+            // Deterministic, no-network compute nodes — running them in dry-run
+            // gives a real output for downstream refs instead of a {dry_run:true}
+            // stub (verified: their execute fns make no HTTP/AI calls).
+            | NodeType::Hash
+            | NodeType::Jwt
+            | NodeType::TextSplitter
+            | NodeType::HtmlExtract
+            | NodeType::Zip
+            | NodeType::Image
+            | NodeType::PdfExtract
+            | NodeType::Ocr
     )
 }
 
