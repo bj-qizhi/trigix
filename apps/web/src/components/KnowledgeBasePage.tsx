@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react'
 import { ThemeToggleIcon } from './uiIcons'
 import { useLocale } from '../useLocale'
 import { useTheme } from '../useTheme'
+import { friendlyError } from '../errorMessage'
 import * as api from '../api/client'
 import type { KnowledgeBase, RagDocument } from '../api/client'
 import logoWordmark from '../assets/logo-wordmark.svg'
@@ -36,14 +37,14 @@ export function KnowledgeBasePage({ onBack }: Props) {
   const loadKbs = () => {
     api.listKnowledgeBases()
       .then((r) => setKbs(r.knowledge_bases))
-      .catch((e: unknown) => setError(String(e)))
+      .catch((e: unknown) => setError(friendlyError(e, zh)))
   }
 
   const loadDocs = (name: string) => {
     setSelected(name)
     api.listRagDocuments(name)
       .then((r) => setDocs(r.documents))
-      .catch((e: unknown) => setError(String(e)))
+      .catch((e: unknown) => setError(friendlyError(e, zh)))
   }
 
   useEffect(loadKbs, [])
@@ -72,7 +73,7 @@ export function KnowledgeBasePage({ onBack }: Props) {
       loadDocs(selected)
       loadKbs()
     } catch (e: unknown) {
-      setError(String(e))
+      setError(friendlyError(e, zh))
     }
   }
 

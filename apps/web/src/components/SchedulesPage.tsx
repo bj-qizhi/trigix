@@ -7,6 +7,8 @@ import { useAuth } from '../AuthContext'
 import { useLocale } from '../useLocale'
 import { useTheme } from '../useTheme'
 import { useToast } from '../toast'
+import { friendlyError } from '../errorMessage'
+import { SkeletonRows } from './Skeleton'
 import * as api from '../api/client'
 import type { ExecutionSummary, ScheduleSummary } from '../types'
 import logoWordmark from '../assets/logo-wordmark.svg'
@@ -128,7 +130,7 @@ export function SchedulesPage({ onBack, onOpenWorkflow, onOpenExecution }: Props
       setCountdown(c)
       // runs are newest-first; group by workflow
       setRecentRuns(buildRecentByWorkflow(runs))
-    }).catch((e: unknown) => setError(String(e)))
+    }).catch((e: unknown) => setError(friendlyError(e, zh)))
       .finally(() => setLoading(false))
   }
 
@@ -277,8 +279,8 @@ export function SchedulesPage({ onBack, onOpenWorkflow, onOpenExecution }: Props
         )}
 
         {loading && (
-          <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--muted)' }}>
-            {zh ? '加载中…' : 'Loading…'}
+          <div style={{ padding: '1rem 0' }}>
+            <SkeletonRows rows={6} />
           </div>
         )}
 

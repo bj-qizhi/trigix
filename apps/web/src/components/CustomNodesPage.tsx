@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react'
 import { ThemeToggleIcon } from './uiIcons'
 import { useLocale } from '../useLocale'
 import { useTheme } from '../useTheme'
+import { friendlyError } from '../errorMessage'
 import * as api from '../api/client'
 import type { CustomNodeDef } from '../api/client'
 import logoWordmark from '../assets/logo-wordmark.svg'
@@ -47,7 +48,7 @@ export function CustomNodesPage({ onBack }: Props) {
   }
 
   const load = () => {
-    api.listCustomNodes().then(setNodes).catch((e: unknown) => setError(String(e)))
+    api.listCustomNodes().then(setNodes).catch((e: unknown) => setError(friendlyError(e, zh)))
   }
   useEffect(load, [])
 
@@ -79,7 +80,7 @@ export function CustomNodesPage({ onBack }: Props) {
       await api.deleteCustomNode(id)
       load()
     } catch (e: unknown) {
-      setError(String(e))
+      setError(friendlyError(e, zh))
     }
   }
 

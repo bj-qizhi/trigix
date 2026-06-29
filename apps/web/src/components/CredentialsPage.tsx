@@ -8,6 +8,8 @@ import { useLocale } from '../useLocale'
 import * as api from '../api/client'
 import type { CredentialSummary } from '../types'
 import { useTheme } from '../useTheme'
+import { friendlyError } from '../errorMessage'
+import { SkeletonRows } from './Skeleton'
 import logoWordmark from '../assets/logo-wordmark.svg'
 
 interface Props {
@@ -65,7 +67,7 @@ export function CredentialsPage({ onBack }: Props) {
         setCredentials(creds)
         setUsageMap(usage.usages)
       })
-      .catch((e: unknown) => setError(String(e)))
+      .catch((e: unknown) => setError(friendlyError(e, zh)))
       .finally(() => setLoading(false))
   }, [auth])
 
@@ -91,7 +93,7 @@ export function CredentialsPage({ onBack }: Props) {
       setAdding(false)
       setName(''); setValue(''); setDescription(''); setExpiresAt('')
     } catch (e) {
-      setError(String(e))
+      setError(friendlyError(e, zh))
     } finally {
       setSaving(false)
     }
@@ -103,7 +105,7 @@ export function CredentialsPage({ onBack }: Props) {
       await api.deleteCredential(auth!.tenantId, id)
       setCredentials((prev) => prev.filter((c) => c.id !== id))
     } catch (e) {
-      setError(String(e))
+      setError(friendlyError(e, zh))
     }
   }
 
@@ -132,7 +134,7 @@ export function CredentialsPage({ onBack }: Props) {
       setEditingId(null)
       load()
     } catch (e) {
-      setError(String(e))
+      setError(friendlyError(e, zh))
     } finally {
       setEditSaving(false)
     }
@@ -197,7 +199,7 @@ export function CredentialsPage({ onBack }: Props) {
         )}
 
         {loading ? (
-          <div style={{ color: 'var(--muted)' }}>{zh ? '加载中…' : 'Loading…'}</div>
+          <SkeletonRows rows={6} />
         ) : (
           <table className="workflow-table">
             <thead>

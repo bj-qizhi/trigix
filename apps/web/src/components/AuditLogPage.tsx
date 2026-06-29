@@ -7,6 +7,8 @@ import { useEffect, useMemo, useState } from 'react'
 import { useAuth } from '../AuthContext'
 import { useLocale } from '../useLocale'
 import * as api from '../api/client'
+import { friendlyError } from '../errorMessage'
+import { SkeletonRows } from './Skeleton'
 import type { AuditEvent } from '../types'
 import logoWordmark from '../assets/logo-wordmark.svg'
 
@@ -56,7 +58,7 @@ export function AuditLogPage({ onBack }: Props) {
     setError(null)
     api.listAuditLog(auth!.tenantId, 500)
       .then(setEvents)
-      .catch((e: unknown) => setError(String(e)))
+      .catch((e: unknown) => setError(friendlyError(e, zh)))
       .finally(() => setLoading(false))
   }
 
@@ -181,7 +183,7 @@ export function AuditLogPage({ onBack }: Props) {
           )}
         </div>
 
-        {loading && <p>{zh ? '加载中…' : 'Loading…'}</p>}
+        {loading && <SkeletonRows rows={8} />}
         {error && <p style={{ color: 'var(--danger-text)' }}>{error}</p>}
 
         {!loading && !error && filtered.length === 0 && (

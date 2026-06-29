@@ -6,6 +6,7 @@ import { ThemeToggleIcon } from './uiIcons'
 import { useAuth } from '../AuthContext'
 import { useLocale } from '../useLocale'
 import * as api from '../api/client'
+import { SkeletonRows } from './Skeleton'
 import { useTheme } from '../useTheme'
 import logoWordmark from '../assets/logo-wordmark.svg'
 
@@ -134,7 +135,7 @@ export function UsersPage({ onBack }: Props) {
         {error && <p style={{ color: 'var(--error)', marginBottom: '1rem' }}>{error}</p>}
 
         {loading ? (
-          <p style={{ color: 'var(--fg-muted)' }}>{zh ? '加载中…' : 'Loading…'}</p>
+          <SkeletonRows rows={6} />
         ) : (
           <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '0.5rem' }}>
             <thead>

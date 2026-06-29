@@ -7,6 +7,8 @@ import { useLocale } from '../useLocale'
 import { useEffect, useRef, useState } from 'react'
 import { useAuth } from '../AuthContext'
 import { useToast } from '../toast'
+import { friendlyError } from '../errorMessage'
+import { SkeletonRows } from './Skeleton'
 import * as api from '../api/client'
 import type { ExecutionSummary, ExecutionRecord, NodeExecutionRecord } from '../types'
 import { applyRunFilters } from './runsFilter'
@@ -86,7 +88,7 @@ export function RunsPage({ onBack, onOpenExecution, onOpenWorkflow, initialWorkf
     setLoadedOffset(0)
     api.listExecutionsPage(auth!.tenantId, { limit: PAGE_SIZE, offset: 0 })
       .then(({ data, total: t }) => { setRuns(data); setTotal(t) })
-      .catch((e: unknown) => setError(String(e)))
+      .catch((e: unknown) => setError(friendlyError(e, zh)))
       .finally(() => setLoading(false))
   }
 
@@ -95,7 +97,7 @@ export function RunsPage({ onBack, onOpenExecution, onOpenWorkflow, initialWorkf
     setLoadingMore(true)
     api.listExecutionsPage(auth!.tenantId, { limit: PAGE_SIZE, offset: nextOffset })
       .then(({ data, total: t }) => { setRuns((prev) => [...prev, ...data]); setTotal(t); setLoadedOffset(nextOffset) })
-      .catch((e: unknown) => setError(String(e)))
+      .catch((e: unknown) => setError(friendlyError(e, zh)))
       .finally(() => setLoadingMore(false))
   }
 
@@ -728,7 +730,8 @@ export function RunsPage({ onBack, onOpenExecution, onOpenWorkflow, initialWorkf
           </div>
         )}
 
-        {(loading || loadingMore) && <p>{zh ? '加载中…' : 'Loading…'}</p>}
+        {loading && <SkeletonRows rows={8} />}
+        {loadingMore && !loading && <p>{zh ? '加载中…' : 'Loading…'}</p>}
         {error && <p style={{ color: 'var(--danger-text)' }}>{error}</p>}
 
         {!loading && !error && filtered.length === 0 && (

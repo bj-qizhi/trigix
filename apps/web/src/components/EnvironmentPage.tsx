@@ -6,6 +6,8 @@ import { ThemeToggleIcon } from './uiIcons'
 import { useAuth } from '../AuthContext'
 import { useLocale } from '../useLocale'
 import { useToast } from '../toast'
+import { friendlyError } from '../errorMessage'
+import { SkeletonRows } from './Skeleton'
 import * as api from '../api/client'
 import type { EnvVarRecord, EnvSetSummary } from '../types'
 import { useTheme } from '../useTheme'
@@ -54,7 +56,7 @@ export function EnvironmentPage({ onBack }: Props) {
     setError(null)
     api.listEnvVars(auth!.tenantId, set === DEFAULT_SET ? undefined : set)
       .then(setVars)
-      .catch((e: unknown) => setError(String(e)))
+      .catch((e: unknown) => setError(friendlyError(e, zh)))
       .finally(() => setLoading(false))
   }
 
@@ -298,7 +300,7 @@ export function EnvironmentPage({ onBack }: Props) {
             </div>
           )}
 
-          {loading && <p>{zh ? '加载中…' : 'Loading…'}</p>}
+          {loading && <SkeletonRows rows={6} />}
           {error && <p style={{ color: 'var(--danger-text)' }}>{error}</p>}
 
           {!loading && !error && vars.length === 0 && (

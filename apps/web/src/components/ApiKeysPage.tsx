@@ -6,6 +6,8 @@ import { ThemeToggleIcon } from './uiIcons'
 import { useAuth } from '../AuthContext'
 import { useLocale } from '../useLocale'
 import * as api from '../api/client'
+import { friendlyError } from '../errorMessage'
+import { SkeletonRows } from './Skeleton'
 import { useTheme } from '../useTheme'
 import logoWordmark from '../assets/logo-wordmark.svg'
 
@@ -42,7 +44,7 @@ export function ApiKeysPage({ onBack }: Props) {
     setLoading(true)
     api.listApiKeys(auth!.tenantId)
       .then(setKeys)
-      .catch((e: unknown) => setError(String(e)))
+      .catch((e: unknown) => setError(friendlyError(e, zh)))
       .finally(() => setLoading(false))
   }
 
@@ -57,7 +59,7 @@ export function ApiKeysPage({ onBack }: Props) {
       setNewName('')
       load()
     } catch (e: unknown) {
-      setError(String(e))
+      setError(friendlyError(e, zh))
     } finally {
       setCreating(false)
     }
@@ -70,7 +72,7 @@ export function ApiKeysPage({ onBack }: Props) {
       setKeys((prev) => prev.filter((k) => k.id !== id))
       if (revealed?.id === id) setRevealed(null)
     } catch (e: unknown) {
-      setError(String(e))
+      setError(friendlyError(e, zh))
     }
   }
 
@@ -170,7 +172,7 @@ export function ApiKeysPage({ onBack }: Props) {
         )}
 
         {loading ? (
-          <div style={{ color: 'var(--muted)' }}>{zh ? '加载中…' : 'Loading…'}</div>
+          <SkeletonRows rows={5} />
         ) : keys.length === 0 ? (
           <div className="empty-state">{zh ? '暂无 API 密钥，请在上方创建一个。' : 'No API keys yet. Create one above to get started.'}</div>
         ) : (

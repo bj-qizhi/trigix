@@ -6,6 +6,8 @@ import { ThemeToggleIcon } from './uiIcons'
 import { useAuth } from '../AuthContext'
 import { useLocale } from '../useLocale'
 import * as api from '../api/client'
+import { friendlyError } from '../errorMessage'
+import { SkeletonRows } from './Skeleton'
 import type { EventSubscription, EventType } from '../types'
 import { useTheme } from '../useTheme'
 
@@ -41,7 +43,7 @@ export function EventSubscriptionsPage({ onBack }: Props) {
     setLoading(true)
     api.listEventSubscriptions(auth!.tenantId)
       .then(setSubs)
-      .catch((e: unknown) => setError(String(e)))
+      .catch((e: unknown) => setError(friendlyError(e, zh)))
       .finally(() => setLoading(false))
   }
 
@@ -68,7 +70,7 @@ export function EventSubscriptionsPage({ onBack }: Props) {
       setSelectedEvents([])
       load()
     } catch (e: unknown) {
-      setError(String(e))
+      setError(friendlyError(e, zh))
     } finally {
       setCreating(false)
     }
@@ -80,7 +82,7 @@ export function EventSubscriptionsPage({ onBack }: Props) {
       await api.deleteEventSubscription(auth!.tenantId, id)
       setSubs((prev) => prev.filter((s) => s.id !== id))
     } catch (e: unknown) {
-      setError(String(e))
+      setError(friendlyError(e, zh))
     }
   }
 
@@ -148,7 +150,7 @@ export function EventSubscriptionsPage({ onBack }: Props) {
         </section>
 
         {loading ? (
-          <p style={{ color: 'var(--text-muted)' }}>{zh ? '加载中…' : 'Loading…'}</p>
+          <SkeletonRows rows={5} />
         ) : subs.length === 0 ? (
           <p style={{ color: 'var(--text-muted)' }}>{zh ? '暂无订阅。' : 'No subscriptions yet.'}</p>
         ) : (

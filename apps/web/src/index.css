@@ -572,6 +572,16 @@ label { font-size: 12px; color: var(--muted); display: block; margin-bottom: 4px
 .toast-info { border-color: var(--border-strong); }
 @keyframes slide-up { from { opacity:0; transform: translateY(8px); } to { opacity:1; transform: translateY(0); } }
 
+/* ── Skeleton loaders ── */
+.skeleton {
+  background: linear-gradient(90deg, var(--border) 25%, var(--faint) 37%, var(--border) 63%);
+  background-size: 400% 100%;
+  animation: skeleton-shimmer 1.4s ease infinite;
+  border-radius: 6px;
+}
+.skeleton-row { height: 14px; }
+@keyframes skeleton-shimmer { 0% { background-position: 100% 50%; } 100% { background-position: 0 50%; } }
+
 /* ── Scrollbar ── */
 ::-webkit-scrollbar { width: 8px; height: 8px; }
 ::-webkit-scrollbar-track { background: transparent; }
