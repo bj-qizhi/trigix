@@ -4,6 +4,8 @@
 import { useEffect, useState } from 'react'
 import { ThemeToggleIcon } from './uiIcons'
 import { useLocale } from '../useLocale'
+import { friendlyError } from '../errorMessage'
+import { SkeletonRows } from './Skeleton'
 import { useTheme } from '../useTheme'
 import * as api from '../api/client'
 import type { SsoConnection, SsoKind } from '../api/client'
@@ -70,7 +72,7 @@ export function SsoSettingsPage({ onBack }: Props) {
     api
       .listSsoConnections()
       .then(setConns)
-      .catch((e: unknown) => setError(String(e)))
+      .catch((e: unknown) => setError(friendlyError(e, zh)))
       .finally(() => setLoading(false))
   }
 
@@ -138,7 +140,7 @@ export function SsoSettingsPage({ onBack }: Props) {
       await api.deleteSsoConnection(id)
       load()
     } catch (e: unknown) {
-      setError(String(e))
+      setError(friendlyError(e, zh))
     }
   }
 
@@ -147,7 +149,7 @@ export function SsoSettingsPage({ onBack }: Props) {
       await api.setSsoConnectionEnabled(id, enabled)
       load()
     } catch (e: unknown) {
-      setError(String(e))
+      setError(friendlyError(e, zh))
     }
   }
 
@@ -257,7 +259,7 @@ export function SsoSettingsPage({ onBack }: Props) {
         {error && <p style={{ color: '#ef4444', fontSize: 13, marginBottom: 12 }}>{error}</p>}
 
         {loading ? (
-          <p style={{ color: 'var(--muted)' }}>{zh ? '加载中…' : 'Loading…'}</p>
+          <SkeletonRows rows={4} />
         ) : conns.length === 0 ? (
           <p style={{ color: 'var(--muted)' }}>{zh ? '尚无 SSO 连接。' : 'No SSO connections yet.'}</p>
         ) : (

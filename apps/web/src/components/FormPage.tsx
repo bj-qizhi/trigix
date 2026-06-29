@@ -4,6 +4,7 @@
 import { useEffect, useState } from 'react'
 import * as api from '../api/client'
 import type { FormTokenRecord, ExecutionRecord } from '../api/client'
+import { friendlyError } from '../errorMessage'
 
 export function FormPage({ token }: { token: string }) {
   const [form, setForm] = useState<FormTokenRecord | null>(null)
@@ -31,7 +32,7 @@ export function FormPage({ token }: { token: string }) {
       const rec = await api.submitForm(token, inputJson)
       setResult(rec)
     } catch (e) {
-      setError(String(e))
+      setError(friendlyError(e, false))
     } finally {
       setSubmitting(false)
     }

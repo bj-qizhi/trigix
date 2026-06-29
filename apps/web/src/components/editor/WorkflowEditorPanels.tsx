@@ -11,6 +11,7 @@ import { useEffect, useRef, useState } from 'react'
 import * as api from '../../api/client'
 import type { ExecutionSummary, InputField } from '../../types'
 import { useLocale } from '../../useLocale'
+import { friendlyError } from '../../errorMessage'
 import { IconKey } from '../uiIcons'
 import type { FlowNode } from '../Canvas'
 
@@ -131,7 +132,7 @@ export function VariablesModal({
       setNewKey('')
       setNewVal('')
     } catch (e) {
-      setError(String(e))
+      setError(friendlyError(e, zh))
     } finally {
       setSaving(false)
     }
@@ -142,7 +143,7 @@ export function VariablesModal({
       await api.deleteVariable(tenantId, workflowId, key)
       onChanged(variables.filter((v) => v.key !== key))
     } catch (e) {
-      setError(String(e))
+      setError(friendlyError(e, zh))
     }
   }
 
@@ -151,7 +152,7 @@ export function VariablesModal({
       const updated = await api.incrementVariable(tenantId, workflowId, key)
       onChanged(variables.map((v) => v.key === key ? updated : v))
     } catch (e) {
-      setError(String(e))
+      setError(friendlyError(e, zh))
     }
   }
 

@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from 'react'
 import { ThemeToggleIcon } from './uiIcons'
 import { useAuth } from '../AuthContext'
 import { useLocale } from '../useLocale'
+import { SkeletonRows } from './Skeleton'
 import * as api from '../api/client'
 import type { ExecutionSummary, WorkflowRecord } from '../types'
 import { useTheme } from '../useTheme'
@@ -376,7 +377,7 @@ export function AnalyticsPage({ onBack }: Props) {
         </div>
 
         {loading ? (
-          <p>Loading…</p>
+          <SkeletonRows rows={6} />
         ) : (
           <>
             {/* ── Summary cards ─────────────────────────────────────────── */}
@@ -1145,7 +1146,7 @@ export function AnalyticsPage({ onBack }: Props) {
               <button className="btn btn-sm" onClick={() => setShowDeps(false)}>✕</button>
             </div>
             <div style={{ padding: '16px 24px 20px' }}>
-              {depsLoading && <p style={{ color: 'var(--muted)', textAlign: 'center', padding: '2rem' }}>{zh ? '加载中…' : 'Loading…'}</p>}
+              {depsLoading && <div style={{ padding: '1rem 2rem' }}><SkeletonRows rows={4} /></div>}
               {deps && deps.edges.length === 0 && (
                 <div style={{ textAlign: 'center', color: 'var(--muted)', padding: '2rem' }}>
                   <div style={{ fontSize: '2rem', marginBottom: 8 }}>⇆</div>

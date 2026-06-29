@@ -5,6 +5,8 @@ import { useEffect, useState } from 'react'
 import type { Dispatch, SetStateAction } from 'react'
 import { useAuth } from '../../AuthContext'
 import * as api from '../../api/client'
+import { useLocale } from '../../useLocale'
+import { friendlyError } from '../../errorMessage'
 import type { WorkflowRecord, ScheduleSummary, ExecutionSummary } from '../../types'
 
 // Bootstrap data layer for the workflow list: loads the workflows, schedules,
@@ -32,6 +34,8 @@ export interface WorkflowListData {
 
 export function useWorkflowListData(): WorkflowListData {
   const { auth } = useAuth()
+  const { locale } = useLocale()
+  const zh = locale === 'zh'
   const [workflows, setWorkflows]       = useState<WorkflowRecord[]>([])
   const [schedules, setSchedules]       = useState<ScheduleSummary[]>([])
   const [execSummaries, setExecSummaries] = useState<ExecutionSummary[]>([])
@@ -58,7 +62,7 @@ export function useWorkflowListData(): WorkflowListData {
         setExecSummaries(execs)
         setExecStats(stats)
       })
-      .catch((e: unknown) => setError(String(e)))
+      .catch((e: unknown) => setError(friendlyError(e, zh)))
       .finally(() => setLoading(false))
     api.getBillingStatus().then(setBillingStatus).catch(() => {})
     api.listNotifications(auth!.tenantId, 20).then((r) => { setServerNotifs(r.notifications); setServerUnread(r.unread_count) }).catch(() => {})

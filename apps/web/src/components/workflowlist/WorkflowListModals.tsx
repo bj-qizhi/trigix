@@ -5,6 +5,7 @@ import { useState } from 'react'
 import type * as api from '../../api/client'
 import type { WorkflowRecord } from '../../types'
 import { useToast } from '../../toast'
+import { SkeletonRows } from '../Skeleton'
 
 export interface EditTagsModalProps {
   workflow: WorkflowRecord
@@ -157,7 +158,7 @@ export function SystemInfoModal({ info, onClose, zh }: SystemInfoModalProps) {
       <div className="modal" style={{ width: 400 }} onClick={(e) => e.stopPropagation()}>
         <h2>{zh ? '平台信息' : 'Platform Info'}</h2>
         {!info ? (
-          <p style={{ color: 'var(--muted)' }}>{zh ? '加载中…' : 'Loading…'}</p>
+          <SkeletonRows rows={4} />
         ) : (
           <>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, marginBottom: 16 }}>

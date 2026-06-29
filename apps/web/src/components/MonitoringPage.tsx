@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from 'react'
 import { ThemeToggleIcon } from './uiIcons'
 import { useAuth } from '../AuthContext'
 import { useLocale } from '../useLocale'
+import { SkeletonRows } from './Skeleton'
 import { useTheme } from '../useTheme'
 import * as api from '../api/client'
 import type { ExecutionSummary } from '../types'
@@ -340,7 +341,7 @@ export function MonitoringPage({ onBack, onOpenExecution, onOpenWorkflow }: Prop
               )}
             </div>
             {loading ? (
-              <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--muted)', fontSize: 13 }}>{zh ? '加载中…' : 'Loading…'}</div>
+              <div style={{ padding: '1rem 2rem' }}><SkeletonRows rows={5} /></div>
             ) : liveRuns.length === 0 ? (
               <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--muted)', fontSize: 13 }}>
                 <div style={{ fontSize: '1.5rem', marginBottom: 6 }}>✓</div>
@@ -434,7 +435,7 @@ export function MonitoringPage({ onBack, onOpenExecution, onOpenWorkflow }: Prop
               </span>
             </div>
             {loading ? (
-              <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--muted)', fontSize: 13 }}>{zh ? '加载中…' : 'Loading…'}</div>
+              <div style={{ padding: '1rem 2rem' }}><SkeletonRows rows={5} /></div>
             ) : recentFailed.length === 0 ? (
               <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--muted)', fontSize: 13 }}>
                 <div style={{ fontSize: '1.5rem', marginBottom: 6 }}>✓</div>

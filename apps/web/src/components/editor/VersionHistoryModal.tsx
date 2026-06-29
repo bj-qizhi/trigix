@@ -3,6 +3,7 @@
 
 import { useState } from 'react'
 import type { WorkflowVersionRecord } from '../../types'
+import { SkeletonRows } from '../Skeleton'
 
 // Version-history modal: lists a workflow's versions, diffs any two of them
 // (nodes added/removed/config-changed, edges added/removed), and loads or rolls
@@ -42,7 +43,7 @@ export function VersionHistoryModal({
         </div>
         <div style={{ overflowY: 'auto', flex: 1 }}>
           {loading && (
-            <div style={{ padding: 24, color: 'var(--muted)', textAlign: 'center', fontSize: 13 }}>{zh ? '加载中…' : 'Loading…'}</div>
+            <div style={{ padding: 16 }}><SkeletonRows rows={4} /></div>
           )}
           {!loading && versions.length === 0 && (
             <div style={{ padding: 24, color: 'var(--muted)', textAlign: 'center', fontSize: 13 }}>{zh ? '暂无版本。' : 'No versions yet.'}</div>

@@ -5,6 +5,8 @@ import { useEffect, useState } from 'react'
 import { ThemeToggleIcon } from './uiIcons'
 import { useAuth } from '../AuthContext'
 import { useLocale } from '../useLocale'
+import { friendlyError } from '../errorMessage'
+import { SkeletonRows } from './Skeleton'
 import * as api from '../api/client'
 import type { WorkspaceRecord, ProjectRecord } from '../types'
 import { useTheme } from '../useTheme'
@@ -40,7 +42,7 @@ export function WorkspacePage({ onBack }: Props) {
     setError(null)
     api.listWorkspaces(auth!.tenantId)
       .then(setWorkspaces)
-      .catch((e: unknown) => setError(String(e)))
+      .catch((e: unknown) => setError(friendlyError(e, zh)))
       .finally(() => setLoading(false))
   }
 
@@ -57,7 +59,7 @@ export function WorkspacePage({ onBack }: Props) {
         const projs = await api.listProjects(auth!.tenantId, wsId)
         setProjects((prev) => ({ ...prev, [wsId]: projs }))
       } catch (e) {
-        setError(String(e))
+        setError(friendlyError(e, zh))
       }
     }
   }
@@ -72,7 +74,7 @@ export function WorkspacePage({ onBack }: Props) {
       setWsName('')
       setWsDesc('')
     } catch (e) {
-      setError(String(e))
+      setError(friendlyError(e, zh))
     } finally {
       setSavingWs(false)
     }
@@ -86,7 +88,7 @@ export function WorkspacePage({ onBack }: Props) {
       setProjects((prev) => { const n = { ...prev }; delete n[wsId]; return n })
       if (expanded === wsId) setExpanded(null)
     } catch (e) {
-      setError(String(e))
+      setError(friendlyError(e, zh))
     }
   }
 
@@ -103,7 +105,7 @@ export function WorkspacePage({ onBack }: Props) {
       setProjName('')
       setProjDesc('')
     } catch (e) {
-      setError(String(e))
+      setError(friendlyError(e, zh))
     } finally {
       setSavingProj(false)
     }
@@ -118,7 +120,7 @@ export function WorkspacePage({ onBack }: Props) {
         [wsId]: (prev[wsId] ?? []).filter((p) => p.id !== projId),
       }))
     } catch (e) {
-      setError(String(e))
+      setError(friendlyError(e, zh))
     }
   }
 
@@ -150,7 +152,7 @@ export function WorkspacePage({ onBack }: Props) {
         )}
 
         {loading ? (
-          <div style={{ color: 'var(--muted)' }}>{zh ? '加载中…' : 'Loading…'}</div>
+          <SkeletonRows rows={5} />
         ) : workspaces.length === 0 ? (
           <div className="empty-state">{zh ? '暂无工作空间，创建一个以管理您的项目。' : 'No workspaces yet. Create one to organise your projects.'}</div>
         ) : (
@@ -196,7 +198,7 @@ export function WorkspacePage({ onBack }: Props) {
                     <tr key={ws.id + '-projects'}>
                       <td colSpan={3} style={{ paddingLeft: 28, background: 'var(--surface)' }}>
                         {!projects[ws.id] ? (
-                          <div style={{ color: 'var(--muted)', fontSize: 12, padding: '8px 0' }}>{zh ? '加载中…' : 'Loading…'}</div>
+                          <div style={{ padding: '8px 0' }}><SkeletonRows rows={2} /></div>
                         ) : projects[ws.id].length === 0 ? (
                           <div style={{ color: 'var(--muted)', fontSize: 12, padding: '8px 0' }}>{zh ? '暂无项目。' : 'No projects yet.'}</div>
                         ) : (

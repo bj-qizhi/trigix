@@ -7,6 +7,7 @@ import * as api from '../api/client'
 import type { ExecutionSummary } from '../types'
 import { useLocale } from '../useLocale'
 import { useToast } from '../toast'
+import { SkeletonRows } from './Skeleton'
 
 interface Props {
   onBack: () => void
@@ -144,9 +145,7 @@ export function ApprovalsPage({ onBack, onOpenExecution, onOpenWorkflow }: Props
 
       <div style={{ flex: 1, overflow: 'auto', padding: 24 }}>
         {loading ? (
-          <div style={{ textAlign: 'center', color: 'var(--muted)', paddingTop: 60 }}>
-            {zh ? '加载中…' : 'Loading…'}
-          </div>
+          <SkeletonRows rows={5} />
         ) : pending.length === 0 ? (
           <div style={{ textAlign: 'center', paddingTop: 80 }}>
             <div style={{ fontSize: 48, marginBottom: 16 }}>✓</div>

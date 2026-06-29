@@ -3,6 +3,7 @@
 
 import { useEffect, useState } from 'react'
 import { useLocale } from '../useLocale'
+import { SkeletonRows } from './Skeleton'
 import * as api from '../api/client'
 
 export function AffiliatePage({ onBack }: { onBack: () => void }) {
@@ -81,7 +82,7 @@ export function AffiliatePage({ onBack }: { onBack: () => void }) {
       </p>
 
       {!info ? (
-        <p style={{ color: 'var(--muted)' }}>{zh ? '加载中…' : 'Loading…'}</p>
+        <SkeletonRows rows={5} />
       ) : (
         <>
           {/* Referral link */}

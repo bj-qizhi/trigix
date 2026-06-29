@@ -4,6 +4,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useAuth } from '../AuthContext'
 import * as api from '../api/client'
+import { SkeletonRows } from './Skeleton'
 import type { WorkflowRecord } from '../types'
 import { useLocale } from '../useLocale'
 
@@ -91,7 +92,7 @@ export function WorkflowDepsPage({ onBack, onOpenWorkflow }: Props) {
         </span>
       </header>
 
-      {loading && <div style={{ padding: 32, textAlign: 'center', color: 'var(--muted)' }}>{zh ? '加载中…' : 'Loading…'}</div>}
+      {loading && <div style={{ padding: 32 }}><SkeletonRows rows={5} /></div>}
 
       {!loading && deps && (
         <div style={{ display: 'flex', height: 'calc(100vh - 48px)', overflow: 'hidden' }}>

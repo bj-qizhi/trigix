@@ -4,6 +4,7 @@
 import { useEffect, useState } from 'react'
 import { useLocale } from '../useLocale'
 import * as api from '../api/client'
+import { SkeletonRows } from './Skeleton'
 
 export function AdminPayoutsPage({ onBack }: { onBack: () => void }) {
   const { locale } = useLocale()
@@ -47,7 +48,7 @@ export function AdminPayoutsPage({ onBack }: { onBack: () => void }) {
       {error && <p style={{ color: '#ef4444', fontSize: 13 }}>{error}</p>}
 
       {!requests ? (
-        <p style={{ color: 'var(--muted)' }}>{zh ? '加载中…' : 'Loading…'}</p>
+        <SkeletonRows rows={5} />
       ) : requests.length === 0 ? (
         <p style={{ color: 'var(--muted)', fontSize: 13 }}>{zh ? '暂无待处理的提现申请。' : 'No pending payout requests.'}</p>
       ) : (

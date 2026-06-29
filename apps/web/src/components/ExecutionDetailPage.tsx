@@ -5,6 +5,8 @@ import { useEffect, useRef, useState } from 'react'
 import { IconTestTube, ThemeToggleIcon } from './uiIcons'
 import { useAuth } from '../AuthContext'
 import * as api from '../api/client'
+import { friendlyError } from '../errorMessage'
+import { SkeletonRows } from './Skeleton'
 import type { ExecutionRecord, AuditEvent } from '../types'
 import { useTheme } from '../useTheme'
 import { useLocale } from '../useLocale'
@@ -59,7 +61,7 @@ export function ExecutionDetailPage({ executionId, onBack, onOpenWorkflow, onRet
     if (!quiet) setLoading(true)
     api.getExecution(auth!.tenantId, executionId)
       .then(setRecord)
-      .catch((e: unknown) => setError(String(e)))
+      .catch((e: unknown) => setError(friendlyError(e, zh)))
       .finally(() => setLoading(false))
   }
 
@@ -107,7 +109,7 @@ export function ExecutionDetailPage({ executionId, onBack, onOpenWorkflow, onRet
       const newExec = await api.retryExecution(auth!.tenantId, executionId)
       onRetry(newExec.id)
     } catch (e) {
-      setError(String(e))
+      setError(friendlyError(e, zh))
       setRetrying(false)
     }
   }
@@ -131,7 +133,7 @@ export function ExecutionDetailPage({ executionId, onBack, onOpenWorkflow, onRet
       setShowReplay(false)
       onRetry(newExec.id)
     } catch (e) {
-      setError(String(e))
+      setError(friendlyError(e, zh))
     } finally {
       setReplaying(false)
     }
@@ -144,7 +146,7 @@ export function ExecutionDetailPage({ executionId, onBack, onOpenWorkflow, onRet
       await api.cancelExecution(auth!.tenantId, executionId)
       load(true)
     } catch (e) {
-      setError(String(e))
+      setError(friendlyError(e, zh))
     } finally {
       setCancelling(false)
     }
@@ -158,7 +160,7 @@ export function ExecutionDetailPage({ executionId, onBack, onOpenWorkflow, onRet
       await api.deleteExecution(auth!.tenantId, executionId)
       onBack()
     } catch (e) {
-      setError(String(e))
+      setError(friendlyError(e, zh))
       setDeleting(false)
     }
   }
@@ -171,7 +173,7 @@ export function ExecutionDetailPage({ executionId, onBack, onOpenWorkflow, onRet
       setApprovalComment('')
       load(true)
     } catch (e) {
-      setError(String(e))
+      setError(friendlyError(e, zh))
     } finally {
       setApproving(false)
     }
@@ -185,7 +187,7 @@ export function ExecutionDetailPage({ executionId, onBack, onOpenWorkflow, onRet
       setApprovalComment('')
       load(true)
     } catch (e) {
-      setError(String(e))
+      setError(friendlyError(e, zh))
     } finally {
       setRejecting(false)
     }
@@ -367,7 +369,7 @@ export function ExecutionDetailPage({ executionId, onBack, onOpenWorkflow, onRet
       </header>
 
       <main className="list-page">
-        {loading && <p>{zh ? '加载中…' : 'Loading…'}</p>}
+        {loading && <SkeletonRows rows={6} />}
         {error && <p style={{ color: 'var(--danger-text)' }}>{error}</p>}
 
         {record && (

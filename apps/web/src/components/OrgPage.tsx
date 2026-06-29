@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react'
 import { IconBuildings, IconTrash, ThemeToggleIcon } from './uiIcons'
 import { useAuth } from '../AuthContext'
 import { useLocale } from '../useLocale'
+import { SkeletonRows } from './Skeleton'
 import { useTheme } from '../useTheme'
 import * as api from '../api/client'
 import logoWordmark from '../assets/logo-wordmark.svg'
@@ -201,7 +202,7 @@ export function OrgPage({ onBack }: Props) {
         )}
 
         {loading ? (
-          <p style={{ color: 'var(--muted)' }}>{zh ? '加载中…' : 'Loading…'}</p>
+          <SkeletonRows rows={5} />
         ) : orgs.length === 0 ? (
           <div style={{ textAlign: 'center', padding: '3rem', color: 'var(--muted)' }}>
             <div style={{ fontSize: '2rem', marginBottom: '0.5rem' }}><IconBuildings size={28} /></div>

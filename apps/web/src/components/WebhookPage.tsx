@@ -6,6 +6,8 @@ import { ThemeToggleIcon } from './uiIcons'
 import { useAuth } from '../AuthContext'
 import { useLocale } from '../useLocale'
 import { useToast } from '../toast'
+import { friendlyError } from '../errorMessage'
+import { SkeletonRows } from './Skeleton'
 import * as api from '../api/client'
 import type { WebhookRecord } from '../types'
 import { useTheme } from '../useTheme'
@@ -77,7 +79,7 @@ export function WebhookPage({ onBack, onOpenWorkflow }: Props) {
       setWebhooks((prev) => prev.map((w) => w.token === token ? { ...w, max_calls_per_minute: updated.max_calls_per_minute } : w))
       setEditingRateLimitToken(null)
     } catch (e) {
-      setError(String(e))
+      setError(friendlyError(e, zh))
     } finally {
       setSavingRateLimit(false)
     }
@@ -90,7 +92,7 @@ export function WebhookPage({ onBack, onOpenWorkflow }: Props) {
       setWebhooks((prev) => prev.map((w) => w.token === token ? { ...w, condition_expr: updated.condition_expr } : w))
       setEditingConditionToken(null)
     } catch (e) {
-      setError(String(e))
+      setError(friendlyError(e, zh))
     } finally {
       setSavingCondition(false)
     }
@@ -104,7 +106,7 @@ export function WebhookPage({ onBack, onOpenWorkflow }: Props) {
       setWebhooks((prev) => prev.map((w) => w.token === token ? { ...w, payload_transform_script: updated.payload_transform_script } : w))
       setEditingTransformToken(null)
     } catch (e) {
-      setError(String(e))
+      setError(friendlyError(e, zh))
     } finally {
       setSavingTransform(false)
     }
@@ -117,7 +119,7 @@ export function WebhookPage({ onBack, onOpenWorkflow }: Props) {
       const result = await api.rotateWebhookSecret(token)
       setRotatedSecret({ token, secret: result.secret })
     } catch (e) {
-      setError(String(e))
+      setError(friendlyError(e, zh))
     } finally {
       setRotatingToken(null)
     }
@@ -128,7 +130,7 @@ export function WebhookPage({ onBack, onOpenWorkflow }: Props) {
       const updated = wh.paused ? await api.resumeWebhook(wh.token) : await api.pauseWebhook(wh.token)
       setWebhooks((prev) => prev.map((w) => w.token === wh.token ? { ...w, paused: updated.paused } : w))
     } catch (e) {
-      setError(String(e))
+      setError(friendlyError(e, zh))
     }
   }
 
@@ -137,7 +139,7 @@ export function WebhookPage({ onBack, onOpenWorkflow }: Props) {
     setError(null)
     api.listWebhooks(auth!.tenantId)
       .then(setWebhooks)
-      .catch((e: unknown) => setError(String(e)))
+      .catch((e: unknown) => setError(friendlyError(e, zh)))
       .finally(() => setLoading(false))
   }
 
@@ -148,7 +150,7 @@ export function WebhookPage({ onBack, onOpenWorkflow }: Props) {
       await api.deleteWebhook(auth!.tenantId, token)
       setWebhooks((prev) => prev.filter((w) => w.token !== token))
     } catch (e) {
-      setError(String(e))
+      setError(friendlyError(e, zh))
     }
   }
 
@@ -210,7 +212,7 @@ export function WebhookPage({ onBack, onOpenWorkflow }: Props) {
         )}
 
         {loading ? (
-          <div style={{ color: 'var(--muted)' }}>{zh ? '加载中…' : 'Loading…'}</div>
+          <SkeletonRows rows={5} />
         ) : webhooks.length === 0 ? (
           <div className="empty-state">{zh ? '暂无 Webhook。发布版本后在触发节点下创建。' : 'No webhooks yet. Publish a version and create a webhook from the Trigger node.'}</div>
         ) : (
@@ -356,7 +358,7 @@ export function WebhookPage({ onBack, onOpenWorkflow }: Props) {
                         {zh ? '投递历史（最近 20 条）' : 'DELIVERY HISTORY (last 20)'}
                       </div>
                       {!deliveries[wh.token] ? (
-                        <div style={{ color: 'var(--muted)', fontSize: 12 }}>{zh ? '加载中…' : 'Loading…'}</div>
+                        <div style={{ padding: '4px 0' }}><SkeletonRows rows={2} /></div>
                       ) : deliveries[wh.token].length === 0 ? (
                         <div style={{ color: 'var(--muted)', fontSize: 12 }}>{zh ? '暂无投递记录。' : 'No deliveries yet.'}</div>
                       ) : (

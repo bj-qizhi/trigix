@@ -22,6 +22,7 @@ import { GenerateWorkflowModal } from './GenerateWorkflowModal'
 import { useTheme } from '../useTheme'
 import { useLocale } from '../useLocale'
 import { useToast } from '../toast'
+import { SkeletonRows } from './Skeleton'
 
 interface Props {
   onOpen: (workflowId: string) => void
@@ -1417,7 +1418,7 @@ export function WorkflowList({ onOpen, onOpenExecution, onCredentials, onAuditLo
           </div>
         )}
 
-        {loading && <p>{zh ? '加载中…' : 'Loading…'}</p>}
+        {loading && <SkeletonRows rows={6} />}
         {error && <p style={{ color: 'var(--danger-text)' }}>{error}</p>}
 
         {!loading && !error && workflows.length === 0 && (
