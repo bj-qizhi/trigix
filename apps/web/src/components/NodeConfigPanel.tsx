@@ -7,6 +7,8 @@ import type { NodeType, ExecutionSummary, NodeExecutionRecord } from '../types'
 import type { TranslationKey } from '../i18n'
 import type { ConfigProps } from './panels/types'
 import { useLocale } from '../useLocale'
+import { useAuth } from '../AuthContext'
+import * as api from '../api/client'
 import { captureField, isInsertableField, insertText, subscribe, replaceRange, type FieldSnapshot } from './varInsert'
 import { JsonTree } from './JsonTree'
 
@@ -659,7 +661,9 @@ export function NodeConfigPanel({ node, onUpdateConfig, recentExecutions, onSele
         onSelectCapture={(e) => { if (isInsertableField(e.target)) captureField(e.target) }}
         onInputCapture={(e) => { if (isInsertableField(e.target)) captureField(e.target) }}
       >
-        {upstreamNodes && upstreamNodes.length > 0 && <VarAutocomplete nodes={upstreamNodes} />}
+        {/* Always mounted: even a node with no upstream can reference
+            {{input.*}}, {{ctx.*}} and {{credential.*}}. */}
+        <VarAutocomplete nodes={upstreamNodes ?? []} />
         <ResolvePreview results={upstreamResults} />
         {executionResult && <NodeResultBox result={executionResult} locale={locale} t={t} />}
         {NODE_DESCRIPTIONS[nt] && (
@@ -1080,6 +1084,15 @@ interface AcOption { value: string; label: string; isField: boolean }
 
 function VarAutocomplete({ nodes }: { nodes: FlowNode[] }) {
   const { locale } = useLocale()
+  const { auth } = useAuth()
+  // Credential names, so `{{credential.` autocompletes the user's saved
+  // credentials — the platform resolves {{credential.<name>}} to the decrypted
+  // secret before execution (see credentials.rs:resolve_credentials_in_json).
+  const [credentials, setCredentials] = useState<string[]>([])
+  useEffect(() => {
+    if (!auth) return
+    api.listCredentials(auth.tenantId).then((cs) => setCredentials(cs.map((c) => c.name))).catch(() => {})
+  }, [auth])
   const [state, setState] = useState<{
     open: number // offset of the `{{`
     caret: number
@@ -1092,6 +1105,7 @@ function VarAutocomplete({ nodes }: { nodes: FlowNode[] }) {
 
   const fieldsFor = (idPart: string): string[] => {
     if (idPart === 'ctx') return ['execution_id', 'workflow_version_id']
+    if (idPart === 'credential') return credentials
     if (idPart === 'input') return []
     const n = nodes.find((x) => x.id === idPart)
     return n ? (NODE_OUTPUTS[n.data.nodeType] ?? []) : []
@@ -1114,6 +1128,7 @@ function VarAutocomplete({ nodes }: { nodes: FlowNode[] }) {
         const sources: AcOption[] = [
           { value: 'input', label: locale === 'zh' ? 'input · 工作流输入' : 'input · workflow input', isField: false },
           { value: 'ctx', label: 'ctx · ' + (locale === 'zh' ? '执行元数据' : 'metadata'), isField: false },
+          ...(credentials.length ? [{ value: 'credential', label: 'credential · ' + (locale === 'zh' ? '凭证' : 'saved credential'), isField: false }] : []),
           ...nodes.map((n) => ({ value: n.id, label: `${n.id} · ${n.data.nodeType}`, isField: false })),
         ].filter((o) => o.value.toLowerCase().includes(q))
         setState(sources.length ? { open, caret: snap.start, rect, options: sources, sel: 0, mode: 'source', base: '' } : null)
@@ -1129,7 +1144,7 @@ function VarAutocomplete({ nodes }: { nodes: FlowNode[] }) {
     }
     return subscribe(recompute)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [nodes, locale])
+  }, [nodes, locale, credentials])
 
   const choose = (opt: AcOption) => {
     const s = state

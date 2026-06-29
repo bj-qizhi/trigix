@@ -242,6 +242,32 @@ test('integration node config panel renders after the domain split', async ({ pa
   expect(errors, errors.join('\n')).toHaveLength(0)
 })
 
+test('typing {{credential. autocompletes the saved credentials', async ({ page }) => {
+  const errors = trackErrors(page)
+  await mockBackend(page)
+  await page.route(/\/v1\/credentials(\?|$)/, (r) => r.fulfill({ json: [{ id: 'c1', name: 'my-api-key', created_at: 1, updated_at: 1 }] }))
+  await openEditor(page)
+
+  // Opening a node's config mounts the autocomplete, which fetches credentials.
+  const credResp = page.waitForResponse((r) => /\/v1\/credentials/.test(r.url()))
+  await page.getByTestId('rf__node-http').click({ position: { x: 10, y: 10 } })
+  await credResp
+  const inputs = page.locator('.config-panel-body input')
+  await expect(inputs.first()).toBeVisible()
+  let urlField = null
+  for (let i = 0; i < (await inputs.count()); i++) {
+    if ((await inputs.nth(i).inputValue()).includes('example.com')) { urlField = inputs.nth(i); break }
+  }
+  await urlField!.fill('')
+  await urlField!.click()
+  await urlField!.pressSequentially('{{credential.my')
+
+  // The platform resolves {{credential.<name>}} before execution, so the field
+  // autocomplete now offers the user's saved credential names.
+  await expect(page.getByText('my-api-key')).toBeVisible({ timeout: 10_000 })
+  expect(errors, errors.join('\n')).toHaveLength(0)
+})
+
 test('Ctrl+Enter dispatches an execution with the run input', async ({ page }) => {
   const errors = trackErrors(page)
   await mockBackend(page)
