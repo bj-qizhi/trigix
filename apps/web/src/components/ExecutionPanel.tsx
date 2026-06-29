@@ -122,6 +122,25 @@ export function ExecutionPanel({ execution, running, inputJson, onInputChange, o
                 DRY
               </span>
             )}
+            {execution.status === 'running' && (execution.node_count ?? 0) > 0 && (() => {
+              // Live progress for the run in flight. The data already streams in
+              // via SSE/poll (completed_node_count grows); this surfaces it in the
+              // editor so the run isn't a black box, mirroring the canvas's
+              // per-node highlight. The currently-running node is named too.
+              const nc = execution.node_count!
+              const cc = execution.completed_node_count ?? 0
+              const pct = Math.round((cc / nc) * 100)
+              const runningNode = execution.node_results.find((r) => r.status === 'running')
+              return (
+                <div data-testid="exec-progress" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <div style={{ width: 90, height: 5, borderRadius: 3, background: 'var(--border)', overflow: 'hidden' }}>
+                    <div style={{ height: '100%', width: `${pct}%`, background: 'var(--link)', borderRadius: 3, transition: 'width 0.4s ease' }} />
+                  </div>
+                  <span style={{ fontSize: 10, color: 'var(--muted)' }}>{cc}/{nc}</span>
+                  {runningNode && <span style={{ fontSize: 11, color: 'var(--link)' }}>{zh ? '运行中：' : 'running: '}{runningNode.node_id}</span>}
+                </div>
+              )
+            })()}
           </>
         )}
         {!execution && !running && (

@@ -258,6 +258,34 @@ test('Ctrl+Enter dispatches an execution with the run input', async ({ page }) =
   expect(errors, errors.join('\n')).toHaveLength(0)
 })
 
+test('a running execution shows live progress in the editor exec panel', async ({ page }) => {
+  const errors = trackErrors(page)
+  await mockBackend(page)
+  const RUNNING = {
+    id: 'ex1', tenant_id: 't', workflow_id: 'wf1', workflow_version_id: 'v1',
+    status: 'running', started_at: 1, created_at: 1,
+    node_count: 3, completed_node_count: 1,
+    node_results: [
+      { node_id: 'trigger', status: 'succeeded' },
+      { node_id: 'structured_output', status: 'running' },
+    ],
+  }
+  // Dispatch returns a running execution with progress; the GET keeps it running
+  // for the SSE-fallback poll so the bar stays put.
+  await page.route(/\/v1\/workflows\/wf1\/executions/, (r) => r.fulfill({ json: RUNNING }))
+  await page.route(/\/v1\/executions\/ex1(\?|$)/, (r) => r.fulfill({ json: RUNNING }))
+  await openEditor(page)
+
+  await blurToCanvas(page)
+  await page.keyboard.press('Control+Enter')
+
+  const progress = page.getByTestId('exec-progress')
+  await expect(progress).toBeVisible({ timeout: 10_000 })
+  await expect(progress).toContainText('1/3')
+  await expect(progress).toContainText('structured_output')
+  expect(errors, errors.join('\n')).toHaveLength(0)
+})
+
 test('version history modal lists versions and diffs them', async ({ page }) => {
   const errors = trackErrors(page)
   await mockBackend(page)
