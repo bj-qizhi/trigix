@@ -22,7 +22,8 @@ import { ViewMenu, MoreActionsMenu } from './editor/EditorMenus'
 import { LimitsMenu } from './editor/LimitsMenu'
 import { TagEditor } from './editor/TagEditor'
 import { WorkflowTitleBar } from './editor/WorkflowTitleBar'
-import { collectPublishWarnings } from './editor/publishWarnings'
+import { collectPublishWarnings, type PublishWarning } from './editor/publishWarnings'
+import { useToast } from '../toast'
 import { EditorActions } from './editor/EditorActions'
 import { GraphStatsBadges } from './editor/GraphStatsBadges'
 import { NodeIcon } from './nodeIcons'
@@ -43,7 +44,6 @@ interface Props {
   initialInput?: string
 }
 
-type Toast = { id: number; message: string; kind: 'success' | 'error' }
 
 const NODE_TYPE_LIST: { type: NodeType; label: string; color: string; desc: string; category: string }[] = [
   { type: 'trigger',      label: 'Trigger',      color: 'var(--node-trigger)',   desc: 'Starts the workflow. Passes input_json to downstream nodes. Supports manual, webhook, and scheduled runs.',  category: 'Control' },
@@ -458,7 +458,6 @@ export function WorkflowEditor({ workflowId, onBack, initialInput }: Props) {
   setLabelLocale(locale)
   const [workflow, setWorkflow]       = useState<WorkflowRecord | null>(null)
   const [version, setVersion]         = useState<WorkflowVersionRecord | null>(null)
-  const [toasts, setToasts]           = useState<Toast[]>([])
   const [webhookUrl, setWebhookUrl]   = useState<string | null>(null)
   const [webhookSecret, setWebhookSecret] = useState<string | null>(null)
   const [inputSchema, setInputSchema] = useState<InputField[]>([])
@@ -502,18 +501,19 @@ export function WorkflowEditor({ workflowId, onBack, initialInput }: Props) {
   const [showComments, setShowComments] = useState(false)
   const [showApiDocs, setShowApiDocs] = useState(false)
   const [showCopilot, setShowCopilot] = useState(false)
-  const toastId = useRef(0)
-  const handleSaveRef = useRef<() => void>(() => {})
+  const handleSaveRef = useRef<(opts?: { silent?: boolean }) => void>(() => {})
   const handleRunRef  = useRef<() => void>(() => {})
   const handleDuplicateNodeRef = useRef<() => void>(() => {})
 
   // toast is defined here (before useGraphState) because the graph mutations
-  // surface user feedback through it.
+  // surface user feedback through it. It adapts the editor's (message, kind)
+  // signature onto the app-wide toast provider so the whole app shares one
+  // notification surface.
+  const pushToast = useToast()
   const toast = useCallback((message: string, kind: 'success' | 'error' = 'success') => {
-    const id = ++toastId.current
-    setToasts((t) => [...t, { id, message, kind }])
-    setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), 3000)
-  }, [])
+    if (kind === 'error') pushToast.error(message)
+    else pushToast.success(message)
+  }, [pushToast])
 
   // The editable graph — nodes/edges/selection, undo-redo history, and node
   // CRUD — lives in a dedicated hook (see editor/useGraphState).
@@ -660,7 +660,7 @@ export function WorkflowEditor({ workflowId, onBack, initialInput }: Props) {
   }, [])
 
   const [showValidate, setShowValidate] = useState(false)
-  const [validateWarnings, setValidateWarnings] = useState<string[]>([])
+  const [validateWarnings, setValidateWarnings] = useState<PublishWarning[]>([])
 
   // Version persistence — save/publish/publish-and-run, version history
   // (list/diff/load/rollback) and JSON export — lives in a dedicated hook
@@ -1006,7 +1006,7 @@ export function WorkflowEditor({ workflowId, onBack, initialInput }: Props) {
   isDirtyRef.current = isDirty
   useEffect(() => {
     const timer = setInterval(() => {
-      if (isDirtyRef.current) handleSaveRef.current()
+      if (isDirtyRef.current) handleSaveRef.current({ silent: true })
     }, 30_000)
     return () => clearInterval(timer)
   }, [])
@@ -1523,12 +1523,6 @@ export function WorkflowEditor({ workflowId, onBack, initialInput }: Props) {
         )}
       </div>
 
-      {/* Toasts */}
-      {toasts.map((t) => (
-        <div key={t.id} className={`toast toast-${t.kind}`}>
-          {t.message}
-        </div>
-      ))}
 
       {/* Version history modal */}
       {showVersions && (
@@ -1559,7 +1553,7 @@ export function WorkflowEditor({ workflowId, onBack, initialInput }: Props) {
           nodes={nodes}
           selectedNodeId={selectedNodeId}
           zh={zh}
-          onPick={(id) => { setSelectedNodeId(id); setShowPalette(false) }}
+          onPick={(id) => { setSelectedNodeId(id); fitToNodeRef.current?.(id); setShowPalette(false) }}
           onClose={() => setShowPalette(false)}
         />
       )}
@@ -1580,7 +1574,12 @@ export function WorkflowEditor({ workflowId, onBack, initialInput }: Props) {
 
       {/* Validate modal */}
       {showValidate && (
-        <ValidationModal warnings={validateWarnings} zh={zh} onClose={() => setShowValidate(false)} />
+        <ValidationModal
+          warnings={validateWarnings}
+          zh={zh}
+          onClose={() => setShowValidate(false)}
+          onJump={(id) => { setSelectedNodeId(id); fitToNodeRef.current?.(id) }}
+        />
       )}
 
       {/* Readme modal */}

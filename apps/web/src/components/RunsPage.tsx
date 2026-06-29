@@ -6,6 +6,7 @@ import { ThemeToggleIcon } from './uiIcons'
 import { useLocale } from '../useLocale'
 import { useEffect, useRef, useState } from 'react'
 import { useAuth } from '../AuthContext'
+import { useToast } from '../toast'
 import * as api from '../api/client'
 import type { ExecutionSummary, ExecutionRecord, NodeExecutionRecord } from '../types'
 import { applyRunFilters } from './runsFilter'
@@ -57,6 +58,7 @@ export function RunsPage({ onBack, onOpenExecution, onOpenWorkflow, initialWorkf
   const { theme, toggle: toggleTheme } = useTheme()
   const { locale, toggle: toggleLocale, t } = useLocale()
   const zh = locale === 'zh'
+  const toast = useToast()
   const workflowNames = useWorkflowNames(auth!.tenantId)
   const [runs, setRuns]               = useState<ExecutionSummary[]>([])
   const [total, setTotal]             = useState(0)
@@ -160,7 +162,7 @@ export function RunsPage({ onBack, onOpenExecution, onOpenWorkflow, initialWorkf
       await api.approveExecution(runId)
       load()
     } catch (err) {
-      alert(String(err))
+      toast.error(String(err))
     } finally {
       setActing((prev) => { const n = { ...prev }; delete n[runId]; return n })
     }
@@ -173,7 +175,7 @@ export function RunsPage({ onBack, onOpenExecution, onOpenWorkflow, initialWorkf
       await api.rejectExecution(runId)
       load()
     } catch (err) {
-      alert(String(err))
+      toast.error(String(err))
     } finally {
       setActing((prev) => { const n = { ...prev }; delete n[runId]; return n })
     }
@@ -184,10 +186,10 @@ export function RunsPage({ onBack, onOpenExecution, onOpenWorkflow, initialWorkf
     setCancellingAll(true)
     try {
       const { cancelled } = await api.cancelAllRunningExecutions(auth!.tenantId)
-      alert(zh ? `已取消 ${cancelled} 个执行。` : `Cancelled ${cancelled} execution${cancelled !== 1 ? 's' : ''}.`)
+      toast.success(zh ? `已取消 ${cancelled} 个执行。` : `Cancelled ${cancelled} execution${cancelled !== 1 ? 's' : ''}.`)
       load()
     } catch (err) {
-      alert(String(err))
+      toast.error(String(err))
     } finally {
       setCancellingAll(false)
     }

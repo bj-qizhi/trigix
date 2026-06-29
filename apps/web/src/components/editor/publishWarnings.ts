@@ -114,19 +114,27 @@ const NODE_REQUIRED_FIELDS: Record<string, NodeFieldSpec> = {
   code: { name: 'Code', fields: [['code', 'script']] },
 }
 
+// A single validation finding. `nodeId` is set for node-scoped warnings so the
+// UI can jump to the offending node; structural warnings (e.g. missing trigger)
+// leave it undefined.
+export interface PublishWarning {
+  message: string
+  nodeId?: string
+}
+
 // Pre-publish validation: structural sanity (trigger present, no orphan nodes)
 // plus required-config checks driven by NODE_REQUIRED_FIELDS. Pure function so
 // it can be reused and tested independently of the editor component.
-export function collectPublishWarnings(nodes: FlowNode[], edges: FlowEdge[]): string[] {
-  const warnings: string[] = []
+export function collectPublishWarnings(nodes: FlowNode[], edges: FlowEdge[]): PublishWarning[] {
+  const warnings: PublishWarning[] = []
   const connectedSources = new Set(edges.map((e) => e.source))
   const connectedTargets = new Set(edges.map((e) => e.target))
   const triggers = nodes.filter((n) => n.data.nodeType === 'trigger')
 
-  // Structural checks
-  if (triggers.length === 0) warnings.push('No trigger node — add a Trigger to start the workflow')
-  if (triggers.length > 1) warnings.push(`Multiple trigger nodes (${triggers.length}) — only one should exist`)
-  if (nodes.length === 1 && triggers.length === 1) warnings.push('Only a trigger node — add more nodes to build a workflow')
+  // Structural checks (not tied to a single node)
+  if (triggers.length === 0) warnings.push({ message: 'No trigger node — add a Trigger to start the workflow' })
+  if (triggers.length > 1) warnings.push({ message: `Multiple trigger nodes (${triggers.length}) — only one should exist` })
+  if (nodes.length === 1 && triggers.length === 1) warnings.push({ message: 'Only a trigger node — add more nodes to build a workflow' })
 
   for (const node of nodes) {
     const nt = node.data.nodeType
@@ -136,17 +144,17 @@ export function collectPublishWarnings(nodes: FlowNode[], edges: FlowEdge[]): st
 
     // Orphaned node checks (skip trigger, fan-in, catch which can have no incoming)
     if (nt !== 'trigger' && nt !== 'note' && !connectedTargets.has(id)) {
-      warnings.push(`Node "${label}" has no incoming connections`)
+      warnings.push({ message: `Node "${label}" has no incoming connections`, nodeId: id })
     }
     if (nt !== 'note' && nt !== 'approval' && !connectedSources.has(id)) {
-      warnings.push(`Node "${label}" has no outgoing connections`)
+      warnings.push({ message: `Node "${label}" has no outgoing connections`, nodeId: id })
     }
 
     // Required-config checks (data-driven)
     const spec = nt ? NODE_REQUIRED_FIELDS[nt] : undefined
     if (spec) {
       for (const [field, desc] of spec.fields) {
-        if (!c[field]) warnings.push(`${spec.name} node "${label}" has no ${desc}`)
+        if (!c[field]) warnings.push({ message: `${spec.name} node "${label}" has no ${desc}`, nodeId: id })
       }
     }
   }

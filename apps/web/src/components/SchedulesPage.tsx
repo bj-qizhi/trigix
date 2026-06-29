@@ -6,6 +6,7 @@ import { ThemeToggleIcon } from './uiIcons'
 import { useAuth } from '../AuthContext'
 import { useLocale } from '../useLocale'
 import { useTheme } from '../useTheme'
+import { useToast } from '../toast'
 import * as api from '../api/client'
 import type { ExecutionSummary, ScheduleSummary } from '../types'
 import logoWordmark from '../assets/logo-wordmark.svg'
@@ -112,6 +113,7 @@ export function SchedulesPage({ onBack, onOpenWorkflow, onOpenExecution }: Props
   const [runToast, setRunToast] = useState<string | null>(null)
   const [countdown, setCountdown] = useState<Record<string, number>>({})
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const toast = useToast()
 
   const load = () => {
     setLoading(true)
@@ -162,7 +164,7 @@ export function SchedulesPage({ onBack, onOpenWorkflow, onOpenExecution }: Props
       toastTimerRef.current = setTimeout(() => setRunToast(null), 5000)
       load()
     } catch (e) {
-      alert(String(e))
+      toast.error(String(e))
     } finally {
       setRunning(null)
     }

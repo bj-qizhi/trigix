@@ -10,32 +10,39 @@ const node = (id: string, nodeType: string, config: Record<string, unknown> = {}
 const edge = (source: string, target: string): FlowEdge =>
   ({ id: `${source}-${target}`, source, target } as unknown as FlowEdge)
 
+const messages = (w: ReturnType<typeof collectPublishWarnings>) => w.map((x) => x.message)
+
 describe('collectPublishWarnings', () => {
-  it('flags a missing trigger', () => {
+  it('flags a missing trigger (structural — no nodeId)', () => {
     const w = collectPublishWarnings([node('http1', 'http', { url: 'x' })], [])
-    expect(w.some((m) => m.includes('No trigger node'))).toBe(true)
+    const missing = w.find((m) => m.message.includes('No trigger node'))
+    expect(missing).toBeTruthy()
+    expect(missing!.nodeId).toBeUndefined()
   })
 
   it('flags multiple triggers', () => {
     const w = collectPublishWarnings([node('t1', 'trigger'), node('t2', 'trigger')], [])
-    expect(w.some((m) => m.includes('Multiple trigger nodes'))).toBe(true)
+    expect(messages(w).some((m) => m.includes('Multiple trigger nodes'))).toBe(true)
   })
 
-  it('flags orphaned nodes (no incoming / no outgoing)', () => {
+  it('flags orphaned nodes (no incoming / no outgoing) and tags them with the node id', () => {
     const w = collectPublishWarnings(
       [node('trigger', 'trigger'), node('http1', 'http', { url: 'x' })],
       [], // http1 has no edges
     )
-    expect(w.some((m) => m.includes('"http1" has no incoming connections'))).toBe(true)
-    expect(w.some((m) => m.includes('"http1" has no outgoing connections'))).toBe(true)
+    const incoming = w.find((m) => m.message.includes('"http1" has no incoming connections'))
+    const outgoing = w.find((m) => m.message.includes('"http1" has no outgoing connections'))
+    expect(incoming?.nodeId).toBe('http1')
+    expect(outgoing?.nodeId).toBe('http1')
   })
 
-  it('applies the data-driven required-field checks', () => {
+  it('applies the data-driven required-field checks (with nodeId)', () => {
     const w = collectPublishWarnings(
       [node('trigger', 'trigger'), node('s', 'slack', {})],
       [edge('trigger', 's')],
     )
-    expect(w).toContain('Slack node "s" has no Webhook URL')
+    const slack = w.find((m) => m.message === 'Slack node "s" has no Webhook URL')
+    expect(slack?.nodeId).toBe('s')
   })
 
   it('uses node_label in the message when present', () => {
@@ -43,7 +50,7 @@ describe('collectPublishWarnings', () => {
       [node('trigger', 'trigger'), node('h', 'http', { node_label: 'Fetch' })],
       [edge('trigger', 'h')],
     )
-    expect(w).toContain('HTTP node "Fetch" has no URL')
+    expect(messages(w)).toContain('HTTP node "Fetch" has no URL')
   })
 
   it('does not warn when required config is present', () => {
@@ -51,6 +58,6 @@ describe('collectPublishWarnings', () => {
       [node('trigger', 'trigger'), node('h', 'http', { url: 'https://x' })],
       [edge('trigger', 'h')],
     )
-    expect(w.some((m) => m.includes('has no URL'))).toBe(false)
+    expect(messages(w).some((m) => m.includes('has no URL'))).toBe(false)
   })
 })

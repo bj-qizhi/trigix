@@ -2,15 +2,19 @@
 // https://www.qzso.com/ · managecode@gmail.com
 
 // Workflow validation results modal: lists the pre-publish warnings (or a
-// ready-to-publish confirmation). Extracted verbatim from WorkflowEditor.
+// ready-to-publish confirmation). Node-scoped warnings are clickable and select
+// + center the offending node on the canvas.
+
+import type { PublishWarning } from './publishWarnings'
 
 export interface ValidationModalProps {
-  warnings: string[]
+  warnings: PublishWarning[]
   zh: boolean
   onClose: () => void
+  onJump?: (nodeId: string) => void
 }
 
-export function ValidationModal({ warnings, zh, onClose }: ValidationModalProps) {
+export function ValidationModal({ warnings, zh, onClose, onJump }: ValidationModalProps) {
   return (
     <div className="modal-backdrop" onClick={onClose}>
       <div className="modal" style={{ width: 480 }} onClick={(e) => e.stopPropagation()}>
@@ -26,10 +30,29 @@ export function ValidationModal({ warnings, zh, onClose }: ValidationModalProps)
             {zh ? '所有节点均已连接并配置完成。工作流已准备好发布。' : 'All nodes are connected and configured. The workflow is ready to publish.'}
           </p>
         ) : (
-          <ul style={{ margin: '8px 0 16px', padding: '0 0 0 18px', fontSize: 13, lineHeight: 1.8 }}>
-            {warnings.map((w, i) => (
-              <li key={i} style={{ color: 'var(--warning-text)' }}>{w}</li>
-            ))}
+          <ul style={{ margin: '8px 0 16px', padding: 0, listStyle: 'none', fontSize: 13, lineHeight: 1.6, display: 'flex', flexDirection: 'column', gap: 4 }}>
+            {warnings.map((w, i) => {
+              const jumpable = w.nodeId && onJump
+              return (
+                <li
+                  key={i}
+                  onClick={jumpable ? () => { onJump!(w.nodeId!); onClose() } : undefined}
+                  title={jumpable ? (zh ? '点击定位到该节点' : 'Click to jump to this node') : undefined}
+                  style={{
+                    color: 'var(--warning-text)',
+                    display: 'flex', alignItems: 'baseline', gap: 6,
+                    padding: '4px 8px', borderRadius: 'var(--radius)',
+                    cursor: jumpable ? 'pointer' : 'default',
+                  }}
+                  onMouseEnter={jumpable ? (e) => { (e.currentTarget as HTMLElement).style.background = 'var(--faint)' } : undefined}
+                  onMouseLeave={jumpable ? (e) => { (e.currentTarget as HTMLElement).style.background = 'transparent' } : undefined}
+                >
+                  <span aria-hidden>•</span>
+                  <span style={{ flex: 1 }}>{w.message}</span>
+                  {jumpable && <span style={{ fontSize: 12, opacity: 0.8, whiteSpace: 'nowrap' }}>{zh ? '定位 →' : 'Jump →'}</span>}
+                </li>
+              )
+            })}
           </ul>
         )}
         <div className="modal-actions">

@@ -32,6 +32,7 @@ import { MonitoringPage } from './components/MonitoringPage'
 import { ApprovalsPage } from './components/ApprovalsPage'
 import { WorkflowDepsPage } from './components/WorkflowDepsPage'
 import { usePageRouter } from './routing'
+import { ToastProvider } from './toast'
 import logoIcon from './assets/logo.svg'
 
 function EmailVerificationBanner({ email }: { email?: string }) {
@@ -286,9 +287,10 @@ function Footer() {
 }
 
 export function App() {
-  if (window.location.pathname.startsWith('/forms/')) {
-    return <PublicFormRoute />
-  }
+  return <ToastProvider>{window.location.pathname.startsWith('/forms/') ? <PublicFormRoute /> : <AuthedApp />}</ToastProvider>
+}
+
+function AuthedApp() {
   return (
     <AuthProvider>
       <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>

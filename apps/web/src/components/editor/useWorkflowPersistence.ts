@@ -7,6 +7,7 @@ import { useAuth } from '../../AuthContext'
 import * as api from '../../api/client'
 import type { WorkflowRecord, WorkflowVersionRecord, ExecutionRecord, InputField } from '../../types'
 import { graphFromApi, fromFlowGraph, type FlowNode, type FlowEdge } from '../Canvas'
+import type { PublishWarning } from './publishWarnings'
 
 // Owns the editor's version-persistence surface: saving a new draft version,
 // publishing (and publish-and-run), the version-history modal (list, diff,
@@ -32,7 +33,7 @@ export interface WorkflowPersistenceState {
   setSaveMessage: Dispatch<SetStateAction<string>>
   showSaveMessage: boolean
   setShowSaveMessage: Dispatch<SetStateAction<boolean>>
-  handleSave: () => Promise<void>
+  handleSave: (opts?: { silent?: boolean }) => Promise<void>
   handlePublish: () => Promise<void>
   handlePublishAndRun: () => Promise<void>
   handleExport: () => Promise<void>
@@ -60,7 +61,7 @@ export interface WorkflowPersistenceOptions {
   setWebhookSecret: Dispatch<SetStateAction<string | null>>
   inputJson: string
   setExecution: Dispatch<SetStateAction<ExecutionRecord | null>>
-  collectPublishWarnings: () => string[]
+  collectPublishWarnings: () => PublishWarning[]
 }
 
 export function useWorkflowPersistence(opts: WorkflowPersistenceOptions): WorkflowPersistenceState {
@@ -85,7 +86,7 @@ export function useWorkflowPersistence(opts: WorkflowPersistenceOptions): Workfl
   const [saveMessage, setSaveMessage] = useState('')
   const [showSaveMessage, setShowSaveMessage] = useState(false)
 
-  const handleSave = async () => {
+  const handleSave = async (opts?: { silent?: boolean }) => {
     if (!workflow) return
     setSaving(true)
     try {
@@ -101,7 +102,10 @@ export function useWorkflowPersistence(opts: WorkflowPersistenceOptions): Workfl
       setVersion(ver)
       setSaveMessage('')
       setShowSaveMessage(false)
-      toast(zh ? '版本已保存' : 'Version saved')
+      // Autosave (every 30s while dirty) saves silently — the header's dirty
+      // indicator already conveys state, and a toast every 30s would be noise.
+      // Explicit Ctrl+S / Save Version still confirms. Failures always toast.
+      if (!opts?.silent) toast(zh ? '版本已保存' : 'Version saved')
     } catch (e) {
       toast(String(e), 'error')
     } finally {
@@ -114,7 +118,7 @@ export function useWorkflowPersistence(opts: WorkflowPersistenceOptions): Workfl
     if (!version || version.status === 'published') return
     const warnings = collectPublishWarnings()
     if (warnings.length > 0) {
-      const msg = `Publishing with ${warnings.length} warning${warnings.length > 1 ? 's' : ''}:\n\n${warnings.map((w) => `• ${w}`).join('\n')}\n\nPublish anyway?`
+      const msg = `Publishing with ${warnings.length} warning${warnings.length > 1 ? 's' : ''}:\n\n${warnings.map((w) => `• ${w.message}`).join('\n')}\n\nPublish anyway?`
       if (!window.confirm(msg)) return
     }
     setPublishing(true)
@@ -138,7 +142,7 @@ export function useWorkflowPersistence(opts: WorkflowPersistenceOptions): Workfl
     if (!version || version.status === 'published') return
     const warnings = collectPublishWarnings()
     if (warnings.length > 0) {
-      const msg = `Publishing with ${warnings.length} warning${warnings.length > 1 ? 's' : ''}:\n\n${warnings.map((w) => `• ${w}`).join('\n')}\n\nPublish and run anyway?`
+      const msg = `Publishing with ${warnings.length} warning${warnings.length > 1 ? 's' : ''}:\n\n${warnings.map((w) => `• ${w.message}`).join('\n')}\n\nPublish and run anyway?`
       if (!window.confirm(msg)) return
     }
     setPublishingAndRunning(true)

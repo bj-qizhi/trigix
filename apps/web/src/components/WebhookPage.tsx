@@ -5,6 +5,7 @@ import { Fragment, useEffect, useState } from 'react'
 import { ThemeToggleIcon } from './uiIcons'
 import { useAuth } from '../AuthContext'
 import { useLocale } from '../useLocale'
+import { useToast } from '../toast'
 import * as api from '../api/client'
 import type { WebhookRecord } from '../types'
 import { useTheme } from '../useTheme'
@@ -20,6 +21,7 @@ export function WebhookPage({ onBack, onOpenWorkflow }: Props) {
   const { theme, toggle: toggleTheme } = useTheme()
   const { t, locale } = useLocale()
   const zh = locale === 'zh'
+  const toast = useToast()
   const [webhooks, setWebhooks] = useState<WebhookRecord[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -44,7 +46,7 @@ export function WebhookPage({ onBack, onOpenWorkflow }: Props) {
 
   const handleSendTest = async (token: string) => {
     let parsed: unknown
-    try { parsed = JSON.parse(testPayload) } catch { alert(zh ? '无效的 JSON 格式' : 'Invalid JSON payload'); return }
+    try { parsed = JSON.parse(testPayload) } catch { toast.warning(zh ? '无效的 JSON 格式' : 'Invalid JSON payload'); return }
     setTestSending(true)
     setTestResult(null)
     try {
@@ -70,7 +72,7 @@ export function WebhookPage({ onBack, onOpenWorkflow }: Props) {
     setSavingRateLimit(true)
     try {
       const parsed = rateLimitInput.trim() ? parseInt(rateLimitInput, 10) : null
-      if (parsed !== null && (isNaN(parsed) || parsed < 1)) { alert(zh ? '请输入正整数' : 'Enter a positive integer'); return }
+      if (parsed !== null && (isNaN(parsed) || parsed < 1)) { toast.warning(zh ? '请输入正整数' : 'Enter a positive integer'); return }
       const updated = await api.setWebhookRateLimit(token, parsed)
       setWebhooks((prev) => prev.map((w) => w.token === token ? { ...w, max_calls_per_minute: updated.max_calls_per_minute } : w))
       setEditingRateLimitToken(null)

@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from 'react'
 import { ThemeToggleIcon } from './uiIcons'
 import { useAuth } from '../AuthContext'
 import { useLocale } from '../useLocale'
+import { useToast } from '../toast'
 import * as api from '../api/client'
 import type { EnvVarRecord, EnvSetSummary } from '../types'
 import { useTheme } from '../useTheme'
@@ -20,6 +21,7 @@ export function EnvironmentPage({ onBack }: Props) {
   const { theme, toggle: toggleTheme } = useTheme()
   const { t, locale } = useLocale()
   const zh = locale === 'zh'
+  const toast = useToast()
   const [sets, setSets] = useState<EnvSetSummary[]>([])
   const [activeSet, setActiveSet] = useState(DEFAULT_SET)
   const [vars, setVars] = useState<EnvVarRecord[]>([])
@@ -85,7 +87,7 @@ export function EnvironmentPage({ onBack }: Props) {
       setNewValue('')
       loadSets()
     } catch (e) {
-      alert(String(e))
+      toast.error(String(e))
     } finally {
       setSaving(false)
     }
@@ -99,7 +101,7 @@ export function EnvironmentPage({ onBack }: Props) {
       setVars((prev) => prev.map((r) => (r.key === key ? rec : r)))
       setEditing(null)
     } catch (e) {
-      alert(String(e))
+      toast.error(String(e))
     } finally {
       setSaving(false)
     }
@@ -113,7 +115,7 @@ export function EnvironmentPage({ onBack }: Props) {
       setVars((prev) => prev.filter((r) => r.key !== key))
       loadSets()
     } catch (e) {
-      alert(String(e))
+      toast.error(String(e))
     } finally {
       setDeleting(null)
     }
@@ -126,7 +128,7 @@ export function EnvironmentPage({ onBack }: Props) {
       setSets((prev) => prev.filter((s) => s.name !== name))
       if (activeSet === name) switchSet(DEFAULT_SET)
     } catch (e) {
-      alert(String(e))
+      toast.error(String(e))
     }
   }
 
@@ -150,7 +152,7 @@ export function EnvironmentPage({ onBack }: Props) {
         }
         if (key) pairs.push({ key, value })
       }
-      if (pairs.length === 0) { alert(zh ? '文件中未找到有效变量。' : 'No valid variables found in file.'); return }
+      if (pairs.length === 0) { toast.warning(zh ? '文件中未找到有效变量。' : 'No valid variables found in file.'); return }
       const setParam = activeSet === DEFAULT_SET ? undefined : activeSet
       let ok = 0
       for (const { key, value } of pairs) {
@@ -162,9 +164,9 @@ export function EnvironmentPage({ onBack }: Props) {
         ok++
       }
       loadSets()
-      alert(zh ? `已导入 ${ok} 个变量。` : `Imported ${ok} variable${ok !== 1 ? 's' : ''}.`)
+      toast.success(zh ? `已导入 ${ok} 个变量。` : `Imported ${ok} variable${ok !== 1 ? 's' : ''}.`)
     } catch (err) {
-      alert(String(err))
+      toast.error(String(err))
     } finally {
       setImporting(false)
     }

@@ -6,6 +6,7 @@ import { useAuth } from '../AuthContext'
 import * as api from '../api/client'
 import type { ExecutionSummary } from '../types'
 import { useLocale } from '../useLocale'
+import { useToast } from '../toast'
 
 interface Props {
   onBack: () => void
@@ -43,15 +44,8 @@ export function ApprovalsPage({ onBack, onOpenExecution, onOpenWorkflow }: Props
   const [commentFor, setCommentFor] = useState<string | null>(null)
   const [commentText, setCommentText] = useState('')
   const [acting, setActing] = useState<string | null>(null)
-  const [toast, setToast] = useState<string | null>(null)
+  const toast = useToast()
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
-  const toastRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-
-  const showToast = (msg: string) => {
-    setToast(msg)
-    if (toastRef.current) clearTimeout(toastRef.current)
-    toastRef.current = setTimeout(() => setToast(null), 3000)
-  }
 
   const load = async () => {
     try {
@@ -78,7 +72,6 @@ export function ApprovalsPage({ onBack, onOpenExecution, onOpenWorkflow }: Props
     timerRef.current = setInterval(load, 10_000)
     return () => {
       if (timerRef.current) clearInterval(timerRef.current)
-      if (toastRef.current) clearTimeout(toastRef.current)
     }
   }, [])
 
@@ -86,12 +79,12 @@ export function ApprovalsPage({ onBack, onOpenExecution, onOpenWorkflow }: Props
     setActing(execId)
     try {
       await api.approveExecution(execId, commentText || undefined)
-      showToast(zh ? '已批准执行' : 'Execution approved')
+      toast.success(zh ? '已批准执行' : 'Execution approved')
       setCommentFor(null)
       setCommentText('')
       await load()
     } catch (e) {
-      showToast(String(e))
+      toast.error(String(e))
     } finally {
       setActing(null)
     }
@@ -101,12 +94,12 @@ export function ApprovalsPage({ onBack, onOpenExecution, onOpenWorkflow }: Props
     setActing(execId)
     try {
       await api.rejectExecution(execId, commentText || undefined)
-      showToast(zh ? '已拒绝执行' : 'Execution rejected')
+      toast.success(zh ? '已拒绝执行' : 'Execution rejected')
       setCommentFor(null)
       setCommentText('')
       await load()
     } catch (e) {
-      showToast(String(e))
+      toast.error(String(e))
     } finally {
       setActing(null)
     }
@@ -148,13 +141,6 @@ export function ApprovalsPage({ onBack, onOpenExecution, onOpenWorkflow }: Props
           {zh ? '每 10 秒自动刷新' : 'Auto-refreshes every 10s'}
         </span>
       </header>
-
-      {/* Toast */}
-      {toast && (
-        <div style={{ position: 'fixed', bottom: 24, right: 24, background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 8, padding: '10px 18px', zIndex: 9999, boxShadow: '0 4px 16px rgba(0,0,0,0.2)', fontSize: 13 }}>
-          {toast}
-        </div>
-      )}
 
       <div style={{ flex: 1, overflow: 'auto', padding: 24 }}>
         {loading ? (

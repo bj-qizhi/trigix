@@ -21,6 +21,7 @@ import { CreateWorkflowModal, SystemInfoModal, ShortcutsModal, EditTagsModal, Mo
 import { GenerateWorkflowModal } from './GenerateWorkflowModal'
 import { useTheme } from '../useTheme'
 import { useLocale } from '../useLocale'
+import { useToast } from '../toast'
 
 interface Props {
   onOpen: (workflowId: string) => void
@@ -153,6 +154,7 @@ export function WorkflowList({ onOpen, onOpenExecution, onCredentials, onAuditLo
   const { theme, toggle: toggleTheme } = useTheme()
   const { locale, toggle: toggleLocale, t } = useLocale()
   const zh = locale === 'zh'
+  const toast = useToast()
   const {
     workflows, setWorkflows, schedules, setSchedules,
     execSummaries, setExecSummaries, execStats, billingStatus,
@@ -292,7 +294,7 @@ export function WorkflowList({ onOpen, onOpenExecution, onCredentials, onAuditLo
         ...prev,
       ])
     } catch (e) {
-      alert(String(e))
+      toast.error(String(e))
     } finally {
       setQuickRunning(null)
     }
@@ -306,7 +308,7 @@ export function WorkflowList({ onOpen, onOpenExecution, onCredentials, onAuditLo
       setWorkflows((prev) => [wf, ...prev])
       openWorkflow(wf.id)
     } catch (e) {
-      alert(String(e))
+      toast.error(String(e))
     } finally {
       setDuplicating(null)
     }
@@ -323,7 +325,7 @@ export function WorkflowList({ onOpen, onOpenExecution, onCredentials, onAuditLo
         return [...next.filter((w) => w.pinned), ...next.filter((w) => !w.pinned)]
       })
     } catch (e) {
-      alert(String(e))
+      toast.error(String(e))
     }
   }
 
@@ -334,7 +336,7 @@ export function WorkflowList({ onOpen, onOpenExecution, onCredentials, onAuditLo
       const updated = await api.setWorkflowVisibility(auth!.tenantId, wf.id, next)
       setWorkflows((prev) => prev.map((w) => w.id === updated.id ? updated : w))
     } catch (err) {
-      alert(String(err))
+      toast.error(String(err))
     }
   }
 
@@ -353,7 +355,7 @@ export function WorkflowList({ onOpen, onOpenExecution, onCredentials, onAuditLo
       setWorkflows((prev) => [wf, ...prev])
       openWorkflow(wf.id)
     } catch (e) {
-      alert(String(e))
+      toast.error(String(e))
     } finally {
       setImporting(false)
     }
@@ -372,7 +374,7 @@ export function WorkflowList({ onOpen, onOpenExecution, onCredentials, onAuditLo
       setWorkflows((prev) => [wf, ...prev])
       openWorkflow(wf.id)
     } catch (e) {
-      alert(zh ? `粘贴板导入失败：${String(e)}` : `Clipboard import failed: ${String(e)}`)
+      toast.error(zh ? `粘贴板导入失败：${String(e)}` : `Clipboard import failed: ${String(e)}`)
     } finally {
       setImporting(false)
     }
@@ -387,7 +389,7 @@ export function WorkflowList({ onOpen, onOpenExecution, onCredentials, onAuditLo
       setWorkflows((prev) => [wf, ...prev])
       openWorkflow(wf.id)
     } catch (e) {
-      alert(String(e))
+      toast.error(String(e))
     }
   }
 
@@ -400,7 +402,7 @@ export function WorkflowList({ onOpen, onOpenExecution, onCredentials, onAuditLo
       setWorkflows((prev) => [wf, ...prev])
       openWorkflow(wf.id)
     } catch (e) {
-      alert(String(e))
+      toast.error(String(e))
     }
   }
 
@@ -447,7 +449,7 @@ export function WorkflowList({ onOpen, onOpenExecution, onCredentials, onAuditLo
       const updated = await api.updateWorkflowDescription(auth!.tenantId, wf.id, wf.name, newDesc)
       setWorkflows((prev) => prev.map((w) => w.id === updated.id ? updated : w))
     } catch (e) {
-      alert(String(e))
+      toast.error(String(e))
     }
   }
 
@@ -458,7 +460,7 @@ export function WorkflowList({ onOpen, onOpenExecution, onCredentials, onAuditLo
       const updated = await api.restoreWorkflow(auth!.tenantId, workflowId)
       setWorkflows((prev) => prev.map((w) => w.id === updated.id ? updated : w))
     } catch (err) {
-      alert(String(err))
+      toast.error(String(err))
     } finally {
       setRestoring(null)
     }
@@ -490,7 +492,7 @@ export function WorkflowList({ onOpen, onOpenExecution, onCredentials, onAuditLo
       setWorkflows((prev) => prev.map((w) => updated.find((u) => u.id === w.id) ?? w))
       setSelectedIds(new Set())
     } catch (e) {
-      alert(String(e))
+      toast.error(String(e))
     } finally {
       setBulkArchiving(false)
     }
@@ -531,9 +533,9 @@ export function WorkflowList({ onOpen, onOpenExecution, onCredentials, onAuditLo
       const msg = fail > 0
         ? (zh ? `导入完成：${ok} 成功，${fail} 失败` : `Import done: ${ok} succeeded, ${fail} failed`)
         : (zh ? `成功导入 ${ok} 个工作流` : `Successfully imported ${ok} workflow${ok !== 1 ? 's' : ''}`)
-      alert(msg)
+      if (fail > 0) toast.warning(msg); else toast.success(msg)
     } catch (e) {
-      alert(String(e))
+      toast.error(String(e))
     } finally {
       setBundleImporting(false)
     }
@@ -563,7 +565,7 @@ export function WorkflowList({ onOpen, onOpenExecution, onCredentials, onAuditLo
       URL.revokeObjectURL(url)
       setSelectedIds(new Set())
     } catch (e) {
-      alert(String(e))
+      toast.error(String(e))
     } finally {
       setBulkExporting(false)
     }
@@ -2242,7 +2244,7 @@ export function WorkflowList({ onOpen, onOpenExecution, onCredentials, onAuditLo
           if (!selectedWf) return
           let parsedOk = true
           try { JSON.parse(qrInput) } catch { parsedOk = false }
-          if (!parsedOk) { alert(zh ? '输入 JSON 格式无效' : 'Invalid input JSON'); return }
+          if (!parsedOk) { toast.warning(zh ? '输入 JSON 格式无效' : 'Invalid input JSON'); return }
           setQrStarting(true)
           setQrResult(null)
           try {
@@ -2256,7 +2258,7 @@ export function WorkflowList({ onOpen, onOpenExecution, onCredentials, onAuditLo
               onOpenExecution(rec.id)
             }
           } catch (e) {
-            alert(String(e))
+            toast.error(String(e))
           } finally {
             setQrStarting(false)
           }

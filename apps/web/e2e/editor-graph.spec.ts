@@ -356,3 +356,23 @@ test('toolbar tag editor toggles an add input', async ({ page }) => {
 
   expect(errors, errors.join('\n')).toHaveLength(0)
 })
+
+test('validation issues are clickable and jump to the offending node', async ({ page }) => {
+  const errors = trackErrors(page)
+  await mockBackend(page)
+  await openEditor(page)
+
+  // The fixture's slack node has no webhook URL and the http node is orphaned,
+  // so the "N issues" badge is present. Click it to open the validation modal.
+  await page.locator('span[title="点击校验"], span[title="Click to validate"]').click()
+  await expect(page.getByRole('heading', { name: /工作流校验|Workflow Validation/ })).toBeVisible({ timeout: 10_000 })
+
+  // Node-scoped warnings render a jump affordance; clicking one selects+centers
+  // the node and closes the modal.
+  const jump = page.getByText(/定位 →|Jump →/).first()
+  await expect(jump).toBeVisible()
+  await jump.click()
+  await expect(page.getByRole('heading', { name: /工作流校验|Workflow Validation/ })).toHaveCount(0)
+
+  expect(errors, errors.join('\n')).toHaveLength(0)
+})

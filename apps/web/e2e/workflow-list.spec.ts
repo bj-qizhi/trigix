@@ -69,6 +69,25 @@ test('create-workflow modal posts a new workflow', async ({ page }) => {
   expect(errors, errors.join('\n')).toHaveLength(0)
 })
 
+test('a failed action surfaces a global error toast (not a native alert)', async ({ page }) => {
+  const errors = trackErrors(page)
+  await mockBackend(page)
+  // Make the create POST fail so the submit handler hits its catch → toast.
+  await page.route(/\/v1\/workflows(\?|$)/, async (r) => {
+    if (r.request().method() === 'POST') return r.fulfill({ status: 500, json: { message: 'boom' } })
+    return r.fulfill({ json: [WF] })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: /创建工作流|Create Workflow/ }).first().click()
+  await page.locator('.modal input').first().fill('Doomed Flow')
+  await page.getByRole('button', { name: /^创建$|^Create$/ }).click()
+
+  // The unified toast surface shows the error (the old code used window.alert).
+  await expect(page.locator('.toast.toast-error')).toBeVisible({ timeout: 10_000 })
+  expect(errors, errors.join('\n')).toHaveLength(0)
+})
+
 test('global search modal opens', async ({ page }) => {
   const errors = trackErrors(page)
   await mockBackend(page)

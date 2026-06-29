@@ -4,6 +4,7 @@
 import { useState } from 'react'
 import type * as api from '../../api/client'
 import type { WorkflowRecord } from '../../types'
+import { useToast } from '../../toast'
 
 export interface EditTagsModalProps {
   workflow: WorkflowRecord
@@ -13,8 +14,9 @@ export interface EditTagsModalProps {
 }
 
 export function EditTagsModal({ workflow, onSave, onClose, zh }: EditTagsModalProps) {
+  const toast = useToast()
   const [tagInput, setTagInput] = useState((workflow.tags ?? []).join(', '))
-  const submit = async () => { try { await onSave(tagInput); onClose() } catch (e) { alert(String(e)) } }
+  const submit = async () => { try { await onSave(tagInput); onClose() } catch (e) { toast.error(String(e)) } }
   return (
     <div className="modal-backdrop" onClick={onClose}>
       <div className="modal" onClick={(e) => e.stopPropagation()}>
@@ -50,8 +52,9 @@ export interface MoveFolderModalProps {
 }
 
 export function MoveFolderModal({ workflow, folders, onSave, onClose, zh }: MoveFolderModalProps) {
+  const toast = useToast()
   const [folderInput, setFolderInput] = useState(workflow.folder ?? '')
-  const submit = async () => { try { await onSave(folderInput); onClose() } catch (e) { alert(String(e)) } }
+  const submit = async () => { try { await onSave(folderInput); onClose() } catch (e) { toast.error(String(e)) } }
   return (
     <div className="modal-backdrop" onClick={onClose}>
       <div className="modal" onClick={(e) => e.stopPropagation()}>
@@ -94,6 +97,7 @@ export interface CreateWorkflowModalProps {
 }
 
 export function CreateWorkflowModal({ onCreate, onClose, zh }: CreateWorkflowModalProps) {
+  const toast = useToast()
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
   const [saving, setSaving] = useState(false)
@@ -104,7 +108,7 @@ export function CreateWorkflowModal({ onCreate, onClose, zh }: CreateWorkflowMod
     // On success the parent navigates to the new workflow (this unmounts);
     // on error we surface it and re-enable the form.
     try { await onCreate(name.trim(), description.trim() || undefined) }
-    catch (e) { alert(String(e)); setSaving(false) }
+    catch (e) { toast.error(String(e)); setSaving(false) }
   }
 
   return (
