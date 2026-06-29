@@ -337,6 +337,24 @@ test('Ctrl+K command palette filters nodes and jumps on Enter', async ({ page })
   expect(errors, errors.join('\n')).toHaveLength(0)
 })
 
+test('Ctrl+K command palette runs an editor command', async ({ page }) => {
+  const errors = trackErrors(page)
+  await mockBackend(page)
+  await openEditor(page)
+
+  await blurToCanvas(page)
+  await page.keyboard.press('Control+k')
+  const search = page.getByPlaceholder(/搜索节点|command/)
+  await expect(search).toBeVisible()
+
+  // Type a command name; Enter runs the highlighted command (validate → modal).
+  await search.fill('validate')
+  await search.press('Enter')
+  await expect(page.getByRole('heading', { name: /工作流校验|Workflow Validation/ })).toBeVisible({ timeout: 10_000 })
+
+  expect(errors, errors.join('\n')).toHaveLength(0)
+})
+
 test('toolbar View and More menus open and trigger actions', async ({ page }) => {
   const errors = trackErrors(page)
   await mockBackend(page)

@@ -1551,6 +1551,21 @@ export function WorkflowEditor({ workflowId, onBack, initialInput }: Props) {
       {showPalette && (
         <CommandPalette
           nodes={nodes}
+          commands={[
+            { id: 'run', label: zh ? '运行' : 'Run', hint: 'Ctrl+Enter', run: () => handleRunRef.current() },
+            { id: 'save', label: zh ? '保存版本' : 'Save version', hint: 'Ctrl+S', run: () => handleSaveRef.current() },
+            { id: 'publish', label: zh ? '发布' : 'Publish', run: () => { void handlePublish() } },
+            { id: 'publish-run', label: zh ? '发布并运行' : 'Publish & Run', run: () => { void handlePublishAndRun() } },
+            { id: 'validate', label: zh ? '校验工作流' : 'Validate workflow', run: () => { setValidateWarnings(collectPublishWarnings(nodes, edges)); setShowValidate(true) } },
+            { id: 'undo', label: zh ? '撤销' : 'Undo', hint: 'Ctrl+Z', run: () => undoGraph() },
+            { id: 'redo', label: zh ? '重做' : 'Redo', hint: 'Ctrl+Y', run: () => redoGraph() },
+            { id: 'fit', label: zh ? '适应视图' : 'Fit view', hint: 'F', run: () => fitViewRef.current?.() },
+            { id: 'versions', label: zh ? '版本历史' : 'Version history', run: () => setShowVersions(true) },
+            { id: 'export', label: zh ? '导出 JSON' : 'Export JSON', run: () => { void handleExport() } },
+            { id: 'schema', label: zh ? '输入模式' : 'Input schema', run: () => setShowSchema(true) },
+            { id: 'variables', label: zh ? '变量' : 'Variables', run: () => setShowVars(true) },
+            { id: 'help', label: zh ? '帮助' : 'Help', hint: '?', run: () => setShowHelp(true) },
+          ]}
           selectedNodeId={selectedNodeId}
           zh={zh}
           onPick={(id) => { setSelectedNodeId(id); fitToNodeRef.current?.(id); setShowPalette(false) }}
