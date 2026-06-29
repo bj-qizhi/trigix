@@ -39,4 +39,18 @@ describe('nodePreview', () => {
   it('strips the scheme from URL-ish previews', () => {
     expect(nodePreview('webhook', { url: 'https://hooks.test/abc' })).toBe('hooks.test/abc')
   })
+
+  it('covers the previously-missing node previews', () => {
+    expect(nodePreview('trigger', {})).toBe('Workflow entry point')
+    expect(nodePreview('switch', {})).toBe('No field set')
+    expect(nodePreview('switch', { field: 'kind' })).toBe('switch on kind')
+    expect(nodePreview('regex', { pattern: 'ab+' })).toBe('match /ab+/')
+    expect(nodePreview('regex', {})).toBe('No pattern set')
+    expect(nodePreview('dedupe', { field: 'id' })).toBe('unique by id')
+    expect(nodePreview('split', { separator: ',' })).toBe('split · ","')
+    // None of the 10 newly-added previews fall through to empty.
+    for (const nt of ['trigger', 'csv', 'dedupe', 'format', 'join', 'random', 'regex', 'rename', 'split', 'switch']) {
+      expect(nodePreview(nt, {}), nt).not.toBe('')
+    }
+  })
 })

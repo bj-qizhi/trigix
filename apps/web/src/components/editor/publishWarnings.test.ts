@@ -53,6 +53,16 @@ describe('collectPublishWarnings', () => {
     expect(messages(w)).toContain('HTTP node "Fetch" has no URL')
   })
 
+  it('flags credential/connection nodes with empty config (newly covered)', () => {
+    const w = collectPublishWarnings(
+      [node('trigger', 'trigger'), node('db', 'mysql', {})],
+      [edge('trigger', 'db')],
+    )
+    const msgs = messages(w)
+    expect(msgs).toContain('MySQL node "db" has no connection URL')
+    expect(msgs).toContain('MySQL node "db" has no SQL query')
+  })
+
   it('does not warn when required config is present', () => {
     const w = collectPublishWarnings(
       [node('trigger', 'trigger'), node('h', 'http', { url: 'https://x' })],

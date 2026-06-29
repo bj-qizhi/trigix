@@ -112,6 +112,38 @@ const NODE_REQUIRED_FIELDS: Record<string, NodeFieldSpec> = {
   validate: { name: 'Validate', fields: [['source', 'source expression']] },
   agent: { name: 'Agent', fields: [['prompt_template', 'prompt template']] },
   code: { name: 'Code', fields: [['code', 'script']] },
+  // Credential / connection nodes — keys verified against the executor's
+  // own validation messages so an empty-config node is caught before publish
+  // instead of failing at run time.
+  azure_openai: { name: 'Azure OpenAI', fields: [['api_key', 'API key'], ['deployment', 'deployment'], ['prompt_template', 'prompt template']] },
+  doubao: { name: 'Doubao', fields: [['api_key', 'API key'], ['endpoint_id', 'endpoint ID'], ['prompt_template', 'prompt template']] },
+  ernie: { name: 'ERNIE', fields: [['api_key', 'API key (client_id)'], ['prompt_template', 'prompt template']] },
+  minimax: { name: 'MiniMax', fields: [['api_key', 'API key'], ['prompt_template', 'prompt template']] },
+  ollama: { name: 'Ollama', fields: [['prompt_template', 'prompt template']] },
+  grok: { name: 'Grok', fields: [['api_key', 'API key'], ['prompt_template', 'prompt template']] },
+  deepseek: { name: 'DeepSeek', fields: [['api_key', 'API key'], ['prompt_template', 'prompt template']] },
+  qwen: { name: 'Qwen', fields: [['api_key', 'API key'], ['prompt_template', 'prompt template']] },
+  zhipu: { name: 'Zhipu', fields: [['api_key', 'API key'], ['prompt_template', 'prompt template']] },
+  moonshot: { name: 'Moonshot', fields: [['api_key', 'API key'], ['prompt_template', 'prompt template']] },
+  hunyuan: { name: 'Hunyuan', fields: [['api_key', 'API key'], ['prompt_template', 'prompt template']] },
+  structured_output: { name: 'Structured Output', fields: [['prompt_template', 'prompt template']] },
+  mysql: { name: 'MySQL', fields: [['url', 'connection URL'], ['query', 'SQL query']] },
+  snowflake: { name: 'Snowflake', fields: [['account', 'account'], ['statement', 'SQL statement']] },
+  sqlserver: { name: 'SQL Server', fields: [['host', 'host'], ['username', 'username'], ['query', 'SQL query']] },
+  mongodb: { name: 'MongoDB', fields: [['api_key', 'API key'], ['database', 'database'], ['collection', 'collection']] },
+  clickhouse: { name: 'ClickHouse', fields: [['query', 'SQL query']] },
+  bigquery: { name: 'BigQuery', fields: [['project', 'project'], ['query', 'SQL query']] },
+  bedrock: { name: 'Bedrock', fields: [['access_key_id', 'access key ID'], ['secret_access_key', 'secret access key'], ['body', 'model body']] },
+  azure_blob: { name: 'Azure Blob', fields: [['account', 'storage account'], ['container', 'container']] },
+  gcs: { name: 'GCS', fields: [['bucket', 'bucket']] },
+  kafka: { name: 'Kafka', fields: [['topic', 'topic']] },
+  sqs: { name: 'SQS', fields: [['access_key_id', 'access key ID'], ['secret_access_key', 'secret access key'], ['queue_url', 'queue URL']] },
+  sns: { name: 'SNS', fields: [['access_key_id', 'access key ID'], ['secret_access_key', 'secret access key']] },
+  ftp: { name: 'FTP', fields: [['host', 'host']] },
+  sftp: { name: 'SFTP', fields: [['host', 'host']] },
+  ssh: { name: 'SSH', fields: [['host', 'host'], ['command', 'command']] },
+  imap: { name: 'IMAP', fields: [['host', 'host'], ['username', 'username']] },
+  dingtalk: { name: 'DingTalk', fields: [['access_token', 'robot access token']] },
 }
 
 // A single validation finding. `nodeId` is set for node-scoped warnings so the
