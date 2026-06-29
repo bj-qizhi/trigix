@@ -8,6 +8,7 @@ import type { ExecutionSummary } from '../types'
 import { useLocale } from '../useLocale'
 import { useToast } from '../toast'
 import { SkeletonRows } from './Skeleton'
+import { IconCheck, IconX } from './uiIcons'
 
 interface Props {
   onBack: () => void
@@ -242,7 +243,7 @@ export function ApprovalsPage({ onBack, onOpenExecution, onOpenWorkflow }: Props
                               }
                             }}
                           >
-                            {acting === exec.id ? '…' : (zh ? '✓ 批准' : '✓ Approve')}
+                            {acting === exec.id ? '…' : <><IconCheck aria-hidden style={{ verticalAlign: '-2px', marginRight: 3 }} />{zh ? '批准' : 'Approve'}</>}
                           </button>
                           <button
                             className="btn btn-sm btn-danger"
@@ -257,7 +258,7 @@ export function ApprovalsPage({ onBack, onOpenExecution, onOpenWorkflow }: Props
                               }
                             }}
                           >
-                            {acting === exec.id ? '…' : (zh ? '✗ 拒绝' : '✗ Reject')}
+                            {acting === exec.id ? '…' : <><IconX aria-hidden style={{ verticalAlign: '-2px', marginRight: 3 }} />{zh ? '拒绝' : 'Reject'}</>}
                           </button>
                         </div>
                       </td>
@@ -278,10 +279,10 @@ export function ApprovalsPage({ onBack, onOpenExecution, onOpenWorkflow }: Props
                               style={{ flex: 1, fontSize: 12, padding: '4px 8px' }}
                             />
                             <button className="btn btn-sm btn-primary" onClick={() => handleApprove(exec.id)} disabled={acting === exec.id}>
-                              {zh ? '✓ 批准' : '✓ Approve'}
+                              <IconCheck aria-hidden style={{ verticalAlign: '-2px', marginRight: 3 }} />{zh ? '批准' : 'Approve'}
                             </button>
                             <button className="btn btn-sm btn-danger" onClick={() => handleReject(exec.id)} disabled={acting === exec.id}>
-                              {zh ? '✗ 拒绝' : '✗ Reject'}
+                              <IconX aria-hidden style={{ verticalAlign: '-2px', marginRight: 3 }} />{zh ? '拒绝' : 'Reject'}
                             </button>
                           </div>
                           <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 4 }}>

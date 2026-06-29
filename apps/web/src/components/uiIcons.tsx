@@ -13,6 +13,23 @@ export {
   PiFloppyDisk as IconSave,
   PiMagnifyingGlass as IconSearch,
   PiTestTube as IconTestTube,
+  // Toolbar / nav / status chrome — replaces raw glyphs (☰ ⚙ ⚡ ✋ ⚠ ℹ ✓ ✗ ▶).
+  PiList as IconMenu,
+  PiListDashes as IconViewList,
+  PiGridFour as IconViewGrid,
+  PiColumns as IconColumns,
+  PiLightning as IconActivity,
+  PiInfo as IconInfo,
+  PiWarning as IconWarning,
+  PiHandPalm as IconApproval,
+  PiCheck as IconCheck,
+  PiX as IconX,
+  PiCards as IconCards,
+  PiPlay as IconPlay,
+  PiTable as IconTable,
+  PiKanban as IconKanban,
+  PiTimer as IconTimer,
+  PiGraph as IconGraph,
 } from 'react-icons/pi'
 
 import { PiSun, PiMoonStars } from 'react-icons/pi'

@@ -2,7 +2,7 @@
 // https://www.qzso.com/ · managecode@gmail.com
 
 import { useEffect, useRef, useState } from 'react'
-import { IconBell, IconFolder, IconGlobe, IconLock, ThemeToggleIcon } from './uiIcons'
+import { IconBell, IconFolder, IconGlobe, IconLock, ThemeToggleIcon, IconMenu, IconViewGrid, IconColumns, IconActivity, IconInfo, IconWarning, IconApproval, IconX, IconPlay, IconTable, IconKanban, IconTimer } from './uiIcons'
 import type { IconType } from 'react-icons'
 import {
   PiListChecks, PiSealCheck, PiGraph, PiChartLine, PiGift, PiClock, PiPulse,
@@ -643,7 +643,7 @@ export function WorkflowList({ onOpen, onOpenExecution, onCredentials, onAuditLo
             title={zh ? '快速运行工作流 (Ctrl+R)' : 'Quick run workflow (Ctrl+R)'}
             style={{ fontSize: 11 }}
           >
-            ▶ {zh ? '快速运行…' : 'Quick Run…'}
+            <IconPlay aria-hidden style={{ marginRight: 4, verticalAlign: '-2px' }} /> {zh ? '快速运行…' : 'Quick Run…'}
           </button>
           <button
             className={`btn btn-sm${showActivity ? ' btn-primary' : ''}`}
@@ -651,7 +651,7 @@ export function WorkflowList({ onOpen, onOpenExecution, onCredentials, onAuditLo
             title={locale === 'zh' ? '最近运行活动' : 'Recent activity'}
             style={showActivity ? { background: 'var(--accent)', color: '#fff', border: 'none' } : {}}
           >
-            ⚡
+            <IconActivity aria-hidden />
           </button>
         </div>
 
@@ -670,7 +670,7 @@ export function WorkflowList({ onOpen, onOpenExecution, onCredentials, onAuditLo
               title="Navigation"
               style={{ fontWeight: 600, letterSpacing: '0.02em' }}
             >
-              ☰
+              <IconMenu aria-hidden />
               {execSummaries.filter((r) => r.status === 'waiting_approval').length > 0 && (
                 <span style={{
                   display: 'inline-block',
@@ -799,7 +799,7 @@ export function WorkflowList({ onOpen, onOpenExecution, onCredentials, onAuditLo
                   onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--hover)')}
                   onMouseLeave={(e) => (e.currentTarget.style.background = 'none')}
                 >
-                  {locale === 'zh' ? 'ℹ 系统信息' : 'ℹ System Info'}
+                  <IconInfo aria-hidden style={{ verticalAlign: '-2px', marginRight: 4 }} />{locale === 'zh' ? '系统信息' : 'System Info'}
                 </button>
               </div>
             )}
@@ -853,7 +853,7 @@ export function WorkflowList({ onOpen, onOpenExecution, onCredentials, onAuditLo
                         onMouseEnter={(e) => (e.currentTarget.style.filter = 'brightness(0.97)')}
                         onMouseLeave={(e) => (e.currentTarget.style.filter = 'none')}
                       >
-                        <span style={{ fontSize: 16 }}>✋</span>
+                        <span style={{ fontSize: 16, lineHeight: 1, color: 'var(--warning-text, #92400e)' }}><IconApproval aria-hidden /></span>
                         <div>
                           <div style={{ fontWeight: 600, fontSize: 13, color: 'var(--warning-text, #92400e)' }}>
                             {locale === 'zh' ? `${approvalPending.length} 条执行待审批` : `${approvalPending.length} execution${approvalPending.length !== 1 ? 's' : ''} waiting for approval`}
@@ -869,7 +869,7 @@ export function WorkflowList({ onOpen, onOpenExecution, onCredentials, onAuditLo
                         onClick={() => { setShowNotifications(false) }}
                         style={{ display: 'flex', width: '100%', padding: '10px 14px', gap: 10, alignItems: 'flex-start', background: billingStatus.usage_pct >= 100 ? 'var(--danger-bg, #fee2e2)' : 'var(--warning-bg, #fef9c3)', border: 'none', cursor: 'pointer', textAlign: 'left' }}
                       >
-                        <span style={{ fontSize: 16 }}>⚠</span>
+                        <span style={{ fontSize: 16, lineHeight: 1, color: billingStatus.usage_pct >= 100 ? 'var(--danger-text, #dc2626)' : 'var(--warning-text, #92400e)' }}><IconWarning aria-hidden /></span>
                         <div>
                           <div style={{ fontWeight: 600, fontSize: 13, color: billingStatus.usage_pct >= 100 ? 'var(--danger-text, #dc2626)' : 'var(--warning-text, #92400e)' }}>
                             {billingStatus.usage_pct >= 100
@@ -932,14 +932,14 @@ export function WorkflowList({ onOpen, onOpenExecution, onCredentials, onAuditLo
                         </div>
                         {serverNotifs.map((n) => {
                           const levelColor = n.level === 'error' ? 'var(--danger-text, #dc2626)' : n.level === 'warning' ? 'var(--warning-text, #92400e)' : 'var(--text)'
-                          const levelIcon = n.level === 'error' ? '✕' : n.level === 'warning' ? '⚠' : 'ℹ'
+                          const LevelIcon = n.level === 'error' ? IconX : n.level === 'warning' ? IconWarning : IconInfo
                           const ageMin = Math.floor((Date.now() / 1000 - n.created_at) / 60)
                           return (
                             <div
                               key={n.id}
                               style={{ display: 'flex', padding: '8px 14px', gap: 8, alignItems: 'flex-start', borderTop: '1px solid var(--border)', background: n.read ? 'none' : 'rgba(99,102,241,0.04)' }}
                             >
-                              <span style={{ fontSize: 12, color: levelColor, marginTop: 2, flexShrink: 0 }}>{levelIcon}</span>
+                              <span style={{ fontSize: 12, color: levelColor, marginTop: 2, flexShrink: 0 }}><LevelIcon aria-hidden /></span>
                               <div style={{ flex: 1, minWidth: 0 }}>
                                 <div style={{ fontWeight: n.read ? 400 : 600, fontSize: 12, color: levelColor }}>{n.title}</div>
                                 {n.body && <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 1, wordBreak: 'break-word' }}>{n.body}</div>}
@@ -1305,25 +1305,25 @@ export function WorkflowList({ onOpen, onOpenExecution, onCredentials, onAuditLo
               style={{ fontSize: 12, padding: '2px 8px' }}
               title="Table view"
               onClick={() => setViewMode('table')}
-            >☰</button>
+            ><IconTable aria-hidden /></button>
             <button
               className={`btn${viewMode === 'card' ? ' btn-primary' : ''}`}
               style={{ fontSize: 12, padding: '2px 8px' }}
               title="Card view"
               onClick={() => setViewMode('card')}
-            >⊞</button>
+            ><IconViewGrid aria-hidden /></button>
             <button
               className={`btn${viewMode === 'kanban' ? ' btn-primary' : ''}`}
               style={{ fontSize: 12, padding: '2px 8px' }}
               title={zh ? '看板视图（按文件夹）' : 'Kanban view (by folder)'}
               onClick={() => setViewMode('kanban')}
-            >☷</button>
+            ><IconKanban aria-hidden /></button>
             <button
               className={`btn${viewMode === 'activity' ? ' btn-primary' : ''}`}
               style={{ fontSize: 12, padding: '2px 8px' }}
               title={zh ? '活动时间线视图' : 'Activity timeline view'}
               onClick={() => setViewMode('activity' as typeof viewMode)}
-            >⏱</button>
+            ><IconTimer aria-hidden /></button>
             {viewMode === 'table' && (
               <div ref={colSettingsRef} style={{ position: 'relative' }}>
                 <button
@@ -1331,7 +1331,7 @@ export function WorkflowList({ onOpen, onOpenExecution, onCredentials, onAuditLo
                   style={{ fontSize: 11 }}
                   onClick={() => setShowColSettings((v) => !v)}
                   title={zh ? '列显示设置' : 'Column visibility'}
-                >⚙ {zh ? '列' : 'Cols'}</button>
+                ><IconColumns aria-hidden style={{ verticalAlign: '-2px', marginRight: 4 }} />{zh ? '列' : 'Cols'}</button>
                 {showColSettings && (
                   <div style={{ position: 'absolute', right: 0, top: '110%', zIndex: 100, background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 8, padding: '8px 12px', minWidth: 160, boxShadow: '0 4px 12px rgba(0,0,0,0.3)' }}>
                     {(['status', 'tags', 'version', 'modified', 'schedule', 'runs'] as const).map((col) => (
@@ -1423,7 +1423,7 @@ export function WorkflowList({ onOpen, onOpenExecution, onCredentials, onAuditLo
 
         {!loading && !error && workflows.length === 0 && (
           <div className="empty-state" style={{ padding: '48px 32px', textAlign: 'center' }}>
-            <div style={{ fontSize: 40, marginBottom: 16 }}>⚡</div>
+            <div style={{ marginBottom: 16, color: 'var(--muted)' }}><IconActivity aria-hidden size={40} /></div>
             <h2 style={{ margin: '0 0 8px', fontSize: 18 }}>{t('wl.empty.title')}</h2>
             <p style={{ color: 'var(--muted)', marginBottom: 24, fontSize: 14 }}>
               {t('wl.empty.desc')}
@@ -2027,7 +2027,7 @@ export function WorkflowList({ onOpen, onOpenExecution, onCredentials, onAuditLo
           flexDirection: 'column',
         }}>
           <div style={{ padding: '10px 14px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <span style={{ fontWeight: 700, fontSize: 13 }}>⚡ {locale === 'zh' ? '最近活动' : 'Recent Activity'}</span>
+            <span style={{ fontWeight: 700, fontSize: 13, display: 'inline-flex', alignItems: 'center', gap: 5 }}><IconActivity aria-hidden />{locale === 'zh' ? '最近活动' : 'Recent Activity'}</span>
             <button onClick={() => setShowActivity(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--muted)', fontSize: 18, lineHeight: 1 }}>×</button>
           </div>
           <div style={{ flex: 1, overflowY: 'auto' }}>

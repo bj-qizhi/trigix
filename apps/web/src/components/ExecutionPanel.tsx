@@ -2,7 +2,7 @@
 // https://www.qzso.com/ · managecode@gmail.com
 
 import { useMemo, useState } from 'react'
-import { IconSave } from './uiIcons'
+import { IconSave, IconCheck, IconX } from './uiIcons'
 import type { ExecutionRecord, NodeExecutionRecord, InputField, EnvSetSummary } from '../types'
 import { useLocale } from '../useLocale'
 
@@ -154,8 +154,8 @@ export function ExecutionPanel({ execution, running, inputJson, onInputChange, o
           <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
             <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
               <span style={{ fontSize: 12, color: 'var(--muted)' }}>{zh ? '等待审批' : 'Waiting for approval'}</span>
-              <button className="btn btn-success btn-sm" onClick={() => onApprove?.(approvalComment || undefined)}>✓ {zh ? '批准' : 'Approve'}</button>
-              <button className="btn btn-danger btn-sm" onClick={() => onReject?.(approvalComment || undefined)}>✗ {zh ? '拒绝' : 'Reject'}</button>
+              <button className="btn btn-success btn-sm" onClick={() => onApprove?.(approvalComment || undefined)}><IconCheck aria-hidden style={{ verticalAlign: '-2px', marginRight: 3 }} />{zh ? '批准' : 'Approve'}</button>
+              <button className="btn btn-danger btn-sm" onClick={() => onReject?.(approvalComment || undefined)}><IconX aria-hidden style={{ verticalAlign: '-2px', marginRight: 3 }} />{zh ? '拒绝' : 'Reject'}</button>
             </div>
             <input
               value={approvalComment}

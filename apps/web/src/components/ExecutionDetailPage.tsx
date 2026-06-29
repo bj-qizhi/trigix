@@ -2,7 +2,7 @@
 // https://www.qzso.com/ · managecode@gmail.com
 
 import { useEffect, useRef, useState } from 'react'
-import { IconTestTube, ThemeToggleIcon } from './uiIcons'
+import { IconTestTube, ThemeToggleIcon, IconCards, IconGraph } from './uiIcons'
 import { useAuth } from '../AuthContext'
 import * as api from '../api/client'
 import { friendlyError } from '../errorMessage'
@@ -658,7 +658,7 @@ export function ExecutionDetailPage({ executionId, onBack, onOpenWorkflow, onRet
                     onClick={() => setNodeView('cards')}
                     style={{ fontSize: 11 }}
                   >
-                    ☰ {zh ? '卡片' : 'Cards'}
+                    <IconCards aria-hidden style={{ verticalAlign: '-2px', marginRight: 3 }} />{zh ? '卡片' : 'Cards'}
                   </button>
                   <button
                     className={`btn btn-sm${nodeView === 'log' ? ' btn-primary' : ''}`}
@@ -674,7 +674,7 @@ export function ExecutionDetailPage({ executionId, onBack, onOpenWorkflow, onRet
                     onClick={() => setNodeView('graph')}
                     style={{ fontSize: 11 }}
                   >
-                    ⬡ {zh ? '图' : 'Graph'}
+                    <IconGraph aria-hidden style={{ verticalAlign: '-2px', marginRight: 3 }} />{zh ? '图' : 'Graph'}
                   </button>
                   <input
                     placeholder={zh ? '搜索节点或输出…' : 'Search nodes or output…'}
