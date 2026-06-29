@@ -74,6 +74,55 @@ mod tests {
         }
     }
 
+    // Coverage for node types the audit found had zero test references. These
+    // pin the config-validation contract (the happy paths need live external
+    // services and can't be unit-tested).
+    #[tokio::test]
+    async fn previously_untested_nodes_reject_empty_config() {
+        let executor = DispatchingNodeExecutor::new(None);
+        let context = make_context("{}");
+        for nt in [
+            NodeType::Database,
+            NodeType::Openai,
+            NodeType::Gemini,
+            NodeType::Graphql,
+            NodeType::StructuredOutput,
+            NodeType::VideoGen,
+        ] {
+            let node = Node {
+                id: "n".to_string(),
+                node_type: nt.clone(),
+                config: None,
+            };
+            let result = executor.execute(&node, &context).await;
+            assert_eq!(
+                result.status,
+                execution_core::NodeStatus::Failed,
+                "{nt:?} should fail without config"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn database_and_graphql_require_url_and_query() {
+        let executor = DispatchingNodeExecutor::new(None);
+        let context = make_context("{}");
+        // url present, query missing → still fails on the missing query.
+        for nt in [NodeType::Database, NodeType::Graphql] {
+            let node = Node {
+                id: "n".to_string(),
+                node_type: nt.clone(),
+                config: Some(serde_json::json!({ "url": "postgres://x" })),
+            };
+            let result = executor.execute(&node, &context).await;
+            assert_eq!(result.status, execution_core::NodeStatus::Failed);
+            assert!(
+                result.error.unwrap_or_default().contains("query"),
+                "{nt:?} should complain about the missing query"
+            );
+        }
+    }
+
     #[tokio::test]
     async fn wait_duration_zero_returns_immediately() {
         let node = Node {
