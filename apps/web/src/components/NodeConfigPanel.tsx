@@ -399,6 +399,8 @@ const NODE_OUTPUTS: Partial<Record<NodeType, string[]>> = {
   sftp:         ['files', 'content_base64', 'count'],
   ssh:          ['stdout', 'stderr', 'exit_status'],
   imap:         ['messages', 'count', 'mailboxes'],
+  rag:          ['results'],
+  rag_ingest:   ['doc_id', 'chunks', 'backend', 'dim'],
   wait:         ['resumed', 'mode', 'waited_secs'],
   deepseek:     ['content', 'model', 'usage'],
   qwen:         ['content', 'model', 'usage'],

@@ -233,6 +233,8 @@ const LABEL_ZH: Record<string, string> = {
   'Target Workflow ID': '目标工作流 ID',
   'Source node ID': '来源节点 ID',
   'Tools (tool-use loop)': '工具（工具调用循环）',
+  'Custom node tools': '自定义节点工具',
+  'Expose your registered custom nodes as agent tools.': '把已注册的自定义节点暴露为智能体工具。',
 
   // LLM
   Model: '模型',

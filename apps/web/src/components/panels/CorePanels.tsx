@@ -359,6 +359,17 @@ export function AgentConfig({ config, set, str, num }: ConfigProps) {
     const next = on ? [...tools, tool] : tools.filter((t) => t !== tool)
     set('tools', next.length ? next : undefined)
   }
+  // Custom nodes exposed as agent tools (the backend already supports
+  // node_tools; this surfaces it so users don't have to hand-write config JSON).
+  const [customNodes, setCustomNodes] = useState<api.CustomNodeDef[]>([])
+  useEffect(() => { api.listCustomNodes().then(setCustomNodes).catch(() => {}) }, [])
+  const nodeTools = (config['node_tools'] as Array<{ name: string }> | undefined) ?? []
+  const toggleNodeTool = (n: api.CustomNodeDef, on: boolean) => {
+    const next = on
+      ? [...nodeTools, { name: n.slug, url: n.endpoint, description: n.description }]
+      : nodeTools.filter((t) => t.name !== n.slug)
+    set('node_tools', next.length ? next : undefined)
+  }
   return (
     <>
       <div className="field">
@@ -480,6 +491,26 @@ export function AgentConfig({ config, set, str, num }: ConfigProps) {
           {fl("When tools are enabled the agent can call them in a loop until it answers.")}
         </span>
       </div>
+      {customNodes.length > 0 && (
+        <div className="field">
+          <label>{fl("Custom node tools")}</label>
+          <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap' }}>
+            {customNodes.map((n) => (
+              <label key={n.id} title={n.description} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 13 }}>
+                <input
+                  type="checkbox"
+                  checked={nodeTools.some((t) => t.name === n.slug)}
+                  onChange={(e) => toggleNodeTool(n, e.target.checked)}
+                />
+                {n.label}
+              </label>
+            ))}
+          </div>
+          <span style={{ fontSize: 11, color: 'var(--muted)' }}>
+            {fl("Expose your registered custom nodes as agent tools.")}
+          </span>
+        </div>
+      )}
       {tools.includes('rag_search') && (
         <div className="field">
           <label>{fl("Knowledge Base (for rag_search)")}</label>
