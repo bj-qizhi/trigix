@@ -164,6 +164,28 @@ pub(super) async fn execute_gemini(
         payload["systemInstruction"] = serde_json::json!({ "parts": [{ "text": system_prompt }] });
     }
 
+    // Live streaming when someone is watching; identical final output otherwise.
+    if super::nodes_stream::streaming_enabled() {
+        let stream_url = format!(
+            "https://generativelanguage.googleapis.com/v1beta/models/{model}:streamGenerateContent?alt=sse&key={api_key}"
+        );
+        return match super::nodes_stream::stream_gemini_chat(
+            http_client,
+            &stream_url,
+            &node.id,
+            "Gemini",
+            payload,
+        )
+        .await
+        {
+            Ok((content, usage)) => NodeExecutionResult::succeeded(
+                serde_json::json!({ "content": content, "model": model, "usage": usage })
+                    .to_string(),
+            ),
+            Err(e) => e,
+        };
+    }
+
     let resp = match http_client
         .post(&url)
         .header("Content-Type", "application/json")
@@ -240,6 +262,26 @@ pub(super) async fn execute_claude(
     });
     if !system_prompt.is_empty() {
         payload["system"] = serde_json::json!(system_prompt);
+    }
+
+    // Live streaming when someone is watching; identical final output otherwise.
+    if super::nodes_stream::streaming_enabled() {
+        return match super::nodes_stream::stream_claude_chat(
+            http_client,
+            "https://api.anthropic.com/v1/messages",
+            &api_key,
+            &node.id,
+            "Claude",
+            payload,
+        )
+        .await
+        {
+            Ok((content, usage)) => NodeExecutionResult::succeeded(
+                serde_json::json!({ "content": content, "model": model, "usage": usage })
+                    .to_string(),
+            ),
+            Err(e) => e,
+        };
     }
 
     let resp = match http_client
