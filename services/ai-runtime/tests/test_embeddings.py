@@ -126,3 +126,31 @@ def test_remote_embed_passes_base_url_and_placeholder_key(monkeypatch):
     assert captured["model"] == "bge-m3"
     assert captured["kwargs"]["base_url"] == "http://localhost:9000/v1"
     assert captured["kwargs"]["api_key"] == "no-key"
+
+
+def test_remote_embed_batches_large_input(monkeypatch):
+    """A large document must be split into per-request batches so it doesn't
+    exceed the provider's input limit, with order preserved across batches."""
+    openai = pytest.importorskip("openai")
+    _clear_embed_env(monkeypatch)
+    monkeypatch.setenv("EMBED_BASE_URL", "http://localhost:9000/v1")
+    monkeypatch.setattr(embeddings, "_EMBED_BATCH", 2)
+
+    calls: list[list[str]] = []
+
+    class FakeEmbeddings:
+        def create(self, model, input):
+            calls.append(list(input))
+            data = [type("D", (), {"embedding": [float(len(t))]})() for t in input]
+            return type("R", (), {"data": data})()
+
+    class FakeOpenAI:
+        def __init__(self, **kwargs):
+            self.embeddings = FakeEmbeddings()
+
+    monkeypatch.setattr(openai, "OpenAI", FakeOpenAI)
+
+    out = embeddings.embed(["a", "bb", "ccc", "dddd", "e"])
+    # 5 inputs, batch size 2 → 3 requests of (2, 2, 1); order is preserved.
+    assert [len(c) for c in calls] == [2, 2, 1]
+    assert [v[0] for v in out] == [1.0, 2.0, 3.0, 4.0, 1.0]

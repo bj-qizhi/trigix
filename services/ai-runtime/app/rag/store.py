@@ -6,6 +6,7 @@ nearest neighbours for a query embedding (cosine distance)."""
 
 from __future__ import annotations
 
+import asyncio
 import os
 import re
 import time
@@ -115,7 +116,9 @@ class RagStore:
         if not chunks:
             await self.delete_document(tenant_id, kb, doc_id)
             return 0
-        vectors = embed(chunks)
+        # embed() may make a blocking remote HTTP call; offload it so the async
+        # event loop isn't stalled during ingest.
+        vectors = await asyncio.to_thread(embed, chunks)
         now = int(time.time())
         rows = [
             (
@@ -174,7 +177,7 @@ class RagStore:
                 tenant_id, kb, query, top_k, mode, min_score, reranker
             )
         if mode == "hybrid":
-            return await self._query_hybrid(tenant_id, kb, query, top_k)
+            return await self._query_hybrid(tenant_id, kb, query, top_k, min_score)
         return await self._query_vector(tenant_id, kb, query, top_k, min_score)
 
     async def _query_reranked(
@@ -210,7 +213,7 @@ class RagStore:
     async def _query_vector(
         self, tenant_id: str, kb: str, query: str, top_k: int, min_score: float | None
     ) -> list[RetrievedChunk]:
-        qvec = _vec_literal(embed_one(query))
+        qvec = _vec_literal(await asyncio.to_thread(embed_one, query))
         async with self._pool.acquire() as conn:
             records = await conn.fetch(
                 "SELECT doc_id, chunk_index, content, "
@@ -236,18 +239,23 @@ class RagStore:
         return hits
 
     async def _query_hybrid(
-        self, tenant_id: str, kb: str, query: str, top_k: int
+        self, tenant_id: str, kb: str, query: str, top_k: int, min_score: float | None = None
     ) -> list[RetrievedChunk]:
-        qvec = _vec_literal(embed_one(query))
+        qvec = _vec_literal(await asyncio.to_thread(embed_one, query))
         pool = max(top_k * 5, 50)
         rrf_k = 60
         cfg = self._fts_config  # a validated identifier from _pick_fts_config
+        # RRF scores aren't comparable to cosine, so a cosine `min_score` is
+        # applied to the vector half (dropping weak vector hits before fusion)
+        # rather than to the fused score. -1.0 lets everything through.
+        vec_floor = min_score if min_score is not None else -1.0
         async with self._pool.acquire() as conn:
             records = await conn.fetch(
                 f"""
                 WITH vec AS (
                     SELECT id, ROW_NUMBER() OVER (ORDER BY embedding <=> $1::vector) AS rnk
                     FROM af_kb_chunks WHERE tenant_id=$2 AND kb=$3
+                      AND (1 - (embedding <=> $1::vector)) >= $8
                     ORDER BY embedding <=> $1::vector LIMIT $4
                 ),
                 kw AS (
@@ -276,6 +284,7 @@ class RagStore:
                 query,
                 rrf_k,
                 top_k,
+                vec_floor,
             )
         return [
             RetrievedChunk(

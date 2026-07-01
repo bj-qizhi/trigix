@@ -91,6 +91,9 @@ def local_embed_one(text: str, dim: int = EMBED_DIM) -> list[float]:
     return [v / norm for v in vec]
 
 
+_EMBED_BATCH = max(1, int(os.environ.get("EMBED_BATCH") or "96"))
+
+
 def _remote_embed(texts: list[str]) -> list[list[float]]:
     from openai import OpenAI  # imported lazily so the dep is optional
 
@@ -99,8 +102,13 @@ def _remote_embed(texts: list[str]) -> list[list[float]]:
     # endpoints (TEI/vLLM ignore it), so supply a harmless placeholder.
     api_key = _embed_api_key() or "no-key"
     client = OpenAI(api_key=api_key, base_url=base_url) if base_url else OpenAI(api_key=api_key)
-    resp = client.embeddings.create(model=_OPENAI_MODEL, input=texts)
-    return [d.embedding for d in resp.data]
+    # Batch so a large document doesn't exceed the provider's per-request input
+    # limit (a single create() with hundreds of chunks would be rejected).
+    out: list[list[float]] = []
+    for i in range(0, len(texts), _EMBED_BATCH):
+        resp = client.embeddings.create(model=_OPENAI_MODEL, input=texts[i : i + _EMBED_BATCH])
+        out.extend(d.embedding for d in resp.data)
+    return out
 
 
 def embed(texts: list[str]) -> list[list[float]]:
