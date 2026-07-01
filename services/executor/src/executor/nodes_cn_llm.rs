@@ -12,6 +12,7 @@ use workflow_core::Node;
 #[allow(clippy::too_many_arguments)]
 async fn openai_compat_chat(
     node_name: &str,
+    node_id: &str,
     api_key: &str,
     base_url: &str,
     model: &str,
@@ -26,6 +27,27 @@ async fn openai_compat_chat(
         "max_tokens": max_tokens,
         "temperature": temperature,
     });
+
+    // When someone is watching this execution, stream tokens live; the assembled
+    // final content/usage is identical to the non-streamed path below.
+    if super::nodes_stream::streaming_enabled() {
+        return match super::nodes_stream::stream_openai_chat(
+            http_client,
+            base_url,
+            api_key,
+            node_id,
+            node_name,
+            payload,
+        )
+        .await
+        {
+            Ok((content, usage)) => NodeExecutionResult::succeeded(
+                serde_json::json!({ "content": content, "model": model, "usage": usage })
+                    .to_string(),
+            ),
+            Err(e) => e,
+        };
+    }
 
     // Retry transient failures (connect/timeout, 429, 5xx) with exponential
     // backoff — these OpenAI-compatible providers routinely rate-limit, and a
@@ -184,6 +206,7 @@ pub(super) async fn execute_grok(
         };
     openai_compat_chat(
         "Grok",
+        &node.id,
         &api_key,
         &resolve_base_url(config, context, "https://api.x.ai/v1/chat/completions"),
         &model,
@@ -247,6 +270,7 @@ pub(super) async fn execute_ollama(
     messages.push(serde_json::json!({ "role": "user", "content": prompt }));
     openai_compat_chat(
         "Ollama",
+        &node.id,
         &api_key,
         &base_url,
         &model,
@@ -472,6 +496,7 @@ pub(super) async fn execute_deepseek(
         };
     openai_compat_chat(
         "DeepSeek",
+        &node.id,
         &api_key,
         &resolve_base_url(
             config,
@@ -504,6 +529,7 @@ pub(super) async fn execute_qwen(
         };
     openai_compat_chat(
         "Qwen",
+        &node.id,
         &api_key,
         &resolve_base_url(
             config,
@@ -536,6 +562,7 @@ pub(super) async fn execute_zhipu(
         };
     openai_compat_chat(
         "Zhipu",
+        &node.id,
         &api_key,
         &resolve_base_url(
             config,
@@ -568,6 +595,7 @@ pub(super) async fn execute_moonshot(
         };
     openai_compat_chat(
         "Moonshot",
+        &node.id,
         &api_key,
         &resolve_base_url(
             config,
@@ -628,6 +656,7 @@ pub(super) async fn execute_doubao(
 
     openai_compat_chat(
         "Doubao",
+        &node.id,
         &api_key,
         &resolve_base_url(
             config,
@@ -697,6 +726,7 @@ pub(super) async fn execute_minimax(
         let base = resolve_template(base, context);
         return openai_compat_chat(
             "MiniMax",
+            &node.id,
             &api_key,
             &base,
             &model,
@@ -816,6 +846,7 @@ pub(super) async fn execute_ernie(
         messages.push(serde_json::json!({ "role": "user", "content": prompt }));
         return openai_compat_chat(
             "Ernie",
+            &node.id,
             &api_key,
             &base,
             &model,
@@ -931,6 +962,7 @@ pub(super) async fn execute_hunyuan(
         };
     openai_compat_chat(
         "Hunyuan",
+        &node.id,
         &api_key,
         &resolve_base_url(
             config,
