@@ -515,6 +515,13 @@ pub(super) async fn execute_video_gen(
                             .and_then(|c| c.get("video_url"))
                             .and_then(|v| v.as_str())
                             .unwrap_or("");
+                        if video_url.is_empty() {
+                            // "Succeeded" with no URL is a failure downstream —
+                            // don't hand a blank video_url off as success.
+                            return NodeExecutionResult::failed(format!(
+                                "Seedance reported success but returned no video_url (task {task_id})"
+                            ));
+                        }
                         return NodeExecutionResult::succeeded(
                             serde_json::json!({
                                 "provider": "seedance", "status": "succeeded",
@@ -642,6 +649,12 @@ pub(super) async fn execute_video_gen(
                                     .map(String::from)
                             })
                             .unwrap_or_default();
+                        if video_url.is_empty() {
+                            return NodeExecutionResult::failed(
+                                "Replicate reported success but returned no output video URL"
+                                    .to_string(),
+                            );
+                        }
                         return NodeExecutionResult::succeeded(
                             serde_json::json!({
                                 "provider": "replicate", "status": "succeeded",

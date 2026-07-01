@@ -27,6 +27,8 @@ redis = { version = "0.26", features = ["tokio-comp"] }
 handlebars = "6"
 lru = "0.12"
 scraper = "0.21"
+regex = "1"
+csv = "1"
 feed-rs = "2"
 suppaftp = { version = "6", features = ["native-tls"] }
 imap = "2"

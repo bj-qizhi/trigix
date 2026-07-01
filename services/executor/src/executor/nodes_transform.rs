@@ -792,8 +792,8 @@ pub(super) fn execute_regex(node: &Node, context: &ExecutionContext) -> NodeExec
         .and_then(|v| v.as_str())
         .unwrap_or("")
         .contains('i');
-    let extract_groups = cfg
-        .get("extract_groups")
+    let find_all = cfg
+        .get("find_all")
         .and_then(|v| v.as_bool())
         .unwrap_or(false);
 
@@ -803,34 +803,92 @@ pub(super) fn execute_regex(node: &Node, context: &ExecutionContext) -> NodeExec
         other => other.to_string(),
     };
 
-    // Build regex with optional case-insensitive flag
-    let _pattern = if case_insensitive {
-        format!("(?i){}", pattern_raw)
+    // Real regex — metacharacters, anchors, character classes and capture
+    // groups. An invalid pattern fails the node loudly instead of silently
+    // mis-matching (the old impl was a literal substring check with empty groups).
+    let pattern = if case_insensitive {
+        format!("(?i){pattern_raw}")
     } else {
         pattern_raw.to_string()
     };
-
-    // Use std::str matching; for proper regex we need the `regex` crate but we can do simple substring/wildcard
-    // Simple implementation: check if source contains the pattern (literal), or if pattern has ^ and $
-    // For a proper implementation we'd add the regex crate, but for now do basic matching
-    let matched = source_str.contains(pattern_raw);
-    let full_match = if matched {
-        let start = source_str.find(pattern_raw).unwrap_or(0);
-        Some(source_str[start..start + pattern_raw.len()].to_string())
-    } else {
-        None
+    let re = match regex::Regex::new(&pattern) {
+        Ok(re) => re,
+        Err(e) => return NodeExecutionResult::failed(format!("Invalid regex pattern: {e}")),
     };
 
-    let _ = extract_groups; // groups not supported without regex crate
-    NodeExecutionResult::succeeded(
-        serde_json::json!({
-            "matched": matched,
-            "full_match": full_match,
-            "groups": serde_json::Value::Array(vec![]),
-            "source": source_str,
-        })
-        .to_string(),
-    )
+    let caps_json =
+        |caps: &regex::Captures| -> (serde_json::Value, serde_json::Value, serde_json::Value) {
+            let full = caps
+                .get(0)
+                .map(|m| serde_json::Value::String(m.as_str().to_string()))
+                .unwrap_or(serde_json::Value::Null);
+            let groups = serde_json::Value::Array(
+                caps.iter()
+                    .skip(1)
+                    .map(|g| match g {
+                        Some(m) => serde_json::Value::String(m.as_str().to_string()),
+                        None => serde_json::Value::Null,
+                    })
+                    .collect(),
+            );
+            let named: serde_json::Map<String, serde_json::Value> = re
+                .capture_names()
+                .flatten()
+                .filter_map(|name| {
+                    caps.name(name).map(|m| {
+                        (
+                            name.to_string(),
+                            serde_json::Value::String(m.as_str().to_string()),
+                        )
+                    })
+                })
+                .collect();
+            (full, groups, serde_json::Value::Object(named))
+        };
+
+    if find_all {
+        let matches: Vec<serde_json::Value> = re
+            .captures_iter(&source_str)
+            .map(|c| {
+                let (full, groups, named) = caps_json(&c);
+                serde_json::json!({ "full_match": full, "groups": groups, "named_groups": named })
+            })
+            .collect();
+        return NodeExecutionResult::succeeded(
+            serde_json::json!({
+                "matched": !matches.is_empty(),
+                "matches": matches,
+                "count": matches.len(),
+                "source": source_str,
+            })
+            .to_string(),
+        );
+    }
+
+    match re.captures(&source_str) {
+        Some(caps) => {
+            let (full, groups, named) = caps_json(&caps);
+            NodeExecutionResult::succeeded(
+                serde_json::json!({
+                    "matched": true,
+                    "full_match": full,
+                    "groups": groups,
+                    "named_groups": named,
+                    "source": source_str,
+                })
+                .to_string(),
+            )
+        }
+        None => NodeExecutionResult::succeeded(
+            serde_json::json!({
+                "matched": false,
+                "full_match": serde_json::Value::Null,
+                "groups": serde_json::Value::Array(vec![]),
+                "source": source_str,
+            })
+            .to_string(),
+        ),
+    }
 }
 
 pub(super) fn execute_csv(node: &Node, context: &ExecutionContext) -> NodeExecutionResult {
@@ -852,38 +910,43 @@ pub(super) fn execute_csv(node: &Node, context: &ExecutionContext) -> NodeExecut
         other => other.to_string(),
     };
 
-    let lines: Vec<&str> = csv_str.lines().filter(|l| !l.trim().is_empty()).collect();
-    if lines.is_empty() {
+    // Real RFC-4180 parsing (quoted fields, embedded newlines/commas, escaped
+    // quotes) via the csv crate — the old impl was a naive split(delimiter) that
+    // mangled any quoted field.
+    let delim_byte = delimiter.bytes().next().unwrap_or(b',');
+    let mut rdr = csv::ReaderBuilder::new()
+        .delimiter(delim_byte)
+        .has_headers(false) // headers handled below to keep the output shape
+        .flexible(true)
+        .trim(if trim {
+            csv::Trim::All
+        } else {
+            csv::Trim::None
+        })
+        .from_reader(csv_str.as_bytes());
+    let records: Vec<csv::StringRecord> = match rdr.records().collect::<Result<Vec<_>, _>>() {
+        Ok(r) => r,
+        Err(e) => return NodeExecutionResult::failed(format!("CSV parse error: {e}")),
+    };
+
+    if records.is_empty() {
         return NodeExecutionResult::succeeded(
             serde_json::json!({ "rows": [], "count": 0, "headers": [] }).to_string(),
         );
     }
 
-    let parse_line = |line: &str| -> Vec<String> {
-        line.split(delimiter)
-            .map(|cell| {
-                if trim {
-                    cell.trim().to_string()
-                } else {
-                    cell.to_string()
-                }
-            })
-            .collect()
-    };
-
     if has_header {
-        let headers = parse_line(lines[0]);
-        let rows: Vec<serde_json::Value> = lines[1..]
+        let headers: Vec<String> = records[0].iter().map(|s| s.to_string()).collect();
+        let rows: Vec<serde_json::Value> = records[1..]
             .iter()
-            .map(|line| {
-                let cells = parse_line(line);
+            .map(|rec| {
                 let obj: serde_json::Map<String, serde_json::Value> = headers
                     .iter()
                     .enumerate()
                     .map(|(i, h)| {
                         (
                             h.clone(),
-                            serde_json::Value::String(cells.get(i).cloned().unwrap_or_default()),
+                            serde_json::Value::String(rec.get(i).unwrap_or("").to_string()),
                         )
                     })
                     .collect();
@@ -895,13 +958,12 @@ pub(super) fn execute_csv(node: &Node, context: &ExecutionContext) -> NodeExecut
             serde_json::json!({ "rows": rows, "count": count, "headers": headers }).to_string(),
         )
     } else {
-        let rows: Vec<serde_json::Value> = lines
+        let rows: Vec<serde_json::Value> = records
             .iter()
-            .map(|line| {
+            .map(|rec| {
                 serde_json::Value::Array(
-                    parse_line(line)
-                        .into_iter()
-                        .map(serde_json::Value::String)
+                    rec.iter()
+                        .map(|c| serde_json::Value::String(c.to_string()))
                         .collect(),
                 )
             })
@@ -1691,4 +1753,77 @@ pub(super) fn execute_array_utils(node: &Node, context: &ExecutionContext) -> No
     NodeExecutionResult::succeeded(
         serde_json::json!({ "items": items, "count": count }).to_string(),
     )
+}
+
+#[cfg(test)]
+mod regex_csv_tests {
+    use super::*;
+    use workflow_core::{Node, NodeType};
+
+    fn ctx() -> ExecutionContext {
+        ExecutionContext {
+            execution_id: "e1".into(),
+            workflow_version_id: "v1".into(),
+            input_json: "{}".into(),
+            node_outputs: Default::default(),
+            dry_run: false,
+        }
+    }
+    fn out(r: &NodeExecutionResult) -> serde_json::Value {
+        serde_json::from_str(r.output_json.as_deref().unwrap()).unwrap()
+    }
+
+    #[test]
+    fn regex_real_matching_with_capture_groups() {
+        let n = Node {
+            id: "r".into(),
+            node_type: NodeType::Regex,
+            config: Some(
+                serde_json::json!({ "source": "order 12345 shipped", "pattern": r"order (\d+)" }),
+            ),
+        };
+        let o = out(&execute_regex(&n, &ctx()));
+        assert_eq!(o["matched"], true);
+        assert_eq!(o["full_match"], "order 12345");
+        assert_eq!(o["groups"][0], "12345");
+    }
+
+    #[test]
+    fn regex_anchors_are_honoured_not_literal() {
+        // The old substring impl matched this; a real regex must not.
+        let n = Node {
+            id: "r".into(),
+            node_type: NodeType::Regex,
+            config: Some(serde_json::json!({ "source": "xabc", "pattern": "^abc$" })),
+        };
+        assert_eq!(out(&execute_regex(&n, &ctx()))["matched"], false);
+    }
+
+    #[test]
+    fn regex_invalid_pattern_fails_loudly() {
+        let n = Node {
+            id: "r".into(),
+            node_type: NodeType::Regex,
+            config: Some(serde_json::json!({ "source": "x", "pattern": "(" })),
+        };
+        assert_eq!(
+            execute_regex(&n, &ctx()).status,
+            execution_core::NodeStatus::Failed
+        );
+    }
+
+    #[test]
+    fn csv_handles_quoted_field_with_comma() {
+        let n = Node {
+            id: "c".into(),
+            node_type: NodeType::Csv,
+            config: Some(
+                serde_json::json!({ "source": "name,note\n\"Doe, John\",hi", "has_header": true }),
+            ),
+        };
+        let o = out(&execute_csv(&n, &ctx()));
+        assert_eq!(o["count"], 1);
+        assert_eq!(o["rows"][0]["name"], "Doe, John");
+        assert_eq!(o["rows"][0]["note"], "hi");
+    }
 }
