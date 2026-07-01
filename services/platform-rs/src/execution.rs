@@ -986,6 +986,12 @@ impl<S: ExecutionStore + Clone + 'static> NodeProgressCallback for StoreProgress
             started_at_ms: report.started_at_ms,
             retry_count: report.retry_count,
         };
+        // Push the single completed node to any live SSE subscribers
+        // immediately (real-time), bypassing the DB-poll latency. The DB write
+        // below is still the source of truth for reconnect/snapshot.
+        if let Ok(data) = serde_json::to_string(&node_result) {
+            crate::execution_bus::publish(&self.execution_id, "node", data);
+        }
         tokio::spawn(async move {
             let _ = store
                 .append_node_result(&tenant_id, &execution_id, node_result)
@@ -1032,6 +1038,12 @@ where
             .store
             .complete(&record.tenant_id, &record.id, report)
             .await?;
+        // Push the terminal snapshot to live subscribers immediately, then drop
+        // the channel so the bus map doesn't grow unbounded.
+        if let Ok(data) = serde_json::to_string(&completed) {
+            crate::execution_bus::publish(&record.id, "update", data);
+        }
+        crate::execution_bus::close(&record.id);
         // Decrement running counter regardless of final status.
         crate::http::METRIC_EXEC_RUNNING.fetch_sub(1, AtomicOrdering::Relaxed);
         match completed.status {

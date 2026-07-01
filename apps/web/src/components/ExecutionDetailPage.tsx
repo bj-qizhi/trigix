@@ -89,6 +89,16 @@ export function ExecutionDetailPage({ executionId, onBack, onOpenWorkflow, onRet
           }
         } catch { /* ignore parse errors */ }
       })
+      // Real-time per-node completion: merge into node_results immediately.
+      es.addEventListener('node', (e: MessageEvent) => {
+        try {
+          const nr = JSON.parse(e.data as string) as import('../types').NodeExecutionRecord
+          setRecord((prev) => prev && {
+            ...prev,
+            node_results: [...prev.node_results.filter((n) => n.node_id !== nr.node_id), nr],
+          })
+        } catch { /* ignore parse errors */ }
+      })
       es.onerror = () => { es.close(); load(true) }
       return () => es.close()
     }

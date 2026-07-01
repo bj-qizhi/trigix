@@ -15,6 +15,7 @@ pub mod custom_nodes;
 pub mod env_vars;
 pub mod event_subscriptions;
 pub mod execution;
+pub mod execution_bus;
 pub mod form;
 pub mod http;
 pub mod openapi;

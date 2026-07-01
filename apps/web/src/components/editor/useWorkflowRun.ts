@@ -6,7 +6,7 @@ import type { Dispatch, SetStateAction } from 'react'
 import { useAuth } from '../../AuthContext'
 import * as api from '../../api/client'
 import { getStoredAuth } from '../../auth'
-import type { WorkflowRecord, ExecutionRecord, ExecutionSummary, EnvSetSummary } from '../../types'
+import type { WorkflowRecord, ExecutionRecord, ExecutionSummary, EnvSetSummary, NodeExecutionRecord } from '../../types'
 
 // Owns the editor's run/execution surface: the run inputs (input JSON, env set,
 // label, callback URL, dry-run), the active execution + live SSE/poll updates,
@@ -87,16 +87,30 @@ export function useWorkflowRun({ workflowId, workflow, zh, toast, initialInput }
     if (typeof EventSource !== 'undefined' && stored?.token) {
       try {
         source = new EventSource(`/v1/executions/${execution.id}/events?token=${encodeURIComponent(stored.token)}`)
-        source.onmessage = (ev) => {
+        // Full-snapshot events (server sends the named "update" event, so we
+        // must addEventListener rather than use onmessage which only fires for
+        // unnamed events).
+        source.addEventListener('update', (ev) => {
           try {
-            const updated = JSON.parse(ev.data) as ExecutionRecord
+            const updated = JSON.parse((ev as MessageEvent).data) as ExecutionRecord
             setExecution(updated)
             if (updated.status !== 'running') {
               refreshHistory()
               source?.close()
             }
           } catch { /* ignore parse errors */ }
-        }
+        })
+        // Real-time per-node events: merge the single node into node_results as
+        // soon as it completes, instead of waiting for the next snapshot.
+        source.addEventListener('node', (ev) => {
+          try {
+            const nr = JSON.parse((ev as MessageEvent).data) as NodeExecutionRecord
+            setExecution((prev) => prev && {
+              ...prev,
+              node_results: [...prev.node_results.filter((n) => n.node_id !== nr.node_id), nr],
+            })
+          } catch { /* ignore parse errors */ }
+        })
         source.onerror = () => {
           source?.close()
           source = null

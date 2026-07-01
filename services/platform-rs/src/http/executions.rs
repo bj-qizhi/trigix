@@ -383,39 +383,60 @@ async fn execution_events(
     let tenant_id = effective_tenant_id(&claims, &query.tenant_id);
 
     tokio::spawn(async move {
+        // Live push: forward fine-grained events (node completions now, tokens
+        // later) from the in-memory bus the instant they happen. A slow poll
+        // still runs for the reconnect-safe full snapshot and terminal
+        // detection, so a subscriber that connected mid-run (and missed earlier
+        // bus events) resyncs within 1.5s.
+        let mut bus_rx = crate::execution_bus::subscribe(&execution_id);
+        let mut poll = tokio::time::interval(std::time::Duration::from_millis(1500));
+        poll.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
         loop {
-            let record = match state.execution_service.get(&tenant_id, &execution_id).await {
-                Ok(mut r) => {
-                    if r.status == ExecutionStatus::Running
-                        && state.approval_gate.is_waiting(&execution_id).await
-                    {
-                        r.status = ExecutionStatus::WaitingApproval;
+            tokio::select! {
+                biased;
+                ev = bus_rx.recv() => match ev {
+                    Ok(e) => {
+                        if tx.send(Ok(Event::default().event(e.event).data(e.data))).await.is_err() {
+                            break;
+                        }
                     }
-                    r
-                }
-                Err(_) => break,
-            };
-
-            let terminal = matches!(
-                record.status,
-                ExecutionStatus::Succeeded | ExecutionStatus::Failed | ExecutionStatus::Cancelled
-            );
-
-            if let Ok(data) = serde_json::to_string(&record) {
-                if tx
-                    .send(Ok(Event::default().event("update").data(data)))
-                    .await
-                    .is_err()
-                {
-                    break;
+                    Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => { /* poll resyncs */ }
+                    Err(tokio::sync::broadcast::error::RecvError::Closed) => {
+                        // Execution finished; emit a final snapshot then stop.
+                        if let Ok(record) = state.execution_service.get(&tenant_id, &execution_id).await {
+                            if let Ok(data) = serde_json::to_string(&record) {
+                                let _ = tx.send(Ok(Event::default().event("update").data(data))).await;
+                            }
+                        }
+                        break;
+                    }
+                },
+                _ = poll.tick() => {
+                    let record = match state.execution_service.get(&tenant_id, &execution_id).await {
+                        Ok(mut r) => {
+                            if r.status == ExecutionStatus::Running
+                                && state.approval_gate.is_waiting(&execution_id).await
+                            {
+                                r.status = ExecutionStatus::WaitingApproval;
+                            }
+                            r
+                        }
+                        Err(_) => break,
+                    };
+                    let terminal = matches!(
+                        record.status,
+                        ExecutionStatus::Succeeded | ExecutionStatus::Failed | ExecutionStatus::Cancelled
+                    );
+                    if let Ok(data) = serde_json::to_string(&record) {
+                        if tx.send(Ok(Event::default().event("update").data(data))).await.is_err() {
+                            break;
+                        }
+                    }
+                    if terminal {
+                        break;
+                    }
                 }
             }
-
-            if terminal {
-                break;
-            }
-
-            tokio::time::sleep(std::time::Duration::from_millis(400)).await;
         }
     });
 
