@@ -170,9 +170,12 @@ async def run_agent_node(request: AgentNodeRequest) -> AgentNodeResponse:
     except (json.JSONDecodeError, ValueError):
         parsed = {"text": result.output}
 
-    # Attach token usage without disturbing the model's own fields.
+    # Attach token usage and the tool-call trace without disturbing the model's
+    # own fields. `_agent_steps` is [{tool, input, output}] per step so the run
+    # is observable/debuggable downstream instead of being discarded.
     if isinstance(parsed, dict):
         parsed.setdefault("_agent_usage", result.usage)
+        parsed.setdefault("_agent_steps", result.steps)
 
     return AgentNodeResponse(output_json=json.dumps(parsed))
 

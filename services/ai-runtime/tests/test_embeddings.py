@@ -47,6 +47,23 @@ def test_empty_string_is_zero_vector():
     assert all(x == 0.0 for x in v)
 
 
+def test_chinese_is_not_a_zero_vector():
+    # Before the CJK tokenizer fix the local fallback dropped every Chinese
+    # character, producing an all-zero (useless) vector for Chinese documents.
+    v = local_embed_one("机器学习模型")
+    assert any(x != 0.0 for x in v)
+
+
+def test_chinese_similar_closer_than_unrelated():
+    def cos(a, b):
+        return sum(x * y for x, y in zip(a, b))
+
+    base = local_embed_one("发票 财务 账单")
+    similar = local_embed_one("账单 发票")
+    unrelated = local_embed_one("猫 花园 玩耍")
+    assert cos(base, similar) > cos(base, unrelated)
+
+
 def _clear_embed_env(monkeypatch):
     for var in (
         "EMBED_BASE_URL",

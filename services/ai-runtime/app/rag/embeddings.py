@@ -29,7 +29,11 @@ import re
 EMBED_DIM = int(os.environ.get("EMBED_DIM") or "1536")
 _OPENAI_MODEL = os.environ.get("EMBED_MODEL") or "text-embedding-3-small"
 
-_TOKEN_RE = re.compile(r"[a-z0-9]+")
+# Latin/digit words OR individual CJK characters. Without the CJK class the
+# local fallback embedding dropped every Chinese character, making offline
+# Chinese RAG produce near-zero, indistinguishable vectors. Char-level CJK is a
+# reasonable bag-of-words fallback (the remote path is still preferred).
+_TOKEN_RE = re.compile(r"[a-z0-9]+|[一-鿿㐀-䶿]")
 
 
 def _embed_base_url() -> str | None:
