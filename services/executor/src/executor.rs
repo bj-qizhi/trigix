@@ -944,6 +944,20 @@ async fn execute_agent(
         node_outputs: context.node_outputs.clone(),
     };
 
+    // When someone is watching, stream the agent's tokens live. Any streaming
+    // problem (transport, non-2xx, truncated stream) falls through to the
+    // buffered endpoint below — the live tokens are lost but the result is not.
+    if nodes_stream::streaming_enabled() {
+        let stream_endpoint = format!("{}/v1/nodes/agent/stream", base_url.trim_end_matches('/'));
+        if let Ok(response) = client.post(&stream_endpoint).json(&request).send().await {
+            if response.status().is_success() {
+                if let Ok(output_json) = nodes_stream::stream_agent(response, &node.id).await {
+                    return NodeExecutionResult::succeeded(output_json);
+                }
+            }
+        }
+    }
+
     match client.post(&endpoint).json(&request).send().await {
         Ok(response) => {
             if response.status().is_success() {

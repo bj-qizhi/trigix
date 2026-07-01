@@ -5,12 +5,14 @@
 
 import asyncio
 import time
+from types import SimpleNamespace
 
 import pytest
 
 from app.agent.loop import (
     AnthropicLLM,
     LLMResponse,
+    OpenAICompatLLM,
     ToolCall,
     _call_with_retries,
     _is_transient,
@@ -24,9 +26,14 @@ class FakeLLM:
         self._scripted = scripted
         self.calls: list[list] = []
 
-    async def respond(self, system, messages, tool_schemas):
+    async def respond(self, system, messages, tool_schemas, on_text_delta=None):
         self.calls.append(list(messages))
-        return self._scripted.pop(0)
+        resp = self._scripted.pop(0)
+        # Mirror production: when a final answer is produced, surface its text
+        # through the delta callback so streaming tests can observe it.
+        if on_text_delta is not None and resp.text:
+            on_text_delta(resp.text)
+        return resp
 
 
 def _tool_use(call_id, name, inp):
@@ -64,6 +71,80 @@ async def test_loop_with_no_tools_is_single_shot():
     assert result.output == "hello"
     assert result.steps == []
     assert len(llm.calls) == 1
+
+
+class _FakeStreamClient:
+    """Minimal stand-in for an OpenAI client whose chat.completions.create
+    returns an iterator of streaming chunks."""
+
+    def __init__(self, chunks):
+        self._chunks = chunks
+        self.chat = SimpleNamespace(
+            completions=SimpleNamespace(create=self._create)
+        )
+
+    def _create(self, **kwargs):
+        assert kwargs.get("stream") is True
+        return iter(self._chunks)
+
+
+def _sse_chunk(content=None, tool=None, usage=None):
+    delta = SimpleNamespace(content=content, tool_calls=None)
+    if tool is not None:
+        idx, tid, name, args = tool
+        delta.tool_calls = [
+            SimpleNamespace(index=idx, id=tid, function=SimpleNamespace(name=name, arguments=args))
+        ]
+    choices = [SimpleNamespace(delta=delta)] if (content is not None or tool is not None) else []
+    u = SimpleNamespace(prompt_tokens=usage[0], completion_tokens=usage[1]) if usage else None
+    return SimpleNamespace(choices=choices, usage=u)
+
+
+async def test_openai_streaming_accumulates_text_and_usage():
+    client = _FakeStreamClient([
+        _sse_chunk(content="Hel"),
+        _sse_chunk(content="lo"),
+        _sse_chunk(usage=(10, 5)),
+    ])
+    deltas: list[str] = []
+    resp = await OpenAICompatLLM(client, "m", 100).respond(
+        "sys", [{"role": "user", "content": "hi"}], [], on_text_delta=deltas.append
+    )
+    assert resp.text == "Hello"
+    assert "".join(deltas) == "Hello"
+    assert resp.tool_calls == []
+    assert resp.usage == {"input_tokens": 10, "output_tokens": 5}
+
+
+async def test_openai_streaming_reassembles_split_tool_call():
+    # id + name arrive first; the JSON arguments stream in fragments.
+    client = _FakeStreamClient([
+        _sse_chunk(tool=(0, "call_1", "add", '{"a":')),
+        _sse_chunk(tool=(0, None, None, ' 1, "b": 2}')),
+    ])
+    resp = await OpenAICompatLLM(client, "m", 100).respond(
+        "sys",
+        [{"role": "user", "content": "x"}],
+        [{"name": "add", "description": "", "input_schema": {}}],
+        on_text_delta=lambda _t: None,
+    )
+    assert resp.text is None
+    assert len(resp.tool_calls) == 1
+    call = resp.tool_calls[0]
+    assert (call.id, call.name, call.input) == ("call_1", "add", {"a": 1, "b": 2})
+
+
+async def test_on_text_delta_streams_answer_text():
+    # The delta callback threads from run_agent_loop through respond; the final
+    # answer text must surface through it (and still be the loop's output).
+    deltas: list[str] = []
+    llm = FakeLLM([_tool_use("t1", "calculator", {"expression": "1+1"}), _final("it is 2")])
+    result = await run_agent_loop(
+        llm, "sys", "1+1?", build_tools(["calculator"]), max_iterations=5,
+        on_text_delta=deltas.append,
+    )
+    assert result.output == "it is 2"
+    assert "".join(deltas) == "it is 2"
 
 
 async def test_unknown_tool_is_reported_back():

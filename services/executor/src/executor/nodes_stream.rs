@@ -61,6 +61,40 @@ async fn check_ok(
     }
 }
 
+/// Consume the agent runtime's `/v1/nodes/agent/stream` SSE: emit each text
+/// delta through the sink and return the final `output_json`. A mid-stream
+/// `{"error": ...}`, a truncated stream, or any parse trouble yields Err so the
+/// caller can fall back to the buffered agent endpoint (the proven path) — a
+/// broken stream never degrades the agent, it only loses the live tokens.
+pub(super) async fn stream_agent(
+    resp: reqwest::Response,
+    node_id: &str,
+) -> Result<String, NodeExecutionResult> {
+    let mut output: Option<String> = None;
+    let mut error: Option<String> = None;
+    read_sse(resp, "Agent", |d| {
+        if let Ok(v) = serde_json::from_str::<serde_json::Value>(d) {
+            if let Some(delta) = v.get("delta").and_then(|x| x.as_str()) {
+                if !delta.is_empty() {
+                    emit_token(node_id, delta);
+                }
+            } else if v.get("done").and_then(|x| x.as_bool()).unwrap_or(false) {
+                output = v
+                    .get("output_json")
+                    .and_then(|x| x.as_str())
+                    .map(str::to_string);
+            } else if let Some(e) = v.get("error").and_then(|x| x.as_str()) {
+                error = Some(e.to_string());
+            }
+        }
+    })
+    .await?;
+    if let Some(e) = error {
+        return Err(NodeExecutionResult::failed(format!("Agent error: {e}")));
+    }
+    output.ok_or_else(|| NodeExecutionResult::failed("Agent stream ended without a result"))
+}
+
 /// Stream an OpenAI-compatible chat completion (Bearer auth). Returns the
 /// assembled `(content, usage)`.
 pub(super) async fn stream_openai_chat(

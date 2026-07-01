@@ -15,7 +15,7 @@ import asyncio
 import json
 import random
 from dataclasses import dataclass, field
-from typing import Any, Protocol
+from typing import Any, Callable, Protocol
 
 from .tools import Tool
 
@@ -68,7 +68,11 @@ class LLMResponse:
 
 class LLM(Protocol):
     async def respond(
-        self, system: str, messages: list, tool_schemas: list
+        self,
+        system: str,
+        messages: list,
+        tool_schemas: list,
+        on_text_delta: Callable[[str], None] | None = None,
     ) -> LLMResponse: ...
 
 
@@ -86,6 +90,7 @@ async def run_agent_loop(
     user_message: str,
     tools: list[Tool],
     max_iterations: int = 6,
+    on_text_delta: Callable[[str], None] | None = None,
 ) -> AgentResult:
     """Drive the model: while it requests tools, execute them and feed the
     results back; stop when it returns a final text answer or the iteration
@@ -104,7 +109,7 @@ async def run_agent_loop(
         usage["output_tokens"] += int(turn.get("output_tokens", 0) or 0)
 
     for _ in range(max(1, max_iterations)):
-        resp = await llm.respond(system, messages, schemas)
+        resp = await llm.respond(system, messages, schemas, on_text_delta=on_text_delta)
         _accumulate(resp.usage)
         if not resp.tool_calls:
             return AgentResult(output=resp.text or "", steps=steps, usage=usage)
@@ -148,7 +153,11 @@ class AnthropicLLM:
         self._max_tokens = max_tokens
 
     async def respond(
-        self, system: str, messages: list, tool_schemas: list
+        self,
+        system: str,
+        messages: list,
+        tool_schemas: list,
+        on_text_delta: Callable[[str], None] | None = None,
     ) -> LLMResponse:
         kwargs: dict[str, Any] = {
             "model": self._model,
@@ -171,7 +180,19 @@ class AnthropicLLM:
                 tools[-1] = {**tools[-1], "cache_control": {"type": "ephemeral"}}
             kwargs["tools"] = tools
         # The SDK call is synchronous; run it off the event loop, with retries.
-        msg = await _call_with_retries(lambda: self._client.messages.create(**kwargs))
+        # When a delta callback is present, stream so tokens surface live; the
+        # SDK assembles the identical final message, so parsing below is shared.
+        if on_text_delta is None:
+            msg = await _call_with_retries(lambda: self._client.messages.create(**kwargs))
+        else:
+
+            def _stream() -> Any:
+                with self._client.messages.stream(**kwargs) as stream:
+                    for text in stream.text_stream:
+                        on_text_delta(text)
+                    return stream.get_final_message()
+
+            msg = await _call_with_retries(_stream)
 
         usage = {}
         u = getattr(msg, "usage", None)
@@ -290,7 +311,11 @@ class OpenAICompatLLM:
         self._max_tokens = max_tokens
 
     async def respond(
-        self, system: str, messages: list, tool_schemas: list
+        self,
+        system: str,
+        messages: list,
+        tool_schemas: list,
+        on_text_delta: Callable[[str], None] | None = None,
     ) -> LLMResponse:
         kwargs: dict[str, Any] = {
             "model": self._model,
@@ -299,36 +324,81 @@ class OpenAICompatLLM:
         }
         if tool_schemas:
             kwargs["tools"] = _to_openai_tools(tool_schemas)
+
         # The SDK call is synchronous; run it off the event loop, with retries.
-        completion = await _call_with_retries(
-            lambda: self._client.chat.completions.create(**kwargs)
-        )
+        # With a delta callback, stream and reassemble the completion — text is
+        # concatenated and tool-call fragments are accumulated by index (the id
+        # and name arrive first, the JSON arguments in pieces).
+        if on_text_delta is None:
+            completion = await _call_with_retries(
+                lambda: self._client.chat.completions.create(**kwargs)
+            )
+            usage = {}
+            u = getattr(completion, "usage", None)
+            if u is not None:
+                usage = {
+                    "input_tokens": getattr(u, "prompt_tokens", 0) or 0,
+                    "output_tokens": getattr(u, "completion_tokens", 0) or 0,
+                }
+            choice = completion.choices[0].message
+            text = choice.content or ""
+            raw_calls = [
+                (tc.id, tc.function.name, tc.function.arguments)
+                for tc in (getattr(choice, "tool_calls", None) or [])
+            ]
+        else:
 
-        usage = {}
-        u = getattr(completion, "usage", None)
-        if u is not None:
-            usage = {
-                "input_tokens": getattr(u, "prompt_tokens", 0) or 0,
-                "output_tokens": getattr(u, "completion_tokens", 0) or 0,
-            }
+            def _stream() -> tuple[str, list, dict]:
+                skwargs = {
+                    **kwargs,
+                    "stream": True,
+                    "stream_options": {"include_usage": True},
+                }
+                parts: list[str] = []
+                acc: dict[int, dict] = {}
+                usage_inner: dict = {}
+                for chunk in self._client.chat.completions.create(**skwargs):
+                    cu = getattr(chunk, "usage", None)
+                    if cu is not None:
+                        usage_inner = {
+                            "input_tokens": getattr(cu, "prompt_tokens", 0) or 0,
+                            "output_tokens": getattr(cu, "completion_tokens", 0) or 0,
+                        }
+                    if not chunk.choices:
+                        continue
+                    delta = chunk.choices[0].delta
+                    piece = getattr(delta, "content", None)
+                    if piece:
+                        parts.append(piece)
+                        on_text_delta(piece)
+                    for tc in getattr(delta, "tool_calls", None) or []:
+                        slot = acc.setdefault(tc.index, {"id": "", "name": "", "args": ""})
+                        if tc.id:
+                            slot["id"] = tc.id
+                        fn = getattr(tc, "function", None)
+                        if fn is not None:
+                            if getattr(fn, "name", None):
+                                slot["name"] = fn.name
+                            if getattr(fn, "arguments", None):
+                                slot["args"] += fn.arguments
+                calls = [acc[i] for i in sorted(acc)]
+                return "".join(parts), calls, usage_inner
 
-        choice = completion.choices[0].message
-        text = choice.content or ""
-        raw_calls = getattr(choice, "tool_calls", None) or []
+            text, accumulated, usage = await _call_with_retries(_stream)
+            raw_calls = [(c["id"], c["name"], c["args"]) for c in accumulated]
 
         tool_calls: list[ToolCall] = []
         assistant_content: list[dict] = []
         if text:
             assistant_content.append({"type": "text", "text": text})
-        for tc in raw_calls:
-            args = tc.function.arguments
+        for call_id, call_name, args in raw_calls:
             try:
                 parsed = json.loads(args) if isinstance(args, str) and args else (args or {})
             except json.JSONDecodeError:
                 parsed = {}
-            tool_calls.append(ToolCall(id=tc.id, name=tc.function.name, input=parsed))
+            tool_calls.append(ToolCall(id=call_id, name=call_name, input=parsed))
             assistant_content.append(
-                {"type": "tool_use", "id": tc.id, "name": tc.function.name, "input": parsed}
+                {"type": "tool_use", "id": call_id, "name": call_name, "input": parsed}
             )
 
         if tool_calls:

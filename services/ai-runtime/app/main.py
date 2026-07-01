@@ -1,6 +1,7 @@
 # Copyright © 2026 北京祺智科技有限公司. All rights reserved.
 # https://www.qzso.com/ · managecode@gmail.com
 
+import asyncio
 import json
 import os
 import re
@@ -8,6 +9,7 @@ from typing import Any
 
 import anthropic
 from fastapi import FastAPI, HTTPException
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from .agent.loop import AnthropicLLM, OpenAICompatLLM, run_agent_loop
@@ -113,8 +115,9 @@ def _build_llm(config: dict[str, Any], model: str, max_tokens: int):
     return OpenAICompatLLM(client, model, max_tokens)
 
 
-@app.post("/v1/nodes/agent", response_model=AgentNodeResponse)
-async def run_agent_node(request: AgentNodeRequest) -> AgentNodeResponse:
+async def _prepare_agent(request: AgentNodeRequest):
+    """Resolve everything a run needs (llm, prompts, tools) from the request.
+    Shared by the buffered and streaming agent endpoints."""
     config = request.node_config
     model = config.get("model", "claude-sonnet-4-6")
     system_prompt = config.get("system_prompt", "You are a helpful AI assistant.")
@@ -156,8 +159,28 @@ async def run_agent_node(request: AgentNodeRequest) -> AgentNodeResponse:
         http_allow_public=http_allow_public,
     )
     max_iterations = int(config.get("max_iterations", 6))
-
     llm = _build_llm(config, model, max_tokens)
+    return llm, system_prompt, user_message, tools, max_iterations
+
+
+def _assemble_output(result) -> str:
+    """Fold an AgentResult into the node's output_json — the model's own fields
+    plus the usage and tool-call trace, without clobbering either."""
+    try:
+        parsed = json.loads(result.output)
+    except (json.JSONDecodeError, ValueError):
+        parsed = {"text": result.output}
+    # `_agent_steps` is [{tool, input, output}] per step so the run is
+    # observable/debuggable downstream instead of being discarded.
+    if isinstance(parsed, dict):
+        parsed.setdefault("_agent_usage", result.usage)
+        parsed.setdefault("_agent_steps", result.steps)
+    return json.dumps(parsed)
+
+
+@app.post("/v1/nodes/agent", response_model=AgentNodeResponse)
+async def run_agent_node(request: AgentNodeRequest) -> AgentNodeResponse:
+    llm, system_prompt, user_message, tools, max_iterations = await _prepare_agent(request)
     try:
         result = await run_agent_loop(
             llm, system_prompt, user_message, tools, max_iterations
@@ -165,19 +188,47 @@ async def run_agent_node(request: AgentNodeRequest) -> AgentNodeResponse:
     except anthropic.APIError as exc:
         raise HTTPException(status_code=502, detail=f"Anthropic API error: {exc}") from exc
 
-    try:
-        parsed = json.loads(result.output)
-    except (json.JSONDecodeError, ValueError):
-        parsed = {"text": result.output}
+    return AgentNodeResponse(output_json=_assemble_output(result))
 
-    # Attach token usage and the tool-call trace without disturbing the model's
-    # own fields. `_agent_steps` is [{tool, input, output}] per step so the run
-    # is observable/debuggable downstream instead of being discarded.
-    if isinstance(parsed, dict):
-        parsed.setdefault("_agent_usage", result.usage)
-        parsed.setdefault("_agent_steps", result.steps)
 
-    return AgentNodeResponse(output_json=json.dumps(parsed))
+@app.post("/v1/nodes/agent/stream")
+async def run_agent_node_stream(request: AgentNodeRequest) -> StreamingResponse:
+    """Same agent run, streamed: emits `data: {"delta": "..."}` SSE frames as the
+    model generates text, then a final `data: {"done": true, "output_json": ...}`
+    (or `{"error": ...}`). The buffered endpoint above is unchanged; callers that
+    don't want live tokens keep using it."""
+    llm, system_prompt, user_message, tools, max_iterations = await _prepare_agent(request)
+    loop = asyncio.get_running_loop()
+    queue: asyncio.Queue = asyncio.Queue()
+
+    def on_delta(text: str) -> None:
+        # Called from the SDK worker thread → hop back onto the event loop.
+        loop.call_soon_threadsafe(queue.put_nowait, {"delta": text})
+
+    async def drive() -> None:
+        try:
+            result = await run_agent_loop(
+                llm, system_prompt, user_message, tools, max_iterations,
+                on_text_delta=on_delta,
+            )
+            payload = {"done": True, "output_json": _assemble_output(result)}
+        except Exception as exc:  # surface the failure to the client, then stop
+            payload = {"error": str(exc)}
+        loop.call_soon_threadsafe(queue.put_nowait, payload)
+
+    task = asyncio.create_task(drive())
+
+    async def gen():
+        try:
+            while True:
+                item = await queue.get()
+                yield f"data: {json.dumps(item)}\n\n"
+                if "done" in item or "error" in item:
+                    break
+        finally:
+            task.cancel()
+
+    return StreamingResponse(gen(), media_type="text/event-stream")
 
 
 def _resolve_template(template: str, input_json: str, node_outputs: dict[str, str]) -> str:
