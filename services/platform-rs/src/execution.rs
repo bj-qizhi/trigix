@@ -1110,6 +1110,7 @@ where
 #[derive(Clone)]
 pub struct HttpExecutorClient<S> {
     endpoint: String,
+    stream_endpoint: String,
     http: reqwest::Client,
     store: S,
 }
@@ -1119,14 +1120,112 @@ where
     S: ExecutionStore,
 {
     pub fn new(base_url: impl Into<String>, store: S) -> Self {
+        let base = base_url.into();
+        let base = base.trim_end_matches('/');
         Self {
-            endpoint: format!(
-                "{}/v1/executions:run",
-                base_url.into().trim_end_matches('/')
-            ),
+            endpoint: format!("{base}/v1/executions:run"),
+            stream_endpoint: format!("{base}/v1/run-stream"),
             http: reqwest::Client::new(),
             store,
         }
+    }
+
+    /// Drive the remote executor's streaming endpoint, republishing each node and
+    /// token event onto the local execution bus (so live SSE subscribers see a
+    /// separate-mode run exactly like an inline one) and persisting node results.
+    /// Returns the final report, or `None` on any transport/stream trouble so the
+    /// caller falls back to the buffered endpoint.
+    async fn run_streaming(
+        &self,
+        record: &ExecutionRecord,
+        request: &RemoteRunExecutionRequest,
+    ) -> Option<ExecutionReport> {
+        use tokio_stream::StreamExt;
+
+        let response = self
+            .http
+            .post(&self.stream_endpoint)
+            .json(request)
+            .send()
+            .await
+            .ok()?;
+        if !response.status().is_success() {
+            return None;
+        }
+        let nodes_by_id: HashMap<String, String> = record
+            .graph
+            .nodes
+            .iter()
+            .map(|n| (n.id.clone(), node_type_to_str(&n.node_type).to_string()))
+            .collect();
+
+        let mut report: Option<ExecutionReport> = None;
+        let mut buf = String::new();
+        let mut stream = response.bytes_stream();
+        while let Some(chunk) = stream.next().await {
+            let bytes = chunk.ok()?;
+            buf.push_str(&String::from_utf8_lossy(&bytes));
+            while let Some(nl) = buf.find('\n') {
+                let line: String = buf.drain(..=nl).collect();
+                let data = match line.trim().strip_prefix("data:") {
+                    Some(d) => d.trim(),
+                    None => continue,
+                };
+                if data.is_empty() {
+                    continue;
+                }
+                let v: serde_json::Value = match serde_json::from_str(data) {
+                    Ok(v) => v,
+                    Err(_) => continue,
+                };
+                match v.get("kind").and_then(|k| k.as_str()) {
+                    Some("node") => {
+                        let Some(nr) = v.get("report").cloned() else {
+                            continue;
+                        };
+                        let Ok(nreport) = serde_json::from_value::<NodeReport>(nr) else {
+                            continue;
+                        };
+                        let node_type = nodes_by_id
+                            .get(&nreport.node_id)
+                            .cloned()
+                            .unwrap_or_else(|| "unknown".to_string());
+                        let rec = NodeExecutionRecord {
+                            node_id: nreport.node_id.clone(),
+                            node_type,
+                            status: nreport.status.clone(),
+                            output_json: nreport.output_json.clone(),
+                            error: nreport.error.clone(),
+                            duration_ms: nreport.duration_ms,
+                            started_at_ms: nreport.started_at_ms,
+                            retry_count: nreport.retry_count,
+                        };
+                        if let Ok(payload) = serde_json::to_string(&rec) {
+                            crate::execution_bus::publish(&record.id, "node", payload);
+                        }
+                        let _ = self
+                            .store
+                            .append_node_result(&record.tenant_id, &record.id, rec)
+                            .await;
+                    }
+                    Some("token") => {
+                        let node_id = v.get("node_id").and_then(|x| x.as_str()).unwrap_or("");
+                        let delta = v.get("delta").and_then(|x| x.as_str()).unwrap_or("");
+                        let payload =
+                            serde_json::json!({ "node_id": node_id, "delta": delta }).to_string();
+                        crate::execution_bus::publish(&record.id, "token", payload);
+                    }
+                    Some("report") => {
+                        report = v
+                            .get("report")
+                            .and_then(|r| serde_json::from_value(r.clone()).ok());
+                    }
+                    Some("error") => return None,
+                    _ => {}
+                }
+            }
+        }
+        report
     }
 }
 
@@ -1140,6 +1239,22 @@ where
             graph: record.graph.clone(),
             input_json: record.input_json.clone(),
         };
+
+        // Prefer the streaming endpoint so a separate/queue-mode run drives the
+        // same live node + token updates as inline; on any streaming trouble we
+        // fall back to the buffered request/response below.
+        if let Some(report) = self.run_streaming(record, &request).await {
+            let completed = self
+                .store
+                .complete(&record.tenant_id, &record.id, report)
+                .await?;
+            if let Ok(data) = serde_json::to_string(&completed) {
+                crate::execution_bus::publish(&record.id, "update", data);
+            }
+            crate::execution_bus::close(&record.id);
+            fire_callback_if_set(&completed);
+            return Ok(());
+        }
 
         let response = self
             .http

@@ -3,16 +3,24 @@
 
 use std::sync::Arc;
 
+use std::convert::Infallible;
+
 use axum::extract::State;
 use axum::http::StatusCode;
+use axum::response::sse::{Event as SseEvent, KeepAlive, Sse};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use serde::{Deserialize, Serialize};
+use tokio::sync::mpsc;
+use tokio_stream::wrappers::ReceiverStream;
 use workflow_core::{GraphError, WorkflowGraph};
 
 use crate::executor::DispatchingNodeExecutor;
-use crate::runtime::{run_workflow, ExecutionReport, RuntimeError};
+use crate::runtime::{
+    run_workflow, run_workflow_with_progress, ExecutionReport, NodeProgressCallback, NodeReport,
+    RuntimeError, TokenSink, TOKEN_SINK,
+};
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct RunExecutionRequest {
@@ -41,7 +49,88 @@ pub fn router_with_config(ai_runtime_base_url: Option<String>) -> Router {
     Router::new()
         .route("/healthz", get(healthz))
         .route("/v1/executions:run", post(run_execution))
+        .route("/v1/run-stream", post(run_execution_stream))
         .with_state(state)
+}
+
+/// Progress callback that forwards each completed node onto the SSE channel so a
+/// remote platform can observe the run live (mirrors the platform's inline
+/// StoreProgressCallback, but over the wire).
+struct ChannelProgress {
+    tx: mpsc::Sender<Result<SseEvent, Infallible>>,
+}
+
+impl NodeProgressCallback for ChannelProgress {
+    fn on_node_complete(&self, report: &NodeReport) {
+        if let Ok(report_json) = serde_json::to_string(report) {
+            let data = format!(r#"{{"kind":"node","report":{report_json}}}"#);
+            let _ = self
+                .tx
+                .try_send(Ok(SseEvent::default().event("node").data(data)));
+        }
+    }
+}
+
+/// Streaming twin of `run_execution`: emits `data:{"kind":"node"|"token"|
+/// "report"|"error", …}` SSE frames so a separate/queue-mode deployment gets the
+/// same live node + token updates the inline executor already provides. The
+/// buffered `:run` endpoint is unchanged; the platform falls back to it if this
+/// stream can't be reached.
+async fn run_execution_stream(
+    State(state): State<AppState>,
+    Json(request): Json<RunExecutionRequest>,
+) -> Sse<ReceiverStream<Result<SseEvent, Infallible>>> {
+    let (tx, rx) = mpsc::channel::<Result<SseEvent, Infallible>>(256);
+    let node_executor = (*state.executor).clone();
+
+    tokio::spawn(async move {
+        if let Err(err) = validate_request(&request) {
+            let data = serde_json::json!({ "kind": "error", "message": err.message }).to_string();
+            let _ = tx.try_send(Ok(SseEvent::default().event("error").data(data)));
+            return;
+        }
+
+        let progress = ChannelProgress { tx: tx.clone() };
+        let sink_tx = tx.clone();
+        let sink: TokenSink = std::sync::Arc::new(move |node_id: &str, delta: &str| {
+            let data = serde_json::json!({ "kind": "token", "node_id": node_id, "delta": delta })
+                .to_string();
+            let _ = sink_tx.try_send(Ok(SseEvent::default().event("token").data(data)));
+        });
+
+        let result = TOKEN_SINK
+            .scope(
+                Some(sink),
+                run_workflow_with_progress(
+                    request.execution_id,
+                    &request.graph,
+                    request.input_json,
+                    &node_executor,
+                    &progress,
+                    request.dry_run,
+                ),
+            )
+            .await;
+
+        let data = match result {
+            Ok(report) => match serde_json::to_string(&report) {
+                Ok(report_json) => format!(r#"{{"kind":"report","report":{report_json}}}"#),
+                Err(_) => r#"{"kind":"error","message":"SerializeReport"}"#.to_string(),
+            },
+            Err(err) => {
+                let message = ApiError::from(err).message;
+                serde_json::json!({ "kind": "error", "message": message }).to_string()
+            }
+        };
+        let event = if data.contains(r#""kind":"report""#) {
+            "report"
+        } else {
+            "error"
+        };
+        let _ = tx.try_send(Ok(SseEvent::default().event(event).data(data)));
+    });
+
+    Sse::new(ReceiverStream::new(rx)).keep_alive(KeepAlive::default())
 }
 
 async fn healthz() -> &'static str {
@@ -242,6 +331,72 @@ mod tests {
             .unwrap();
 
         assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn streaming_endpoint_emits_node_then_report_events() {
+        let response = test_router()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/run-stream")
+                    .header("content-type", "application/json")
+                    .body(Body::from(trigger_only_request().to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        let text = String::from_utf8_lossy(&body);
+        // The trigger node's completion is streamed, then the final report.
+        assert!(
+            text.contains(r#""kind":"node""#),
+            "missing node event: {text}"
+        );
+        assert!(
+            text.contains(r#""node_id":"trigger""#),
+            "missing trigger node: {text}"
+        );
+        assert!(
+            text.contains(r#""kind":"report""#),
+            "missing report event: {text}"
+        );
+        // ExecutionStatus serialises lowercase; the run should have succeeded.
+        assert!(
+            text.contains(r#""status":"succeeded""#),
+            "report should be succeeded: {text}"
+        );
+    }
+
+    #[tokio::test]
+    async fn streaming_endpoint_reports_invalid_input() {
+        let bad = json!({
+            "execution_id": "execution-1",
+            "graph": trigger_only_request()["graph"].clone(),
+            "input_json": ""
+        });
+        let response = test_router()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/run-stream")
+                    .header("content-type", "application/json")
+                    .body(Body::from(bad.to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        // The stream itself opens (200) and carries an error frame.
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        let text = String::from_utf8_lossy(&body);
+        assert!(
+            text.contains(r#""kind":"error""#),
+            "missing error event: {text}"
+        );
     }
 
     fn trigger_only_request() -> serde_json::Value {
