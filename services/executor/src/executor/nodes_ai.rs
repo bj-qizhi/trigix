@@ -56,6 +56,27 @@ pub(super) async fn execute_openai(
         "temperature": temperature,
     });
 
+    // When someone is watching this execution, stream tokens live; the final
+    // output_json is identical to the non-streamed path.
+    if super::nodes_stream::streaming_enabled() {
+        return match super::nodes_stream::stream_openai_chat(
+            http_client,
+            "https://api.openai.com/v1/chat/completions",
+            &api_key,
+            &node.id,
+            "OpenAI",
+            payload,
+        )
+        .await
+        {
+            Ok((content, usage)) => NodeExecutionResult::succeeded(
+                serde_json::json!({ "content": content, "model": model, "usage": usage })
+                    .to_string(),
+            ),
+            Err(e) => e,
+        };
+    }
+
     let resp = match http_client
         .post("https://api.openai.com/v1/chat/completions")
         .header("Authorization", format!("Bearer {api_key}"))

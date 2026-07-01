@@ -14,6 +14,28 @@ use serde::{Deserialize, Serialize};
 use tracing::{info, info_span, Instrument};
 use workflow_core::{GraphError, Node, NodeType, WorkflowGraph};
 
+/// A sink for streaming token deltas out of a node while it is still running:
+/// `sink(node_id, delta)`. The host (platform) installs one with
+/// `TOKEN_SINK.scope(...)` around the run; nodes emit through [`emit_token`]
+/// without knowing the transport. Absent → streaming is a no-op.
+pub type TokenSink = std::sync::Arc<dyn Fn(&str, &str) + Send + Sync>;
+
+tokio::task_local! {
+    pub static TOKEN_SINK: Option<TokenSink>;
+}
+
+/// Emit a token delta for `node_id` if a streaming sink is active for this
+/// task, otherwise a no-op. Safe to call from anywhere inside a node's execute
+/// future (task-locals are visible to in-task `join_all` children, which is how
+/// the driver runs a level).
+pub fn emit_token(node_id: &str, delta: &str) {
+    let _ = TOKEN_SINK.try_with(|s| {
+        if let Some(sink) = s.as_ref() {
+            sink(node_id, delta);
+        }
+    });
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ExecutionStatus {

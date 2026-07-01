@@ -38,6 +38,10 @@ use nodes_storage_ext::*;
 mod nodes_cn_llm;
 use nodes_cn_llm::*;
 
+// Streaming (SSE) chat helper for OpenAI-compatible LLM nodes.
+// Referenced via `super::nodes_stream::…` from the node modules.
+mod nodes_stream;
+
 // Vector-store nodes (Weaviate / Chroma) over HTTP.
 mod nodes_vector;
 use nodes_vector::*;

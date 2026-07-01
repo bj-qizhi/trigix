@@ -17,6 +17,8 @@ import type { WorkflowRecord, ExecutionRecord, ExecutionSummary, EnvSetSummary, 
 export interface WorkflowRunState {
   execution: ExecutionRecord | null
   setExecution: Dispatch<SetStateAction<ExecutionRecord | null>>
+  /** Live-streamed token text per node id, accumulated before the node finishes. */
+  streamingText: Record<string, string>
   recentExecutions: ExecutionSummary[]
   running: boolean
   inputJson: string
@@ -49,6 +51,7 @@ export interface WorkflowRunOptions {
 export function useWorkflowRun({ workflowId, workflow, zh, toast, initialInput }: WorkflowRunOptions): WorkflowRunState {
   const { auth } = useAuth()
   const [execution, setExecution] = useState<ExecutionRecord | null>(null)
+  const [streamingText, setStreamingText] = useState<Record<string, string>>({})
   const [recentExecutions, setRecentExecutions] = useState<ExecutionSummary[]>([])
   const [inputJson, setInputJson] = useState(initialInput ?? '{}')
   const [running, setRunning] = useState(false)
@@ -80,6 +83,7 @@ export function useWorkflowRun({ workflowId, workflow, zh, toast, initialInput }
   // Stream live execution updates via SSE (fall back to polling)
   useEffect(() => {
     if (!execution || execution.status !== 'running') return
+    setStreamingText({}) // fresh run → clear any previous token buffer
     const stored = getStoredAuth()
     let source: EventSource | null = null
     let pollTimer: ReturnType<typeof setInterval> | null = null
@@ -109,6 +113,13 @@ export function useWorkflowRun({ workflowId, workflow, zh, toast, initialInput }
               ...prev,
               node_results: [...prev.node_results.filter((n) => n.node_id !== nr.node_id), nr],
             })
+          } catch { /* ignore parse errors */ }
+        })
+        // Live token deltas from LLM nodes (before the node finishes).
+        source.addEventListener('token', (ev) => {
+          try {
+            const { node_id, delta } = JSON.parse((ev as MessageEvent).data) as { node_id: string; delta: string }
+            setStreamingText((prev) => ({ ...prev, [node_id]: (prev[node_id] ?? '') + delta }))
           } catch { /* ignore parse errors */ }
         })
         source.onerror = () => {
@@ -183,7 +194,7 @@ export function useWorkflowRun({ workflowId, workflow, zh, toast, initialInput }
   }
 
   return {
-    execution, setExecution, recentExecutions, running,
+    execution, setExecution, streamingText, recentExecutions, running,
     inputJson, setInputJson,
     envSets, envSet, setEnvSet,
     runLabel, setRunLabel,

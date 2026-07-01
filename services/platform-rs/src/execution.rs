@@ -1023,16 +1023,29 @@ where
             nodes_by_id: std::sync::Arc::new(nodes_by_id),
         };
 
-        let report = run_workflow_with_progress(
-            record.id.clone(),
-            &record.graph,
-            record.input_json.clone(),
-            &node_executor,
-            &progress,
-            record.dry_run,
-        )
-        .await
-        .map_err(|_| ExecutionError::ExecutorUnavailable)?;
+        // Install a token sink so LLM nodes can stream deltas to the execution
+        // bus in real time while this run executes. The final node output is
+        // unchanged whether or not streaming happens.
+        let stream_exec_id = record.id.clone();
+        let token_sink: execution_core::TokenSink =
+            std::sync::Arc::new(move |node_id: &str, delta: &str| {
+                let data = serde_json::json!({ "node_id": node_id, "delta": delta }).to_string();
+                crate::execution_bus::publish(&stream_exec_id, "token", data);
+            });
+        let report = execution_core::TOKEN_SINK
+            .scope(
+                Some(token_sink),
+                run_workflow_with_progress(
+                    record.id.clone(),
+                    &record.graph,
+                    record.input_json.clone(),
+                    &node_executor,
+                    &progress,
+                    record.dry_run,
+                ),
+            )
+            .await
+            .map_err(|_| ExecutionError::ExecutorUnavailable)?;
 
         let completed = self
             .store

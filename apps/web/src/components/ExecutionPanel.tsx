@@ -33,6 +33,7 @@ function validateInput(json: string, schema: InputField[]): string[] {
 
 interface Props {
   execution: ExecutionRecord | null
+  streamingText?: Record<string, string>
   running: boolean
   inputJson: string
   onInputChange: (v: string) => void
@@ -82,7 +83,7 @@ function usePresets(workflowId?: string) {
   return { load, save }
 }
 
-export function ExecutionPanel({ execution, running, inputJson, onInputChange, onRun, canRun, onApprove, onReject, inputSchema = [], envSets = [], envSet = 'default', onEnvSetChange, label = '', onLabelChange, callbackUrl = '', onCallbackUrlChange, workflowId, dryRun = false, onDryRunChange, lastRunInput }: Props) {
+export function ExecutionPanel({ execution, streamingText = {}, running, inputJson, onInputChange, onRun, canRun, onApprove, onReject, inputSchema = [], envSets = [], envSet = 'default', onEnvSetChange, label = '', onLabelChange, callbackUrl = '', onCallbackUrlChange, workflowId, dryRun = false, onDryRunChange, lastRunInput }: Props) {
   const { locale } = useLocale()
   const zh = locale === 'zh'
   const [approvalComment, setApprovalComment] = useState('')
@@ -386,7 +387,20 @@ export function ExecutionPanel({ execution, running, inputJson, onInputChange, o
 
       {execution && (
         <div className="exec-panel-body">
-          {execution.node_results.length === 0 && (
+          {/* Live token stream for LLM nodes still generating (before their
+              final result row lands). */}
+          {Object.entries(streamingText)
+            .filter(([id, text]) => text && !execution.node_results.some((n) => n.node_id === id && (n.status === 'succeeded' || n.status === 'failed')))
+            .map(([id, text]) => (
+              <div key={`stream-${id}`} className="exec-node-row">
+                <span className="dot dot-running" style={{ marginTop: 4 }} />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <code style={{ fontSize: 11, color: 'var(--link)' }}>{id}</code>
+                  <div className="exec-node-output" style={{ whiteSpace: 'pre-wrap' }}>{text}<span style={{ opacity: 0.6 }}>▌</span></div>
+                </div>
+              </div>
+            ))}
+          {execution.node_results.length === 0 && Object.keys(streamingText).length === 0 && (
             <span style={{ color: 'var(--muted)', fontSize: 12 }}>{zh ? '暂无节点结果。' : 'No node results.'}</span>
           )}
           {execution.node_results.map((nr) => (

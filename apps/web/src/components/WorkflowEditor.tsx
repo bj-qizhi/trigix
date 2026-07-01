@@ -535,7 +535,7 @@ export function WorkflowEditor({ workflowId, onBack, initialInput }: Props) {
   // and run/approve/reject — lives in a dedicated hook (see editor/useWorkflowRun).
   const run = useWorkflowRun({ workflowId, workflow, zh, toast, initialInput })
   const {
-    execution, setExecution, recentExecutions, running,
+    execution, setExecution, streamingText, recentExecutions, running,
     inputJson, setInputJson,
     envSets, envSet, setEnvSet,
     runLabel, setRunLabel,
@@ -1489,6 +1489,7 @@ export function WorkflowEditor({ workflowId, onBack, initialInput }: Props) {
         {/* Bottom execution panel */}
         <ExecutionPanel
           execution={execution}
+          streamingText={streamingText}
           running={running}
           inputJson={inputJson}
           onInputChange={setInputJson}
