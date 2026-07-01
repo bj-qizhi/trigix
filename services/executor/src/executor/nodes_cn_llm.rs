@@ -27,16 +27,40 @@ async fn openai_compat_chat(
         "temperature": temperature,
     });
 
-    let resp = match http_client
-        .post(base_url)
-        .header("Authorization", format!("Bearer {api_key}"))
-        .header("Content-Type", "application/json")
-        .json(&payload)
-        .send()
-        .await
-    {
-        Ok(r) => r,
-        Err(e) => return NodeExecutionResult::failed(format!("{node_name} request error: {e}")),
+    // Retry transient failures (connect/timeout, 429, 5xx) with exponential
+    // backoff — these OpenAI-compatible providers routinely rate-limit, and a
+    // plain LLM node otherwise fails the whole run on a blip. Covers every
+    // node that routes through this shared helper.
+    let mut delay = std::time::Duration::from_millis(500);
+    let mut attempt = 0u32;
+    let resp = loop {
+        attempt += 1;
+        match http_client
+            .post(base_url)
+            .header("Authorization", format!("Bearer {api_key}"))
+            .header("Content-Type", "application/json")
+            .json(&payload)
+            .send()
+            .await
+        {
+            Ok(r) => {
+                let s = r.status();
+                if (s.as_u16() == 429 || s.is_server_error()) && attempt < 3 {
+                    tokio::time::sleep(delay).await;
+                    delay *= 2;
+                    continue;
+                }
+                break r;
+            }
+            Err(e) => {
+                if (e.is_timeout() || e.is_connect()) && attempt < 3 {
+                    tokio::time::sleep(delay).await;
+                    delay *= 2;
+                    continue;
+                }
+                return NodeExecutionResult::failed(format!("{node_name} request error: {e}"));
+            }
+        }
     };
 
     let status = resp.status();
