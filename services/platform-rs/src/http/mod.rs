@@ -372,6 +372,60 @@ fn spawn_credential_expiry_checker(state: AppState) {
 }
 
 /// Spawns the Redis Streams execution queue worker.
+/// Bridges the in-process execution bus to Redis pub/sub so live node + token
+/// events reach SSE clients on *other* instances (needed when a queue worker or
+/// executor on instance A runs a job whose viewer is connected to instance B).
+/// No-op without Redis → single-instance stays purely local.
+fn spawn_execution_bus_bridge(state: AppState) {
+    if !state.cache.is_available() {
+        return;
+    }
+    let channel = crate::cache::keys::exec_events_bus_channel();
+
+    // Fan every local publish out to Redis, tagged with this instance's id.
+    let cache = state.cache.clone();
+    crate::execution_bus::set_remote(std::sync::Arc::new(
+        move |exec_id: &str, event: &str, data: &str| {
+            let payload = serde_json::json!({
+                "origin": crate::execution_bus::INSTANCE_ID.as_str(),
+                "execution_id": exec_id,
+                "event": event,
+                "data": data,
+            })
+            .to_string();
+            let cache = cache.clone();
+            tokio::spawn(async move { cache.publish(channel, &payload).await });
+        },
+    ));
+
+    // Pull other instances' events into this instance's local bus.
+    tokio::spawn(async move {
+        use tokio_stream::StreamExt;
+        let Some(mut stream) = state.cache.subscribe_channel(channel).await else {
+            return;
+        };
+        tracing::info!("Execution bus Redis bridge started");
+        while let Some(payload) = stream.next().await {
+            let Ok(v) = serde_json::from_str::<serde_json::Value>(&payload) else {
+                continue;
+            };
+            if v.get("origin").and_then(|x| x.as_str())
+                == Some(crate::execution_bus::INSTANCE_ID.as_str())
+            {
+                continue; // our own echo — already delivered locally
+            }
+            let (Some(exec_id), Some(event), Some(data)) = (
+                v.get("execution_id").and_then(|x| x.as_str()),
+                v.get("event").and_then(|x| x.as_str()),
+                v.get("data").and_then(|x| x.as_str()),
+            ) else {
+                continue;
+            };
+            crate::execution_bus::deliver_from_remote(exec_id, event, data.to_string());
+        }
+    });
+}
+
 /// Reads from `af:exec:queue` stream using consumer group `af:exec:workers`.
 /// Each message contains a serialized `ExecutionRecord`; the worker runs it inline
 /// and ACKs the message on completion.
@@ -947,6 +1001,7 @@ pub fn router_with_all_stores(
     };
     spawn_schedule_runner(state.clone());
     spawn_execution_timeout_guard(state.clone());
+    spawn_execution_bus_bridge(state.clone());
     if state.cache.is_available() {
         spawn_queue_worker(state.clone());
     }

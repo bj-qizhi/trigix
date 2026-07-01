@@ -93,6 +93,29 @@ impl CacheClient {
         }
     }
 
+    /// Subscribe to a Redis channel on a dedicated pub/sub connection (the
+    /// multiplexed manager can't block on SUBSCRIBE), returning a stream of
+    /// message payloads. `None` when Redis isn't configured or the connection
+    /// fails — the caller then runs single-instance (local bus only).
+    pub async fn subscribe_channel(
+        &self,
+        channel: &str,
+    ) -> Option<impl tokio_stream::Stream<Item = String>> {
+        use tokio_stream::StreamExt;
+        if !self.is_available() {
+            return None;
+        }
+        let url = std::env::var("REDIS_URL").ok()?;
+        let client = redis::Client::open(url).ok()?;
+        let mut pubsub = client.get_async_pubsub().await.ok()?;
+        pubsub.subscribe(channel).await.ok()?;
+        Some(
+            pubsub
+                .into_on_message()
+                .map(|msg| msg.get_payload::<String>().unwrap_or_default()),
+        )
+    }
+
     // ── Redis Streams (for distributed execution queue) ───────────────────────
 
     /// XADD — append a message to a stream. Returns the message ID or None on error/Noop.
@@ -325,6 +348,13 @@ pub mod keys {
 
     pub fn execution_events_channel(execution_id: &str) -> String {
         format!("af:events:{execution_id}")
+    }
+
+    /// Single fan-out channel carrying every execution's live bus events between
+    /// instances. The payload carries the execution id + originating instance, so
+    /// one subscription covers all executions.
+    pub fn exec_events_bus_channel() -> &'static str {
+        "af:exec:bus"
     }
 
     pub fn exec_queue_stream() -> &'static str {
