@@ -73,7 +73,7 @@ Default dev API key: `dev`
 **Kubernetes (Helm chart, published to GHCR):**
 
 ```bash
-helm install trigix oci://ghcr.io/bj-qizhi/charts/trigix --version 0.3.3 \
+helm install trigix oci://ghcr.io/bj-qizhi/charts/trigix --version 0.3.4 \
   --namespace trigix --create-namespace
 ```
 
