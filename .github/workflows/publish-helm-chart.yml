@@ -34,8 +34,10 @@ jobs:
 
       - name: Lint and render
         run: |
-          helm lint charts/trigix
-          helm template t charts/trigix > /dev/null
+          # The fail-closed credential guard requires a key (or explicit
+          # plaintext opt-in) to render — supply a throwaway one for validation.
+          helm lint charts/trigix --set secrets.credentialMasterKey=ci-render-key
+          helm template t charts/trigix --set secrets.credentialMasterKey=ci-render-key > /dev/null
 
       - name: Check the tag matches Chart.yaml version
         if: startsWith(github.ref, 'refs/tags/')
