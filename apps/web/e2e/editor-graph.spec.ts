@@ -142,6 +142,62 @@ test('editing a node config and saving sends the new value in the version graph'
   expect(errors, errors.join('\n')).toHaveLength(0)
 })
 
+test('openai_compat node configures on the canvas, and a legacy vendor node migrates on load', async ({ page }) => {
+  const errors = trackErrors(page)
+  await mockBackend(page)
+  const posts = captureVersionPosts(page)
+  // A graph with the new generic node AND a legacy per-vendor node (grok) that
+  // must migrate to openai_compat on load. Later route wins in Playwright.
+  const V2 = {
+    ...VERSION,
+    graph: {
+      workflow_version_id: 'v1',
+      nodes: [
+        { id: 'trigger', type: 'trigger', config: {} },
+        { id: 'oc', type: 'openai_compat', config: { provider: 'deepseek', model: 'deepseek-v4-flash', prompt_template: 'hi' } },
+        { id: 'legacy', type: 'grok', config: { api_key: 'x', prompt_template: 'hi' } },
+      ],
+      edges: [{ source: 'trigger', target: 'oc' }, { source: 'oc', target: 'legacy' }],
+    },
+  }
+  await page.route(/\/v1\/workflow-versions\/v1/, (r) => r.fulfill({ json: V2 }))
+
+  await page.goto('/')
+  await page.getByText('Editor WF').click()
+  // Both nodes render — the legacy grok survived the on-load migration.
+  await expect(page.getByTestId('rf__node-oc')).toBeVisible({ timeout: 10_000 })
+  await expect(page.getByTestId('rf__node-legacy')).toBeVisible()
+
+  // Config panel for the generic node shows the Provider preset select.
+  await page.getByTestId('rf__node-oc').click({ position: { x: 10, y: 10 } })
+  const select = page.locator('.config-panel-body select').first()
+  await expect(select).toBeVisible()
+  // Edit the model field (located by its current value) to prove config edits stick.
+  const inputs = page.locator('.config-panel-body input')
+  let modelField = null
+  for (let i = 0; i < (await inputs.count()); i++) {
+    if ((await inputs.nth(i).inputValue()).includes('deepseek-v4-flash')) { modelField = inputs.nth(i); break }
+  }
+  expect(modelField, 'model field should be present').not.toBeNull()
+  await modelField!.fill('deepseek-v4-pro')
+
+  await blurToCanvas(page)
+  await page.keyboard.press('Control+s')
+
+  await expect.poll(() => posts.length).toBeGreaterThan(0)
+  const saved = posts.at(-1)!.graph.nodes
+  // Generic node persists with the edited model.
+  const oc = saved.find((n) => n.id === 'oc')
+  expect(oc?.type).toBe('openai_compat')
+  expect(oc?.config.model).toBe('deepseek-v4-pro')
+  // Legacy grok node was migrated to openai_compat with provider injected.
+  const legacy = saved.find((n) => n.id === 'legacy')
+  expect(legacy?.type).toBe('openai_compat')
+  expect(legacy?.config.provider).toBe('grok')
+
+  expect(errors, errors.join('\n')).toHaveLength(0)
+})
+
 test('deleting a node removes it (and its edges) from the saved graph', async ({ page }) => {
   const errors = trackErrors(page)
   await mockBackend(page)
