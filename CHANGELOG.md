@@ -4,21 +4,38 @@ All notable changes to Trigix will be documented in this file.
 
 ## [Unreleased]
 
-### Security
+## [1.4.0] - 2026-07-02
 
-- **Credential encryption is now fail-closed.** Stored secrets (credential
-  values and SSO/OIDC client secrets) are encrypted at rest with AES-256-GCM via
-  `CREDENTIAL_MASTER_KEY`. Previously a missing key — or even an encryption error
-  while a key *was* configured — silently fell back to writing **plaintext** to
-  the database. Now:
-  - When a key is configured, an encryption failure fails closed (never
-    downgrades to plaintext-at-rest).
-  - When a persistent `DATABASE_URL` is configured but no `CREDENTIAL_MASTER_KEY`
-    is set, the platform refuses to start. Set `ALLOW_PLAINTEXT_CREDENTIALS=true`
-    to explicitly opt into plaintext-at-rest for local/dev use.
+Live token streaming across every deployment mode, retrieval-augmented
+generation as a first-class node, a round of AI-node correctness fixes, and the
+consolidation of the per-vendor LLM nodes — plus the fail-closed credential
+encryption staged since 1.3.0.
+
+### Added
+
+- **Live token streaming — "watch the AI type" — end to end.** LLM and agent
+  output now streams into the run view token-by-token instead of appearing only
+  when the node finishes. An in-process execution event bus (bypassing the DB)
+  plus a task-local token sink carry deltas from every direct LLM node (OpenAI,
+  Gemini, Claude, and the OpenAI-compatible providers) and from the agent (across
+  the ai-runtime boundary). Works in inline, separate-HTTP-executor, and
+  multi-instance / queue deployments (the last via a Redis pub/sub bridge). The
+  final node output is byte-identical to the non-streamed path.
+- **Retrieval-augmented generation as a node.** The `rag` node gains a `generate`
+  mode: it retrieves from the knowledge base, grounds a prompt on the retrieved
+  chunks, and has an LLM answer — returning `{answer, sources, usage}` (with live
+  streaming) instead of only raw chunks. New `POST /v1/rag/generate` (and
+  `/generate/stream`) endpoints.
 
 ### Changed
 
+- **Consolidated eight per-vendor LLM nodes into one `openai_compat` node.**
+  grok / ollama / deepseek / qwen / zhipu / moonshot / doubao / hunyuan were
+  identical shells over the same OpenAI-compatible call; they are now a single
+  node whose `config.provider` selects a preset endpoint + default model (or
+  `config.base_url` targets any other endpoint). Existing workflows migrate
+  transparently on load — the vendor name becomes `config.provider` — so no
+  action is required. (`minimax` / `ernie` stay separate: vendor-specific auth.)
 - **BREAKING (ops):** Persistent deployments must now provide
   `CREDENTIAL_MASTER_KEY` (or explicitly set `ALLOW_PLAINTEXT_CREDENTIALS=true`).
   The Helm chart fails the install with a clear message when neither is set
@@ -26,6 +43,38 @@ All notable changes to Trigix will be documented in this file.
   production Compose file requires `CREDENTIAL_MASTER_KEY` at parse time.
   Existing installs that relied on the silent plaintext fallback must set one of
   these to start. In-memory (no-database) mode is unaffected.
+
+### Fixed
+
+- **RAG search never mixes embedding backends.** Each stored chunk records the
+  embedding backend that produced it; vector search only compares vectors from
+  the active backend, so a knowledge base ingested under one backend and queried
+  under another no longer returns nonsense-ranked results.
+- **Real JSONPath-lite field addressing.** The shared path resolver
+  (extract / filter / sort / aggregate / dedupe / join) now understands bracket
+  indices (`items[0]`), quoted keys (`['a.b']`), an optional leading `$`, and the
+  `[*]` wildcard (extract returns every match as an array); plain dot paths are
+  unchanged.
+- **Data / AI node correctness:** the `regex` node does real regex matching
+  (numbered + named capture groups), `csv` parses RFC-4180 (quoted fields with
+  commas) instead of naive splitting, `video_gen` fails loudly on an empty result
+  URL, the agent's tool-call trace is exposed in its output, Chinese text no
+  longer produces zero embedding vectors, and RAG hybrid search applies
+  `min_score` to the vector half while batching and offloading remote embedding
+  calls off the event loop.
+- Transient LLM failures (429 / 5xx / connect / timeout) are retried with
+  exponential backoff in the shared OpenAI-compatible call, not only in the agent
+  loop.
+
+### Security
+
+- **Credential encryption is now fail-closed.** Stored secrets (credential
+  values and SSO/OIDC client secrets) are encrypted at rest with AES-256-GCM via
+  `CREDENTIAL_MASTER_KEY`. Previously a missing key — or even an encryption error
+  while a key *was* configured — silently fell back to writing **plaintext** to
+  the database. Now an encryption failure fails closed (never downgrades to
+  plaintext-at-rest), and a persistent deployment without a key refuses to start
+  unless `ALLOW_PLAINTEXT_CREDENTIALS=true` is set.
 
 ## [1.3.0] - 2026-06-16
 
