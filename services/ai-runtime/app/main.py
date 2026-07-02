@@ -231,6 +231,144 @@ async def run_agent_node_stream(request: AgentNodeRequest) -> StreamingResponse:
     return StreamingResponse(gen(), media_type="text/event-stream")
 
 
+# ── RAG end-to-end generation ────────────────────────────────────────────────
+# Retrieve from a knowledge base, stuff the chunks into a grounded prompt, and
+# have an LLM answer — so a `rag` node in "generate" mode returns a finished
+# answer (+ its sources) instead of only raw chunks.
+
+
+class RagGenerateRequest(BaseModel):
+    tenant_id: str
+    kb: str
+    query: str
+    top_k: int = 4
+    mode: str = "vector"
+    min_score: float | None = None
+    rerank: bool = False
+    model: str = "claude-sonnet-4-6"
+    system_prompt: str = (
+        "You are a helpful assistant. Answer the question using ONLY the provided "
+        "context. If the context does not contain the answer, say you don't know "
+        "rather than guessing."
+    )
+    max_tokens: int = 1024
+    api_key: str | None = None
+    base_url: str | None = None
+    provider: str | None = None
+
+
+class RagSource(BaseModel):
+    doc_id: str
+    chunk_index: int
+    content: str
+    score: float
+
+
+class RagGenerateResponse(BaseModel):
+    answer: str
+    sources: list[RagSource]
+    usage: dict
+
+
+async def _rag_retrieve(req: RagGenerateRequest):
+    from .rag.router import get_store
+
+    store = await get_store()
+    top_k = max(1, min(req.top_k, 50))
+    mode = req.mode if req.mode in ("vector", "hybrid") else "vector"
+    return await store.query(
+        req.tenant_id, req.kb, req.query, top_k,
+        mode=mode, min_score=req.min_score, rerank=req.rerank,
+    )
+
+
+def _rag_llm(req: RagGenerateRequest):
+    config = {
+        "model": req.model,
+        "api_key": req.api_key,
+        "base_url": req.base_url,
+        "provider": req.provider,
+    }
+    return _build_llm(config, req.model, req.max_tokens)
+
+
+def _rag_prompt(query: str, hits) -> str:
+    context = (
+        "\n\n".join(f"[{i + 1}] {h.content}" for i, h in enumerate(hits))
+        if hits
+        else "(no relevant context found)"
+    )
+    return f"Context:\n{context}\n\nQuestion: {query}"
+
+
+def _rag_sources(hits) -> list[RagSource]:
+    return [
+        RagSource(doc_id=h.doc_id, chunk_index=h.chunk_index, content=h.content, score=h.score)
+        for h in hits
+    ]
+
+
+@app.post("/v1/rag/generate", response_model=RagGenerateResponse)
+async def rag_generate(req: RagGenerateRequest) -> RagGenerateResponse:
+    hits = await _rag_retrieve(req)
+    llm = _rag_llm(req)
+    try:
+        resp = await llm.respond(
+            req.system_prompt,
+            [{"role": "user", "content": _rag_prompt(req.query, hits)}],
+            [],
+        )
+    except anthropic.APIError as exc:
+        raise HTTPException(status_code=502, detail=f"LLM error: {exc}") from exc
+    return RagGenerateResponse(answer=resp.text or "", sources=_rag_sources(hits), usage=resp.usage)
+
+
+@app.post("/v1/rag/generate/stream")
+async def rag_generate_stream(req: RagGenerateRequest) -> StreamingResponse:
+    """Streaming RAG generate: `data:{"delta":…}` frames, then a final
+    `{"done": true, "output_json": …}` / `{"error": …}` — the same frame shape as
+    the agent stream, so the executor consumes both identically."""
+    hits = await _rag_retrieve(req)
+    llm = _rag_llm(req)
+    loop = asyncio.get_running_loop()
+    queue: asyncio.Queue = asyncio.Queue()
+
+    def on_delta(text: str) -> None:
+        loop.call_soon_threadsafe(queue.put_nowait, {"delta": text})
+
+    async def drive() -> None:
+        try:
+            resp = await llm.respond(
+                req.system_prompt,
+                [{"role": "user", "content": _rag_prompt(req.query, hits)}],
+                [],
+                on_text_delta=on_delta,
+            )
+            output = json.dumps({
+                "answer": resp.text or "",
+                "sources": [s.model_dump() for s in _rag_sources(hits)],
+                "usage": resp.usage,
+            })
+            payload = {"done": True, "output_json": output}
+        except Exception as exc:
+            payload = {"error": str(exc)}
+        loop.call_soon_threadsafe(queue.put_nowait, payload)
+
+    task = asyncio.create_task(drive())
+
+    async def gen():
+        try:
+            while True:
+                item = await queue.get()
+                yield f"data: {json.dumps(item)}\n\n"
+                if "done" in item or "error" in item:
+                    break
+        finally:
+            task.cancel()
+
+    return StreamingResponse(gen(), media_type="text/event-stream")
+
+
 def _resolve_template(template: str, input_json: str, node_outputs: dict[str, str]) -> str:
     """Replace {{expr}} patterns. expr = 'input', 'input.a.b', 'node_id', 'node_id.a.b'."""
     def resolve_expr(m: re.Match) -> str:

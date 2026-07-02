@@ -932,6 +932,39 @@ export function RagConfig({ config, set, str, num }: ConfigProps) {
         </span>
       </div>
       <div className="field">
+        <label style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <input type="checkbox" checked={Boolean(config['generate'])} onChange={(e) => set('generate', e.target.checked || undefined)} />
+          {fl("Generate an answer (end-to-end RAG)")}
+        </label>
+        <span style={{ fontSize: 11, color: 'var(--muted)' }}>
+          {fl("Retrieve, then have an LLM answer from the chunks. Output becomes {answer, sources, usage} — streams live when the run is watched.")}
+        </span>
+      </div>
+      {Boolean(config['generate']) && (
+        <>
+          <div className="field">
+            <label>{fl("Model")}</label>
+            <input placeholder="claude-sonnet-4-6" value={str('model')} onChange={(e) => set('model', e.target.value)} />
+          </div>
+          <div className="field">
+            <label>{fl("System prompt")}</label>
+            <textarea rows={2} value={str('system_prompt')} onChange={(e) => set('system_prompt', e.target.value)} placeholder={fl("Answer using only the provided context…")} />
+          </div>
+          <div className="field">
+            <label>{fl("Max tokens")}</label>
+            <input type="number" min={1} value={num('max_tokens', 1024)} onChange={(e) => set('max_tokens', e.target.value ? parseInt(e.target.value) : 1024)} />
+          </div>
+          <div className="field">
+            <label>{fl("API key")}</label>
+            <input value={str('api_key')} onChange={(e) => set('api_key', e.target.value)} placeholder="{{credential.openai}}" />
+          </div>
+          <div className="field">
+            <label>{fl("Base URL (OpenAI-compatible, optional)")}</label>
+            <input value={str('base_url')} onChange={(e) => set('base_url', e.target.value)} placeholder="https://…/v1/chat/completions" />
+          </div>
+        </>
+      )}
+      <div className="field">
         <label>{fl("Tenant ID")}</label>
         <input placeholder="tenant-1" value={str('tenant_id')} onChange={(e) => set('tenant_id', e.target.value)} />
       </div>

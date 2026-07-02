@@ -337,6 +337,31 @@ struct RagQueryRequest {
     rerank: bool,
 }
 
+/// Retrieval + generation: same retrieval fields plus the LLM to answer with.
+#[derive(Serialize)]
+struct RagGenerateRequest {
+    tenant_id: String,
+    kb: String,
+    query: String,
+    top_k: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    mode: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    min_score: Option<f64>,
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    rerank: bool,
+    model: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    system_prompt: Option<String>,
+    max_tokens: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    api_key: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    base_url: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    provider: Option<String>,
+}
+
 /// Retrieval-Augmented Generation: query a pgvector knowledge base through the
 /// AI runtime (`POST /v1/rag/query`) and return the retrieved chunks as JSON.
 /// Downstream nodes can reference them via `{{node_id.results}}`.
@@ -381,6 +406,77 @@ pub(super) async fn execute_rag(
         .map(|s| s.to_string());
     let min_score = cfg.get("min_score").and_then(|v| v.as_f64());
     let rerank = cfg.get("rerank").and_then(|v| v.as_bool()).unwrap_or(false);
+
+    // "generate" mode: retrieve, then have an LLM answer from the chunks — the
+    // node returns {answer, sources, usage} instead of raw results. Streams when
+    // a sink is active (same SSE frames as the agent, so stream_agent handles it).
+    if cfg
+        .get("generate")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false)
+    {
+        let request = RagGenerateRequest {
+            tenant_id: tenant_id.clone(),
+            kb: kb.clone(),
+            query: query.clone(),
+            top_k,
+            mode: mode.clone(),
+            min_score,
+            rerank,
+            model: cfg
+                .get("model")
+                .and_then(|v| v.as_str())
+                .unwrap_or("claude-sonnet-4-6")
+                .to_string(),
+            system_prompt: cfg
+                .get("system_prompt")
+                .and_then(|v| v.as_str())
+                .map(|s| resolve_template(s, context))
+                .filter(|s| !s.is_empty()),
+            max_tokens: node_config_u64(node, "max_tokens").unwrap_or(1024),
+            api_key: cfg
+                .get("api_key")
+                .and_then(|v| v.as_str())
+                .map(|s| resolve_template(s, context))
+                .filter(|s| !s.is_empty()),
+            base_url: cfg
+                .get("base_url")
+                .and_then(|v| v.as_str())
+                .map(|s| resolve_template(s, context))
+                .filter(|s| !s.is_empty()),
+            provider: cfg
+                .get("provider")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string()),
+        };
+
+        if super::nodes_stream::streaming_enabled() {
+            let stream_ep = format!("{}/v1/rag/generate/stream", base_url.trim_end_matches('/'));
+            if let Ok(resp) = client.post(&stream_ep).json(&request).send().await {
+                if resp.status().is_success() {
+                    if let Ok(output) = super::nodes_stream::stream_agent(resp, &node.id).await {
+                        return NodeExecutionResult::succeeded(output);
+                    }
+                }
+            }
+        }
+
+        let gen_ep = format!("{}/v1/rag/generate", base_url.trim_end_matches('/'));
+        return match client.post(&gen_ep).json(&request).send().await {
+            Ok(response) if response.status().is_success() => match response.text().await {
+                Ok(body) => NodeExecutionResult::succeeded(body),
+                Err(e) => NodeExecutionResult::failed(format!(
+                    "Failed to read RAG generate response: {e}"
+                )),
+            },
+            Ok(response) => {
+                let status = response.status();
+                let body = response.text().await.unwrap_or_default();
+                NodeExecutionResult::failed(format!("AI Runtime returned {status}: {body}"))
+            }
+            Err(e) => NodeExecutionResult::failed(format!("Failed to reach AI Runtime: {e}")),
+        };
+    }
 
     let endpoint = format!("{}/v1/rag/query", base_url.trim_end_matches('/'));
     let request = RagQueryRequest {
