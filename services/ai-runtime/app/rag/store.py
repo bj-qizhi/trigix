@@ -15,7 +15,7 @@ from dataclasses import dataclass
 
 import asyncpg
 
-from .embeddings import EMBED_DIM, embed, embed_one
+from .embeddings import EMBED_DIM, backend_name, embed, embed_one
 
 
 def _vec_literal(vec: list[float]) -> str:
@@ -72,16 +72,24 @@ class RagStore:
             await conn.execute(
                 f"""
                 CREATE TABLE IF NOT EXISTS af_kb_chunks (
-                    id          TEXT PRIMARY KEY,
-                    tenant_id   TEXT NOT NULL,
-                    kb          TEXT NOT NULL,
-                    doc_id      TEXT NOT NULL,
-                    chunk_index INT  NOT NULL,
-                    content     TEXT NOT NULL,
-                    embedding   VECTOR({EMBED_DIM}) NOT NULL,
-                    created_at  BIGINT NOT NULL
+                    id            TEXT PRIMARY KEY,
+                    tenant_id     TEXT NOT NULL,
+                    kb            TEXT NOT NULL,
+                    doc_id        TEXT NOT NULL,
+                    chunk_index   INT  NOT NULL,
+                    content       TEXT NOT NULL,
+                    embedding     VECTOR({EMBED_DIM}) NOT NULL,
+                    created_at    BIGINT NOT NULL,
+                    embed_backend TEXT
                 )
                 """
+            )
+            # Migrate pre-existing tables: which embedding backend produced each
+            # vector. Rows from different backends (local hashing vs a remote
+            # model) are NOT comparable even at the same dimension, so query()
+            # matches only the active backend. Legacy rows are NULL ("unknown").
+            await conn.execute(
+                "ALTER TABLE af_kb_chunks ADD COLUMN IF NOT EXISTS embed_backend TEXT"
             )
             await conn.execute(
                 "CREATE INDEX IF NOT EXISTS af_kb_chunks_kb_idx "
@@ -120,6 +128,7 @@ class RagStore:
         # event loop isn't stalled during ingest.
         vectors = await asyncio.to_thread(embed, chunks)
         now = int(time.time())
+        backend = backend_name()
         rows = [
             (
                 str(uuid.uuid4()),
@@ -130,6 +139,7 @@ class RagStore:
                 content,
                 _vec_literal(vec),
                 now,
+                backend,
             )
             for i, (content, vec) in enumerate(zip(chunks, vectors))
         ]
@@ -143,8 +153,8 @@ class RagStore:
                 )
                 await conn.executemany(
                     "INSERT INTO af_kb_chunks "
-                    "(id, tenant_id, kb, doc_id, chunk_index, content, embedding, created_at) "
-                    "VALUES ($1,$2,$3,$4,$5,$6,$7::vector,$8)",
+                    "(id, tenant_id, kb, doc_id, chunk_index, content, embedding, created_at, embed_backend) "
+                    "VALUES ($1,$2,$3,$4,$5,$6,$7::vector,$8,$9)",
                     rows,
                 )
         return len(rows)
@@ -219,11 +229,15 @@ class RagStore:
                 "SELECT doc_id, chunk_index, content, "
                 "1 - (embedding <=> $4::vector) AS score "
                 "FROM af_kb_chunks WHERE tenant_id=$1 AND kb=$2 "
+                # Only compare vectors from the active embedding backend (legacy
+                # NULL rows assumed compatible); cross-backend distances are noise.
+                "AND (embed_backend=$5 OR embed_backend IS NULL) "
                 "ORDER BY embedding <=> $4::vector LIMIT $3",
                 tenant_id,
                 kb,
                 top_k,
                 qvec,
+                backend_name(),
             )
         hits = [
             RetrievedChunk(
@@ -256,6 +270,7 @@ class RagStore:
                     SELECT id, ROW_NUMBER() OVER (ORDER BY embedding <=> $1::vector) AS rnk
                     FROM af_kb_chunks WHERE tenant_id=$2 AND kb=$3
                       AND (1 - (embedding <=> $1::vector)) >= $8
+                      AND (embed_backend = $9 OR embed_backend IS NULL)
                     ORDER BY embedding <=> $1::vector LIMIT $4
                 ),
                 kw AS (
@@ -285,6 +300,7 @@ class RagStore:
                 rrf_k,
                 top_k,
                 vec_floor,
+                backend_name(),
             )
         return [
             RetrievedChunk(

@@ -79,6 +79,30 @@ async def test_hybrid_retrieval_finds_exact_token():
         await store.close()
 
 
+async def test_query_excludes_vectors_from_a_different_backend(monkeypatch):
+    """Vectors embedded by one backend must not be compared against a query
+    embedded by another — the distances would be noise. The vector half of a
+    query filters to the active backend (legacy NULL rows stay compatible)."""
+    store = await RagStore.connect(DSN)
+    tenant, kb = "t-be", f"kb-{uuid.uuid4().hex[:8]}"
+    try:
+        await store.ingest(tenant, kb, "doc-fin",
+                           chunk_text("The finance team processes invoices and billing.", 1000, 100))
+        # Sanity: found under the same (active) backend.
+        assert await store.query(tenant, kb, "invoices", top_k=5)
+
+        # Pretend a different embedding backend is now active: the stored
+        # vectors (tagged with the real backend) must be excluded from vector
+        # search, so nothing comes back.
+        monkeypatch.setattr("app.rag.store.backend_name", lambda: "remote:some-other-model")
+        assert await store.query(tenant, kb, "invoices", top_k=5, mode="vector") == []
+        # Hybrid still returns keyword matches (text search is backend-agnostic).
+        assert await store.query(tenant, kb, "invoices", top_k=5, mode="hybrid")
+    finally:
+        await store.delete_document(tenant, kb, "doc-fin")
+        await store.close()
+
+
 async def test_hybrid_uses_an_installed_cjk_config():
     # Simulate a CJK text-search config (as pg_jieba's `zhparsercfg` would
     # register) by copying `simple`, and prove the store discovers it, builds a
