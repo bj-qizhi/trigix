@@ -31,13 +31,57 @@ pub struct WorkflowGraph {
     pub input_schema: Vec<InputField>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Node {
     pub id: String,
     #[serde(rename = "type")]
     pub node_type: NodeType,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub config: Option<serde_json::Value>,
+}
+
+/// Legacy per-vendor LLM node types that are now the single `openai_compat`
+/// node. Old stored workflows keep loading: the type is rewritten and the vendor
+/// name is injected as `config.provider` so the generic node resolves the same
+/// base URL + default model it always used.
+const LEGACY_LLM_PROVIDERS: &[&str] = &[
+    "grok", "ollama", "deepseek", "qwen", "zhipu", "moonshot", "doubao", "hunyuan",
+];
+
+impl<'de> Deserialize<'de> for Node {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        struct RawNode {
+            id: String,
+            #[serde(rename = "type")]
+            node_type: String,
+            #[serde(default)]
+            config: Option<serde_json::Value>,
+        }
+        let raw = RawNode::deserialize(deserializer)?;
+        if LEGACY_LLM_PROVIDERS.contains(&raw.node_type.as_str()) {
+            let mut config = raw.config.unwrap_or_else(|| serde_json::json!({}));
+            if let Some(obj) = config.as_object_mut() {
+                obj.entry("provider")
+                    .or_insert_with(|| serde_json::Value::String(raw.node_type.clone()));
+            }
+            return Ok(Node {
+                id: raw.id,
+                node_type: NodeType::OpenaiCompat,
+                config: Some(config),
+            });
+        }
+        let node_type = NodeType::deserialize(serde_json::Value::String(raw.node_type))
+            .map_err(serde::de::Error::custom)?;
+        Ok(Node {
+            id: raw.id,
+            node_type,
+            config: raw.config,
+        })
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -184,10 +228,6 @@ pub enum NodeType {
     Copper,
     /// Azure OpenAI (deployment-based chat completions, api-key header).
     AzureOpenai,
-    /// xAI Grok (OpenAI-compatible chat completions).
-    Grok,
-    /// Ollama — self-hosted OpenAI-compatible local models (configurable base URL).
-    Ollama,
     /// Weaviate vector store (REST + GraphQL search).
     Weaviate,
     /// Chroma vector store (REST data API).
@@ -274,14 +314,14 @@ pub enum NodeType {
     /// Microsoft SQL Server (tiberius).
     Sqlserver,
     // ── 中国国内大模型 ───────────────────────────────────
-    Deepseek,
-    Qwen,
-    Zhipu,
-    Moonshot,
-    Doubao,
     Minimax,
     Ernie,
-    Hunyuan,
+    /// Generic OpenAI-compatible chat node. `config.provider` (grok / deepseek /
+    /// qwen / zhipu / moonshot / hunyuan / ollama / doubao) selects a default
+    /// base URL + model; `config.base_url` overrides for any other endpoint.
+    /// Legacy per-vendor node types migrate into this on load (see `Node`'s
+    /// Deserialize).
+    OpenaiCompat,
     /// Retrieval-Augmented Generation: query a pgvector knowledge base via the
     /// AI runtime and return the most relevant chunks.
     Rag,
@@ -525,5 +565,49 @@ mod tests {
         };
 
         assert_eq!(graph.validate(), Err(GraphError::CycleDetected));
+    }
+
+    #[test]
+    fn legacy_llm_node_types_migrate_to_openai_compat() {
+        // An old workflow using a per-vendor type must still load: type becomes
+        // openai_compat and the vendor is injected as config.provider so the
+        // generic node resolves the same endpoint. Existing config is kept.
+        let node: Node = serde_json::from_str(
+            r#"{"id":"n1","type":"grok","config":{"api_key":"sk-x","model":"grok-4.3"}}"#,
+        )
+        .unwrap();
+        assert_eq!(node.node_type, NodeType::OpenaiCompat);
+        let cfg = node.config.unwrap();
+        assert_eq!(cfg["provider"], "grok");
+        assert_eq!(cfg["api_key"], "sk-x");
+        assert_eq!(cfg["model"], "grok-4.3");
+    }
+
+    #[test]
+    fn legacy_migration_does_not_clobber_explicit_provider() {
+        let node: Node = serde_json::from_str(
+            r#"{"id":"n1","type":"deepseek","config":{"provider":"custom","api_key":"k"}}"#,
+        )
+        .unwrap();
+        assert_eq!(node.node_type, NodeType::OpenaiCompat);
+        // An explicit provider in config wins over the legacy type name.
+        assert_eq!(node.config.unwrap()["provider"], "custom");
+    }
+
+    #[test]
+    fn non_legacy_types_deserialize_unchanged() {
+        let http: Node = serde_json::from_str(r#"{"id":"h","type":"http"}"#).unwrap();
+        assert_eq!(http.node_type, NodeType::Http);
+        let generic: Node = serde_json::from_str(
+            r#"{"id":"g","type":"openai_compat","config":{"provider":"qwen"}}"#,
+        )
+        .unwrap();
+        assert_eq!(generic.node_type, NodeType::OpenaiCompat);
+        assert_eq!(generic.config.unwrap()["provider"], "qwen");
+    }
+
+    #[test]
+    fn unknown_node_type_still_errors() {
+        assert!(serde_json::from_str::<Node>(r#"{"id":"x","type":"not_a_real_node"}"#).is_err());
     }
 }

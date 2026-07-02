@@ -778,159 +778,49 @@ export function AzureOpenaiConfig({ set, str, num }: ConfigProps) {
   )
 }
 
-export function GrokConfig({ set, str, num }: ConfigProps) {
-  return (
-    <>
-      <div className="field">
-        <label>{fl("Model")}</label>
-        <input list="grok-models" placeholder="grok-4.3" value={str('model', 'grok-4.3')} onChange={(e) => set('model', e.target.value)} style={{ fontFamily: 'monospace', fontSize: 12 }} />
-        <datalist id="grok-models">
-          <option value="grok-4.3">{fl("grok-4.3 (flagship)")}</option>
-          <option value="grok-4.20">{fl("grok-4.20 (2M ctx)")}</option>
-          <option value="grok-4">{fl("grok-4")}</option>
-        </datalist>
-      </div>
-      <div className="field">
-        <label>{fl("API Key *")}</label>
-        <input type="password" placeholder="xai-..." value={str('api_key', '')} onChange={(e) => set('api_key', e.target.value)} />
-      </div>
-      <CnLlmCommonFields str={str} set={set} num={num} />
-      <p style={{ fontSize: 11, color: 'var(--muted)', margin: '8px 0 0' }}>
-        {fl("xAI Grok (OpenAI-compatible). Returns")} <code>{'{ content, model, usage }'}</code>
-      </p>
-    </>
-  )
+// Default OpenAI-compatible endpoints per provider preset — surfaced as a hint only.
+const OPENAI_COMPAT_ENDPOINTS: Record<string, string> = {
+  grok: 'https://api.x.ai/v1/chat/completions',
+  ollama: 'http://localhost:11434/v1/chat/completions',
+  deepseek: 'https://api.deepseek.com/v1/chat/completions',
+  qwen: 'https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions',
+  zhipu: 'https://open.bigmodel.cn/api/paas/v4/chat/completions',
+  moonshot: 'https://api.moonshot.cn/v1/chat/completions',
+  doubao: 'https://ark.cn-beijing.volces.com/api/v3/chat/completions',
+  hunyuan: 'https://hunyuan.cloud.tencent.com/v1/chat/completions',
 }
 
-export function OllamaConfig({ set, str, num }: ConfigProps) {
+export function OpenaiCompatConfig({ set, str, num }: ConfigProps) {
+  const provider = str('provider', '')
+  const endpointHint = provider ? OPENAI_COMPAT_ENDPOINTS[provider] : undefined
   return (
     <>
       <div className="field">
-        <label>{fl("Base URL")}</label>
-        <input placeholder="http://localhost:11434/v1/chat/completions" value={str('base_url', '')} onChange={(e) => set('base_url', e.target.value)} style={{ fontFamily: 'monospace', fontSize: 12 }} />
+        <label>{fl("Provider")} <span style={{ color: 'var(--muted)' }}>{fl("(预设，可选)")}</span></label>
+        <select value={provider} onChange={(e) => set('provider', e.target.value || undefined)}>
+          <option value="">{fl("自定义（用 Base URL）")}</option>
+          <option value="grok">xAI Grok</option>
+          <option value="ollama">Ollama</option>
+          <option value="deepseek">DeepSeek</option>
+          <option value="qwen">Qwen 通义千问</option>
+          <option value="zhipu">Zhipu GLM 智谱</option>
+          <option value="moonshot">Moonshot (Kimi)</option>
+          <option value="doubao">Doubao 豆包</option>
+          <option value="hunyuan">Hunyuan 混元</option>
+        </select>
+        {endpointHint && <span style={{ fontSize: 11, color: 'var(--muted)' }}>{fl("默认端点")}: <code>{endpointHint}</code></span>}
       </div>
       <div className="field">
         <label>{fl("Model")}</label>
-        <input placeholder="llama3.2" value={str('model', 'llama3.2')} onChange={(e) => set('model', e.target.value)} style={{ fontFamily: 'monospace', fontSize: 12 }} />
+        <input placeholder="deepseek-v4-flash / grok-4.3 / qwen-max / llama3.2" value={str('model', '')} onChange={(e) => set('model', e.target.value)} style={{ fontFamily: 'monospace', fontSize: 12 }} />
       </div>
       <div className="field">
         <label>{fl("API Key")}</label>
-        <input type="password" placeholder="(optional, ignored by local Ollama)" value={str('api_key', '')} onChange={(e) => set('api_key', e.target.value)} />
+        <input type="password" placeholder="{{credential.xxx}}" value={str('api_key', '')} onChange={(e) => set('api_key', e.target.value)} />
       </div>
       <CnLlmCommonFields str={str} set={set} num={num} />
       <p style={{ fontSize: 11, color: 'var(--muted)', margin: '8px 0 0' }}>
-        {fl("Self-hosted Ollama (OpenAI-compatible). Returns")} <code>{'{ content, model, usage }'}</code>
-      </p>
-    </>
-  )
-}
-
-export function DeepseekConfig({ set, str, num }: ConfigProps) {
-  return (
-    <>
-      <ModelField str={str} set={set} fallback="deepseek-v4-flash" options={[
-        ['deepseek-v4-flash', 'deepseek-v4-flash (V4, 1M)'],
-        ['deepseek-v4-pro', 'deepseek-v4-pro (V4, 1M)'],
-        ['deepseek-chat', 'deepseek-chat (legacy → retires 2026-07-24)'],
-        ['deepseek-reasoner', 'deepseek-reasoner (legacy → retires 2026-07-24)'],
-      ]} />
-      <div className="field">
-        <label>{fl("API Key *")}</label>
-        <input type="password" placeholder="sk-..." value={str('api_key', '')} onChange={(e) => set('api_key', e.target.value)} />
-      </div>
-      <CnLlmCommonFields str={str} set={set} num={num} />
-      <p style={{ fontSize: 11, color: 'var(--muted)', margin: '8px 0 0' }}>
-        {fl("DeepSeek — 高性价比推理模型。返回")} <code>{'{ content, model, usage }'}</code>
-      </p>
-    </>
-  )
-}
-
-export function QwenConfig({ set, str, num }: ConfigProps) {
-  return (
-    <>
-      <ModelField str={str} set={set} fallback="qwen-max" options={[
-        ['qwen3-max', 'qwen3-max (flagship)'],
-        ['qwen3.5-plus', 'qwen3.5-plus'],
-        ['qwen3.5-flash', 'qwen3.5-flash (fast)'],
-        ['qwen-max', 'qwen-max (alias → latest)'],
-        ['qwen-plus', 'qwen-plus (alias)'],
-        ['qwen-turbo', 'qwen-turbo (alias)'],
-        ['qwen-long', 'qwen-long (long-context)'],
-      ]} />
-      <div className="field">
-        <label>{fl("API Key (DashScope) *")}</label>
-        <input type="password" placeholder="sk-..." value={str('api_key', '')} onChange={(e) => set('api_key', e.target.value)} />
-      </div>
-      <CnLlmCommonFields str={str} set={set} num={num} />
-      <p style={{ fontSize: 11, color: 'var(--muted)', margin: '8px 0 0' }}>
-        {fl("阿里云通义千问（DashScope）。返回")} <code>{'{ content, model, usage }'}</code>
-      </p>
-    </>
-  )
-}
-
-export function ZhipuConfig({ set, str, num }: ConfigProps) {
-  return (
-    <>
-      <ModelField str={str} set={set} fallback="glm-4.6" options={[
-        ['glm-4.7', 'glm-4.7'],
-        ['glm-4.7-flash', 'glm-4.7-flash (free)'],
-        ['glm-4.6', 'glm-4.6'],
-        ['glm-4.5-air', 'glm-4.5-air (fast)'],
-        ['glm-4-plus', 'glm-4-plus'],
-        ['glm-4-flash', 'glm-4-flash'],
-      ]} />
-      <div className="field">
-        <label>{fl("API Key *")}</label>
-        <input type="password" placeholder="智谱 API Key" value={str('api_key', '')} onChange={(e) => set('api_key', e.target.value)} />
-      </div>
-      <CnLlmCommonFields str={str} set={set} num={num} />
-      <p style={{ fontSize: 11, color: 'var(--muted)', margin: '8px 0 0' }}>
-        {fl("智谱 AI（GLM）。返回")} <code>{'{ content, model, usage }'}</code>
-      </p>
-    </>
-  )
-}
-
-export function MoonshotConfig({ set, str, num }: ConfigProps) {
-  return (
-    <>
-      <ModelField str={str} set={set} fallback="kimi-latest" options={[
-        ['kimi-latest', 'kimi-latest (alias → newest)'],
-        ['kimi-k2.6', 'kimi-k2.6'],
-        ['kimi-k2.7-code', 'kimi-k2.7-code (coding)'],
-        ['moonshot-v1-128k', 'moonshot-v1-128k (legacy)'],
-        ['moonshot-v1-32k', 'moonshot-v1-32k (legacy)'],
-        ['moonshot-v1-8k', 'moonshot-v1-8k (legacy)'],
-      ]} />
-      <div className="field">
-        <label>{fl("API Key *")}</label>
-        <input type="password" placeholder="sk-..." value={str('api_key', '')} onChange={(e) => set('api_key', e.target.value)} />
-      </div>
-      <CnLlmCommonFields str={str} set={set} num={num} />
-      <p style={{ fontSize: 11, color: 'var(--muted)', margin: '8px 0 0' }}>
-        {fl("月之暗面（Kimi）。返回")} <code>{'{ content, model, usage }'}</code>
-      </p>
-    </>
-  )
-}
-
-export function DoubaoConfig({ set, str, num }: ConfigProps) {
-  return (
-    <>
-      <div className="field">
-        <label>{fl("API Key (火山引擎) *")}</label>
-        <input type="password" placeholder="火山方舟 API Key" value={str('api_key', '')} onChange={(e) => set('api_key', e.target.value)} />
-      </div>
-      <div className="field">
-        <label>{fl("Endpoint ID *")}</label>
-        <input placeholder="ep-xxxxxxxx" value={str('endpoint_id', '')} onChange={(e) => set('endpoint_id', e.target.value)} />
-        <span style={{ fontSize: 11, color: 'var(--muted)' }}>{fl("豆包使用推理接入点 ID 而非模型名")}</span>
-      </div>
-      <CnLlmCommonFields str={str} set={set} num={num} />
-      <p style={{ fontSize: 11, color: 'var(--muted)', margin: '8px 0 0' }}>
-        {fl("字节跳动豆包（火山引擎方舟）。返回")} <code>{'{ content, model, usage }'}</code>
+        {fl("任意 OpenAI 兼容对话端点：选 provider 预设，或填 Base URL 覆盖。返回")} <code>{'{ content, model, usage }'}</code>
       </p>
     </>
   )
@@ -981,27 +871,6 @@ export function ErnieConfig({ set, str, num }: ConfigProps) {
       <p style={{ fontSize: 11, color: 'var(--muted)', margin: '8px 0 0' }}>
         {fl("百度文心一言（自动 OAuth2 换取 access_token）。返回")} <code>{'{ content, model, usage }'}</code><br />
         {fl("ERNIE 4.5 / 5.0 / X1 走百度千帆 v2 新接口，本节点暂用旧版 wenxinworkshop 接口，仅支持上述模型。")}
-      </p>
-    </>
-  )
-}
-
-export function HunyuanConfig({ set, str, num }: ConfigProps) {
-  return (
-    <>
-      <ModelField str={str} set={set} fallback="hunyuan-turbos-latest" options={[
-        ['hunyuan-turbos-latest', 'hunyuan-turbos-latest'],
-        ['hunyuan-t1-latest', 'hunyuan-t1-latest (reasoning)'],
-        ['hunyuan-lite', 'hunyuan-lite'],
-        ['hunyuan-standard', 'hunyuan-standard (legacy)'],
-      ]} />
-      <div className="field">
-        <label>{fl("API Key *")}</label>
-        <input type="password" placeholder="腾讯混元 API Key" value={str('api_key', '')} onChange={(e) => set('api_key', e.target.value)} />
-      </div>
-      <CnLlmCommonFields str={str} set={set} num={num} />
-      <p style={{ fontSize: 11, color: 'var(--muted)', margin: '8px 0 0' }}>
-        {fl("腾讯混元（OpenAI 兼容接口）。返回")} <code>{'{ content, model, usage }'}</code>
       </p>
     </>
   )

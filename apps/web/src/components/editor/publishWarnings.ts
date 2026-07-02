@@ -116,16 +116,9 @@ const NODE_REQUIRED_FIELDS: Record<string, NodeFieldSpec> = {
   // own validation messages so an empty-config node is caught before publish
   // instead of failing at run time.
   azure_openai: { name: 'Azure OpenAI', fields: [['api_key', 'API key'], ['deployment', 'deployment'], ['prompt_template', 'prompt template']] },
-  doubao: { name: 'Doubao', fields: [['api_key', 'API key'], ['endpoint_id', 'endpoint ID'], ['prompt_template', 'prompt template']] },
   ernie: { name: 'ERNIE', fields: [['api_key', 'API key (client_id)'], ['prompt_template', 'prompt template']] },
   minimax: { name: 'MiniMax', fields: [['api_key', 'API key'], ['prompt_template', 'prompt template']] },
-  ollama: { name: 'Ollama', fields: [['prompt_template', 'prompt template']] },
-  grok: { name: 'Grok', fields: [['api_key', 'API key'], ['prompt_template', 'prompt template']] },
-  deepseek: { name: 'DeepSeek', fields: [['api_key', 'API key'], ['prompt_template', 'prompt template']] },
-  qwen: { name: 'Qwen', fields: [['api_key', 'API key'], ['prompt_template', 'prompt template']] },
-  zhipu: { name: 'Zhipu', fields: [['api_key', 'API key'], ['prompt_template', 'prompt template']] },
-  moonshot: { name: 'Moonshot', fields: [['api_key', 'API key'], ['prompt_template', 'prompt template']] },
-  hunyuan: { name: 'Hunyuan', fields: [['api_key', 'API key'], ['prompt_template', 'prompt template']] },
+  openai_compat: { name: 'OpenAI-Compatible LLM', fields: [['prompt_template', 'prompt template']] },
   structured_output: { name: 'Structured Output', fields: [['prompt_template', 'prompt template']] },
   mysql: { name: 'MySQL', fields: [['url', 'connection URL'], ['query', 'SQL query']] },
   snowflake: { name: 'Snowflake', fields: [['account', 'account'], ['statement', 'SQL statement']] },

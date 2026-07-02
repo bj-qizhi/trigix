@@ -13,9 +13,9 @@ import {
   SiBraintree, SiPaypal, SiRazorpay, SiFirebase, SiSupabase, SiMailchimp, SiResend,
   SiContentful, SiAlgolia, SiVonage, SiTelegram, SiReplicate, SiMistralai, SiWhatsapp,
   SiGoogledocs, SiPerplexity, SiGoogledrive, SiWoocommerce, SiHuggingface, SiCloudinary,
-  SiGooglecalendar, SiXero, SiCalendly, SiGoogleanalytics, SiX, SiOllama, SiMongodb,
+  SiGooglecalendar, SiXero, SiCalendly, SiGoogleanalytics, SiMongodb,
   SiClickhouse, SiGooglecloud, SiApachekafka, SiRabbitmq, SiJira, SiGooglesheets,
-  SiAlibabadotcom, SiBaidu, SiClaude, SiSnowflake, SiGooglebigquery, SiMysql,
+  SiBaidu, SiClaude, SiSnowflake, SiGooglebigquery, SiMysql,
   SiAlibabacloud, SiWechat, SiMilvus, SiTwilio, SiGraphql,
 } from 'react-icons/si'
 import {
@@ -31,7 +31,7 @@ import {
   PiHardDrives, PiCpu, PiGraph, PiSignature, PiBug, PiUsersThree, PiCloud, PiHash,
   PiKey, PiPaperPlaneTilt, PiVectorThree, PiSlidersHorizontal, PiScissors, PiTag,
   PiPaintBrush, PiVideoCamera, PiMicrophone, PiSpeakerHigh, PiRss, PiFolderSimple, PiFolderLock,
-  PiTerminal, PiTray, PiHourglass, PiMoon, PiChatCircleDots, PiFileZip, PiImage,
+  PiTerminal, PiTray, PiHourglass, PiFileZip, PiImage,
   PiFilePdf, PiScan, PiCircle,
 } from 'react-icons/pi'
 import type { NodeType } from '../types'
@@ -54,12 +54,11 @@ export const NODE_ICON: Record<NodeType, IconType> = {
   pdf_extract: PiFilePdf, ocr: PiScan, database: PiDatabase, sqlserver: PiDatabase,
   mysql: SiMysql, snowflake: SiSnowflake, bigquery: SiGooglebigquery, neon: PiDatabase,
   // ── AI / RAG ──
-  openai: SiOpenai, gemini: SiGooglegemini, claude: SiClaude, grok: SiX,
-  mistral: SiMistralai, perplexity: SiPerplexity, cohere: PiBrain, ollama: SiOllama,
+  openai: SiOpenai, gemini: SiGooglegemini, claude: SiClaude, openai_compat: PiBrain,
+  mistral: SiMistralai, perplexity: SiPerplexity, cohere: PiBrain,
   huggingface: SiHuggingface, groq: PiCpu, openrouter: PiShuffle, togetherai: PiHandshake,
-  replicate: SiReplicate, deepseek: PiBrain, qwen: SiAlibabadotcom, zhipu: PiBrain,
-  moonshot: PiMoon, doubao: PiChatCircleDots, minimax: PiBrain, ernie: SiBaidu,
-  hunyuan: PiBrain, azure_openai: PiBrain, vertex: SiGooglecloud, bedrock: PiBrain,
+  replicate: SiReplicate, minimax: PiBrain, ernie: SiBaidu,
+  azure_openai: PiBrain, vertex: SiGooglecloud, bedrock: PiBrain,
   rag: PiBooks, rag_ingest: PiUploadSimple, embedding: PiVectorThree,
   reranker: PiSlidersHorizontal, text_splitter: PiScissors, structured_output: PiBracketsCurly,
   classifier: PiTag, image_gen: PiPaintBrush, video_gen: PiVideoCamera, speech_to_text: PiMicrophone, tts: PiSpeakerHigh,

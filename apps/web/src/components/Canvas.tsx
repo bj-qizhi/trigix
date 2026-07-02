@@ -133,12 +133,26 @@ export function fromFlowGraph(
   }
 }
 
+// Legacy per-vendor LLM node types are now the single `openai_compat` node.
+// Migrate on load so old workflows render (mirrors the backend's migration):
+// the type is rewritten and the vendor becomes config.provider.
+const LEGACY_LLM_TYPES = ['grok', 'ollama', 'deepseek', 'qwen', 'zhipu', 'moonshot', 'doubao', 'hunyuan']
+function migrateLegacyLlmNodes(apiNodes: ApiNode[]): ApiNode[] {
+  return apiNodes.map((n) => {
+    if (!LEGACY_LLM_TYPES.includes(n.type as string)) return n
+    const config = { ...(n.config ?? {}) }
+    if (config.provider == null) config.provider = n.type
+    return { ...n, type: 'openai_compat' as NodeType, config }
+  })
+}
+
 export function graphFromApi(
   apiNodes: ApiNode[],
   apiEdges: ApiEdge[],
 ): { nodes: FlowNode[]; edges: FlowEdge[] } {
-  const positions = computePositions(apiNodes, apiEdges)
-  return { nodes: toFlowNodes(apiNodes, positions), edges: toFlowEdges(apiEdges) }
+  const migrated = migrateLegacyLlmNodes(apiNodes)
+  const positions = computePositions(migrated, apiEdges)
+  return { nodes: toFlowNodes(migrated, positions), edges: toFlowEdges(apiEdges) }
 }
 
 // ── Custom node component ─────────────────────────────────────────────────────
@@ -278,8 +292,6 @@ export const NODE_COLORS: Record<string, string> = {
               neon: '#00e599',
               copper: '#e8762b',
               azure_openai: '#0078d4',
-              grok: '#111827',
-              ollama: '#0ea5e9',
               weaviate: '#00c9a7',
               chroma: '#ff6b6b',
               mongodb: '#13aa52',
@@ -322,14 +334,9 @@ export const NODE_COLORS: Record<string, string> = {
               ssh: '#334155',
               imap: '#be123c',
               wait: '#0891b2',
-              deepseek: '#4d6bfe',
-              qwen: '#6200ea',
-              zhipu: '#00897b',
-              moonshot: '#1a237e',
-              doubao: '#0078ff',
+              openai_compat: '#0ea5e9',
               minimax: '#ff6f00',
               ernie: '#2979ff',
-              hunyuan: '#00bcd4',
             }
 
 const NODE_LABELS: Record<NodeType, string> = {
@@ -466,8 +473,6 @@ const NODE_LABELS: Record<NodeType, string> = {
   neon: 'Neon',
   copper: 'Copper CRM',
   azure_openai: 'Azure OpenAI',
-  grok: 'xAI Grok',
-  ollama: 'Ollama',
   weaviate: 'Weaviate',
   chroma: 'Chroma',
   mongodb: 'MongoDB',
@@ -510,14 +515,9 @@ const NODE_LABELS: Record<NodeType, string> = {
   ssh: 'SSH',
   imap: 'IMAP',
   wait: 'Wait',
-  deepseek: 'DeepSeek',
-  qwen: '通义千问',
-  zhipu: '智谱 GLM',
-  moonshot: 'Moonshot (Kimi)',
-  doubao: '豆包',
+  openai_compat: 'OpenAI-Compatible LLM',
   minimax: 'MiniMax',
   ernie: '文心一言',
-  hunyuan: '混元',
 }
 
 // Chinese titles for the *generic* node types. Brand/product nodes (Slack,
@@ -776,8 +776,6 @@ const nodeTypes = {
   neon: FlowNodeComponent,
   copper: FlowNodeComponent,
   azure_openai: FlowNodeComponent,
-  grok: FlowNodeComponent,
-  ollama: FlowNodeComponent,
   weaviate: FlowNodeComponent,
   chroma: FlowNodeComponent,
   mongodb: FlowNodeComponent,
@@ -820,14 +818,9 @@ const nodeTypes = {
   ssh: FlowNodeComponent,
   imap: FlowNodeComponent,
   wait: FlowNodeComponent,
-  deepseek: FlowNodeComponent,
-  qwen: FlowNodeComponent,
-  zhipu: FlowNodeComponent,
-  moonshot: FlowNodeComponent,
-  doubao: FlowNodeComponent,
+  openai_compat: FlowNodeComponent,
   minimax: FlowNodeComponent,
   ernie: FlowNodeComponent,
-  hunyuan: FlowNodeComponent,
 }
 
 // ── Canvas component ──────────────────────────────────────────────────────────

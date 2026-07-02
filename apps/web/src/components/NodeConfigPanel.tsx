@@ -47,10 +47,9 @@ import {
   GoogledriveConfig, WoocommerceConfig, PineconeConfig, Awss3Config, QdrantConfig,
   CloudinaryConfig, GcalConfig, DocusignConfig, XeroConfig, CalendlyConfig, ApifyConfig,
   GanalyticsConfig, NeonConfig, CopperConfig,
-  AzureOpenaiConfig, GrokConfig, OllamaConfig, WeaviateConfig, ChromaConfig, MongodbConfig, ClickhouseConfig, GcsConfig, AzureBlobConfig, HashConfig, JwtConfig, VertexConfig, SqsConfig, SnsConfig, BedrockConfig, MilvusConfig, KafkaConfig, RabbitmqConfig, ZipConfig, ImageConfig, PdfExtractConfig, OcrConfig, FeishuConfig, DingtalkConfig, WecomConfig,
+  AzureOpenaiConfig, OpenaiCompatConfig, WeaviateConfig, ChromaConfig, MongodbConfig, ClickhouseConfig, GcsConfig, AzureBlobConfig, HashConfig, JwtConfig, VertexConfig, SqsConfig, SnsConfig, BedrockConfig, MilvusConfig, KafkaConfig, RabbitmqConfig, ZipConfig, ImageConfig, PdfExtractConfig, OcrConfig, FeishuConfig, DingtalkConfig, WecomConfig,
   EmbeddingConfig, RerankerConfig, TextSplitterConfig, StructuredOutputConfig, ClassifierConfig, ImageGenConfig, VideoGenConfig, SpeechToTextConfig, TtsConfig, HtmlExtractConfig, RssConfig, MysqlConfig, SnowflakeConfig, BigqueryConfig, SqlserverConfig, FtpConfig, SftpConfig, SshConfig, ImapConfig, WaitConfig,
-  DeepseekConfig, QwenConfig, ZhipuConfig, MoonshotConfig,
-  DoubaoConfig, MinimaxConfig, ErnieConfig, HunyuanConfig,
+  MinimaxConfig, ErnieConfig,
 } from './panels/IntegrationPanels2'
 
 const NODE_DESCRIPTIONS: Partial<Record<NodeType, { en: string; zh: string }>> = {
@@ -103,8 +102,7 @@ const NODE_DESCRIPTIONS: Partial<Record<NodeType, { en: string; zh: string }>> =
   yaml:         { en: 'Parses YAML to JSON or serializes JSON to YAML.', zh: '在 YAML 和 JSON 之间相互转换。' },
   array_utils:  { en: 'Array utilities: chunk, flatten, compact, zip, reverse, shuffle, sample, range, pluck, first_n, last_n.', zh: '数组工具：分块、展平、去空值、合并、反转、随机打乱、采样、范围生成、字段提取、首/末 N 个。' },
   azure_openai: { en: 'Calls Azure OpenAI (deployment-based, api-key header). Returns content and usage.', zh: '调用 Azure OpenAI（按 deployment、api-key 头），返回内容和 Token 用量。' },
-  grok:      { en: 'Calls xAI Grok (OpenAI-compatible). Returns content and usage.', zh: '调用 xAI Grok（OpenAI 兼容），返回内容和 Token 用量。' },
-  ollama:    { en: 'Calls a self-hosted Ollama server (OpenAI-compatible) at a configurable base URL.', zh: '调用自托管 Ollama 服务（OpenAI 兼容，可配置 base URL）。' },
+  openai_compat: { en: 'Calls any OpenAI-compatible chat endpoint. Pick a provider preset (grok/ollama/deepseek/qwen/zhipu/moonshot/doubao/hunyuan) or set base_url. Returns content and usage.', zh: '调用任意 OpenAI 兼容对话端点：选 provider 预设（grok/ollama/deepseek/qwen/zhipu/moonshot/doubao/hunyuan）或填 base_url，返回内容和 Token 用量。' },
   weaviate:  { en: 'Weaviate vector store: GraphQL search or object create/get/delete over REST.', zh: 'Weaviate 向量库：GraphQL 检索或对象增删查（REST）。' },
   chroma:    { en: 'Chroma vector store: query/add/delete embeddings or resolve a collection over REST.', zh: 'Chroma 向量库：查询/添加/删除向量或解析 collection（REST）。' },
   mongodb:   { en: 'MongoDB via the Atlas Data API: find/insert/update/delete/aggregate over HTTP.', zh: 'MongoDB（Atlas Data API）：HTTP 增删改查与聚合。' },
@@ -147,14 +145,8 @@ const NODE_DESCRIPTIONS: Partial<Record<NodeType, { en: string; zh: string }>> =
   ssh:       { en: 'Run a command over SSH (password or private key); returns stdout/stderr/exit.', zh: 'SSH 执行命令（密码或私钥），返回 stdout/stderr/exit。' },
   imap:      { en: 'Read an IMAP mailbox over TLS: recent messages or mailbox list.', zh: 'IMAP over TLS 读邮箱：最近邮件或邮箱列表。' },
   wait:      { en: 'Pause the run for a duration / until a timestamp, or suspend until externally resumed.', zh: '暂停一段时间/到某时刻，或挂起直到外部恢复。' },
-  deepseek:  { en: 'Calls DeepSeek API (deepseek-v4-flash, deepseek-v4-pro; legacy deepseek-chat/reasoner retire 2026-07-24). Returns content and usage.', zh: '调用 DeepSeek API（deepseek-v4-flash、deepseek-v4-pro；旧版 deepseek-chat/reasoner 将于 2026-07-24 下线），返回内容和 Token 用量。' },
-  qwen:      { en: 'Calls Alibaba Qwen via DashScope (qwen3-max, qwen3.5-plus/flash; qwen-max/plus aliases). Returns content and usage.', zh: '通过 DashScope 调用通义千问（qwen3-max、qwen3.5-plus/flash 等），返回内容和 Token 用量。' },
-  zhipu:     { en: 'Calls Zhipu AI GLM (glm-4.7, glm-4.6, glm-4.5-air, glm-4-flash). Returns content and usage.', zh: '调用智谱 AI GLM 系列（glm-4.7 / glm-4.6 等），返回内容和 Token 用量。' },
-  moonshot:  { en: 'Calls Moonshot AI Kimi (kimi-latest, kimi-k2.6, kimi-k2.7-code; moonshot-v1-* legacy). Returns content and usage.', zh: '调用月之暗面 Kimi（kimi-latest、kimi-k2.6 等；moonshot-v1-* 为旧版），返回内容和 Token 用量。' },
-  doubao:    { en: 'Calls Bytedance Doubao via Volces Ark. Uses endpoint_id instead of model name. Returns content and usage.', zh: '通过火山引擎方舟调用字节豆包，使用推理接入点 ID，返回内容和 Token 用量。' },
   minimax:   { en: 'Calls MiniMax chatcompletion API (MiniMax-Text-01; abab6.5 legacy). Requires group_id. Returns content and usage.', zh: '调用 MiniMax 对话 API（MiniMax-Text-01；abab6.5 为旧版），需要 group_id，返回内容和 Token 用量。' },
   ernie:     { en: 'Calls Baidu ERNIE via OAuth2 (ernie-4.0/3.5/speed; 4.5/5.0/X1 need newer Qianfan v2). Returns content and usage.', zh: '通过 OAuth2 调用百度文心（ernie-4.0/3.5/speed；4.5/5.0/X1 需新版千帆 v2 接口），返回内容和 Token 用量。' },
-  hunyuan:   { en: 'Calls Tencent Hunyuan (hunyuan-turbos-latest, hunyuan-t1-latest, hunyuan-lite) via OpenAI-compatible API. Returns content and usage.', zh: '通过 OpenAI 兼容接口调用腾讯混元（hunyuan-turbos-latest、hunyuan-t1-latest 等），返回内容和 Token 用量。' },
 }
 
 const NODE_LABELS: Partial<Record<NodeType, string>> = {
@@ -187,8 +179,7 @@ const NODE_LABELS: Partial<Record<NodeType, string>> = {
   validate: 'Validate',
   note: 'Note',
   azure_openai: 'Azure OpenAI',
-  grok: 'xAI Grok',
-  ollama: 'Ollama',
+  openai_compat: 'OpenAI-Compatible LLM',
   weaviate: 'Weaviate',
   chroma: 'Chroma',
   mongodb: 'MongoDB',
@@ -231,14 +222,8 @@ const NODE_LABELS: Partial<Record<NodeType, string>> = {
   ssh: 'SSH',
   imap: 'IMAP',
   wait: 'Wait',
-  deepseek: 'DeepSeek',
-  qwen: '通义千问',
-  zhipu: '智谱 GLM',
-  moonshot: 'Moonshot',
-  doubao: '豆包',
   minimax: 'MiniMax',
   ernie: '文心一言',
-  hunyuan: '混元',
 }
 
 const NODE_COLORS: Partial<Record<NodeType, string>> = {
@@ -272,8 +257,7 @@ const NODE_COLORS: Partial<Record<NodeType, string>> = {
   note: 'var(--node-note)',
   claude: 'var(--node-claude)',
   azure_openai: 'var(--node-openai)',
-  grok: 'var(--node-claude)',
-  ollama: 'var(--node-openai)',
+  openai_compat: 'var(--node-openai)',
   weaviate: 'var(--node-qdrant)',
   chroma: 'var(--node-qdrant)',
   mongodb: 'var(--node-database)',
@@ -316,14 +300,8 @@ const NODE_COLORS: Partial<Record<NodeType, string>> = {
   ssh: 'var(--node-code)',
   imap: 'var(--node-slack)',
   wait: 'var(--node-approval)',
-  deepseek: 'var(--node-deepseek)',
-  qwen: 'var(--node-qwen)',
-  zhipu: 'var(--node-zhipu)',
-  moonshot: 'var(--node-moonshot)',
-  doubao: 'var(--node-doubao)',
   minimax: 'var(--node-minimax)',
   ernie: 'var(--node-ernie)',
-  hunyuan: 'var(--node-hunyuan)',
 }
 
 const NODE_OUTPUTS: Partial<Record<NodeType, string[]>> = {
@@ -353,11 +331,10 @@ const NODE_OUTPUTS: Partial<Record<NodeType, string[]>> = {
   slack:        ['ok', 'text'],
   email:        ['ok', 'to', 'subject'],
   openai:       ['content', 'model', 'usage'],
+  openai_compat: ['content', 'model', 'usage'],
   gemini:       ['content', 'model', 'usage'],
   claude:       ['content', 'model', 'usage'],
   azure_openai: ['content', 'model', 'usage'],
-  grok:         ['content', 'model', 'usage'],
-  ollama:       ['content', 'model', 'usage'],
   weaviate:     ['status', 'body'],
   chroma:       ['status', 'body'],
   mongodb:      ['status', 'body'],
@@ -402,14 +379,8 @@ const NODE_OUTPUTS: Partial<Record<NodeType, string[]>> = {
   rag:          ['results', 'answer', 'sources'],
   rag_ingest:   ['doc_id', 'chunks', 'backend', 'dim'],
   wait:         ['resumed', 'mode', 'waited_secs'],
-  deepseek:     ['content', 'model', 'usage'],
-  qwen:         ['content', 'model', 'usage'],
-  zhipu:        ['content', 'model', 'usage'],
-  moonshot:     ['content', 'model', 'usage'],
-  doubao:       ['content', 'model', 'usage'],
   minimax:      ['content', 'model', 'usage'],
   ernie:        ['content', 'model', 'usage'],
-  hunyuan:      ['content', 'model', 'usage'],
   database:     ['rows', 'count', 'rows_affected'],
   extract:      ['value', 'found'],
   loop:         ['count', 'results'],
@@ -846,8 +817,7 @@ export function NodeConfigPanel({ node, onUpdateConfig, recentExecutions, onSele
         {nt === 'neon'            && <NeonConfig            config={config} set={set} str={str} num={num} />}
         {nt === 'copper'          && <CopperConfig          config={config} set={set} str={str} num={num} />}
         {nt === 'azure_openai'    && <AzureOpenaiConfig    config={config} set={set} str={str} num={num} />}
-        {nt === 'grok'            && <GrokConfig            config={config} set={set} str={str} num={num} />}
-        {nt === 'ollama'          && <OllamaConfig          config={config} set={set} str={str} num={num} />}
+        {nt === 'openai_compat'   && <OpenaiCompatConfig   config={config} set={set} str={str} num={num} />}
         {nt === 'weaviate'        && <WeaviateConfig        config={config} set={set} str={str} num={num} />}
         {nt === 'chroma'          && <ChromaConfig          config={config} set={set} str={str} num={num} />}
         {nt === 'mongodb'         && <MongodbConfig         config={config} set={set} str={str} num={num} />}
@@ -890,14 +860,8 @@ export function NodeConfigPanel({ node, onUpdateConfig, recentExecutions, onSele
         {nt === 'ssh'             && <SshConfig             config={config} set={set} str={str} num={num} />}
         {nt === 'imap'            && <ImapConfig            config={config} set={set} str={str} num={num} />}
         {nt === 'wait'            && <WaitConfig            config={config} set={set} str={str} num={num} />}
-        {nt === 'deepseek'        && <DeepseekConfig        config={config} set={set} str={str} num={num} />}
-        {nt === 'qwen'            && <QwenConfig            config={config} set={set} str={str} num={num} />}
-        {nt === 'zhipu'           && <ZhipuConfig           config={config} set={set} str={str} num={num} />}
-        {nt === 'moonshot'        && <MoonshotConfig        config={config} set={set} str={str} num={num} />}
-        {nt === 'doubao'          && <DoubaoConfig          config={config} set={set} str={str} num={num} />}
         {nt === 'minimax'         && <MinimaxConfig         config={config} set={set} str={str} num={num} />}
         {nt === 'ernie'           && <ErnieConfig           config={config} set={set} str={str} num={num} />}
-        {nt === 'hunyuan'         && <HunyuanConfig         config={config} set={set} str={str} num={num} />}
         {nt !== 'trigger' && nt !== 'note' && nt !== 'approval' && nt !== 'fan_out' && nt !== 'fan_in' && (
           <AdvancedConfig config={config} set={set} str={str} num={num} />
         )}

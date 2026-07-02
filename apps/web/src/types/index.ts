@@ -8,11 +8,11 @@ export type NodeType = 'trigger' | 'http' | 'agent' | 'condition' | 'approval' |
  | 'groq' | 'openrouter' | 'qdrant' | 'cloudinary'
  | 'gcal' | 'docusign' | 'xero' | 'calendly'
  | 'apify' | 'ganalytics' | 'neon' | 'copper'
- | 'azure_openai' | 'grok' | 'ollama' | 'weaviate' | 'chroma' | 'mongodb' | 'clickhouse' | 'gcs' | 'azure_blob' | 'hash' | 'jwt' | 'vertex' | 'sqs' | 'sns' | 'bedrock' | 'milvus' | 'kafka' | 'rabbitmq' | 'zip' | 'image' | 'pdf_extract' | 'ocr' | 'feishu' | 'dingtalk' | 'wecom'
+ | 'azure_openai' | 'weaviate' | 'chroma' | 'mongodb' | 'clickhouse' | 'gcs' | 'azure_blob' | 'hash' | 'jwt' | 'vertex' | 'sqs' | 'sns' | 'bedrock' | 'milvus' | 'kafka' | 'rabbitmq' | 'zip' | 'image' | 'pdf_extract' | 'ocr' | 'feishu' | 'dingtalk' | 'wecom'
  | 'embedding' | 'reranker' | 'text_splitter' | 'structured_output' | 'classifier' | 'image_gen' | 'video_gen' | 'speech_to_text' | 'tts'
  | 'html_extract' | 'rss' | 'mysql' | 'snowflake' | 'bigquery' | 'ftp' | 'sftp' | 'ssh' | 'imap' | 'wait' | 'sqlserver'
- | 'deepseek' | 'qwen' | 'zhipu' | 'moonshot'
- | 'doubao' | 'minimax' | 'ernie' | 'hunyuan'
+ | 'minimax' | 'ernie'
+ | 'openai_compat'
  | 'rag' | 'rag_ingest' | 'custom'
 
 export interface ApiNode {

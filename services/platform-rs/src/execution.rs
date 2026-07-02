@@ -2288,8 +2288,7 @@ fn node_type_to_str(node_type: &workflow_core::NodeType) -> &'static str {
         workflow_core::NodeType::Neon => "neon",
         workflow_core::NodeType::Copper => "copper",
         workflow_core::NodeType::AzureOpenai => "azure_openai",
-        workflow_core::NodeType::Grok => "grok",
-        workflow_core::NodeType::Ollama => "ollama",
+        workflow_core::NodeType::OpenaiCompat => "openai_compat",
         workflow_core::NodeType::Weaviate => "weaviate",
         workflow_core::NodeType::Chroma => "chroma",
         workflow_core::NodeType::Mongodb => "mongodb",
@@ -2333,14 +2332,8 @@ fn node_type_to_str(node_type: &workflow_core::NodeType) -> &'static str {
         workflow_core::NodeType::Wait => "wait",
         workflow_core::NodeType::Sqlserver => "sqlserver",
         // 国内大模型
-        workflow_core::NodeType::Deepseek => "deepseek",
-        workflow_core::NodeType::Qwen => "qwen",
-        workflow_core::NodeType::Zhipu => "zhipu",
-        workflow_core::NodeType::Moonshot => "moonshot",
-        workflow_core::NodeType::Doubao => "doubao",
         workflow_core::NodeType::Minimax => "minimax",
         workflow_core::NodeType::Ernie => "ernie",
-        workflow_core::NodeType::Hunyuan => "hunyuan",
     }
 }
 

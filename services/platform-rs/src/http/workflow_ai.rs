@@ -93,7 +93,7 @@ Available node types and their required config fields:
 - claude: { api_key, model (claude-sonnet-4-6), prompt_template, system_prompt?, max_tokens? }
 - openai: { api_key, model (gpt-5.4-mini), prompt_template, system_prompt?, max_tokens? }
 - gemini: { api_key, model (gemini-2.5-flash), prompt_template, system_prompt? }
-- deepseek/qwen/zhipu/moonshot/grok: { api_key, model, prompt_template, system_prompt?, max_tokens? } (OpenAI-compatible LLMs; e.g. deepseek model=deepseek-v4-flash, qwen=qwen-max, zhipu=glm-4.6, moonshot=kimi-latest, grok=grok-4.3)
+- openai_compat: { provider (deepseek/qwen/zhipu/moonshot/grok/hunyuan/ollama/doubao) OR base_url, api_key, model, prompt_template, system_prompt?, max_tokens? } (any OpenAI-compatible LLM; provider sets a default endpoint+model, e.g. deepseek=deepseek-v4-flash, qwen=qwen-max, zhipu=glm-4.6, moonshot=kimi-latest, grok=grok-4.3)
 - condition: { field (dot-path), operator (equals/not_equals/contains/gt/lt/exists/not_exists), value? }
 - transform: { template (JSON with {{node_id.field}} placeholders) }
 - filter: { items (expr), field, operator, value? }

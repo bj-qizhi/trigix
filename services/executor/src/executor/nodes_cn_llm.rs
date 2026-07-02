@@ -189,26 +189,91 @@ fn resolve_base_url(
         .unwrap_or_else(|| default_url.to_string())
 }
 
-// ── xAI Grok ─────────────────────────────────────────────────────────────────
-pub(super) async fn execute_grok(
+// ── Generic OpenAI-compatible chat ───────────────────────────────────────────
+
+/// Default endpoint + model for a known `provider`. Empty strings mean "no
+/// built-in default", so the node then requires `base_url` / `model` in config.
+fn provider_defaults(provider: &str) -> (&'static str, &'static str) {
+    match provider {
+        "grok" => ("https://api.x.ai/v1/chat/completions", "grok-4.3"),
+        "ollama" => ("http://localhost:11434/v1/chat/completions", ""),
+        "deepseek" => (
+            "https://api.deepseek.com/v1/chat/completions",
+            "deepseek-v4-flash",
+        ),
+        "qwen" => (
+            "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions",
+            "qwen-max",
+        ),
+        "zhipu" => (
+            "https://open.bigmodel.cn/api/paas/v4/chat/completions",
+            "glm-4.6",
+        ),
+        "moonshot" => ("https://api.moonshot.cn/v1/chat/completions", "kimi-latest"),
+        "doubao" => (
+            "https://ark.cn-beijing.volces.com/api/v3/chat/completions",
+            "",
+        ),
+        "hunyuan" => (
+            "https://api.hunyuan.cloud.tencent.com/v1/chat/completions",
+            "hunyuan-turbos-latest",
+        ),
+        _ => ("", ""),
+    }
+}
+
+/// One node for any OpenAI-compatible chat endpoint. `config.provider` picks a
+/// built-in default base URL + model (the former per-vendor nodes); `base_url`
+/// overrides for anything else. Streaming + retries come from openai_compat_chat.
+pub(super) async fn execute_openai_compat(
     node: &Node,
     context: &ExecutionContext,
     http_client: &reqwest::Client,
 ) -> NodeExecutionResult {
     let config = match node.config.as_ref() {
         Some(c) => c,
-        None => return NodeExecutionResult::failed("Grok node requires config"),
+        None => return NodeExecutionResult::failed("OpenAI-compatible node requires config"),
     };
+    let provider = config
+        .get("provider")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+    let (default_url, default_model) = provider_defaults(&provider);
+    let base_url = resolve_base_url(config, context, default_url);
+    if base_url.is_empty() {
+        return NodeExecutionResult::failed(
+            "OpenAI-compatible node needs a 'base_url' or a known 'provider'",
+        );
+    }
+    let name = if provider.is_empty() {
+        "OpenAI-compatible".to_string()
+    } else {
+        provider.clone()
+    };
+    // Self-hosted gateways like Ollama accept any key; default one so the shared
+    // chat helper (which always sends a bearer token) still works keyless.
+    let mut effective = config.clone();
+    let missing_key = config
+        .get("api_key")
+        .and_then(|v| v.as_str())
+        .filter(|s| !s.is_empty())
+        .is_none();
+    if provider == "ollama" && missing_key {
+        if let Some(obj) = effective.as_object_mut() {
+            obj.insert("api_key".to_string(), serde_json::json!("ollama"));
+        }
+    }
     let (api_key, model, messages, max_tokens, temperature) =
-        match extract_chat_fields("Grok", config, context, "grok-4.3") {
+        match extract_chat_fields(&name, &effective, context, default_model) {
             Ok(v) => v,
             Err(e) => return e,
         };
     openai_compat_chat(
-        "Grok",
+        &name,
         &node.id,
         &api_key,
-        &resolve_base_url(config, context, "https://api.x.ai/v1/chat/completions"),
+        &base_url,
         &model,
         messages,
         max_tokens,
@@ -217,72 +282,6 @@ pub(super) async fn execute_grok(
     )
     .await
 }
-
-// ── Ollama (self-hosted, OpenAI-compatible) ───────────────────────────────────
-pub(super) async fn execute_ollama(
-    node: &Node,
-    context: &ExecutionContext,
-    http_client: &reqwest::Client,
-) -> NodeExecutionResult {
-    let config = match node.config.as_ref() {
-        Some(c) => c,
-        None => return NodeExecutionResult::failed("Ollama node requires config"),
-    };
-    // Self-hosted: base URL is configurable and the API key is optional.
-    let base_url = config
-        .get("base_url")
-        .and_then(|v| v.as_str())
-        .map(|s| resolve_template(s, context))
-        .unwrap_or_else(|| "http://localhost:11434/v1/chat/completions".to_string());
-    let api_key = config
-        .get("api_key")
-        .and_then(|v| v.as_str())
-        .map(|k| resolve_template(k, context))
-        .unwrap_or_else(|| "ollama".to_string());
-    // Reuse the shared field extraction, but the api_key is optional here so we
-    // only need model/prompt/system/max_tokens/temperature from it.
-    let model = config
-        .get("model")
-        .and_then(|v| v.as_str())
-        .unwrap_or("llama3.2")
-        .to_string();
-    let prompt = match config.get("prompt_template").and_then(|v| v.as_str()) {
-        Some(t) => resolve_template(t, context),
-        None => return NodeExecutionResult::failed("Ollama missing 'prompt_template'"),
-    };
-    let system_prompt = config
-        .get("system_prompt")
-        .and_then(|v| v.as_str())
-        .map(|s| resolve_template(s, context))
-        .unwrap_or_default();
-    let max_tokens: u64 = config
-        .get("max_tokens")
-        .and_then(|v| v.as_u64())
-        .unwrap_or(1024);
-    let temperature: f64 = config
-        .get("temperature")
-        .and_then(|v| v.as_f64())
-        .unwrap_or(0.7);
-    let mut messages = Vec::new();
-    if !system_prompt.is_empty() {
-        messages.push(serde_json::json!({ "role": "system", "content": system_prompt }));
-    }
-    messages.push(serde_json::json!({ "role": "user", "content": prompt }));
-    openai_compat_chat(
-        "Ollama",
-        &node.id,
-        &api_key,
-        &base_url,
-        &model,
-        serde_json::Value::Array(messages),
-        max_tokens,
-        temperature,
-        http_client,
-    )
-    .await
-}
-
-// ── Azure OpenAI ─────────────────────────────────────────────────────────────
 pub(super) async fn execute_azure_openai(
     node: &Node,
     context: &ExecutionContext,
@@ -477,199 +476,6 @@ pub(super) async fn execute_vertex(
     NodeExecutionResult::succeeded(
         serde_json::json!({ "content": content, "model": model, "usage": usage }).to_string(),
     )
-}
-
-// ── DeepSeek ─────────────────────────────────────────────────────────────────
-pub(super) async fn execute_deepseek(
-    node: &Node,
-    context: &ExecutionContext,
-    http_client: &reqwest::Client,
-) -> NodeExecutionResult {
-    let config = match node.config.as_ref() {
-        Some(c) => c,
-        None => return NodeExecutionResult::failed("DeepSeek node requires config"),
-    };
-    let (api_key, model, messages, max_tokens, temperature) =
-        match extract_chat_fields("DeepSeek", config, context, "deepseek-v4-flash") {
-            Ok(v) => v,
-            Err(e) => return e,
-        };
-    openai_compat_chat(
-        "DeepSeek",
-        &node.id,
-        &api_key,
-        &resolve_base_url(
-            config,
-            context,
-            "https://api.deepseek.com/v1/chat/completions",
-        ),
-        &model,
-        messages,
-        max_tokens,
-        temperature,
-        http_client,
-    )
-    .await
-}
-
-// ── Qwen (通义千问 / DashScope) ───────────────────────────────────────────────
-pub(super) async fn execute_qwen(
-    node: &Node,
-    context: &ExecutionContext,
-    http_client: &reqwest::Client,
-) -> NodeExecutionResult {
-    let config = match node.config.as_ref() {
-        Some(c) => c,
-        None => return NodeExecutionResult::failed("Qwen node requires config"),
-    };
-    let (api_key, model, messages, max_tokens, temperature) =
-        match extract_chat_fields("Qwen", config, context, "qwen-max") {
-            Ok(v) => v,
-            Err(e) => return e,
-        };
-    openai_compat_chat(
-        "Qwen",
-        &node.id,
-        &api_key,
-        &resolve_base_url(
-            config,
-            context,
-            "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions",
-        ),
-        &model,
-        messages,
-        max_tokens,
-        temperature,
-        http_client,
-    )
-    .await
-}
-
-// ── Zhipu (智谱AI / GLM) ─────────────────────────────────────────────────────
-pub(super) async fn execute_zhipu(
-    node: &Node,
-    context: &ExecutionContext,
-    http_client: &reqwest::Client,
-) -> NodeExecutionResult {
-    let config = match node.config.as_ref() {
-        Some(c) => c,
-        None => return NodeExecutionResult::failed("Zhipu node requires config"),
-    };
-    let (api_key, model, messages, max_tokens, temperature) =
-        match extract_chat_fields("Zhipu", config, context, "glm-4.6") {
-            Ok(v) => v,
-            Err(e) => return e,
-        };
-    openai_compat_chat(
-        "Zhipu",
-        &node.id,
-        &api_key,
-        &resolve_base_url(
-            config,
-            context,
-            "https://open.bigmodel.cn/api/paas/v4/chat/completions",
-        ),
-        &model,
-        messages,
-        max_tokens,
-        temperature,
-        http_client,
-    )
-    .await
-}
-
-// ── Moonshot (月之暗面 / Kimi) ────────────────────────────────────────────────
-pub(super) async fn execute_moonshot(
-    node: &Node,
-    context: &ExecutionContext,
-    http_client: &reqwest::Client,
-) -> NodeExecutionResult {
-    let config = match node.config.as_ref() {
-        Some(c) => c,
-        None => return NodeExecutionResult::failed("Moonshot node requires config"),
-    };
-    let (api_key, model, messages, max_tokens, temperature) =
-        match extract_chat_fields("Moonshot", config, context, "kimi-latest") {
-            Ok(v) => v,
-            Err(e) => return e,
-        };
-    openai_compat_chat(
-        "Moonshot",
-        &node.id,
-        &api_key,
-        &resolve_base_url(
-            config,
-            context,
-            "https://api.moonshot.cn/v1/chat/completions",
-        ),
-        &model,
-        messages,
-        max_tokens,
-        temperature,
-        http_client,
-    )
-    .await
-}
-
-// ── Doubao (豆包 / 火山引擎) ──────────────────────────────────────────────────
-pub(super) async fn execute_doubao(
-    node: &Node,
-    context: &ExecutionContext,
-    http_client: &reqwest::Client,
-) -> NodeExecutionResult {
-    let config = match node.config.as_ref() {
-        Some(c) => c,
-        None => return NodeExecutionResult::failed("Doubao node requires config"),
-    };
-    let api_key = match config.get("api_key").and_then(|v| v.as_str()) {
-        Some(k) => resolve_template(k, context),
-        None => return NodeExecutionResult::failed("Doubao missing 'api_key'"),
-    };
-    // Doubao uses endpoint_id as the model identifier
-    let model = match config.get("endpoint_id").and_then(|v| v.as_str()) {
-        Some(e) => resolve_template(e, context),
-        None => return NodeExecutionResult::failed("Doubao missing 'endpoint_id'"),
-    };
-    let prompt = match config.get("prompt_template").and_then(|v| v.as_str()) {
-        Some(t) => resolve_template(t, context),
-        None => return NodeExecutionResult::failed("Doubao missing 'prompt_template'"),
-    };
-    let system_prompt = config
-        .get("system_prompt")
-        .and_then(|v| v.as_str())
-        .map(|s| resolve_template(s, context))
-        .unwrap_or_default();
-    let max_tokens: u64 = config
-        .get("max_tokens")
-        .and_then(|v| v.as_u64())
-        .unwrap_or(1024);
-    let temperature: f64 = config
-        .get("temperature")
-        .and_then(|v| v.as_f64())
-        .unwrap_or(0.7);
-
-    let mut messages = Vec::new();
-    if !system_prompt.is_empty() {
-        messages.push(serde_json::json!({ "role": "system", "content": system_prompt }));
-    }
-    messages.push(serde_json::json!({ "role": "user", "content": prompt }));
-
-    openai_compat_chat(
-        "Doubao",
-        &node.id,
-        &api_key,
-        &resolve_base_url(
-            config,
-            context,
-            "https://ark.cn-beijing.volces.com/api/v3/chat/completions",
-        ),
-        &model,
-        serde_json::Value::Array(messages),
-        max_tokens,
-        temperature,
-        http_client,
-    )
-    .await
 }
 
 // ── MiniMax ───────────────────────────────────────────────────────────────────
@@ -943,37 +749,4 @@ pub(super) async fn execute_ernie(
     NodeExecutionResult::succeeded(
         serde_json::json!({ "content": content, "model": model, "usage": usage }).to_string(),
     )
-}
-
-// ── Hunyuan (腾讯混元) ────────────────────────────────────────────────────────
-pub(super) async fn execute_hunyuan(
-    node: &Node,
-    context: &ExecutionContext,
-    http_client: &reqwest::Client,
-) -> NodeExecutionResult {
-    let config = match node.config.as_ref() {
-        Some(c) => c,
-        None => return NodeExecutionResult::failed("Hunyuan node requires config"),
-    };
-    let (api_key, model, messages, max_tokens, temperature) =
-        match extract_chat_fields("Hunyuan", config, context, "hunyuan-turbos-latest") {
-            Ok(v) => v,
-            Err(e) => return e,
-        };
-    openai_compat_chat(
-        "Hunyuan",
-        &node.id,
-        &api_key,
-        &resolve_base_url(
-            config,
-            context,
-            "https://api.hunyuan.cloud.tencent.com/v1/chat/completions",
-        ),
-        &model,
-        messages,
-        max_tokens,
-        temperature,
-        http_client,
-    )
-    .await
 }

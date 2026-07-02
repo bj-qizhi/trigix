@@ -47,7 +47,7 @@ const GEN_PROVIDERS: { value: string; label: string; models: string[]; keyHint: 
 const GEN_MODULES = [
   'http', 'condition', 'transform', 'filter', 'aggregate', 'delay', 'code', 'loop',
   'extract', 'merge', 'assert', 'validate', 'fan_out', 'fan_in', 'catch', 'note',
-  'claude', 'openai', 'gemini', 'deepseek', 'qwen', 'zhipu', 'moonshot', 'grok',
+  'claude', 'openai', 'gemini', 'openai_compat',
   'slack', 'github', 'jira', 'notion', 'database', 'email', 'webhook',
 ]
 

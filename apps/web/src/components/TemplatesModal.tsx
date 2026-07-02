@@ -528,7 +528,7 @@ export const TEMPLATES: Template[] = [
       workflow_version_id: 'template',
       nodes: [
         { id: 'trigger', type: 'trigger', config: { webhook_secret: '' } },
-        { id: 'review', type: 'deepseek', config: { model: 'deepseek-v4-pro', api_key: '{{credential.deepseek_key}}', system_prompt: '你是一名资深后端工程师，做代码审查时关注：安全漏洞、性能问题、可读性。用中文回复，Markdown 格式。', prompt_template: '请审查以下代码：\n```{{input.language}}\n{{input.code}}\n```\n上下文：{{input.context}}', max_tokens: 1500 } },
+        { id: 'review', type: 'openai_compat', config: { provider: 'deepseek',  model: 'deepseek-v4-pro', api_key: '{{credential.deepseek_key}}', system_prompt: '你是一名资深后端工程师，做代码审查时关注：安全漏洞、性能问题、可读性。用中文回复，Markdown 格式。', prompt_template: '请审查以下代码：\n```{{input.language}}\n{{input.code}}\n```\n上下文：{{input.context}}', max_tokens: 1500 } },
         { id: 'post', type: 'slack', config: { webhook_url: '{{credential.slack_webhook}}', text: '*DeepSeek 代码审查：{{input.pr_title}}*\n\n{{review.content}}', username: 'DeepSeekBot' } },
       ],
       edges: [
@@ -549,8 +549,8 @@ export const TEMPLATES: Template[] = [
       workflow_version_id: 'template',
       nodes: [
         { id: 'trigger', type: 'trigger', config: { webhook_secret: '' } },
-        { id: 'classify', type: 'qwen', config: { model: 'qwen3.5-flash', api_key: '{{credential.dashscope_key}}', system_prompt: '你是客服分类助手。将问题分类为：退款、配送、产品咨询、其他。只输出分类词。', prompt_template: '{{input.message}}', max_tokens: 20 } },
-        { id: 'reply', type: 'qwen', config: { model: 'qwen-max', api_key: '{{credential.dashscope_key}}', system_prompt: '你是一名专业、友善的电商客服。用简洁中文回复，不超过150字。', prompt_template: '客户问题类型：{{classify.content}}\n客户原文：{{input.message}}\n订单信息：{{input.order_info}}', max_tokens: 300, temperature: 0.5 } },
+        { id: 'classify', type: 'openai_compat', config: { provider: 'qwen',  model: 'qwen3.5-flash', api_key: '{{credential.dashscope_key}}', system_prompt: '你是客服分类助手。将问题分类为：退款、配送、产品咨询、其他。只输出分类词。', prompt_template: '{{input.message}}', max_tokens: 20 } },
+        { id: 'reply', type: 'openai_compat', config: { provider: 'qwen',  model: 'qwen-max', api_key: '{{credential.dashscope_key}}', system_prompt: '你是一名专业、友善的电商客服。用简洁中文回复，不超过150字。', prompt_template: '客户问题类型：{{classify.content}}\n客户原文：{{input.message}}\n订单信息：{{input.order_info}}', max_tokens: 300, temperature: 0.5 } },
         { id: 'send_reply', type: 'http', config: { method: 'POST', url: '{{input.reply_url}}', auth_token: '{{credential.cs_platform_key}}', body: '{"session_id":"{{input.session_id}}","message":"{{reply.content}}"}' } },
       ],
       edges: [
@@ -573,8 +573,8 @@ export const TEMPLATES: Template[] = [
       nodes: [
         { id: 'trigger', type: 'trigger', config: {} },
         { id: 'fan_out', type: 'fan_out', config: {} },
-        { id: 'deepseek', type: 'deepseek', config: { model: 'deepseek-v4-flash', api_key: '{{credential.deepseek_key}}', system_prompt: '请简洁、准确地回答。', prompt_template: '{{input.question}}', max_tokens: 512, temperature: 0.3 } },
-        { id: 'qwen', type: 'qwen', config: { model: 'qwen-max', api_key: '{{credential.dashscope_key}}', system_prompt: '请简洁、准确地回答。', prompt_template: '{{input.question}}', max_tokens: 512, temperature: 0.3 } },
+        { id: 'deepseek', type: 'openai_compat', config: { provider: 'deepseek',  model: 'deepseek-v4-flash', api_key: '{{credential.deepseek_key}}', system_prompt: '请简洁、准确地回答。', prompt_template: '{{input.question}}', max_tokens: 512, temperature: 0.3 } },
+        { id: 'qwen', type: 'openai_compat', config: { provider: 'qwen',  model: 'qwen-max', api_key: '{{credential.dashscope_key}}', system_prompt: '请简洁、准确地回答。', prompt_template: '{{input.question}}', max_tokens: 512, temperature: 0.3 } },
         { id: 'fan_in', type: 'fan_in', config: {} },
         { id: 'compare', type: 'transform', config: { template: { question: '{{input.question}}', deepseek: '{{deepseek.content}}', qwen: '{{qwen.content}}' } } },
       ],
@@ -625,7 +625,7 @@ export const TEMPLATES: Template[] = [
       workflow_version_id: 'template',
       nodes: [
         { id: 'trigger', type: 'trigger', config: { webhook_secret: '' } },
-        { id: 'summarize', type: 'moonshot', config: { model: 'kimi-latest', api_key: '{{credential.moonshot_key}}', system_prompt: '你是专业文档分析师。输出结构化摘要：核心结论、关键数据、风险点、行动建议，每项不超过3条。', prompt_template: '文档标题：{{input.title}}\n\n文档内容：\n{{input.content}}', max_tokens: 1000, temperature: 0.3 } },
+        { id: 'summarize', type: 'openai_compat', config: { provider: 'moonshot',  model: 'kimi-latest', api_key: '{{credential.moonshot_key}}', system_prompt: '你是专业文档分析师。输出结构化摘要：核心结论、关键数据、风险点、行动建议，每项不超过3条。', prompt_template: '文档标题：{{input.title}}\n\n文档内容：\n{{input.content}}', max_tokens: 1000, temperature: 0.3 } },
         { id: 'store', type: 'database', config: { url: '{{credential.pg_url}}', query: "INSERT INTO doc_summaries (doc_id, title, summary, created_at) VALUES ('{{input.doc_id}}', '{{input.title}}', '{{summarize.content}}', NOW())" } },
         { id: 'notify', type: 'slack', config: { webhook_url: '{{credential.slack_webhook}}', text: '文档摘要完成：*{{input.title}}*\n\n{{summarize.content}}', username: 'KimiBot' } },
       ],
@@ -650,7 +650,7 @@ export const TEMPLATES: Template[] = [
         { id: 'trigger', type: 'trigger', config: { interval_secs: 300 } },
         { id: 'fetch_metrics', type: 'http', config: { method: 'GET', url: '{{input.metrics_url}}', auth_token: '{{credential.monitor_key}}' } },
         { id: 'check_threshold', type: 'condition', config: { field: 'body.value', operator: 'gt', value: '{{input.threshold}}', source: '{{fetch_metrics}}' } },
-        { id: 'analyze', type: 'hunyuan', config: { model: 'hunyuan-turbos-latest', api_key: '{{credential.hunyuan_key}}', system_prompt: '你是运维告警分析助手，用50字内中文描述告警原因和建议。', prompt_template: '指标：{{fetch_metrics.body.metric_name}}，当前值：{{fetch_metrics.body.value}}，阈值：{{input.threshold}}', max_tokens: 150 } },
+        { id: 'analyze', type: 'openai_compat', config: { provider: 'hunyuan',  model: 'hunyuan-turbos-latest', api_key: '{{credential.hunyuan_key}}', system_prompt: '你是运维告警分析助手，用50字内中文描述告警原因和建议。', prompt_template: '指标：{{fetch_metrics.body.metric_name}}，当前值：{{fetch_metrics.body.value}}，阈值：{{input.threshold}}', max_tokens: 150 } },
         { id: 'send_wecom', type: 'http', config: { method: 'POST', url: '{{credential.wecom_webhook}}', body: '{"msgtype":"markdown","markdown":{"content":"## ⚠️ 告警通知\n**指标**：{{fetch_metrics.body.metric_name}}\n**当前值**：{{fetch_metrics.body.value}}\n**分析**：{{analyze.content}}"}}' } },
       ],
       edges: [

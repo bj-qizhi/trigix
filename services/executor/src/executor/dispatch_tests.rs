@@ -55,12 +55,11 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn grok_and_ollama_nodes_require_config() {
+    async fn openai_compat_and_western_llm_nodes_require_config() {
         let executor = DispatchingNodeExecutor::new(None);
         let context = make_context("{}");
         for nt in [
-            NodeType::Grok,
-            NodeType::Ollama,
+            NodeType::OpenaiCompat,
             NodeType::AzureOpenai,
             NodeType::Vertex,
         ] {
@@ -2687,63 +2686,50 @@ mod cn_llm_tests {
     }
 
     #[tokio::test]
-    async fn deepseek_fails_without_api_key() {
+    async fn openai_compat_fails_without_api_key() {
         let c = reqwest::Client::new();
         let n = make_node(
-            NodeType::Deepseek,
-            serde_json::json!({ "prompt_template": "hi" }),
+            NodeType::OpenaiCompat,
+            serde_json::json!({ "provider": "deepseek", "prompt_template": "hi" }),
         );
-        let r = execute_deepseek(&n, &ctx(), &c).await;
+        let r = execute_openai_compat(&n, &ctx(), &c).await;
         assert!(r.error.as_deref().unwrap_or("").contains("api_key"));
     }
 
     #[tokio::test]
-    async fn deepseek_fails_without_prompt() {
+    async fn openai_compat_fails_without_prompt() {
         let c = reqwest::Client::new();
-        let n = make_node(NodeType::Deepseek, serde_json::json!({ "api_key": "sk-x" }));
-        let r = execute_deepseek(&n, &ctx(), &c).await;
+        let n = make_node(
+            NodeType::OpenaiCompat,
+            serde_json::json!({ "provider": "qwen", "api_key": "sk-x" }),
+        );
+        let r = execute_openai_compat(&n, &ctx(), &c).await;
         assert!(r.error.as_deref().unwrap_or("").contains("prompt_template"));
     }
 
     #[tokio::test]
-    async fn qwen_fails_without_api_key() {
+    async fn openai_compat_needs_base_url_or_known_provider() {
         let c = reqwest::Client::new();
+        // Unknown provider and no base_url → can't resolve an endpoint.
         let n = make_node(
-            NodeType::Qwen,
-            serde_json::json!({ "prompt_template": "hi" }),
+            NodeType::OpenaiCompat,
+            serde_json::json!({ "provider": "acme", "api_key": "sk-x", "prompt_template": "hi" }),
         );
-        let r = execute_qwen(&n, &ctx(), &c).await;
-        assert!(r.error.as_deref().unwrap_or("").contains("api_key"));
+        let r = execute_openai_compat(&n, &ctx(), &c).await;
+        assert!(r.error.as_deref().unwrap_or("").contains("base_url"));
     }
 
     #[tokio::test]
-    async fn zhipu_fails_without_prompt() {
+    async fn openai_compat_ollama_is_keyless() {
+        // Ollama accepts any key; a missing api_key must NOT be the failure
+        // reason (it should get past key resolution to the prompt check).
         let c = reqwest::Client::new();
-        let n = make_node(NodeType::Zhipu, serde_json::json!({ "api_key": "sk-x" }));
-        let r = execute_zhipu(&n, &ctx(), &c).await;
+        let n = make_node(
+            NodeType::OpenaiCompat,
+            serde_json::json!({ "provider": "ollama", "model": "llama3" }),
+        );
+        let r = execute_openai_compat(&n, &ctx(), &c).await;
         assert!(r.error.as_deref().unwrap_or("").contains("prompt_template"));
-    }
-
-    #[tokio::test]
-    async fn moonshot_fails_without_api_key() {
-        let c = reqwest::Client::new();
-        let n = make_node(
-            NodeType::Moonshot,
-            serde_json::json!({ "prompt_template": "hi" }),
-        );
-        let r = execute_moonshot(&n, &ctx(), &c).await;
-        assert!(r.error.as_deref().unwrap_or("").contains("api_key"));
-    }
-
-    #[tokio::test]
-    async fn doubao_fails_without_endpoint_id() {
-        let c = reqwest::Client::new();
-        let n = make_node(
-            NodeType::Doubao,
-            serde_json::json!({ "api_key": "sk-x", "prompt_template": "hi" }),
-        );
-        let r = execute_doubao(&n, &ctx(), &c).await;
-        assert!(r.error.as_deref().unwrap_or("").contains("endpoint_id"));
     }
 
     #[tokio::test]
@@ -2769,25 +2755,25 @@ mod cn_llm_tests {
     }
 
     #[tokio::test]
-    async fn hunyuan_fails_without_api_key() {
+    async fn openai_compat_hunyuan_fails_without_api_key() {
         let c = reqwest::Client::new();
         let n = make_node(
-            NodeType::Hunyuan,
-            serde_json::json!({ "prompt_template": "hi" }),
+            NodeType::OpenaiCompat,
+            serde_json::json!({ "provider": "hunyuan", "prompt_template": "hi" }),
         );
-        let r = execute_hunyuan(&n, &ctx(), &c).await;
+        let r = execute_openai_compat(&n, &ctx(), &c).await;
         assert!(r.error.as_deref().unwrap_or("").contains("api_key"));
     }
 
     #[tokio::test]
-    async fn deepseek_no_config_returns_error() {
+    async fn openai_compat_no_config_returns_error() {
         let c = reqwest::Client::new();
         let n = Node {
             id: "n1".into(),
-            node_type: NodeType::Deepseek,
+            node_type: NodeType::OpenaiCompat,
             config: None,
         };
-        let r = execute_deepseek(&n, &ctx(), &c).await;
+        let r = execute_openai_compat(&n, &ctx(), &c).await;
         assert!(r.error.is_some());
     }
 }
