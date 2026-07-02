@@ -370,6 +370,13 @@ pub(super) fn execute_extract(node: &Node, context: &ExecutionContext) -> NodeEx
     let source_json = resolve_template(source_expr, context);
     let source: serde_json::Value =
         serde_json::from_str(&source_json).unwrap_or(serde_json::Value::Null);
+    // A `[*]` wildcard yields every match as an array; otherwise a single value.
+    if let Some(values) = json_path_multi(&source, path) {
+        let found = !values.is_empty();
+        return NodeExecutionResult::succeeded(
+            serde_json::json!({ "value": values, "found": found }).to_string(),
+        );
+    }
     match json_path(&source, path) {
         Some(val) => NodeExecutionResult::succeeded(
             serde_json::json!({ "value": val, "found": true }).to_string(),

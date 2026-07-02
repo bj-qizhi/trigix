@@ -194,16 +194,113 @@ fn resolve_expr(expr: &str, context: &ExecutionContext) -> String {
     }
 }
 
+/// One step of a JSONPath-lite expression. Segments stay as strings so the
+/// *container* decides whether a numeric segment is an array index or an object
+/// key — exactly the original behaviour — while brackets and `[*]` are added.
+enum PathSeg {
+    Field(String),
+    Wildcard,
+}
+
+/// Tokenize a path supporting: dot keys (`a.b`), numeric dot segments (`a.0`),
+/// bracket indices (`a[0]`), quoted bracket keys (`a['b']` / `a["b"]`, which may
+/// contain dots), a leading `$`/`$.`, and the `[*]` / `.*` wildcard. Plain dot
+/// paths tokenize exactly as before, so every existing caller is unaffected.
+fn tokenize_path(path: &str) -> Vec<PathSeg> {
+    let path = path.strip_prefix('$').unwrap_or(path);
+    let mut segs = Vec::new();
+    let mut buf = String::new();
+    let flush = |buf: &mut String, segs: &mut Vec<PathSeg>| {
+        if !buf.is_empty() {
+            let s = std::mem::take(buf);
+            segs.push(if s == "*" {
+                PathSeg::Wildcard
+            } else {
+                PathSeg::Field(s)
+            });
+        }
+    };
+    let mut it = path.chars().peekable();
+    while let Some(c) = it.next() {
+        match c {
+            '.' => flush(&mut buf, &mut segs),
+            '[' => {
+                flush(&mut buf, &mut segs);
+                let mut inner = String::new();
+                for d in it.by_ref() {
+                    if d == ']' {
+                        break;
+                    }
+                    inner.push(d);
+                }
+                let t = inner.trim();
+                if t == "*" {
+                    segs.push(PathSeg::Wildcard);
+                } else {
+                    let key = t
+                        .strip_prefix('\'')
+                        .and_then(|s| s.strip_suffix('\''))
+                        .or_else(|| t.strip_prefix('"').and_then(|s| s.strip_suffix('"')))
+                        .unwrap_or(t);
+                    segs.push(PathSeg::Field(key.to_string()));
+                }
+            }
+            _ => buf.push(c),
+        }
+    }
+    flush(&mut buf, &mut segs);
+    segs
+}
+
+fn json_step<'a>(value: &'a serde_json::Value, field: &str) -> Option<&'a serde_json::Value> {
+    match value {
+        serde_json::Value::Object(map) => map.get(field),
+        serde_json::Value::Array(arr) => arr.get(field.parse::<usize>().ok()?),
+        _ => None,
+    }
+}
+
+/// Resolve a single value at `path`. A `[*]` wildcard has no single-value answer,
+/// so it yields `None` — use [`json_path_multi`] for those.
 fn json_path<'a>(value: &'a serde_json::Value, path: &str) -> Option<&'a serde_json::Value> {
     let mut cur = value;
-    for seg in path.split('.') {
-        cur = match cur {
-            serde_json::Value::Object(map) => map.get(seg)?,
-            serde_json::Value::Array(arr) => arr.get(seg.parse::<usize>().ok()?)?,
-            _ => return None,
-        };
+    for seg in tokenize_path(path) {
+        match seg {
+            PathSeg::Field(f) => cur = json_step(cur, &f)?,
+            PathSeg::Wildcard => return None,
+        }
     }
     Some(cur)
+}
+
+/// Resolve every value matched by `path` when it contains a `[*]` wildcard
+/// (`items[*].name` → each name). Returns `None` when the path has no wildcard,
+/// so callers can fall back to the single-value [`json_path`].
+fn json_path_multi(value: &serde_json::Value, path: &str) -> Option<Vec<serde_json::Value>> {
+    let segs = tokenize_path(path);
+    if !segs.iter().any(|s| matches!(s, PathSeg::Wildcard)) {
+        return None;
+    }
+    let mut frontier = vec![value.clone()];
+    for seg in &segs {
+        let mut next = Vec::new();
+        for v in &frontier {
+            match seg {
+                PathSeg::Field(f) => {
+                    if let Some(x) = json_step(v, f) {
+                        next.push(x.clone());
+                    }
+                }
+                PathSeg::Wildcard => match v {
+                    serde_json::Value::Array(a) => next.extend(a.iter().cloned()),
+                    serde_json::Value::Object(m) => next.extend(m.values().cloned()),
+                    _ => {}
+                },
+            }
+        }
+        frontier = next;
+    }
+    Some(frontier)
 }
 
 fn json_to_string(val: &serde_json::Value) -> String {
@@ -1711,3 +1808,60 @@ fn urlencoding_simple(s: &str) -> String {
 
 #[cfg(test)]
 mod dispatch_tests;
+
+#[cfg(test)]
+mod json_path_tests {
+    use super::{json_path, json_path_multi};
+    use serde_json::json;
+
+    #[test]
+    fn dot_paths_behave_exactly_as_before() {
+        let v = json!({"a": {"b": {"c": 42}}, "list": [10, 20, 30]});
+        assert_eq!(json_path(&v, "a.b.c"), Some(&json!(42)));
+        // Numeric dot segment indexes an array...
+        assert_eq!(json_path(&v, "list.1"), Some(&json!(20)));
+        // ...but the same segment is a string key on an object.
+        let obj = json!({"0": "zero"});
+        assert_eq!(json_path(&obj, "0"), Some(&json!("zero")));
+        assert_eq!(json_path(&v, "a.missing"), None);
+    }
+
+    #[test]
+    fn bracket_index_and_quoted_keys() {
+        let v = json!({"items": [{"name": "x"}, {"name": "y"}], "od.d": 7});
+        assert_eq!(json_path(&v, "items[0].name"), Some(&json!("x")));
+        assert_eq!(json_path(&v, "items[1][\"name\"]"), Some(&json!("y")));
+        // A quoted key may contain a dot that a bare dot-path couldn't address.
+        assert_eq!(json_path(&v, "['od.d']"), Some(&json!(7)));
+    }
+
+    #[test]
+    fn leading_dollar_is_optional() {
+        let v = json!({"a": {"b": 1}});
+        assert_eq!(json_path(&v, "$.a.b"), Some(&json!(1)));
+        assert_eq!(json_path(&v, "$['a']['b']"), Some(&json!(1)));
+    }
+
+    #[test]
+    fn wildcard_is_single_value_none_but_multi_collects() {
+        let v = json!({"items": [{"name": "x"}, {"name": "y"}, {"other": 1}]});
+        // Single-value resolution can't answer a wildcard.
+        assert_eq!(json_path(&v, "items[*].name"), None);
+        // Multi collects every match, skipping items without the field.
+        assert_eq!(
+            json_path_multi(&v, "items[*].name"),
+            Some(vec![json!("x"), json!("y")])
+        );
+        // A bare wildcard yields all elements.
+        assert_eq!(
+            json_path_multi(&v, "items[*]"),
+            Some(vec![
+                json!({"name": "x"}),
+                json!({"name": "y"}),
+                json!({"other": 1})
+            ])
+        );
+        // No wildcard → None, so callers fall back to single-value.
+        assert_eq!(json_path_multi(&v, "items[0].name"), None);
+    }
+}

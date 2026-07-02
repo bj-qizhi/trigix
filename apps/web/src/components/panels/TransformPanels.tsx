@@ -52,12 +52,12 @@ export function ExtractConfig({ set, str }: ConfigProps) {
       <div className="field">
         <label>{fl("Path *")}</label>
         <input
-          placeholder="data.users.0.email"
+          placeholder="data.users[*].email"
           value={str('path')}
           onChange={(e) => set('path', e.target.value)}
           style={{ fontFamily: 'monospace' }}
         />
-        <span style={{ fontSize: 11, color: 'var(--muted)' }}>{fl("Dot-separated path into the source JSON.")}</span>
+        <span style={{ fontSize: 11, color: 'var(--muted)' }}>{fl("JSONPath-lite: dots, brackets (users[0], ['a.b']), a leading $, and [*] to collect every match into an array.")}</span>
       </div>
       <p style={{ fontSize: 12, color: 'var(--muted)', marginTop: 4 }}>
         {fl("Returns")} <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>
