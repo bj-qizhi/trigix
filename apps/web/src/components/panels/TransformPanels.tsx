@@ -4,6 +4,7 @@
 import type { ConfigProps } from './types'
 import { IconX } from '../uiIcons'
 import { fl } from './i18nLabels'
+import { FieldAssist } from '../editor/FieldAssist'
 
 export function TransformConfig({ config, set }: ConfigProps) {
   const raw = config.template
@@ -146,7 +147,10 @@ export function RegexConfig({ set, str }: ConfigProps) {
         />
       </div>
       <div className="field">
-        <label>{fl("Pattern *")}</label>
+        <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <span>{fl("Pattern *")}</span>
+          <FieldAssist kind="regex" onInsert={(v) => set('pattern', v)} />
+        </label>
         <input
           placeholder="error|warning"
           value={str('pattern')}

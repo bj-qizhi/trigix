@@ -4,6 +4,7 @@
 import type { ReactNode } from 'react'
 import type { ConfigProps } from './types'
 import { fl } from './i18nLabels'
+import { FieldAssist } from '../editor/FieldAssist'
 
 function TemplateHint() {
   return (
@@ -82,7 +83,10 @@ export function OpenAIConfig({ set, str, num }: ConfigProps) {
         />
       </div>
       <div className="field">
-        <label>{fl("Prompt Template *")}</label>
+        <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <span>{fl("Prompt Template *")}</span>
+          <FieldAssist kind="prompt" onInsert={(v) => set('prompt_template', v)} context={str('system_prompt', '') || undefined} />
+        </label>
         <textarea
           rows={4}
           placeholder={'Summarize: {{input.text}}'}
@@ -160,7 +164,10 @@ export function GeminiConfig({ set, str, num }: ConfigProps) {
         />
       </div>
       <div className="field">
-        <label>{fl("Prompt Template *")}</label>
+        <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <span>{fl("Prompt Template *")}</span>
+          <FieldAssist kind="prompt" onInsert={(v) => set('prompt_template', v)} context={str('system_prompt', '') || undefined} />
+        </label>
         <textarea
           rows={4}
           placeholder={'Summarize: {{input.text}}'}
@@ -236,7 +243,10 @@ export function ClaudeConfig({ set, str, num }: ConfigProps) {
         />
       </div>
       <div className="field">
-        <label>{fl("Prompt Template *")}</label>
+        <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <span>{fl("Prompt Template *")}</span>
+          <FieldAssist kind="prompt" onInsert={(v) => set('prompt_template', v)} context={str('system_prompt', '') || undefined} />
+        </label>
         <textarea
           rows={4}
           placeholder={'Analyze: {{input.text}}'}

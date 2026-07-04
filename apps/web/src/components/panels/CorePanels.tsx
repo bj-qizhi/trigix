@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from 'react'
 import * as api from '../../api/client'
 import type { ConfigProps } from './types'
 import { fl, labelLocale } from './i18nLabels'
+import { FieldAssist } from '../editor/FieldAssist'
 
 export function CronExpressionField({ value, onChange }: { value: string; onChange: (v: string) => void }) {
   const [preview, setPreview] = useState<string[]>([])
@@ -611,7 +612,10 @@ let count = input["count"];
   return (
     <>
       <div className="field">
-        <label>{fl("Script *")} <span style={{ color: 'var(--muted)' }}>{fl("(Rhai — JavaScript-like)")}</span></label>
+        <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <span>{fl("Script *")} <span style={{ color: 'var(--muted)' }}>{fl("(Rhai — JavaScript-like)")}</span></span>
+          <FieldAssist kind="code" onInsert={(v) => set('script', v)} />
+        </label>
         <textarea
           rows={10}
           placeholder={example}

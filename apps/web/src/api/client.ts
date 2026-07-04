@@ -671,6 +671,29 @@ export function copilotQuery(
   })
 }
 
+// Node-level field assist: generate one config value (regex / prompt / code / …)
+// from a plain-language description.
+export function assistField(
+  kind: string,
+  instruction: string,
+  opts: { context?: string; tenantId?: string; apiKey?: string; credentialName?: string; model?: string; provider?: string; baseUrl?: string } = {},
+): Promise<{ value: string }> {
+  return request('/v1/assist/field', {
+    method: 'POST',
+    body: JSON.stringify({
+      kind,
+      instruction,
+      context: opts.context,
+      tenant_id: opts.tenantId ?? '',
+      api_key: opts.apiKey,
+      credential_name: opts.credentialName,
+      model: opts.model,
+      provider: opts.provider,
+      base_url: opts.baseUrl,
+    }),
+  })
+}
+
 // Streaming copilot: POST → SSE (fetch + ReadableStream, since EventSource is
 // GET-only). Calls onDelta for each token; resolves with the final reply +
 // optional proposed graph.

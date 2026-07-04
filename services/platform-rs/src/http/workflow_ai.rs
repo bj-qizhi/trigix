@@ -767,6 +767,83 @@ async fn copilot_handler(
     }))
 }
 
+/// Kind-specific system prompt for node-level field assist. Each one forces a
+/// bare value (no prose, no code fence) so the result drops straight into the
+/// config field.
+fn field_assist_system_prompt(kind: &str) -> &'static str {
+    match kind {
+        "regex" => "You write regular expressions for a workflow automation tool (Rust regex crate syntax). Given a description, output ONE regular expression only — no delimiters, no surrounding quotes, no flags unless asked, no explanation, no code fence.",
+        "prompt" => "You write concise, effective LLM prompt templates for a workflow automation tool. Templates may reference workflow variables like {{input.field}} or {{node_id.field}}. Output ONLY the prompt template text — no explanation, no code fence.",
+        "code" => "You write Rhai scripts for a workflow 'code' node. `input` holds the incoming JSON value; the script's final expression is the node's output. Output ONLY the script — no explanation, no code fence.",
+        "jsonpath" => "You write JSONPath expressions. Output ONE JSONPath expression only — no surrounding quotes, no explanation, no code fence.",
+        "template" => "You write output/transform templates for a workflow tool that reference variables like {{input.field}} / {{node_id.field}}. Output ONLY the template — no explanation, no code fence.",
+        "sql" => "You write SQL queries. Output ONE SQL query only — no explanation, no code fence.",
+        "jq" => "You write jq filters. Output ONE jq filter only — no explanation, no code fence.",
+        _ => "Write exactly the value the user describes. Output ONLY the value — no explanation, no code fence.",
+    }
+}
+
+/// Strip a wrapping ```lang … ``` fence if the model added one despite the
+/// instruction, and trim surrounding whitespace.
+fn clean_field_value(raw: &str) -> String {
+    let t = raw.trim();
+    if let Some(after) = t.strip_prefix("```") {
+        // Drop the (optional) language token on the fence's first line.
+        let body = after.split_once('\n').map(|(_, b)| b).unwrap_or(after);
+        let inner = body.strip_suffix("```").unwrap_or(body);
+        return inner.trim().to_string();
+    }
+    t.to_string()
+}
+
+/// Generate one config-field value (regex / prompt / code / …) from a
+/// plain-language description.
+async fn field_assist_handler(
+    State(state): State<AppState>,
+    Extension(claims): Extension<Option<Claims>>,
+    Json(mut body): Json<FieldAssistRequest>,
+) -> Result<Json<FieldAssistResponse>, ApiError> {
+    require_write(&claims)?;
+    body.tenant_id = effective_tenant_id(&claims, &body.tenant_id);
+    if body.instruction.trim().is_empty() {
+        return Err(ApiError::bad_request("instruction is required"));
+    }
+
+    let key = resolve_api_key(
+        &state,
+        &body.tenant_id,
+        body.api_key.clone(),
+        body.credential_name.as_deref(),
+    )
+    .await;
+    let (is_anthropic, api_key, url) =
+        resolve_assist_llm(body.provider.as_deref(), key, body.base_url.as_deref())?;
+
+    let system = field_assist_system_prompt(&body.kind);
+    let user = match body.context.as_deref().map(str::trim) {
+        Some(c) if !c.is_empty() => format!("{}\n\nContext:\n{}", body.instruction, c),
+        _ => body.instruction.clone(),
+    };
+
+    let http_client = reqwest::Client::new();
+    let raw = chat_once(
+        &http_client,
+        is_anthropic,
+        &url,
+        &api_key,
+        &body.model,
+        system,
+        &user,
+        512,
+        0.2,
+    )
+    .await?;
+
+    Ok(Json(FieldAssistResponse {
+        value: clean_field_value(&raw),
+    }))
+}
+
 pub(super) fn routes() -> Router<AppState> {
     Router::new()
         .route(
@@ -778,11 +855,27 @@ pub(super) fn routes() -> Router<AppState> {
             "/v1/copilot/stream",
             get(method_not_allowed).post(copilot_stream),
         )
+        .route(
+            "/v1/assist/field",
+            get(method_not_allowed).post(field_assist_handler),
+        )
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{extract_proposed_graph, ALL_NODE_TYPES};
+    use super::{clean_field_value, extract_proposed_graph, ALL_NODE_TYPES};
+
+    #[test]
+    fn field_value_is_unwrapped_and_trimmed() {
+        assert_eq!(clean_field_value("  \\d{3}-\\d{4}  "), "\\d{3}-\\d{4}");
+        assert_eq!(clean_field_value("```regex\n\\d+\n```"), "\\d+");
+        assert_eq!(clean_field_value("```\nSELECT 1\n```"), "SELECT 1");
+        // No fence, multi-line body preserved.
+        assert_eq!(
+            clean_field_value("let x = input.n;\nx + 1"),
+            "let x = input.n;\nx + 1"
+        );
+    }
 
     #[test]
     fn full_node_catalog_covers_the_palette_and_stays_current() {

@@ -1505,6 +1505,37 @@ struct CopilotResponse {
     proposed_graph: Option<serde_json::Value>,
 }
 
+/// Node-level field assist: generate one config value (a regex, a prompt
+/// template, a code snippet, …) from a plain-language description.
+#[derive(Debug, Deserialize)]
+struct FieldAssistRequest {
+    /// What kind of value to write: "regex" | "prompt" | "code" | "jsonpath" |
+    /// "template" | "sql" | "jq" | "text".
+    kind: String,
+    /// Plain-language description of what the value should do.
+    instruction: String,
+    /// Optional surrounding context (e.g. sample input, the node's other config).
+    #[serde(default)]
+    context: Option<String>,
+    #[serde(default)]
+    api_key: Option<String>,
+    #[serde(default)]
+    credential_name: Option<String>,
+    #[serde(default = "default_model")]
+    model: String,
+    #[serde(default)]
+    provider: Option<String>,
+    #[serde(default)]
+    base_url: Option<String>,
+    #[serde(default)]
+    tenant_id: String,
+}
+
+#[derive(serde::Serialize)]
+struct FieldAssistResponse {
+    value: String,
+}
+
 #[derive(Debug, Deserialize)]
 struct TokenUsageQuery {
     tenant_id: String,

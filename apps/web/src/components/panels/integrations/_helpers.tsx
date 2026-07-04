@@ -4,6 +4,7 @@
 import { useId } from 'react'
 import type { ConfigProps } from '../types'
 import { fl } from '../i18nLabels'
+import { FieldAssist } from '../../editor/FieldAssist'
 
 // Editable model field: type any model name, or pick a current suggestion.
 // `options` are [value, label] pairs surfaced via a native datalist.
@@ -115,7 +116,10 @@ export function CnLlmCommonFields({ str, set, num }: Pick<ConfigProps, 'str' | '
         <textarea rows={2} placeholder="You are a helpful assistant." value={str('system_prompt', '')} onChange={(e) => set('system_prompt', e.target.value)} />
       </div>
       <div className="field">
-        <label>{fl("Prompt Template *")}</label>
+        <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <span>{fl("Prompt Template *")}</span>
+          <FieldAssist kind="prompt" onInsert={(v) => set('prompt_template', v)} context={str('system_prompt', '') || undefined} />
+        </label>
         <textarea rows={4} placeholder="{{input.text}}" value={str('prompt_template', '')} onChange={(e) => set('prompt_template', e.target.value)} />
       </div>
       <div style={{ display: 'flex', gap: 8 }}>
