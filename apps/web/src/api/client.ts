@@ -668,6 +668,55 @@ export function copilotQuery(
   })
 }
 
+// Streaming copilot: POST → SSE (fetch + ReadableStream, since EventSource is
+// GET-only). Calls onDelta for each token; resolves with the final reply +
+// optional proposed graph.
+export async function copilotStream(
+  message: string,
+  opts: { tenantId?: string; graphJson?: string; apiKey?: string; model?: string; provider?: string; baseUrl?: string },
+  onDelta: (delta: string) => void,
+): Promise<{ reply: string; proposed_graph?: { nodes: ApiNode[]; edges: ApiEdge[] } }> {
+  const stored = getStoredAuth()
+  const res = await fetch('/v1/copilot/stream', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...(stored ? { Authorization: `Bearer ${stored.token}` } : {}) },
+    body: JSON.stringify({
+      message,
+      tenant_id: opts.tenantId ?? '',
+      graph_json: opts.graphJson,
+      api_key: opts.apiKey,
+      model: opts.model,
+      provider: opts.provider,
+      base_url: opts.baseUrl,
+    }),
+  })
+  if (!res.ok || !res.body) throw new Error(`Copilot stream failed (HTTP ${res.status})`)
+  const reader = res.body.getReader()
+  const decoder = new TextDecoder()
+  let buf = ''
+  let final: { reply?: string; proposed_graph?: { nodes: ApiNode[]; edges: ApiEdge[] } } | null = null
+  for (;;) {
+    const { done, value } = await reader.read()
+    if (done) break
+    buf += decoder.decode(value, { stream: true })
+    let nl: number
+    while ((nl = buf.indexOf('\n')) >= 0) {
+      const line = buf.slice(0, nl).trim()
+      buf = buf.slice(nl + 1)
+      if (!line.startsWith('data:')) continue
+      const data = line.slice(5).trim()
+      if (!data) continue
+      let v: { delta?: string; done?: boolean; error?: string; reply?: string; proposed_graph?: { nodes: ApiNode[]; edges: ApiEdge[] } }
+      try { v = JSON.parse(data) } catch { continue }
+      if (v.error) throw new Error(v.error)
+      if (v.delta) onDelta(v.delta)
+      else if (v.done) final = { reply: v.reply, proposed_graph: v.proposed_graph }
+    }
+  }
+  if (!final) throw new Error('Copilot stream ended without a result')
+  return { reply: final.reply ?? '', proposed_graph: final.proposed_graph }
+}
+
 // ── Audit Log ─────────────────────────────────────────────────────────────────
 
 export function listAuditLog(tenantId: string, limit?: number, resourceId?: string): Promise<AuditEvent[]> {

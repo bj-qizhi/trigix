@@ -713,19 +713,38 @@ export function CopilotPanel({ onClose, graphJson, tenantId, zh, onApplyGraph }:
     setCopMessages((prev) => [...prev, { role: 'user', content: msg }])
     setCopInput('')
     setCopLoading(true)
+    // Append each streamed token to the (last) assistant message, creating it
+    // on the first token.
+    const appendDelta = (d: string) => {
+      setCopMessages((prev) => {
+        const copy = prev.slice()
+        const last = copy[copy.length - 1]
+        if (last && last.role === 'assistant') copy[copy.length - 1] = { ...last, content: last.content + d }
+        else copy.push({ role: 'assistant', content: d })
+        return copy
+      })
+    }
     try {
-      const res = await api.copilotQuery(msg, {
+      const res = await api.copilotStream(msg, {
         tenantId,
         graphJson: graphJson || undefined,
         apiKey: key,
         provider: copProvider === 'custom' ? undefined : copProvider,
         baseUrl: copProvider === 'custom' ? (copBaseUrl.trim() || undefined) : undefined,
+      }, appendDelta)
+      // Finalize: swap the raw stream (which included the json block) for the
+      // clean reply + attach the proposed graph so the Apply button shows.
+      setCopMessages((prev) => {
+        const copy = prev.slice()
+        const finalMsg: CopilotMessage = {
+          role: 'assistant',
+          content: res.reply || (res.proposed_graph ? (zh ? '（已生成一个工作流改动，可应用到画布）' : '(proposed a workflow edit — apply below)') : '(no response)'),
+          proposedGraph: res.proposed_graph,
+        }
+        if (copy[copy.length - 1]?.role === 'assistant') copy[copy.length - 1] = finalMsg
+        else copy.push(finalMsg)
+        return copy
       })
-      setCopMessages((prev) => [...prev, {
-        role: 'assistant',
-        content: res.reply || (res.proposed_graph ? (zh ? '（已生成一个工作流改动，可应用到画布）' : '(proposed a workflow edit — apply below)') : '(no response)'),
-        proposedGraph: res.proposed_graph,
-      }])
     } catch (e: unknown) {
       setCopMessages((prev) => [...prev, { role: 'assistant', content: `⚠ ${String(e)}` }])
     } finally {
@@ -810,7 +829,7 @@ export function CopilotPanel({ onClose, graphJson, tenantId, zh, onApplyGraph }:
             )}
           </div>
         ))}
-        {copLoading && (
+        {copLoading && messages[messages.length - 1]?.role !== 'assistant' && (
           <div style={{ display: 'flex', alignItems: 'flex-start' }}>
             <div style={{ padding: '8px 12px', borderRadius: '12px 12px 12px 2px', background: 'var(--bg)', border: '1px solid var(--border)', fontSize: 13, color: 'var(--muted)' }}>
               {zh ? '思考中…' : 'Thinking…'}

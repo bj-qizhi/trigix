@@ -4,6 +4,136 @@
 //! AI workflow generation & copilot handlers.
 
 use super::*;
+use axum::response::sse::{Event as SseEvent, KeepAlive, Sse};
+use std::convert::Infallible;
+use tokio::sync::mpsc;
+use tokio_stream::wrappers::ReceiverStream;
+
+/// Stream an LLM chat completion (Anthropic or OpenAI-compatible), invoking
+/// `on_delta` for each text token and returning the full accumulated text.
+#[allow(clippy::too_many_arguments)]
+async fn stream_chat(
+    http_client: &reqwest::Client,
+    is_anthropic: bool,
+    url: &str,
+    api_key: &str,
+    model: &str,
+    system: &str,
+    user: &str,
+    max_tokens: u32,
+    temperature: f64,
+    mut on_delta: impl FnMut(&str),
+) -> Result<String, ApiError> {
+    use tokio_stream::StreamExt;
+    let resp = if is_anthropic {
+        let payload = serde_json::json!({
+            "model": model, "max_tokens": max_tokens, "temperature": temperature,
+            "system": system, "stream": true,
+            "messages": [{ "role": "user", "content": user }],
+        });
+        http_client
+            .post("https://api.anthropic.com/v1/messages")
+            .header("x-api-key", api_key)
+            .header("anthropic-version", "2023-06-01")
+            .header("content-type", "application/json")
+            .json(&payload)
+            .send()
+            .await
+    } else {
+        let payload = serde_json::json!({
+            "model": model, "max_tokens": max_tokens, "temperature": temperature, "stream": true,
+            "messages": [
+                { "role": "system", "content": system },
+                { "role": "user", "content": user },
+            ],
+        });
+        http_client
+            .post(url)
+            .header("Authorization", format!("Bearer {api_key}"))
+            .header("content-type", "application/json")
+            .json(&payload)
+            .send()
+            .await
+    }
+    .map_err(|e| ApiError::bad_request(&format!("LLM request failed: {e}")))?;
+    if !resp.status().is_success() {
+        let code = resp.status().as_u16();
+        let text = resp.text().await.unwrap_or_default();
+        return Err(ApiError::bad_request(&format!("LLM API {code}: {text}")));
+    }
+
+    let mut full = String::new();
+    let mut buf = String::new();
+    let mut stream = resp.bytes_stream();
+    while let Some(chunk) = stream.next().await {
+        let bytes = chunk.map_err(|e| ApiError::bad_request(&format!("LLM stream error: {e}")))?;
+        buf.push_str(&String::from_utf8_lossy(&bytes));
+        while let Some(nl) = buf.find('\n') {
+            let line: String = buf.drain(..=nl).collect();
+            let Some(data) = line.trim().strip_prefix("data:") else {
+                continue;
+            };
+            let data = data.trim();
+            if data.is_empty() || data == "[DONE]" {
+                continue;
+            }
+            if let Ok(v) = serde_json::from_str::<serde_json::Value>(data) {
+                let delta = if is_anthropic {
+                    v["delta"]["text"].as_str()
+                } else {
+                    v["choices"][0]["delta"]["content"].as_str()
+                };
+                if let Some(d) = delta {
+                    if !d.is_empty() {
+                        full.push_str(d);
+                        on_delta(d);
+                    }
+                }
+            }
+        }
+    }
+    Ok(full)
+}
+
+/// Resolve provider / key / endpoint for an AI-assist request (shared by the
+/// buffered and streaming copilot/generation handlers).
+fn resolve_assist_llm(
+    provider: Option<&str>,
+    api_key: Option<String>,
+    base_url: Option<&str>,
+) -> Result<(bool, String, String), ApiError> {
+    let provider = provider.unwrap_or("anthropic").to_lowercase();
+    let is_anthropic = provider == "anthropic" || provider == "claude";
+    let key = api_key
+        .or_else(|| {
+            if is_anthropic {
+                std::env::var("ANTHROPIC_API_KEY").ok()
+            } else {
+                std::env::var("OPENAI_API_KEY").ok()
+            }
+        })
+        .ok_or_else(|| {
+            ApiError::bad_request(
+                "No API key: provide api_key (or set ANTHROPIC_API_KEY / OPENAI_API_KEY)",
+            )
+        })?;
+    let url = if is_anthropic {
+        String::new()
+    } else {
+        resolve_generation_base_url(&provider, base_url).ok_or_else(|| {
+            ApiError::bad_request(
+                "Unknown provider: set base_url to an OpenAI-compatible /chat/completions endpoint",
+            )
+        })?
+    };
+    Ok((is_anthropic, key, url))
+}
+
+/// Emit an error frame + return, from inside an SSE task.
+fn sse_err(tx: &mpsc::Sender<Result<SseEvent, Infallible>>, msg: &str) {
+    let data = serde_json::json!({ "error": msg }).to_string();
+    let _ = tx.try_send(Ok(SseEvent::default().event("error").data(data)));
+}
 
 /// Resolve the OpenAI-compatible chat-completions endpoint for a provider key,
 /// or honour an explicit base_url override. Returns None for an unknown provider
@@ -444,52 +574,11 @@ fn extract_proposed_graph(content: &str) -> (String, Option<serde_json::Value>) 
     (reply.trim().to_string(), Some(graph))
 }
 
-async fn copilot_handler(
-    State(state): State<AppState>,
-    Extension(claims): Extension<Option<Claims>>,
-    Json(mut body): Json<CopilotRequest>,
-) -> Result<Json<CopilotResponse>, ApiError> {
-    require_write(&claims)?;
-    body.tenant_id = effective_tenant_id(&claims, &body.tenant_id);
-
-    let provider = body
-        .provider
-        .as_deref()
-        .unwrap_or("anthropic")
-        .to_lowercase();
-    let is_anthropic = provider == "anthropic" || provider == "claude";
-    let api_key = body
-        .api_key
-        .clone()
-        .or_else(|| {
-            if is_anthropic {
-                std::env::var("ANTHROPIC_API_KEY").ok()
-            } else {
-                std::env::var("OPENAI_API_KEY").ok()
-            }
-        })
-        .ok_or_else(|| {
-            ApiError::bad_request(
-                "No copilot API key: provide api_key (or set ANTHROPIC_API_KEY / OPENAI_API_KEY)",
-            )
-        })?;
-    let url = if is_anthropic {
-        String::new()
-    } else {
-        resolve_generation_base_url(&provider, body.base_url.as_deref()).ok_or_else(|| {
-            ApiError::bad_request(
-                "Unknown provider: set base_url to an OpenAI-compatible /chat/completions endpoint",
-            )
-        })?
-    };
-
-    let graph_context = body
-        .graph_json
-        .as_deref()
+fn copilot_system_prompt(graph_json: Option<&str>) -> String {
+    let graph_context = graph_json
         .map(|g| format!("\n\nCurrent workflow graph (JSON):\n```json\n{g}\n```"))
         .unwrap_or_default();
-
-    let system = format!(
+    format!(
         "You are an expert assistant for Trigix, an AI workflow automation platform. You help users \
 understand, debug, and EDIT their workflows.\n\n\
 When the user asks to CHANGE the workflow (add / remove / fix / rewire nodes or configs), reply with BOTH:\n\
@@ -502,7 +591,88 @@ Common node types: trigger, http, openai_compat (config.provider=deepseek/qwen/g
 openai, claude, gemini, condition (field/operator/value + true/false condition_label on edges), transform (template), filter, aggregate, \
 code (Rhai), slack, database, rag, extract, merge, loop, fan_out/fan_in, catch (connect via error edge), assert, delay, note. \
 Template variables: {{{{input.x}}}}, {{{{node_id.x}}}}, {{{{credential.name}}}}, {{{{env.KEY}}}}.{graph_context}"
-    );
+    )
+}
+
+/// Streaming copilot: SSE of `data:{"delta":…}` frames as the model types, then a
+/// final `data:{"done":true,"reply":…,"proposed_graph":…}` (or `{"error":…}`).
+async fn copilot_stream(
+    State(state): State<AppState>,
+    Extension(claims): Extension<Option<Claims>>,
+    Json(mut body): Json<CopilotRequest>,
+) -> Sse<ReceiverStream<Result<SseEvent, Infallible>>> {
+    let (tx, rx) = mpsc::channel::<Result<SseEvent, Infallible>>(256);
+    tokio::spawn(async move {
+        if require_write(&claims).is_err() {
+            sse_err(&tx, "Forbidden: write access required");
+            return;
+        }
+        body.tenant_id = effective_tenant_id(&claims, &body.tenant_id);
+        let (is_anthropic, api_key, url) = match resolve_assist_llm(
+            body.provider.as_deref(),
+            body.api_key.clone(),
+            body.base_url.as_deref(),
+        ) {
+            Ok(v) => v,
+            Err(e) => {
+                sse_err(&tx, &e.message);
+                return;
+            }
+        };
+        let system = copilot_system_prompt(body.graph_json.as_deref());
+        let http_client = reqwest::Client::new();
+        let delta_tx = tx.clone();
+        let raw = stream_chat(
+            &http_client,
+            is_anthropic,
+            &url,
+            &api_key,
+            &body.model,
+            &system,
+            &body.message,
+            2048,
+            0.4,
+            |d| {
+                let data = serde_json::json!({ "delta": d }).to_string();
+                let _ = delta_tx.try_send(Ok(SseEvent::default().event("delta").data(data)));
+            },
+        )
+        .await;
+        match raw {
+            Ok(full) => {
+                let (reply, proposed_graph) = extract_proposed_graph(&full);
+                state.audit_store.record(
+                    &body.tenant_id,
+                    "copilot.query",
+                    "copilot",
+                    &body.tenant_id,
+                    None,
+                );
+                let done = serde_json::json!({
+                    "done": true, "reply": reply, "proposed_graph": proposed_graph,
+                });
+                let _ = tx.try_send(Ok(SseEvent::default().event("done").data(done.to_string())));
+            }
+            Err(e) => sse_err(&tx, &e.message),
+        }
+    });
+    Sse::new(ReceiverStream::new(rx)).keep_alive(KeepAlive::default())
+}
+
+async fn copilot_handler(
+    State(state): State<AppState>,
+    Extension(claims): Extension<Option<Claims>>,
+    Json(mut body): Json<CopilotRequest>,
+) -> Result<Json<CopilotResponse>, ApiError> {
+    require_write(&claims)?;
+    body.tenant_id = effective_tenant_id(&claims, &body.tenant_id);
+
+    let (is_anthropic, api_key, url) = resolve_assist_llm(
+        body.provider.as_deref(),
+        body.api_key.clone(),
+        body.base_url.as_deref(),
+    )?;
+    let system = copilot_system_prompt(body.graph_json.as_deref());
 
     let http_client = reqwest::Client::new();
     let raw = chat_once(
@@ -540,6 +710,10 @@ pub(super) fn routes() -> Router<AppState> {
             get(method_not_allowed).post(generate_workflow),
         )
         .route("/v1/copilot", get(method_not_allowed).post(copilot_handler))
+        .route(
+            "/v1/copilot/stream",
+            get(method_not_allowed).post(copilot_stream),
+        )
 }
 
 #[cfg(test)]
