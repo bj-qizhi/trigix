@@ -4,6 +4,46 @@ All notable changes to Trigix will be documented in this file.
 
 ## [Unreleased]
 
+## [1.5.0] - 2026-07-04
+
+The workflow editor's AI assistant grows from a read-only Q&A box into an
+agentic, streaming, multi-provider copilot; the generator learns the full node
+palette and stops double-spending LLM calls; workflows can declare their output
+as a typed, labeled contract that the run view renders by content type; and AI
+assist can draw its key from the stored credential vault.
+
+### Added
+
+- **The editor copilot can now edit the canvas.** Ask it to add / fix / rewire
+  nodes and it replies with the complete updated graph; an "Apply to canvas"
+  button drops the change into the editor (undo / redo / save as usual). It
+  streams its reply token-by-token (new `POST /v1/copilot/stream`, SSE) and works
+  with any OpenAI-compatible provider, not just Anthropic.
+- **Output Schema — declare what a workflow produces.** A workflow can define
+  output fields (key / type / description / source), where `source` maps from node
+  outputs or the input via `{{node_id.field}}` / `{{input.field}}`. The final
+  `output_json` is assembled into a clean, labeled, typed object instead of
+  guessing "the last node"; workflows without a schema are unchanged.
+- **Friendly result rendering.** The execution view renders output by content
+  type — labeled fields, image / video previews, arrays-of-objects as tables,
+  links, text, or a JSON tree — with a raw-JSON toggle.
+- **Reuse stored credentials for AI assist.** The generate modal and copilot panel
+  can draw their API key from a saved credential (resolved + decrypted
+  server-side) instead of pasting one. A structured generate entry is also
+  available inside the editor (apply-to-canvas).
+
+### Changed
+
+- **The workflow generator knows the full node palette.** Generation was limited
+  to ~30 curated node types; it now also receives all 178 node types, so it can
+  reach any integration node (Discord, Stripe, Notion, …).
+
+### Fixed
+
+- **"Create Workflow" no longer re-generates.** The generate modal's create button
+  persisted a second LLM call's result rather than the previewed graph — it now
+  saves exactly what you previewed.
+
 ## [1.4.0] - 2026-07-02
 
 Live token streaming across every deployment mode, retrieval-augmented
