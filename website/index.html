@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <title>Trigix — AI-Native Workflow Automation Platform (Rust, Self-Hosted)</title>
-  <meta name="description" content="Trigix is an open-source, AI-native workflow automation platform with a Rust execution engine and 180+ node types. Visual canvas, LLM &amp; agent nodes, RAG over pgvector, MCP support, multi-tenant, Kubernetes Helm chart. A self-hosted n8n alternative." />
+  <meta name="description" content="Trigix is an open-source, AI-native workflow automation platform with a Rust execution engine and 180+ node types. An AI copilot builds and edits workflows for you; visual canvas, LLM &amp; agent nodes, RAG over pgvector, MCP support, multi-tenant, Kubernetes Helm chart. A self-hosted n8n alternative." />
   <meta name="keywords" content="workflow automation, AI workflow, low-code, Rust workflow engine, LLM, RAG, AI agent, MCP, n8n alternative, self-hosted automation, DAG, pgvector, Kubernetes, open source" />
   <meta name="author" content="北京祺智科技有限公司 (Beijing Qizhi Technology)" />
   <link rel="canonical" href="https://bj-qizhi.github.io/trigix/" />
@@ -95,7 +95,7 @@
         <img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="MIT License" />
         <img src="https://img.shields.io/badge/Rust-2021-orange.svg" alt="Rust" />
       </p>
-      <p class="announce">🎉 <strong>v1.3.0 is out</strong> — 44 new node types (now 180), including Vertex AI, Bedrock, Snowflake, Feishu/DingTalk/WeChat Work, and SSH/SFTP/IMAP. <a href="https://github.com/bj-qizhi/trigix/releases/tag/v1.3.0">Read the release notes →</a></p>
+      <p class="announce">🎉 <strong>v1.5.0 is out</strong> — an AI copilot that edits your canvas (streaming, any OpenAI-compatible model), natural-language workflow generation, node-level field assist that writes prompts / regex / code for you, and typed, declarable outputs. <a href="https://github.com/bj-qizhi/trigix/releases/tag/v1.5.0">Read the release notes →</a></p>
     </header>
 
     <section>
@@ -103,7 +103,7 @@
       <p>Trigix is an enterprise-grade, AI-native workflow automation platform. Build, run, and monitor complex workflows visually — connecting AI models, APIs, databases, and SaaS tools with a drag-and-drop canvas editor. It is a powerful <strong>self-hosted n8n alternative</strong> built for AI-first automation.</p>
       <div class="grid">
         <div class="card"><h3>🦀 Rust Execution Engine</h3><p>Async DAG scheduling, parallel fan-out/fan-in, retries, timeouts, and cancellation.</p></div>
-        <div class="card"><h3>🤖 AI-Native</h3><p>Built-in LLM nodes, an agent tool-use loop, RAG over pgvector, and MCP protocol support.</p></div>
+        <div class="card"><h3>🤖 AI-Native</h3><p>Built-in LLM nodes, an agent tool-use loop, RAG over pgvector, MCP support — plus an AI copilot that builds and edits workflows for you.</p></div>
         <div class="card"><h3>🧩 180+ Node Types</h3><p>AI models, 100+ SaaS integrations, data transforms, and control flow — extend with the node SDK.</p></div>
         <div class="card"><h3>🏢 Enterprise-Ready</h3><p>SSO (OIDC), JWT + RBAC, multi-tenant, encrypted secrets, audit log, Kubernetes Helm chart.</p></div>
       </div>
@@ -113,6 +113,8 @@
       <h2>Features</h2>
       <ul class="feat">
         <li>Visual canvas editor (React Flow): minimap, snap-to-grid, undo/redo</li>
+        <li>AI editor assistant: a copilot that edits the canvas (streaming), natural-language workflow generation, and per-field "write this for me" (prompts, regex, code)</li>
+        <li>Typed I/O contracts: declare input &amp; output schemas; results render by content type (tables, media, JSON)</li>
         <li>Async DAG engine: parallel branches, sub-workflows, ForEach, loop</li>
         <li>AI nodes: Claude, OpenAI, Gemini, Vertex AI, Bedrock, Groq, Mistral, Cohere + Chinese LLMs</li>
         <li>AI building blocks: embedding, rerank, classifier, structured output, image gen, speech↔text</li>
@@ -130,7 +132,7 @@
     <section id="quickstart">
       <h2>Quick Start</h2>
       <p>Deploy on Kubernetes with the Helm chart (published to GHCR):</p>
-      <pre><code>helm install trigix oci://ghcr.io/bj-qizhi/charts/trigix --version 0.3.3 \
+      <pre><code>helm install trigix oci://ghcr.io/bj-qizhi/charts/trigix --version 0.3.5 \
   --namespace trigix --create-namespace</code></pre>
       <p>Or run on a single host with Docker Compose:</p>
       <pre><code>docker compose -f docker-compose.prod.yml up -d --build</code></pre>
