@@ -5,6 +5,8 @@ import type {
   WorkflowRecord,
   WorkflowVersionRecord,
   WorkflowGraph,
+  ApiNode,
+  ApiEdge,
   ExecutionRecord,
   ExecutionSummary,
   WebhookInfo,
@@ -650,8 +652,8 @@ export function generateWorkflow(
 
 export function copilotQuery(
   message: string,
-  opts: { tenantId?: string; graphJson?: string; apiKey?: string; model?: string } = {},
-): Promise<{ reply: string }> {
+  opts: { tenantId?: string; graphJson?: string; apiKey?: string; model?: string; provider?: string; baseUrl?: string } = {},
+): Promise<{ reply: string; proposed_graph?: { nodes: ApiNode[]; edges: ApiEdge[] } }> {
   return request('/v1/copilot', {
     method: 'POST',
     body: JSON.stringify({
@@ -660,6 +662,8 @@ export function copilotQuery(
       graph_json: opts.graphJson,
       api_key: opts.apiKey,
       model: opts.model,
+      provider: opts.provider,
+      base_url: opts.baseUrl,
     }),
   })
 }

@@ -1479,12 +1479,22 @@ struct CopilotRequest {
     api_key: Option<String>,
     #[serde(default = "default_model")]
     model: String,
+    /// LLM provider for the copilot: "anthropic" (default) or any
+    /// OpenAI-compatible provider / base_url (same set as generation).
+    #[serde(default)]
+    provider: Option<String>,
+    #[serde(default)]
+    base_url: Option<String>,
     tenant_id: String,
 }
 
 #[derive(serde::Serialize)]
 struct CopilotResponse {
     reply: String,
+    /// A complete proposed workflow graph when the copilot suggested an edit,
+    /// ready for the editor to apply to the canvas. `None` for pure Q&A.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    proposed_graph: Option<serde_json::Value>,
 }
 
 #[derive(Debug, Deserialize)]

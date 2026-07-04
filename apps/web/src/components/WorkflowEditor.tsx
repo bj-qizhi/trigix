@@ -1468,6 +1468,12 @@ export function WorkflowEditor({ workflowId, onBack, initialInput }: Props) {
               graphJson={nodes.length > 0 ? JSON.stringify(fromFlowGraph(nodes, edges)) : ''}
               tenantId={auth!.tenantId}
               zh={zh}
+              onApplyGraph={(graph) => {
+                const { nodes: fn, edges: fe } = graphFromApi(graph.nodes, graph.edges)
+                setNodes(fn)
+                setEdges(fe)
+                toast(zh ? 'AI 改动已应用到画布（Ctrl+Z 撤销，Ctrl+S 保存）' : 'Applied to canvas (Ctrl+Z to undo, Ctrl+S to save)', 'success')
+              }}
             />
           )}
         </div>

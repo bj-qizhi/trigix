@@ -330,6 +330,119 @@ Rules:
     ))
 }
 
+/// Call the copilot/generation LLM (Anthropic, or any OpenAI-compatible
+/// endpoint) and return the raw assistant text.
+async fn chat_once(
+    http_client: &reqwest::Client,
+    is_anthropic: bool,
+    url: &str,
+    api_key: &str,
+    model: &str,
+    system: &str,
+    user: &str,
+    max_tokens: u32,
+    temperature: f64,
+) -> Result<String, ApiError> {
+    if is_anthropic {
+        let payload = serde_json::json!({
+            "model": model, "max_tokens": max_tokens, "temperature": temperature,
+            "system": system, "messages": [{ "role": "user", "content": user }],
+        });
+        let resp = http_client
+            .post("https://api.anthropic.com/v1/messages")
+            .header("x-api-key", api_key)
+            .header("anthropic-version", "2023-06-01")
+            .header("content-type", "application/json")
+            .json(&payload)
+            .send()
+            .await
+            .map_err(|e| ApiError::bad_request(&format!("Claude request failed: {e}")))?;
+        if !resp.status().is_success() {
+            let code = resp.status().as_u16();
+            let text = resp.text().await.unwrap_or_default();
+            return Err(ApiError::bad_request(&format!("Claude API {code}: {text}")));
+        }
+        let j: serde_json::Value = resp
+            .json()
+            .await
+            .map_err(|e| ApiError::bad_request(&format!("Claude response parse: {e}")))?;
+        Ok(j["content"][0]["text"]
+            .as_str()
+            .unwrap_or("")
+            .trim()
+            .to_string())
+    } else {
+        let payload = serde_json::json!({
+            "model": model, "max_tokens": max_tokens, "temperature": temperature,
+            "messages": [
+                { "role": "system", "content": system },
+                { "role": "user", "content": user },
+            ],
+        });
+        let resp = http_client
+            .post(url)
+            .header("Authorization", format!("Bearer {api_key}"))
+            .header("content-type", "application/json")
+            .json(&payload)
+            .send()
+            .await
+            .map_err(|e| ApiError::bad_request(&format!("Generation request failed: {e}")))?;
+        if !resp.status().is_success() {
+            let code = resp.status().as_u16();
+            let text = resp.text().await.unwrap_or_default();
+            return Err(ApiError::bad_request(&format!(
+                "Generation API {code}: {text}"
+            )));
+        }
+        let j: serde_json::Value = resp
+            .json()
+            .await
+            .map_err(|e| ApiError::bad_request(&format!("Generation response parse: {e}")))?;
+        Ok(j["choices"][0]["message"]["content"]
+            .as_str()
+            .unwrap_or("")
+            .trim()
+            .to_string())
+    }
+}
+
+/// Pull a fenced ```json graph block out of a copilot reply, validate it as a
+/// `WorkflowGraph`, and return `(reply_without_block, normalized_graph)`.
+/// Returns `(original, None)` when there is no valid graph block (pure Q&A).
+fn extract_proposed_graph(content: &str) -> (String, Option<serde_json::Value>) {
+    let Some(start) = content.find("```") else {
+        return (content.to_string(), None);
+    };
+    let after = &content[start + 3..];
+    let after = after.strip_prefix("json").unwrap_or(after);
+    let after = after.trim_start_matches(['\n', '\r']);
+    let Some(end) = after.find("```") else {
+        return (content.to_string(), None);
+    };
+    let Ok(v) = serde_json::from_str::<serde_json::Value>(after[..end].trim()) else {
+        return (content.to_string(), None);
+    };
+    // Accept a bare {nodes,edges} or a wrapped {graph:{...}}.
+    let mut graph = if v.get("nodes").is_some() {
+        v
+    } else {
+        v.get("graph").cloned().unwrap_or(serde_json::Value::Null)
+    };
+    if graph.get("nodes").is_none() {
+        return (content.to_string(), None);
+    }
+    if let Some(o) = graph.as_object_mut() {
+        o.entry("workflow_version_id".to_string())
+            .or_insert_with(|| serde_json::Value::String("draft".to_string()));
+    }
+    // Structural validation (also migrates any legacy node types in the graph).
+    if serde_json::from_value::<workflow_core::WorkflowGraph>(graph.clone()).is_err() {
+        return (content.to_string(), None);
+    }
+    let reply = format!("{}{}", &content[..start], &after[end + 3..]);
+    (reply.trim().to_string(), Some(graph))
+}
+
 async fn copilot_handler(
     State(state): State<AppState>,
     Extension(claims): Extension<Option<Claims>>,
@@ -338,65 +451,72 @@ async fn copilot_handler(
     require_write(&claims)?;
     body.tenant_id = effective_tenant_id(&claims, &body.tenant_id);
 
+    let provider = body
+        .provider
+        .as_deref()
+        .unwrap_or("anthropic")
+        .to_lowercase();
+    let is_anthropic = provider == "anthropic" || provider == "claude";
     let api_key = body
         .api_key
-        .or_else(|| std::env::var("ANTHROPIC_API_KEY").ok())
+        .clone()
+        .or_else(|| {
+            if is_anthropic {
+                std::env::var("ANTHROPIC_API_KEY").ok()
+            } else {
+                std::env::var("OPENAI_API_KEY").ok()
+            }
+        })
         .ok_or_else(|| {
-            ApiError::bad_request("No Claude API key: provide api_key or set ANTHROPIC_API_KEY")
+            ApiError::bad_request(
+                "No copilot API key: provide api_key (or set ANTHROPIC_API_KEY / OPENAI_API_KEY)",
+            )
         })?;
-
-    let graph_context = if let Some(g) = &body.graph_json {
-        format!("\n\nCurrent workflow graph (JSON):\n```json\n{}\n```", g)
-    } else {
+    let url = if is_anthropic {
         String::new()
+    } else {
+        resolve_generation_base_url(&provider, body.base_url.as_deref()).ok_or_else(|| {
+            ApiError::bad_request(
+                "Unknown provider: set base_url to an OpenAI-compatible /chat/completions endpoint",
+            )
+        })?
     };
 
+    let graph_context = body
+        .graph_json
+        .as_deref()
+        .map(|g| format!("\n\nCurrent workflow graph (JSON):\n```json\n{g}\n```"))
+        .unwrap_or_default();
+
     let system = format!(
-        "You are an expert assistant for Trigix, an AI-powered workflow automation platform.\
-\n\nYou help users understand, debug, and improve their workflows. You have deep knowledge of:\
-\n- All 180 node types (trigger, http, claude, openai, gemini, slack, github, database, code, condition, loop, etc.)\
-\n- Template variables: {{{{input.field}}}}, {{{{node_id.field}}}}, {{{{credential.name}}}}, {{{{env.KEY}}}}\
-\n- Best practices for workflow design (error handling with catch nodes, validation, retry logic)\
-\n- Integration patterns (webhooks, scheduled triggers, fan-out/fan-in parallelism)\
-\n\nWhen asked to suggest changes, provide concrete, actionable advice with example node configs in JSON.\
-\nKeep replies concise and practical — 2-5 sentences for simple questions, structured lists for complex ones.{}",
-        graph_context
+        "You are an expert assistant for Trigix, an AI workflow automation platform. You help users \
+understand, debug, and EDIT their workflows.\n\n\
+When the user asks to CHANGE the workflow (add / remove / fix / rewire nodes or configs), reply with BOTH:\n\
+1. A brief plain-text explanation (1-3 sentences) of what you changed.\n\
+2. Then the COMPLETE updated graph as ONE ```json fenced block: \
+{{ \"nodes\": [{{ \"id\", \"type\", \"config\" }}], \"edges\": [{{ \"source\", \"target\", \"condition_label\"? }}] }}. \
+Include ALL nodes (unchanged ones verbatim), keep existing node ids stable, and start with a trigger node.\n\
+For pure questions (no change requested), reply in plain text ONLY — no code block.\n\n\
+Common node types: trigger, http, openai_compat (config.provider=deepseek/qwen/grok/zhipu/moonshot/hunyuan/ollama/doubao, or base_url), \
+openai, claude, gemini, condition (field/operator/value + true/false condition_label on edges), transform (template), filter, aggregate, \
+code (Rhai), slack, database, rag, extract, merge, loop, fan_out/fan_in, catch (connect via error edge), assert, delay, note. \
+Template variables: {{{{input.x}}}}, {{{{node_id.x}}}}, {{{{credential.name}}}}, {{{{env.KEY}}}}.{graph_context}"
     );
 
-    let payload = serde_json::json!({
-        "model": body.model,
-        "max_tokens": 1024,
-        "system": system,
-        "messages": [{ "role": "user", "content": body.message }],
-    });
-
     let http_client = reqwest::Client::new();
-    let resp = http_client
-        .post("https://api.anthropic.com/v1/messages")
-        .header("x-api-key", &api_key)
-        .header("anthropic-version", "2023-06-01")
-        .header("content-type", "application/json")
-        .json(&payload)
-        .send()
-        .await
-        .map_err(|e| ApiError::bad_request(&format!("Claude request failed: {e}")))?;
-
-    if !resp.status().is_success() {
-        let code = resp.status().as_u16();
-        let text = resp.text().await.unwrap_or_default();
-        return Err(ApiError::bad_request(&format!("Claude API {code}: {text}")));
-    }
-
-    let resp_json: serde_json::Value = resp
-        .json()
-        .await
-        .map_err(|e| ApiError::bad_request(&format!("Claude response parse: {e}")))?;
-
-    let reply = resp_json["content"][0]["text"]
-        .as_str()
-        .unwrap_or("(no response)")
-        .trim()
-        .to_string();
+    let raw = chat_once(
+        &http_client,
+        is_anthropic,
+        &url,
+        &api_key,
+        &body.model,
+        &system,
+        &body.message,
+        2048,
+        0.4,
+    )
+    .await?;
+    let (reply, proposed_graph) = extract_proposed_graph(&raw);
 
     state.audit_store.record(
         &body.tenant_id,
@@ -406,7 +526,10 @@ async fn copilot_handler(
         None,
     );
 
-    Ok(Json(CopilotResponse { reply }))
+    Ok(Json(CopilotResponse {
+        reply,
+        proposed_graph,
+    }))
 }
 
 pub(super) fn routes() -> Router<AppState> {
@@ -416,4 +539,44 @@ pub(super) fn routes() -> Router<AppState> {
             get(method_not_allowed).post(generate_workflow),
         )
         .route("/v1/copilot", get(method_not_allowed).post(copilot_handler))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::extract_proposed_graph;
+
+    #[test]
+    fn extracts_and_validates_a_proposed_graph_block() {
+        let reply = "I added a Slack notification after the HTTP call.\n\n```json\n{\
+\"nodes\":[{\"id\":\"trigger\",\"type\":\"trigger\",\"config\":{}},\
+{\"id\":\"notify\",\"type\":\"slack\",\"config\":{\"webhook_url\":\"x\"}}],\
+\"edges\":[{\"source\":\"trigger\",\"target\":\"notify\"}]}\n```";
+        let (text, graph) = extract_proposed_graph(reply);
+        assert!(text.starts_with("I added a Slack"));
+        assert!(
+            !text.contains("```"),
+            "the fenced block is stripped from the reply"
+        );
+        let g = graph.expect("a valid graph should be extracted");
+        assert_eq!(g["nodes"].as_array().unwrap().len(), 2);
+        assert_eq!(g["workflow_version_id"], "draft"); // normalized
+    }
+
+    #[test]
+    fn pure_text_reply_has_no_graph() {
+        let (text, graph) =
+            extract_proposed_graph("This workflow fetches data then posts to Slack.");
+        assert!(graph.is_none());
+        assert!(text.contains("fetches data"));
+    }
+
+    #[test]
+    fn a_non_graph_or_invalid_block_is_ignored() {
+        // A code block that isn't a workflow graph must not become a proposed graph.
+        let (_t, g1) = extract_proposed_graph("here:\n```json\n{\"foo\":1}\n```");
+        assert!(g1.is_none());
+        // Malformed JSON.
+        let (_t2, g2) = extract_proposed_graph("```json\n{ not json\n```");
+        assert!(g2.is_none());
+    }
 }

@@ -9,7 +9,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import * as api from '../../api/client'
-import type { ExecutionSummary, InputField } from '../../types'
+import type { ExecutionSummary, InputField, ApiNode, ApiEdge } from '../../types'
 import { useLocale } from '../../useLocale'
 import { friendlyError } from '../../errorMessage'
 import { IconKey, IconX} from '../uiIcons'
@@ -667,20 +667,37 @@ interface CopilotPanelProps {
   graphJson: string
   tenantId: string
   zh: boolean
+  /** Apply a copilot-proposed graph to the canvas (replaces nodes + edges). */
+  onApplyGraph: (graph: { nodes: ApiNode[]; edges: ApiEdge[] }) => void
 }
 
 interface CopilotMessage {
   role: 'user' | 'assistant'
   content: string
+  proposedGraph?: { nodes: ApiNode[]; edges: ApiEdge[] }
 }
 
-export function CopilotPanel({ onClose, graphJson, tenantId, zh }: CopilotPanelProps) {
+const COPILOT_PROVIDERS = [
+  { value: 'anthropic', label: 'Anthropic (Claude)', keyHint: 'sk-ant-...' },
+  { value: 'openai', label: 'OpenAI', keyHint: 'sk-...' },
+  { value: 'deepseek', label: 'DeepSeek', keyHint: 'sk-...' },
+  { value: 'qwen', label: 'Qwen', keyHint: 'sk-...' },
+  { value: 'zhipu', label: 'Zhipu GLM', keyHint: 'API Key' },
+  { value: 'moonshot', label: 'Moonshot', keyHint: 'sk-...' },
+  { value: 'grok', label: 'xAI Grok', keyHint: 'xai-...' },
+  { value: 'custom', label: 'Custom (base URL)', keyHint: 'API Key' },
+]
+
+export function CopilotPanel({ onClose, graphJson, tenantId, zh, onApplyGraph }: CopilotPanelProps) {
   const [messages, setCopMessages] = useState<CopilotMessage[]>([])
   const [copInput, setCopInput] = useState('')
   const [copLoading, setCopLoading] = useState(false)
+  const [copProvider, setCopProvider] = useState(() => localStorage.getItem('af:cop_provider') ?? 'anthropic')
+  const [copBaseUrl, setCopBaseUrl] = useState(() => localStorage.getItem('af:cop_base_url') ?? '')
   const [copApiKey, setCopApiKey] = useState(() => localStorage.getItem('af:claude_key') ?? '')
   const [showKeyInput, setShowKeyInput] = useState(false)
   const bottomRef = useRef<HTMLDivElement>(null)
+  const providerMeta = COPILOT_PROVIDERS.find((p) => p.value === copProvider) ?? COPILOT_PROVIDERS[0]
 
   const QUICK_ACTIONS = zh
     ? ['解释这个工作流', '找出潜在问题', '如何添加错误处理？', '建议性能优化']
@@ -697,8 +714,18 @@ export function CopilotPanel({ onClose, graphJson, tenantId, zh }: CopilotPanelP
     setCopInput('')
     setCopLoading(true)
     try {
-      const res = await api.copilotQuery(msg, { tenantId, graphJson: graphJson || undefined, apiKey: key })
-      setCopMessages((prev) => [...prev, { role: 'assistant', content: res.reply }])
+      const res = await api.copilotQuery(msg, {
+        tenantId,
+        graphJson: graphJson || undefined,
+        apiKey: key,
+        provider: copProvider === 'custom' ? undefined : copProvider,
+        baseUrl: copProvider === 'custom' ? (copBaseUrl.trim() || undefined) : undefined,
+      })
+      setCopMessages((prev) => [...prev, {
+        role: 'assistant',
+        content: res.reply || (res.proposed_graph ? (zh ? '（已生成一个工作流改动，可应用到画布）' : '(proposed a workflow edit — apply below)') : '(no response)'),
+        proposedGraph: res.proposed_graph,
+      }])
     } catch (e: unknown) {
       setCopMessages((prev) => [...prev, { role: 'assistant', content: `⚠ ${String(e)}` }])
     } finally {
@@ -725,9 +752,20 @@ export function CopilotPanel({ onClose, graphJson, tenantId, zh }: CopilotPanelP
       </div>
 
       {showKeyInput && (
-        <div style={{ padding: '8px 12px', borderBottom: '1px solid var(--border)', background: 'var(--code-bg, rgba(0,0,0,0.04))' }}>
-          <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 4 }}>{zh ? 'Anthropic API Key（本地存储）：' : 'Anthropic API Key (stored locally):'}</div>
-          <input type="password" placeholder="sk-ant-..." value={copApiKey}
+        <div style={{ padding: '8px 12px', borderBottom: '1px solid var(--border)', background: 'var(--code-bg, rgba(0,0,0,0.04))', display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <div style={{ fontSize: 11, color: 'var(--muted)' }}>{zh ? '模型提供商：' : 'LLM provider:'}</div>
+          <select value={copProvider}
+            onChange={(e) => { setCopProvider(e.target.value); localStorage.setItem('af:cop_provider', e.target.value) }}
+            style={{ width: '100%', fontSize: 12, padding: '4px 6px', boxSizing: 'border-box' }}>
+            {COPILOT_PROVIDERS.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
+          </select>
+          {copProvider === 'custom' && (
+            <input placeholder="https://…/v1/chat/completions" value={copBaseUrl}
+              onChange={(e) => { setCopBaseUrl(e.target.value); localStorage.setItem('af:cop_base_url', e.target.value) }}
+              style={{ width: '100%', fontSize: 12, padding: '4px 6px', boxSizing: 'border-box' }} />
+          )}
+          <div style={{ fontSize: 11, color: 'var(--muted)' }}>{zh ? 'API Key（本地存储）：' : 'API Key (stored locally):'}</div>
+          <input type="password" placeholder={providerMeta.keyHint} value={copApiKey}
             onChange={(e) => { setCopApiKey(e.target.value); localStorage.setItem('af:claude_key', e.target.value) }}
             style={{ width: '100%', fontSize: 12, padding: '4px 6px', boxSizing: 'border-box' }} />
         </div>
@@ -759,6 +797,17 @@ export function CopilotPanel({ onClose, graphJson, tenantId, zh }: CopilotPanelP
               color: m.role === 'user' ? '#fff' : 'var(--text)',
               border: m.role === 'user' ? 'none' : '1px solid var(--border)',
             }}>{m.content}</div>
+            {m.proposedGraph && (
+              <button
+                onClick={() => onApplyGraph(m.proposedGraph!)}
+                title={zh ? '用建议的图替换当前画布（可撤销 / 保存）' : 'Replace the canvas with the proposed graph (undo / save as usual)'}
+                style={{
+                  marginTop: 6, background: 'var(--node-claude)', color: '#fff', border: 'none',
+                  borderRadius: 6, padding: '5px 12px', fontSize: 12, fontWeight: 600, cursor: 'pointer',
+                }}>
+                {zh ? `⤵ 应用到画布（${m.proposedGraph.nodes.length} 节点）` : `⤵ Apply to canvas (${m.proposedGraph.nodes.length} nodes)`}
+              </button>
+            )}
           </div>
         ))}
         {copLoading && (
