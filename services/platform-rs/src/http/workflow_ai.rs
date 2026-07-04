@@ -332,6 +332,7 @@ Rules:
 
 /// Call the copilot/generation LLM (Anthropic, or any OpenAI-compatible
 /// endpoint) and return the raw assistant text.
+#[allow(clippy::too_many_arguments)]
 async fn chat_once(
     http_client: &reqwest::Client,
     is_anthropic: bool,
