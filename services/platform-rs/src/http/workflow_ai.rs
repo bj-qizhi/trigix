@@ -135,6 +135,33 @@ fn sse_err(tx: &mpsc::Sender<Result<SseEvent, Infallible>>, msg: &str) {
     let _ = tx.try_send(Ok(SseEvent::default().event("error").data(data)));
 }
 
+/// Every dispatchable node type (source of truth: `node_type_to_str`). Fed to the
+/// generator so it can use the full palette, not just the ~30 detailed above.
+/// Keep in sync when node types are added/removed.
+const ALL_NODE_TYPES: &str = "activecampaign, agent, aggregate, airtable, algolia, amplitude, apify, approval, array_utils, \
+asana, assert, awss3, azure_blob, azure_openai, azure_devops, bedrock, bigquery, bitbucket, box, braintree, calendly, catch, \
+chroma, classifier, claude, clickhouse, clickup, cloudflare, cloudinary, code, cohere, condition, confluence, contentful, \
+copper, crypto, csv, custom, database, datadog, date, dedupe, delay, dingtalk, discord, docusign, dropbox, elasticsearch, \
+email, embedding, ernie, extract, fan_in, fan_out, feishu, figma, filter, firebase, for_each, format, freshdesk, ftp, \
+ganalytics, gcal, gcs, gemini, github, googledocs, googledrive, graphql, groq, handlebars, hash, html_extract, http, hubspot, \
+huggingface, image, image_gen, imap, intercom, jira, join, jwt, kafka, klaviyo, linear, loop, mailchimp, mailgun, map, math, \
+merge, milvus, minimax, mistral, mixpanel, monday, mongodb, mysql, neon, note, notion, ocr, okta, openai, openai_compat, \
+openrouter, pagerduty, paypal, pdf_extract, perplexity, pinecone, pipedrive, postmark, qdrant, rabbitmq, rag, rag_ingest, \
+random, razorpay, redis, regex, rename, replicate, reranker, resend, rss, salesforce, segment, sendgrid, servicenow, sftp, \
+sheets, shopify, slack, snowflake, sns, sort, speech_to_text, split, spotify, sqlserver, sqs, ssh, stripe, structured_output, \
+sub_workflow, supabase, switch, teams, telegram, text_splitter, togetherai, transform, trello, trigger, tts, twilio, twitch, \
+typeform, validate, vertex, video_gen, vonage, wait, weaviate, webflow, webhook, wecom, whatsapp, woocommerce, xero, xml, \
+yaml, zendesk, zip, zoom";
+
+/// The trailing rules for the generation prompt (kept out of the raw catalog
+/// literal so the full node-type list can be injected between them).
+const GEN_RULES: &str = "\n\nRules:\n\
+- Always start with a trigger node as node_1\n\
+- Use descriptive node IDs like \"fetch_data\", \"parse_response\", \"send_slack\"\n\
+- Keep graphs focused — 3-8 nodes is ideal\n\
+- Use {{credential.name}} for sensitive values (API keys, tokens)\n\
+- Return ONLY the JSON, no explanation";
+
 /// Resolve the OpenAI-compatible chat-completions endpoint for a provider key,
 /// or honour an explicit base_url override. Returns None for an unknown provider
 /// with no override.
@@ -247,15 +274,16 @@ Available node types and their required config fields:
 - note: { text } (documentation only)
 
 Template variables: {{input.field}}, {{node_id.field}}, {{credential.name}}, {{env.KEY}}
-Edges: source → target. For condition nodes add condition_label: "true" or "false" on edges.
-
-Rules:
-- Always start with a trigger node as node_1
-- Use descriptive node IDs like "fetch_data", "parse_response", "send_slack"
-- Keep graphs focused — 3-8 nodes is ideal
-- Use {{credential.name}} for sensitive values (API keys, tokens)
-- Return ONLY the JSON, no explanation"#,
+Edges: source → target. For condition nodes add condition_label: "true" or "false" on edges."#,
     );
+    // The detailed catalog above covers the common nodes; also give the model the
+    // full palette so it can reach any integration node, not just those ~30.
+    system_prompt.push_str(
+        "\n\nAll available node types (the ones above have their config detailed; for any other, \
+use its standard config — usually { api_key/token, url/endpoint, method, body?, … }):\n",
+    );
+    system_prompt.push_str(ALL_NODE_TYPES);
+    system_prompt.push_str(GEN_RULES);
 
     // Append caller-supplied constraints from the advanced options.
     let mut rules: Vec<String> = Vec::new();
@@ -718,7 +746,21 @@ pub(super) fn routes() -> Router<AppState> {
 
 #[cfg(test)]
 mod tests {
-    use super::extract_proposed_graph;
+    use super::{extract_proposed_graph, ALL_NODE_TYPES};
+
+    #[test]
+    fn full_node_catalog_covers_the_palette_and_stays_current() {
+        let types: Vec<&str> = ALL_NODE_TYPES.split(',').map(|s| s.trim()).collect();
+        // The generator must know integration nodes beyond the detailed ~30.
+        for t in ["discord", "stripe", "notion", "shopify", "openai_compat", "trigger"] {
+            assert!(types.contains(&t), "generator catalog missing '{t}'");
+        }
+        // The consolidated legacy per-vendor LLM types must NOT reappear here.
+        for t in ["grok", "deepseek", "qwen", "hunyuan"] {
+            assert!(!types.contains(&t), "'{t}' was consolidated into openai_compat");
+        }
+        assert!(types.len() > 150, "expected the full palette, got {}", types.len());
+    }
 
     #[test]
     fn extracts_and_validates_a_proposed_graph_block() {

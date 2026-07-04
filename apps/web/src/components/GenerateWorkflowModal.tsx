@@ -117,16 +117,17 @@ export function GenerateWorkflowModal({ onClose, onImport, onCreated }: Props) {
     setLoading(true)
     setError(null)
     try {
-      const result = await api.generateWorkflow(prompt.trim(), {
-        tenantId: auth?.tenantId,
-        workspaceId: auth?.workspaceId,
-        projectId: auth?.projectId,
-        ...genOpts(),
-        create: true,
-      })
-      if (result.workflow && onCreated) {
-        onCreated(result.workflow.id)
-      }
+      // Persist the graph the user just previewed — don't re-generate (which
+      // would burn another LLM call and could return a different workflow).
+      const wf = await api.importWorkflow(
+        auth!.tenantId,
+        auth?.workspaceId ?? '',
+        auth?.projectId ?? '',
+        preview.name,
+        preview.graph,
+        { description: preview.description },
+      )
+      if (onCreated) onCreated(wf.id)
       onClose()
     } catch (err) {
       setError(err instanceof Error ? err.message : (zh ? '创建失败' : 'Creation failed'))
