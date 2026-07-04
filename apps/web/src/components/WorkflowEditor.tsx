@@ -19,6 +19,7 @@ import {
   RecentRunsMini, FormsModal, CopilotPanel,
 } from './editor/WorkflowEditorPanels'
 import { ViewMenu, MoreActionsMenu } from './editor/EditorMenus'
+import { GenerateWorkflowModal } from './GenerateWorkflowModal'
 import { LimitsMenu } from './editor/LimitsMenu'
 import { TagEditor } from './editor/TagEditor'
 import { WorkflowTitleBar } from './editor/WorkflowTitleBar'
@@ -450,6 +451,7 @@ export function WorkflowEditor({ workflowId, onBack, initialInput }: Props) {
   const [showSchema, setShowSchema]   = useState(false)
   const [outputSchema, setOutputSchema] = useState<OutputField[]>([])
   const [showOutputSchema, setShowOutputSchema] = useState(false)
+  const [showGenerate, setShowGenerate] = useState(false)
   const [showVars, setShowVars]       = useState(false)
   const [variables, setVariables]     = useState<api.Variable[]>([])
   const [showPalette, setShowPalette] = useState(false)
@@ -1556,6 +1558,20 @@ export function WorkflowEditor({ workflowId, onBack, initialInput }: Props) {
           onClose={() => setShowOutputSchema(false)}
         />
       )}
+      {showGenerate && (
+        <GenerateWorkflowModal
+          onClose={() => setShowGenerate(false)}
+          onImport={(graph) => {
+            const { nodes: fn, edges: fe } = graphFromApi(graph.nodes, graph.edges)
+            setNodes(fn)
+            setEdges(fe)
+            if (graph.input_schema) setInputSchema(graph.input_schema)
+            if (graph.output_schema) setOutputSchema(graph.output_schema)
+            setShowGenerate(false)
+            toast(zh ? 'AI 生成的工作流已应用到画布（Ctrl+S 保存）' : 'Generated workflow applied to canvas (Ctrl+S to save)', 'success')
+          }}
+        />
+      )}
 
       {/* Node command palette (Ctrl+K) */}
       {showPalette && (
@@ -1574,6 +1590,7 @@ export function WorkflowEditor({ workflowId, onBack, initialInput }: Props) {
             { id: 'export', label: zh ? '导出 JSON' : 'Export JSON', run: () => { void handleExport() } },
             { id: 'schema', label: zh ? '输入模式' : 'Input schema', run: () => setShowSchema(true) },
             { id: 'output-schema', label: zh ? '输出模式' : 'Output schema', run: () => setShowOutputSchema(true) },
+            { id: 'ai-generate', label: zh ? 'AI 生成工作流（应用到画布）' : 'AI generate workflow (apply to canvas)', run: () => setShowGenerate(true) },
             { id: 'variables', label: zh ? '变量' : 'Variables', run: () => setShowVars(true) },
             { id: 'help', label: zh ? '帮助' : 'Help', hint: '?', run: () => setShowHelp(true) },
           ]}

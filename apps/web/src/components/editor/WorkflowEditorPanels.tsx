@@ -9,7 +9,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import * as api from '../../api/client'
-import type { ExecutionSummary, InputField, OutputField, ApiNode, ApiEdge } from '../../types'
+import type { ExecutionSummary, InputField, OutputField, ApiNode, ApiEdge, CredentialSummary } from '../../types'
 import { useLocale } from '../../useLocale'
 import { friendlyError } from '../../errorMessage'
 import { IconKey, IconX} from '../uiIcons'
@@ -753,9 +753,15 @@ export function CopilotPanel({ onClose, graphJson, tenantId, zh, onApplyGraph }:
   const [copProvider, setCopProvider] = useState(() => localStorage.getItem('af:cop_provider') ?? 'anthropic')
   const [copBaseUrl, setCopBaseUrl] = useState(() => localStorage.getItem('af:cop_base_url') ?? '')
   const [copApiKey, setCopApiKey] = useState(() => localStorage.getItem('af:claude_key') ?? '')
+  const [copCredential, setCopCredential] = useState(() => localStorage.getItem('af:cop_credential') ?? '')
+  const [credentials, setCredentials] = useState<CredentialSummary[]>([])
   const [showKeyInput, setShowKeyInput] = useState(false)
   const bottomRef = useRef<HTMLDivElement>(null)
   const providerMeta = COPILOT_PROVIDERS.find((p) => p.value === copProvider) ?? COPILOT_PROVIDERS[0]
+
+  useEffect(() => {
+    api.listCredentials(tenantId).then(setCredentials).catch(() => {})
+  }, [tenantId])
 
   const QUICK_ACTIONS = zh
     ? ['解释这个工作流', '找出潜在问题', '如何添加错误处理？', '建议性能优化']
@@ -767,7 +773,7 @@ export function CopilotPanel({ onClose, graphJson, tenantId, zh, onApplyGraph }:
 
   const sendMsg = async (msg: string) => {
     if (!msg.trim()) return
-    const key = copApiKey.trim() || undefined
+    const key = copCredential ? undefined : (copApiKey.trim() || undefined)
     setCopMessages((prev) => [...prev, { role: 'user', content: msg }])
     setCopInput('')
     setCopLoading(true)
@@ -787,6 +793,7 @@ export function CopilotPanel({ onClose, graphJson, tenantId, zh, onApplyGraph }:
         tenantId,
         graphJson: graphJson || undefined,
         apiKey: key,
+        credentialName: copCredential || undefined,
         provider: copProvider === 'custom' ? undefined : copProvider,
         baseUrl: copProvider === 'custom' ? (copBaseUrl.trim() || undefined) : undefined,
       }, appendDelta)
@@ -841,10 +848,25 @@ export function CopilotPanel({ onClose, graphJson, tenantId, zh, onApplyGraph }:
               onChange={(e) => { setCopBaseUrl(e.target.value); localStorage.setItem('af:cop_base_url', e.target.value) }}
               style={{ width: '100%', fontSize: 12, padding: '4px 6px', boxSizing: 'border-box' }} />
           )}
-          <div style={{ fontSize: 11, color: 'var(--muted)' }}>{zh ? 'API Key（本地存储）：' : 'API Key (stored locally):'}</div>
-          <input type="password" placeholder={providerMeta.keyHint} value={copApiKey}
-            onChange={(e) => { setCopApiKey(e.target.value); localStorage.setItem('af:claude_key', e.target.value) }}
-            style={{ width: '100%', fontSize: 12, padding: '4px 6px', boxSizing: 'border-box' }} />
+          {credentials.length > 0 && (
+            <>
+              <div style={{ fontSize: 11, color: 'var(--muted)' }}>{zh ? '用已存凭据：' : 'Use stored credential:'}</div>
+              <select value={copCredential}
+                onChange={(e) => { setCopCredential(e.target.value); localStorage.setItem('af:cop_credential', e.target.value) }}
+                style={{ width: '100%', fontSize: 12, padding: '4px 6px', boxSizing: 'border-box' }}>
+                <option value="">{zh ? '（手填 Key）' : '(enter key manually)'}</option>
+                {credentials.map((c) => <option key={c.id} value={c.name}>{c.name}</option>)}
+              </select>
+            </>
+          )}
+          {!copCredential && (
+            <>
+              <div style={{ fontSize: 11, color: 'var(--muted)' }}>{zh ? 'API Key（本地存储）：' : 'API Key (stored locally):'}</div>
+              <input type="password" placeholder={providerMeta.keyHint} value={copApiKey}
+                onChange={(e) => { setCopApiKey(e.target.value); localStorage.setItem('af:claude_key', e.target.value) }}
+                style={{ width: '100%', fontSize: 12, padding: '4px 6px', boxSizing: 'border-box' }} />
+            </>
+          )}
         </div>
       )}
 

@@ -95,6 +95,30 @@ async fn stream_chat(
     Ok(full)
 }
 
+/// Resolve the API key for an AI-assist request: an explicit `api_key` wins;
+/// otherwise a named stored credential is decrypted server-side. `None` lets the
+/// caller fall back to an environment variable.
+async fn resolve_api_key(
+    state: &AppState,
+    tenant_id: &str,
+    api_key: Option<String>,
+    credential_name: Option<&str>,
+) -> Option<String> {
+    if let Some(k) = api_key.filter(|k| !k.trim().is_empty()) {
+        return Some(k);
+    }
+    let name = credential_name?.trim();
+    if name.is_empty() {
+        return None;
+    }
+    state
+        .credential_store
+        .get_by_name(tenant_id, name)
+        .await
+        .ok()
+        .flatten()
+}
+
 /// Resolve provider / key / endpoint for an AI-assist request (shared by the
 /// buffered and streaming copilot/generation handlers).
 fn resolve_assist_llm(
@@ -199,21 +223,25 @@ async fn generate_workflow(
         .to_lowercase();
     let is_anthropic = provider == "anthropic" || provider == "claude";
 
-    let api_key = body
-        .api_key
-        .clone()
-        .or_else(|| {
-            if is_anthropic {
-                std::env::var("ANTHROPIC_API_KEY").ok()
-            } else {
-                std::env::var("OPENAI_API_KEY").ok()
-            }
-        })
-        .ok_or_else(|| {
-            ApiError::bad_request(
-                "No generation API key: provide api_key in the request (or set ANTHROPIC_API_KEY / OPENAI_API_KEY)",
-            )
-        })?;
+    let api_key = resolve_api_key(
+        &state,
+        &body.tenant_id,
+        body.api_key.clone(),
+        body.credential_name.as_deref(),
+    )
+    .await
+    .or_else(|| {
+        if is_anthropic {
+            std::env::var("ANTHROPIC_API_KEY").ok()
+        } else {
+            std::env::var("OPENAI_API_KEY").ok()
+        }
+    })
+    .ok_or_else(|| {
+        ApiError::bad_request(
+            "No generation API key: provide api_key or credential_name (or set ANTHROPIC_API_KEY / OPENAI_API_KEY)",
+        )
+    })?;
     let model = body
         .model
         .as_deref()
@@ -636,17 +664,21 @@ async fn copilot_stream(
             return;
         }
         body.tenant_id = effective_tenant_id(&claims, &body.tenant_id);
-        let (is_anthropic, api_key, url) = match resolve_assist_llm(
-            body.provider.as_deref(),
+        let key = resolve_api_key(
+            &state,
+            &body.tenant_id,
             body.api_key.clone(),
-            body.base_url.as_deref(),
-        ) {
-            Ok(v) => v,
-            Err(e) => {
-                sse_err(&tx, &e.message);
-                return;
-            }
-        };
+            body.credential_name.as_deref(),
+        )
+        .await;
+        let (is_anthropic, api_key, url) =
+            match resolve_assist_llm(body.provider.as_deref(), key, body.base_url.as_deref()) {
+                Ok(v) => v,
+                Err(e) => {
+                    sse_err(&tx, &e.message);
+                    return;
+                }
+            };
         let system = copilot_system_prompt(body.graph_json.as_deref());
         let http_client = reqwest::Client::new();
         let delta_tx = tx.clone();
@@ -695,11 +727,15 @@ async fn copilot_handler(
     require_write(&claims)?;
     body.tenant_id = effective_tenant_id(&claims, &body.tenant_id);
 
-    let (is_anthropic, api_key, url) = resolve_assist_llm(
-        body.provider.as_deref(),
+    let key = resolve_api_key(
+        &state,
+        &body.tenant_id,
         body.api_key.clone(),
-        body.base_url.as_deref(),
-    )?;
+        body.credential_name.as_deref(),
+    )
+    .await;
+    let (is_anthropic, api_key, url) =
+        resolve_assist_llm(body.provider.as_deref(), key, body.base_url.as_deref())?;
     let system = copilot_system_prompt(body.graph_json.as_deref());
 
     let http_client = reqwest::Client::new();

@@ -1,7 +1,7 @@
 // Copyright © 2026 北京祺智科技有限公司. All rights reserved.
 // https://www.qzso.com/ · managecode@gmail.com
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { IconX } from './uiIcons'
 import { useAuth } from '../AuthContext'
 import { useLocale } from '../useLocale'
@@ -57,6 +57,8 @@ export function GenerateWorkflowModal({ onClose, onImport, onCreated }: Props) {
   const zh = locale === 'zh'
   const [prompt, setPrompt] = useState('')
   const [apiKey, setApiKey] = useState('')
+  const [credential, setCredential] = useState('')
+  const [credentials, setCredentials] = useState<api.CredentialSummary[]>([])
   const [model, setModel] = useState('claude-sonnet-4-6')
   const [provider, setProvider] = useState('anthropic')
   const [baseUrl, setBaseUrl] = useState('')
@@ -77,7 +79,8 @@ export function GenerateWorkflowModal({ onClose, onImport, onCreated }: Props) {
   }
   // Shared advanced-option payload for both preview and create requests.
   const genOpts = () => ({
-    apiKey: apiKey || undefined,
+    apiKey: credential ? undefined : (apiKey || undefined),
+    credentialName: credential || undefined,
     model,
     provider,
     baseUrl: baseUrl || undefined,
@@ -90,6 +93,10 @@ export function GenerateWorkflowModal({ onClose, onImport, onCreated }: Props) {
   const [error, setError] = useState<string | null>(null)
   const [preview, setPreview] = useState<api.GenerateWorkflowResult | null>(null)
   const [mode, setMode] = useState<'generate' | 'preview'>('generate')
+
+  useEffect(() => {
+    if (auth?.tenantId) api.listCredentials(auth.tenantId).then(setCredentials).catch(() => {})
+  }, [auth?.tenantId])
 
   async function handleGenerate() {
     if (!prompt.trim()) return
@@ -230,7 +237,15 @@ export function GenerateWorkflowModal({ onClose, onImport, onCreated }: Props) {
                         : (zh ? '（留空用 OPENAI_API_KEY 环境变量）' : '(uses OPENAI_API_KEY env if blank)')}
                     </span>
                   </label>
-                  <input type="password" value={apiKey} onChange={(e) => setApiKey(e.target.value)} placeholder={providerDef.keyHint} />
+                  {credentials.length > 0 && (
+                    <select value={credential} onChange={(e) => setCredential(e.target.value)} style={{ marginBottom: 6 }}>
+                      <option value="">{zh ? '（手填 Key，或选已存凭据）' : '(enter key manually, or pick a stored credential)'}</option>
+                      {credentials.map((c) => <option key={c.id} value={c.name}>{c.name}</option>)}
+                    </select>
+                  )}
+                  {!credential && (
+                    <input type="password" value={apiKey} onChange={(e) => setApiKey(e.target.value)} placeholder={providerDef.keyHint} />
+                  )}
                 </div>
                 {provider !== 'anthropic' && (
                   <div className="field">

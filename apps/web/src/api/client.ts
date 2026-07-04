@@ -616,6 +616,7 @@ export function generateWorkflow(
     workspaceId?: string
     projectId?: string
     apiKey?: string
+    credentialName?: string
     model?: string
     provider?: string
     baseUrl?: string
@@ -635,6 +636,7 @@ export function generateWorkflow(
       workspace_id: opts.workspaceId,
       project_id: opts.projectId,
       api_key: opts.apiKey,
+      credential_name: opts.credentialName,
       model: opts.model,
       provider: opts.provider,
       base_url: opts.baseUrl,
@@ -652,7 +654,7 @@ export function generateWorkflow(
 
 export function copilotQuery(
   message: string,
-  opts: { tenantId?: string; graphJson?: string; apiKey?: string; model?: string; provider?: string; baseUrl?: string } = {},
+  opts: { tenantId?: string; graphJson?: string; apiKey?: string; credentialName?: string; model?: string; provider?: string; baseUrl?: string } = {},
 ): Promise<{ reply: string; proposed_graph?: { nodes: ApiNode[]; edges: ApiEdge[] } }> {
   return request('/v1/copilot', {
     method: 'POST',
@@ -661,6 +663,7 @@ export function copilotQuery(
       tenant_id: opts.tenantId ?? '',
       graph_json: opts.graphJson,
       api_key: opts.apiKey,
+      credential_name: opts.credentialName,
       model: opts.model,
       provider: opts.provider,
       base_url: opts.baseUrl,
@@ -673,7 +676,7 @@ export function copilotQuery(
 // optional proposed graph.
 export async function copilotStream(
   message: string,
-  opts: { tenantId?: string; graphJson?: string; apiKey?: string; model?: string; provider?: string; baseUrl?: string },
+  opts: { tenantId?: string; graphJson?: string; apiKey?: string; credentialName?: string; model?: string; provider?: string; baseUrl?: string },
   onDelta: (delta: string) => void,
 ): Promise<{ reply: string; proposed_graph?: { nodes: ApiNode[]; edges: ApiEdge[] } }> {
   const stored = getStoredAuth()
@@ -685,6 +688,7 @@ export async function copilotStream(
       tenant_id: opts.tenantId ?? '',
       graph_json: opts.graphJson,
       api_key: opts.apiKey,
+      credential_name: opts.credentialName,
       model: opts.model,
       provider: opts.provider,
       base_url: opts.baseUrl,

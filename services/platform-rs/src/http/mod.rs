@@ -1430,6 +1430,10 @@ struct GenerateWorkflowRequest {
     project_id: Option<String>,
     #[serde(default)]
     api_key: Option<String>,
+    /// Name of a stored credential to use as the API key (resolved + decrypted
+    /// server-side). Takes effect when `api_key` is not given.
+    #[serde(default)]
+    credential_name: Option<String>,
     #[serde(default)]
     model: Option<String>,
     /// Generation LLM provider: "anthropic" (default) or any OpenAI-compatible
@@ -1477,6 +1481,10 @@ struct CopilotRequest {
     #[serde(default)]
     graph_json: Option<String>,
     api_key: Option<String>,
+    /// Name of a stored credential to use as the API key (resolved + decrypted
+    /// server-side). Takes effect when `api_key` is not given.
+    #[serde(default)]
+    credential_name: Option<String>,
     #[serde(default = "default_model")]
     model: String,
     /// LLM provider for the copilot: "anthropic" (default) or any
