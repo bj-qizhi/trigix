@@ -752,14 +752,28 @@ mod tests {
     fn full_node_catalog_covers_the_palette_and_stays_current() {
         let types: Vec<&str> = ALL_NODE_TYPES.split(',').map(|s| s.trim()).collect();
         // The generator must know integration nodes beyond the detailed ~30.
-        for t in ["discord", "stripe", "notion", "shopify", "openai_compat", "trigger"] {
+        for t in [
+            "discord",
+            "stripe",
+            "notion",
+            "shopify",
+            "openai_compat",
+            "trigger",
+        ] {
             assert!(types.contains(&t), "generator catalog missing '{t}'");
         }
         // The consolidated legacy per-vendor LLM types must NOT reappear here.
         for t in ["grok", "deepseek", "qwen", "hunyuan"] {
-            assert!(!types.contains(&t), "'{t}' was consolidated into openai_compat");
+            assert!(
+                !types.contains(&t),
+                "'{t}' was consolidated into openai_compat"
+            );
         }
-        assert!(types.len() > 150, "expected the full palette, got {}", types.len());
+        assert!(
+            types.len() > 150,
+            "expected the full palette, got {}",
+            types.len()
+        );
     }
 
     #[test]
