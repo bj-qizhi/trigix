@@ -126,8 +126,8 @@ export function OutputSchemaModal({
         <h2>{zh ? '输出模式' : 'Output Schema'}</h2>
         <p style={{ color: 'var(--muted)', fontSize: 12, marginBottom: 16 }}>
           {zh
-            ? <>声明工作流产出的字段。运行结果按此组装成一个带标签的对象(而非默认取最后一个节点)。<b>来源</b>用模板从节点输出取值,如 <code>{'{{node_id.field}}'}</code>。留空则回退默认行为。</>
-            : <>Declare the fields this workflow produces. The result is assembled into a labeled object from these (instead of guessing the last node). <b>Source</b> maps from node outputs, e.g. <code>{'{{node_id.field}}'}</code>. Empty = fall back to the default.</>}
+            ? <>声明工作流产出的字段。运行结果按此组装成一个带标签的对象(而非默认取最后一个节点)。<b>来源</b>用模板取值,如 <code>{'{{node_id.field}}'}</code> 或 <code>{'{{input.field}}'}</code>。留空则回退默认行为。</>
+            : <>Declare the fields this workflow produces. The result is assembled into a labeled object from these (instead of guessing the last node). <b>Source</b> maps values via a template, e.g. <code>{'{{node_id.field}}'}</code> or <code>{'{{input.field}}'}</code>. Empty = fall back to the default.</>}
         </p>
         {fields.length === 0 && (
           <p style={{ color: 'var(--muted)', fontSize: 13, textAlign: 'center', padding: '12px 0' }}>

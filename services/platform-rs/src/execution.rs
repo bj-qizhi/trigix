@@ -497,7 +497,11 @@ impl ExecutionStore for MemoryExecutionStore {
             return Ok(record.clone());
         }
         let node_results = build_node_execution_records(&record.graph, &report);
-        record.output_json = build_workflow_output(&record.graph, &node_results);
+        record.output_json = build_workflow_output(
+            &record.graph,
+            &node_results,
+            Some(record.input_json.as_str()),
+        );
         record.status = report.status;
         record.node_results = node_results;
         record.finished_at = Some(unix_now());
@@ -1500,7 +1504,11 @@ impl ExecutionStore for PostgresExecutionStore {
     ) -> Result<ExecutionRecord, ExecutionError> {
         let record = self.get(tenant_id, execution_id).await?;
         let node_results = build_node_execution_records(&record.graph, &report);
-        let output_json = build_workflow_output(&record.graph, &node_results);
+        let output_json = build_workflow_output(
+            &record.graph,
+            &node_results,
+            Some(record.input_json.as_str()),
+        );
         let now = unix_now() as i64;
 
         sqlx::query(
@@ -2148,6 +2156,7 @@ fn build_node_execution_records(
 fn build_workflow_output(
     graph: &workflow_core::WorkflowGraph,
     node_results: &[NodeExecutionRecord],
+    input_json: Option<&str>,
 ) -> Option<String> {
     if graph.output_schema.is_empty() {
         return extract_workflow_output(node_results);
@@ -2159,7 +2168,7 @@ fn build_workflow_output(
         }
         obj.insert(
             f.key.clone(),
-            resolve_output_field(node_results, &f.source, &f.field_type),
+            resolve_output_field(node_results, input_json, &f.source, &f.field_type),
         );
     }
     serde_json::to_string(&serde_json::Value::Object(obj)).ok()
@@ -2205,16 +2214,23 @@ fn dot_get<'a>(value: &'a serde_json::Value, path: &str) -> Option<&'a serde_jso
     Some(cur)
 }
 
-/// Resolve a `node_id[.path]` expression against the node outputs.
+/// Resolve a `node_id[.path]` expression against the node outputs. The special
+/// id `input` addresses the workflow's input JSON, mirroring `{{input.x}}` in
+/// node configs.
 fn resolve_expr_value(
     node_results: &[NodeExecutionRecord],
+    input_json: Option<&str>,
     expr: &str,
 ) -> Option<serde_json::Value> {
     let (node_id, path) = match expr.find('.') {
         Some(i) => (&expr[..i], &expr[i + 1..]),
         None => (expr, ""),
     };
-    let out = node_output_value(node_results, node_id.trim())?;
+    let out = if node_id.trim() == "input" {
+        input_json.and_then(|s| serde_json::from_str::<serde_json::Value>(s).ok())?
+    } else {
+        node_output_value(node_results, node_id.trim())?
+    };
     dot_get(&out, path.trim()).cloned()
 }
 
@@ -2232,6 +2248,7 @@ fn json_to_plain_string(v: &serde_json::Value) -> String {
 /// `field_type`.
 fn resolve_output_field(
     node_results: &[NodeExecutionRecord],
+    input_json: Option<&str>,
     source: &str,
     field_type: &str,
 ) -> serde_json::Value {
@@ -2241,7 +2258,8 @@ fn resolve_output_field(
         .and_then(|s| s.strip_suffix("}}"))
         .filter(|inner| !inner.contains("{{"))
     {
-        resolve_expr_value(node_results, inner.trim()).unwrap_or(serde_json::Value::Null)
+        resolve_expr_value(node_results, input_json, inner.trim())
+            .unwrap_or(serde_json::Value::Null)
     } else {
         // Template: replace each {{expr}} with its string value.
         let mut out = String::new();
@@ -2252,7 +2270,8 @@ fn resolve_output_field(
             if let Some(close) = after.find("}}") {
                 let expr = after[..close].trim();
                 out.push_str(&json_to_plain_string(
-                    &resolve_expr_value(node_results, expr).unwrap_or(serde_json::Value::Null),
+                    &resolve_expr_value(node_results, input_json, expr)
+                        .unwrap_or(serde_json::Value::Null),
                 ));
                 rest = &after[close + 2..];
             } else {
@@ -2612,13 +2631,15 @@ mod tests {
                 "string",
                 "Result: {{greet.message}} ({{greet.score}})",
             ),
+            out_field("who", "string", "{{input.name}}"),
         ]);
-        let out = build_workflow_output(&graph, &node_results).unwrap();
+        let out = build_workflow_output(&graph, &node_results, Some(r#"{"name":"Ada"}"#)).unwrap();
         let v: serde_json::Value = serde_json::from_str(&out).unwrap();
         assert_eq!(v["reply"], "hi");
         assert_eq!(v["n"], 5);
         assert_eq!(v["ok"], true);
         assert_eq!(v["label"], "Result: hi (5)");
+        assert_eq!(v["who"], "Ada"); // {{input.x}} resolves against the workflow input
     }
 
     #[test]
@@ -2627,7 +2648,7 @@ mod tests {
             nr_fixture("trigger", r#"{"name":"Ada"}"#),
             nr_fixture("greet", r#"{"message":"hi"}"#),
         ];
-        let out = build_workflow_output(&graph_with_output(vec![]), &node_results).unwrap();
+        let out = build_workflow_output(&graph_with_output(vec![]), &node_results, None).unwrap();
         assert!(out.contains("message"));
         assert!(!out.contains("name")); // trigger is skipped
     }
