@@ -22,6 +22,21 @@ fn default_field_type() -> String {
     "string".to_string()
 }
 
+/// One declared output field. `source` is a template (usually a single
+/// `{{node_id.field}}`) resolved against node outputs at completion; the
+/// workflow's final `output_json` is assembled from these instead of guessing
+/// "the last node".
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct OutputField {
+    pub key: String,
+    #[serde(default = "default_field_type")]
+    pub field_type: String,
+    #[serde(default)]
+    pub description: String,
+    #[serde(default)]
+    pub source: String,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct WorkflowGraph {
     pub workflow_version_id: String,
@@ -29,6 +44,8 @@ pub struct WorkflowGraph {
     pub edges: Vec<Edge>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub input_schema: Vec<InputField>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub output_schema: Vec<OutputField>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -492,6 +509,7 @@ mod tests {
             }],
             edges: vec![],
             input_schema: vec![],
+            output_schema: vec![],
         };
 
         assert_eq!(graph.validate(), Ok(()));
@@ -505,6 +523,7 @@ mod tests {
             nodes: vec![],
             edges: vec![],
             input_schema: vec![],
+            output_schema: vec![],
         };
 
         assert_eq!(graph.validate(), Err(GraphError::EmptyGraph));
@@ -525,6 +544,7 @@ mod tests {
                 condition_label: None,
             }],
             input_schema: vec![],
+            output_schema: vec![],
         };
 
         assert_eq!(
@@ -562,6 +582,7 @@ mod tests {
                 },
             ],
             input_schema: vec![],
+            output_schema: vec![],
         };
 
         assert_eq!(graph.validate(), Err(GraphError::CycleDetected));

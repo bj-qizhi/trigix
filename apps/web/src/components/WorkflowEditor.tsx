@@ -5,7 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import { IconSearch, ThemeToggleIcon, IconX} from './uiIcons'
 import { useAuth } from '../AuthContext'
 import * as api from '../api/client'
-import type { WorkflowRecord, WorkflowVersionRecord, NodeExecutionRecord, NodeType, InputField } from '../types'
+import type { WorkflowRecord, WorkflowVersionRecord, NodeExecutionRecord, NodeType, InputField, OutputField } from '../types'
 import { Canvas, graphFromApi, fromFlowGraph } from './Canvas'
 import { useGraphState } from './editor/useGraphState'
 import { useWorkflowRun } from './editor/useWorkflowRun'
@@ -15,7 +15,7 @@ import { CommandPalette } from './editor/CommandPalette'
 import { HelpModal } from './editor/HelpModal'
 import { ValidationModal } from './editor/ValidationModal'
 import {
-  InputSchemaModal, VariablesModal, ReadmeModal, ScheduleModal,
+  InputSchemaModal, OutputSchemaModal, VariablesModal, ReadmeModal, ScheduleModal,
   RecentRunsMini, FormsModal, CopilotPanel,
 } from './editor/WorkflowEditorPanels'
 import { ViewMenu, MoreActionsMenu } from './editor/EditorMenus'
@@ -448,6 +448,8 @@ export function WorkflowEditor({ workflowId, onBack, initialInput }: Props) {
   const [webhookSecret, setWebhookSecret] = useState<string | null>(null)
   const [inputSchema, setInputSchema] = useState<InputField[]>([])
   const [showSchema, setShowSchema]   = useState(false)
+  const [outputSchema, setOutputSchema] = useState<OutputField[]>([])
+  const [showOutputSchema, setShowOutputSchema] = useState(false)
   const [showVars, setShowVars]       = useState(false)
   const [variables, setVariables]     = useState<api.Variable[]>([])
   const [showPalette, setShowPalette] = useState(false)
@@ -566,6 +568,7 @@ export function WorkflowEditor({ workflowId, onBack, initialInput }: Props) {
         setNodes(fn)
         setEdges(fe)
         setInputSchema(ver.graph.input_schema ?? [])
+        setOutputSchema(ver.graph.output_schema ?? [])
         if (ver.status === 'published') {
           api.getWebhook(auth!.tenantId, ver.id)
             .then((info) => { setWebhookUrl(window.location.origin + info.url); setWebhookSecret(info.secret ?? null) })
@@ -654,7 +657,7 @@ export function WorkflowEditor({ workflowId, onBack, initialInput }: Props) {
   const persistence = useWorkflowPersistence({
     workflowId, zh, toast,
     workflow, setWorkflow, version, setVersion,
-    nodes, edges, inputSchema, setInputSchema,
+    nodes, edges, inputSchema, setInputSchema, outputSchema, setOutputSchema,
     setNodes, setEdges, setSelectedNodeId,
     setWebhookUrl, setWebhookSecret,
     inputJson, setExecution,
@@ -1055,6 +1058,13 @@ export function WorkflowEditor({ workflowId, onBack, initialInput }: Props) {
             title={zh ? '定义此工作流的预期输入字段' : 'Define expected input fields for this workflow'}
           >
             {zh ? '输入模式' : 'Input Schema'}
+          </button>
+          <button
+            className="btn btn-sm"
+            onClick={() => setShowOutputSchema(true)}
+            title={zh ? '声明此工作流产出的字段(结果按此组装成带标签的对象)' : 'Declare the fields this workflow produces (result is assembled into a labeled object)'}
+          >
+            {zh ? '输出模式' : 'Output Schema'}
           </button>
           <button
             className="btn btn-sm"
@@ -1539,6 +1549,13 @@ export function WorkflowEditor({ workflowId, onBack, initialInput }: Props) {
           onClose={() => setShowSchema(false)}
         />
       )}
+      {showOutputSchema && (
+        <OutputSchemaModal
+          schema={outputSchema}
+          onChange={setOutputSchema}
+          onClose={() => setShowOutputSchema(false)}
+        />
+      )}
 
       {/* Node command palette (Ctrl+K) */}
       {showPalette && (
@@ -1556,6 +1573,7 @@ export function WorkflowEditor({ workflowId, onBack, initialInput }: Props) {
             { id: 'versions', label: zh ? '版本历史' : 'Version history', run: () => setShowVersions(true) },
             { id: 'export', label: zh ? '导出 JSON' : 'Export JSON', run: () => { void handleExport() } },
             { id: 'schema', label: zh ? '输入模式' : 'Input schema', run: () => setShowSchema(true) },
+            { id: 'output-schema', label: zh ? '输出模式' : 'Output schema', run: () => setShowOutputSchema(true) },
             { id: 'variables', label: zh ? '变量' : 'Variables', run: () => setShowVars(true) },
             { id: 'help', label: zh ? '帮助' : 'Help', hint: '?', run: () => setShowHelp(true) },
           ]}

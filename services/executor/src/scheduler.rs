@@ -35,6 +35,7 @@ mod tests {
                 condition_label: None,
             }],
             input_schema: vec![],
+            output_schema: vec![],
         };
 
         assert_eq!(

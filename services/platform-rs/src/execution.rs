@@ -497,7 +497,7 @@ impl ExecutionStore for MemoryExecutionStore {
             return Ok(record.clone());
         }
         let node_results = build_node_execution_records(&record.graph, &report);
-        record.output_json = extract_workflow_output(&node_results);
+        record.output_json = build_workflow_output(&record.graph, &node_results);
         record.status = report.status;
         record.node_results = node_results;
         record.finished_at = Some(unix_now());
@@ -1500,7 +1500,7 @@ impl ExecutionStore for PostgresExecutionStore {
     ) -> Result<ExecutionRecord, ExecutionError> {
         let record = self.get(tenant_id, execution_id).await?;
         let node_results = build_node_execution_records(&record.graph, &report);
-        let output_json = extract_workflow_output(&node_results);
+        let output_json = build_workflow_output(&record.graph, &node_results);
         let now = unix_now() as i64;
 
         sqlx::query(
@@ -2141,6 +2141,30 @@ fn build_node_execution_records(
 }
 
 /// Extract the workflow's final output: the last succeeded non-trigger node's output_json.
+/// The workflow's final output. When the graph declares an `output_schema`, the
+/// output is assembled from it (each field's `source` template resolved against
+/// node outputs) — a clean, documented object. Otherwise falls back to the last
+/// succeeded non-trigger node's output.
+fn build_workflow_output(
+    graph: &workflow_core::WorkflowGraph,
+    node_results: &[NodeExecutionRecord],
+) -> Option<String> {
+    if graph.output_schema.is_empty() {
+        return extract_workflow_output(node_results);
+    }
+    let mut obj = serde_json::Map::new();
+    for f in &graph.output_schema {
+        if f.key.trim().is_empty() {
+            continue;
+        }
+        obj.insert(
+            f.key.clone(),
+            resolve_output_field(node_results, &f.source, &f.field_type),
+        );
+    }
+    serde_json::to_string(&serde_json::Value::Object(obj)).ok()
+}
+
 fn extract_workflow_output(node_results: &[NodeExecutionRecord]) -> Option<String> {
     node_results
         .iter()
@@ -2151,6 +2175,110 @@ fn extract_workflow_output(node_results: &[NodeExecutionRecord]) -> Option<Strin
                 && nr.output_json.is_some()
         })
         .and_then(|nr| nr.output_json.clone())
+}
+
+/// A node's parsed output JSON, by node id.
+fn node_output_value(
+    node_results: &[NodeExecutionRecord],
+    node_id: &str,
+) -> Option<serde_json::Value> {
+    node_results
+        .iter()
+        .find(|nr| nr.node_id == node_id)
+        .and_then(|nr| nr.output_json.as_deref())
+        .and_then(|s| serde_json::from_str::<serde_json::Value>(s).ok())
+}
+
+/// Follow a dot-path (`a.b.0.c`) into a JSON value.
+fn dot_get<'a>(value: &'a serde_json::Value, path: &str) -> Option<&'a serde_json::Value> {
+    let mut cur = value;
+    if path.is_empty() {
+        return Some(cur);
+    }
+    for seg in path.split('.') {
+        cur = match cur {
+            serde_json::Value::Object(m) => m.get(seg)?,
+            serde_json::Value::Array(a) => a.get(seg.parse::<usize>().ok()?)?,
+            _ => return None,
+        };
+    }
+    Some(cur)
+}
+
+/// Resolve a `node_id[.path]` expression against the node outputs.
+fn resolve_expr_value(
+    node_results: &[NodeExecutionRecord],
+    expr: &str,
+) -> Option<serde_json::Value> {
+    let (node_id, path) = match expr.find('.') {
+        Some(i) => (&expr[..i], &expr[i + 1..]),
+        None => (expr, ""),
+    };
+    let out = node_output_value(node_results, node_id.trim())?;
+    dot_get(&out, path.trim()).cloned()
+}
+
+fn json_to_plain_string(v: &serde_json::Value) -> String {
+    match v {
+        serde_json::Value::String(s) => s.clone(),
+        serde_json::Value::Null => String::new(),
+        other => other.to_string(),
+    }
+}
+
+/// Resolve one output field's `source` template into a typed JSON value.
+/// A lone `{{expr}}` preserves the referenced value's type; a template with
+/// surrounding text resolves to a string. The result is then coerced to
+/// `field_type`.
+fn resolve_output_field(
+    node_results: &[NodeExecutionRecord],
+    source: &str,
+    field_type: &str,
+) -> serde_json::Value {
+    let trimmed = source.trim();
+    let raw: serde_json::Value = if let Some(inner) = trimmed
+        .strip_prefix("{{")
+        .and_then(|s| s.strip_suffix("}}"))
+        .filter(|inner| !inner.contains("{{"))
+    {
+        resolve_expr_value(node_results, inner.trim()).unwrap_or(serde_json::Value::Null)
+    } else {
+        // Template: replace each {{expr}} with its string value.
+        let mut out = String::new();
+        let mut rest = source;
+        while let Some(open) = rest.find("{{") {
+            out.push_str(&rest[..open]);
+            let after = &rest[open + 2..];
+            if let Some(close) = after.find("}}") {
+                let expr = after[..close].trim();
+                out.push_str(&json_to_plain_string(
+                    &resolve_expr_value(node_results, expr).unwrap_or(serde_json::Value::Null),
+                ));
+                rest = &after[close + 2..];
+            } else {
+                out.push_str("{{");
+                rest = after;
+            }
+        }
+        out.push_str(rest);
+        serde_json::Value::String(out)
+    };
+
+    match field_type {
+        "json" => raw,
+        "number" => {
+            let s = json_to_plain_string(&raw);
+            serde_json::from_str::<serde_json::Value>(s.trim())
+                .ok()
+                .filter(serde_json::Value::is_number)
+                .unwrap_or(serde_json::Value::Null)
+        }
+        "boolean" => {
+            let s = json_to_plain_string(&raw).to_lowercase();
+            serde_json::Value::Bool(matches!(s.trim(), "true" | "1" | "yes"))
+        }
+        _ => serde_json::Value::String(json_to_plain_string(&raw)),
+    }
 }
 
 fn node_type_to_str(node_type: &workflow_core::NodeType) -> &'static str {
@@ -2430,6 +2558,80 @@ mod tests {
     use super::*;
     use workflow_core::{Edge, Node, NodeType};
 
+    fn nr_fixture(id: &str, out: &str) -> NodeExecutionRecord {
+        NodeExecutionRecord {
+            node_id: id.to_string(),
+            node_type: if id == "trigger" {
+                "trigger"
+            } else {
+                "transform"
+            }
+            .to_string(),
+            status: NodeStatus::Succeeded,
+            output_json: Some(out.to_string()),
+            error: None,
+            duration_ms: 0,
+            started_at_ms: 0,
+            retry_count: 0,
+        }
+    }
+
+    fn graph_with_output(
+        output_schema: Vec<workflow_core::OutputField>,
+    ) -> workflow_core::WorkflowGraph {
+        workflow_core::WorkflowGraph {
+            workflow_version_id: "v".to_string(),
+            nodes: vec![],
+            edges: vec![],
+            input_schema: vec![],
+            output_schema,
+        }
+    }
+
+    fn out_field(key: &str, field_type: &str, source: &str) -> workflow_core::OutputField {
+        workflow_core::OutputField {
+            key: key.to_string(),
+            field_type: field_type.to_string(),
+            description: String::new(),
+            source: source.to_string(),
+        }
+    }
+
+    #[test]
+    fn output_schema_assembles_a_typed_labeled_result() {
+        let node_results = vec![
+            nr_fixture("trigger", r#"{"name":"Ada"}"#),
+            nr_fixture("greet", r#"{"message":"hi","score":5,"ok":"true"}"#),
+        ];
+        let graph = graph_with_output(vec![
+            out_field("reply", "string", "{{greet.message}}"),
+            out_field("n", "number", "{{greet.score}}"),
+            out_field("ok", "boolean", "{{greet.ok}}"),
+            out_field(
+                "label",
+                "string",
+                "Result: {{greet.message}} ({{greet.score}})",
+            ),
+        ]);
+        let out = build_workflow_output(&graph, &node_results).unwrap();
+        let v: serde_json::Value = serde_json::from_str(&out).unwrap();
+        assert_eq!(v["reply"], "hi");
+        assert_eq!(v["n"], 5);
+        assert_eq!(v["ok"], true);
+        assert_eq!(v["label"], "Result: hi (5)");
+    }
+
+    #[test]
+    fn empty_output_schema_falls_back_to_last_non_trigger_node() {
+        let node_results = vec![
+            nr_fixture("trigger", r#"{"name":"Ada"}"#),
+            nr_fixture("greet", r#"{"message":"hi"}"#),
+        ];
+        let out = build_workflow_output(&graph_with_output(vec![]), &node_results).unwrap();
+        assert!(out.contains("message"));
+        assert!(!out.contains("name")); // trigger is skipped
+    }
+
     macro_rules! poll_until_done {
         ($service:expr, $tenant_id:expr, $execution_id:expr) => {{
             let mut result = None;
@@ -2536,6 +2738,7 @@ mod tests {
                     condition_label: None,
                 }],
                 input_schema: vec![],
+                output_schema: vec![],
             },
             input_json: r#"{"customer":"Alice"}"#.to_string(),
             label: None,
@@ -2741,6 +2944,7 @@ mod tests {
                     condition_label: None,
                 }],
                 input_schema: vec![],
+                output_schema: vec![],
             },
             input_json: "{\"lead_id\":\"lead-1\"}".to_string(),
             label: None,

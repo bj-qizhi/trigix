@@ -3,4 +3,4 @@
 
 mod graph;
 
-pub use graph::{Edge, GraphError, InputField, Node, NodeType, WorkflowGraph};
+pub use graph::{Edge, GraphError, InputField, Node, NodeType, OutputField, WorkflowGraph};

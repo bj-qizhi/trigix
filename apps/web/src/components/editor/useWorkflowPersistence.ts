@@ -5,7 +5,7 @@ import { useState } from 'react'
 import type { Dispatch, SetStateAction } from 'react'
 import { useAuth } from '../../AuthContext'
 import * as api from '../../api/client'
-import type { WorkflowRecord, WorkflowVersionRecord, ExecutionRecord, InputField } from '../../types'
+import type { WorkflowRecord, WorkflowVersionRecord, ExecutionRecord, InputField, OutputField } from '../../types'
 import { graphFromApi, fromFlowGraph, type FlowNode, type FlowEdge } from '../Canvas'
 import type { PublishWarning } from './publishWarnings'
 
@@ -54,6 +54,8 @@ export interface WorkflowPersistenceOptions {
   edges: FlowEdge[]
   inputSchema: InputField[]
   setInputSchema: Dispatch<SetStateAction<InputField[]>>
+  outputSchema: OutputField[]
+  setOutputSchema: Dispatch<SetStateAction<OutputField[]>>
   setNodes: Dispatch<SetStateAction<FlowNode[]>>
   setEdges: Dispatch<SetStateAction<FlowEdge[]>>
   setSelectedNodeId: Dispatch<SetStateAction<string | null>>
@@ -68,7 +70,7 @@ export function useWorkflowPersistence(opts: WorkflowPersistenceOptions): Workfl
   const {
     workflowId, zh, toast,
     workflow, setWorkflow, version, setVersion,
-    nodes, edges, inputSchema, setInputSchema,
+    nodes, edges, inputSchema, setInputSchema, outputSchema, setOutputSchema,
     setNodes, setEdges, setSelectedNodeId,
     setWebhookUrl, setWebhookSecret,
     inputJson, setExecution,
@@ -97,6 +99,7 @@ export function useWorkflowPersistence(opts: WorkflowPersistenceOptions): Workfl
         nodes: apiNodes,
         edges: apiEdges,
         input_schema: inputSchema,
+        output_schema: outputSchema,
       }
       const ver = await api.createVersion(auth!.tenantId, workflowId, graph, saveMessage.trim() || undefined)
       setVersion(ver)
@@ -205,6 +208,7 @@ export function useWorkflowPersistence(opts: WorkflowPersistenceOptions): Workfl
       setNodes(fn)
       setEdges(fe)
       setInputSchema(ver.graph.input_schema ?? [])
+      setOutputSchema(ver.graph.output_schema ?? [])
       setSelectedNodeId(null)
       setShowVersions(false)
       toast(zh ? `已加载 v${ver.version}` : `Loaded v${ver.version}`)
@@ -225,6 +229,7 @@ export function useWorkflowPersistence(opts: WorkflowPersistenceOptions): Workfl
       setNodes(fn)
       setEdges(fe)
       setInputSchema(newVer.graph.input_schema ?? [])
+      setOutputSchema(newVer.graph.output_schema ?? [])
       setSelectedNodeId(null)
       setShowVersions(false)
       toast(zh ? `已回滚到 v${versionNum} — 新草稿 v${newVer.version} 已创建` : `Rolled back to v${versionNum} — new draft v${newVer.version} created`)

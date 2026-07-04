@@ -9,7 +9,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import * as api from '../../api/client'
-import type { ExecutionSummary, InputField, ApiNode, ApiEdge } from '../../types'
+import type { ExecutionSummary, InputField, OutputField, ApiNode, ApiEdge } from '../../types'
 import { useLocale } from '../../useLocale'
 import { friendlyError } from '../../errorMessage'
 import { IconKey, IconX} from '../uiIcons'
@@ -94,6 +94,64 @@ export function InputSchemaModal({
           {zh ? '+ 添加字段' : '+ Add Field'}
         </button>
 
+        <div className="modal-actions">
+          <button className="btn" onClick={onClose}>{zh ? '取消' : 'Cancel'}</button>
+          <button className="btn btn-primary" onClick={handleSave}>{zh ? '保存模式' : 'Save Schema'}</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+export function OutputSchemaModal({
+  schema, onChange, onClose,
+}: {
+  schema: OutputField[]
+  onChange: (s: OutputField[]) => void
+  onClose: () => void
+}) {
+  const { locale } = useLocale()
+  const zh = locale === 'zh'
+  const [fields, setFields] = useState<OutputField[]>(schema)
+
+  const addField = () => setFields((f) => [...f, { key: '', field_type: 'string', description: '', source: '' }])
+  const updateField = (i: number, patch: Partial<OutputField>) =>
+    setFields((f) => f.map((x, j) => (j === i ? { ...x, ...patch } : x)))
+  const removeField = (i: number) => setFields((f) => f.filter((_, j) => j !== i))
+  const handleSave = () => { onChange(fields.filter((f) => f.key.trim())); onClose() }
+
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal" style={{ width: 620, maxHeight: '80vh', overflow: 'auto' }} onClick={(e) => e.stopPropagation()}>
+        <h2>{zh ? '输出模式' : 'Output Schema'}</h2>
+        <p style={{ color: 'var(--muted)', fontSize: 12, marginBottom: 16 }}>
+          {zh
+            ? <>声明工作流产出的字段。运行结果按此组装成一个带标签的对象(而非默认取最后一个节点)。<b>来源</b>用模板从节点输出取值,如 <code>{'{{node_id.field}}'}</code>。留空则回退默认行为。</>
+            : <>Declare the fields this workflow produces. The result is assembled into a labeled object from these (instead of guessing the last node). <b>Source</b> maps from node outputs, e.g. <code>{'{{node_id.field}}'}</code>. Empty = fall back to the default.</>}
+        </p>
+        {fields.length === 0 && (
+          <p style={{ color: 'var(--muted)', fontSize: 13, textAlign: 'center', padding: '12px 0' }}>
+            {zh ? '暂无输出字段。在下方添加一个。' : 'No output fields yet. Add one below.'}
+          </p>
+        )}
+        {fields.map((f, i) => (
+          <div key={i} style={{ display: 'grid', gridTemplateColumns: '1fr 96px auto', gap: 8, marginBottom: 8, alignItems: 'center' }}>
+            <input placeholder={zh ? '键名（如 answer）' : 'key (e.g. answer)'} value={f.key}
+              onChange={(e) => updateField(i, { key: e.target.value })} style={{ fontFamily: 'monospace', fontSize: 12 }} />
+            <select value={f.field_type} onChange={(e) => updateField(i, { field_type: e.target.value as OutputField['field_type'] })} style={{ fontSize: 12 }}>
+              <option value="string">string</option>
+              <option value="number">number</option>
+              <option value="boolean">boolean</option>
+              <option value="json">json</option>
+            </select>
+            <button className="btn btn-sm btn-danger" onClick={() => removeField(i)}><IconX aria-hidden /></button>
+            <input placeholder={zh ? '来源，如 {{summarize.content}}' : 'source, e.g. {{summarize.content}}'} value={f.source}
+              onChange={(e) => updateField(i, { source: e.target.value })} style={{ fontFamily: 'monospace', fontSize: 12, gridColumn: '1 / 3' }} />
+            <input placeholder={zh ? '描述（可选）' : 'description (optional)'} value={f.description}
+              onChange={(e) => updateField(i, { description: e.target.value })} style={{ fontSize: 12, gridColumn: '1 / 4' }} />
+          </div>
+        ))}
+        <button className="btn btn-sm" onClick={addField} style={{ marginTop: 8, marginBottom: 16 }}>{zh ? '+ 添加字段' : '+ Add Field'}</button>
         <div className="modal-actions">
           <button className="btn" onClick={onClose}>{zh ? '取消' : 'Cancel'}</button>
           <button className="btn btn-primary" onClick={handleSave}>{zh ? '保存模式' : 'Save Schema'}</button>

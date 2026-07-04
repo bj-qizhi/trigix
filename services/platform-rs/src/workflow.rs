@@ -1738,6 +1738,7 @@ fn dev_graph(workflow_version_id: &str) -> WorkflowGraph {
             condition_label: None,
         }],
         input_schema: vec![],
+        output_schema: vec![],
     }
 }
 

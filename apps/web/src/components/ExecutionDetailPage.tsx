@@ -10,7 +10,7 @@ import { SkeletonRows } from './Skeleton'
 import type { ExecutionRecord, AuditEvent } from '../types'
 import { useTheme } from '../useTheme'
 import { useLocale } from '../useLocale'
-import { JsonTree } from './JsonTree'
+import { ResultView } from './executiondetail/ResultView'
 import { prettyJson, CopyButton, NodeResultCard, StatCard, ExecutionGraph, ExecutionTimeline, NoteEditor, LabelEditor } from './executiondetail/ExecutionDetailParts'
 
 interface Props {
@@ -459,9 +459,9 @@ export function ExecutionDetailPage({ executionId, onBack, onOpenWorkflow, onRet
                 <div style={{
                   background: 'var(--panel)', border: '1px solid var(--success-text)',
                   borderRadius: 'var(--radius)', padding: '10px 12px',
-                  maxHeight: 320, overflowY: 'auto',
+                  maxHeight: 360, overflowY: 'auto',
                 }}>
-                  <JsonTree raw={record.output_json} />
+                  <ResultView outputJson={record.output_json} outputSchema={record.graph?.output_schema} />
                 </div>
               </section>
             )}

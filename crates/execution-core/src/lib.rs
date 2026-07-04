@@ -411,6 +411,7 @@ mod tests {
             }],
             edges: vec![],
             input_schema: vec![],
+            output_schema: vec![],
         };
         let executor = EchoExecutor::default();
         let report = run_workflow("exec-1", &graph, "{}", &executor, false)
@@ -445,6 +446,7 @@ mod tests {
                 condition_label: None,
             }],
             input_schema: vec![],
+            output_schema: vec![],
         };
         let executor = EchoExecutor::default();
         let report = run_workflow("exec-2", &graph, "{}", &executor, false)
@@ -481,6 +483,7 @@ mod tests {
                 condition_label: None,
             }],
             input_schema: vec![],
+            output_schema: vec![],
         };
         let executor = FailingExecutor::new("trigger");
         let report = run_workflow("exec-3", &graph, "{}", &executor, false)
@@ -536,6 +539,7 @@ mod tests {
                 },
             ],
             input_schema: vec![],
+            output_schema: vec![],
         }
     }
 
@@ -593,6 +597,7 @@ mod tests {
                 condition_label: None,
             }],
             input_schema: vec![],
+            output_schema: vec![],
         };
         let executor = EchoExecutor::default();
         let report = run_workflow("exec-4", &graph, r#"{"items":[1,2,3]}"#, &executor, false)
@@ -664,6 +669,7 @@ mod tests {
                 },
             ],
             input_schema: vec![],
+            output_schema: vec![],
         }
     }
 
@@ -748,6 +754,7 @@ mod tests {
                 },
             ],
             input_schema: vec![],
+            output_schema: vec![],
         }
     }
 
@@ -791,6 +798,7 @@ mod tests {
                 condition_label: None,
             }],
             input_schema: vec![],
+            output_schema: vec![],
         };
         let executor = FailingExecutor::new("http");
         let report = run_workflow("exec-5", &graph, "{}", &executor, false)

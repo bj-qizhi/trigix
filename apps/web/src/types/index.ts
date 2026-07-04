@@ -35,11 +35,20 @@ export interface InputField {
   default_value?: string
 }
 
+export interface OutputField {
+  key: string
+  field_type: 'string' | 'number' | 'boolean' | 'json'
+  description: string
+  /** Template (usually a single {{node_id.field}}) mapped from node outputs. */
+  source: string
+}
+
 export interface WorkflowGraph {
   workflow_version_id: string
   nodes: ApiNode[]
   edges: ApiEdge[]
   input_schema?: InputField[]
+  output_schema?: OutputField[]
 }
 
 export interface WorkflowRecord {
