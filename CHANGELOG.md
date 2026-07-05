@@ -4,6 +4,19 @@ All notable changes to Trigix will be documented in this file.
 
 ## [Unreleased]
 
+## [1.5.1] - 2026-07-05
+
+### Added
+
+- **Node-level AI field assist.** Config-panel fields can now be written by an LLM
+  from a plain-language description. A small "✦ AI" button next to a field opens a
+  popover — describe what you want and the value drops straight in. New
+  `POST /v1/assist/field` returns a bare, fence-free value for a given `kind`
+  (regex / prompt / code / jsonpath / template / sql / jq / text); it reuses the
+  AI-assist provider / key / stored-credential resolution. Wired into the LLM
+  prompt template, the regex node's pattern, and the code node's Rhai script, and
+  it reuses the copilot's stored LLM settings.
+
 ## [1.5.0] - 2026-07-04
 
 The workflow editor's AI assistant grows from a read-only Q&A box into an
