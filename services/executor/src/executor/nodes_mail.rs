@@ -48,10 +48,8 @@ pub(super) async fn execute_imap(node: &Node, context: &ExecutionContext) -> Nod
         .max(1);
 
     let result = tokio::task::spawn_blocking(move || -> Result<serde_json::Value, String> {
-        let tls = native_tls::TlsConnector::builder()
-            .build()
-            .map_err(|e| format!("TLS init error: {e}"))?;
-        let client = imap::connect((host.as_str(), port), host.as_str(), &tls)
+        let client = imap::ClientBuilder::new(host.as_str(), port)
+            .connect()
             .map_err(|e| format!("connect error: {e}"))?;
         let mut session = client
             .login(&user, &pass)
@@ -82,17 +80,20 @@ pub(super) async fn execute_imap(node: &Node, context: &ExecutionContext) -> Nod
                         .iter()
                         .map(|f| {
                             let env = f.envelope();
-                            let subject =
-                                env.map(|e| bytes_to_string(e.subject)).unwrap_or_default();
-                            let date = env.map(|e| bytes_to_string(e.date)).unwrap_or_default();
+                            let subject = env
+                                .map(|e| bytes_to_string(e.subject.as_deref()))
+                                .unwrap_or_default();
+                            let date = env
+                                .map(|e| bytes_to_string(e.date.as_deref()))
+                                .unwrap_or_default();
                             let from = env
                                 .and_then(|e| e.from.as_ref())
                                 .and_then(|addrs| addrs.first())
                                 .map(|a| {
                                     format!(
                                         "{}@{}",
-                                        bytes_to_string(a.mailbox),
-                                        bytes_to_string(a.host)
+                                        bytes_to_string(a.mailbox.as_deref()),
+                                        bytes_to_string(a.host.as_deref())
                                     )
                                 })
                                 .unwrap_or_default();

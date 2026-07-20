@@ -20,6 +20,25 @@ DSN = os.environ.get("RAG_TEST_DATABASE_URL")
 pytestmark = pytest.mark.skipif(not DSN, reason="RAG_TEST_DATABASE_URL not set")
 
 
+async def test_schema_enables_tenant_row_level_security():
+    store = await RagStore.connect(DSN)
+    try:
+        rls_enabled = await store._pool.fetchval(
+            "SELECT relrowsecurity FROM pg_class "
+            "WHERE oid = 'public.af_kb_chunks'::regclass"
+        )
+        policy_count = await store._pool.fetchval(
+            "SELECT count(*) FROM pg_policies "
+            "WHERE schemaname = 'public' "
+            "AND tablename = 'af_kb_chunks' "
+            "AND policyname = 'tenant_isolation'"
+        )
+        assert rls_enabled is True
+        assert policy_count == 1
+    finally:
+        await store.close()
+
+
 async def test_ingest_and_retrieve_most_relevant():
     store = await RagStore.connect(DSN)
     tenant, kb = "t1", f"kb-{uuid.uuid4().hex[:8]}"

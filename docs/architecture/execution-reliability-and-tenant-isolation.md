@@ -44,6 +44,12 @@ PostgreSQL integration tests verify that every tenant-bearing table has the
 `tenant_isolation` policy after migrations run. Store and HTTP tests separately
 verify that a Tenant cannot retrieve another Tenant's records.
 
+Services that create tenant-bearing tables at runtime after the platform
+migrations have completed must enable RLS and install the same
+`tenant_isolation` policy as part of their idempotent schema initialization. The
+AI Runtime's `af_kb_chunks` table follows this rule, and its live pgvector test
+asserts both RLS enablement and policy presence.
+
 For the database policies to enforce isolation, production must connect through
 a non-owner application role and set `app.tenant_id` for each transaction. Table
 owners retain PostgreSQL's normal RLS bypass so schema migration remains

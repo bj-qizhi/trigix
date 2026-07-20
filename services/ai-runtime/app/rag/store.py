@@ -91,6 +91,40 @@ class RagStore:
             await conn.execute(
                 "ALTER TABLE af_kb_chunks ADD COLUMN IF NOT EXISTS embed_backend TEXT"
             )
+            # This table is created by the AI runtime after the platform's SQL
+            # migrations may already have run. Apply the same defence-in-depth
+            # tenant policy here so dynamically-owned schema cannot escape the
+            # platform-wide RLS invariant.
+            await conn.execute("ALTER TABLE af_kb_chunks ENABLE ROW LEVEL SECURITY")
+            await conn.execute(
+                """
+                DO $$
+                BEGIN
+                    IF NOT EXISTS (
+                        SELECT 1
+                        FROM pg_policies
+                        WHERE schemaname = 'public'
+                          AND tablename = 'af_kb_chunks'
+                          AND policyname = 'tenant_isolation'
+                    ) THEN
+                        CREATE POLICY tenant_isolation ON af_kb_chunks
+                            USING (
+                                tenant_id = NULLIF(
+                                    current_setting('app.tenant_id', true), ''
+                                )
+                            )
+                            WITH CHECK (
+                                tenant_id = NULLIF(
+                                    current_setting('app.tenant_id', true), ''
+                                )
+                            );
+                    END IF;
+                EXCEPTION
+                    WHEN duplicate_object THEN NULL;
+                END
+                $$
+                """
+            )
             await conn.execute(
                 "CREATE INDEX IF NOT EXISTS af_kb_chunks_kb_idx "
                 "ON af_kb_chunks (tenant_id, kb)"

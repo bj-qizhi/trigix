@@ -1,7 +1,7 @@
 // Copyright © 2026 北京祺智科技有限公司. All rights reserved.
 // https://www.qzso.com/ · managecode@gmail.com
 
-import { useEffect, useRef, useState } from 'react'
+import { lazy, Suspense, useEffect, useRef, useState } from 'react'
 import { IconBell, IconFolder, IconGlobe, IconLock, ThemeToggleIcon, IconMenu, IconViewGrid, IconColumns, IconActivity, IconInfo, IconWarning, IconApproval, IconX, IconPlay, IconTable, IconKanban, IconTimer } from './uiIcons'
 import type { IconType } from 'react-icons'
 import {
@@ -14,15 +14,17 @@ import logoWordmark from '../assets/logo-wordmark.svg'
 import * as api from '../api/client'
 import type { WorkflowExport, WorkflowRecord, WorkflowGraph } from '../types'
 import { filterAndSortWorkflows, computeWorkflowStats } from './workflowListFilter'
-import { TemplatesModal, type Template } from './TemplatesModal'
+import type { Template } from './TemplatesModal'
 import { useWorkflowListData } from './workflowlist/useWorkflowListData'
 import { useGlobalSearch } from './workflowlist/useGlobalSearch'
 import { CreateWorkflowModal, SystemInfoModal, ShortcutsModal, EditTagsModal, MoveFolderModal } from './workflowlist/WorkflowListModals'
-import { GenerateWorkflowModal } from './GenerateWorkflowModal'
 import { useTheme } from '../useTheme'
 import { useLocale } from '../useLocale'
 import { useToast } from '../toast'
 import { SkeletonRows } from './Skeleton'
+
+const TemplatesModal = lazy(() => import('./TemplatesModal').then((m) => ({ default: m.TemplatesModal })))
+const GenerateWorkflowModal = lazy(() => import('./GenerateWorkflowModal').then((m) => ({ default: m.GenerateWorkflowModal })))
 
 interface Props {
   onOpen: (workflowId: string) => void
@@ -2104,23 +2106,25 @@ export function WorkflowList({ onOpen, onOpenExecution, onCredentials, onAuditLo
         </div>
       )}
 
-      {showTemplates && (
-        <TemplatesModal
-          onImport={handleImportTemplate}
-          onClose={() => setShowTemplates(false)}
-        />
-      )}
+      <Suspense fallback={null}>
+        {showTemplates && (
+          <TemplatesModal
+            onImport={handleImportTemplate}
+            onClose={() => setShowTemplates(false)}
+          />
+        )}
 
-      {showGenerate && (
-        <GenerateWorkflowModal
-          onClose={() => setShowGenerate(false)}
-          onImport={handleGenerateImport}
-          onCreated={(id) => {
-            setShowGenerate(false)
-            reload().then(() => openWorkflow(id))
-          }}
-        />
-      )}
+        {showGenerate && (
+          <GenerateWorkflowModal
+            onClose={() => setShowGenerate(false)}
+            onImport={handleGenerateImport}
+            onCreated={(id) => {
+              setShowGenerate(false)
+              reload().then(() => openWorkflow(id))
+            }}
+          />
+        )}
+      </Suspense>
 
       {showSystemInfo && (
         <SystemInfoModal info={systemInfo} onClose={() => setShowSystemInfo(false)} zh={zh} />

@@ -1,40 +1,45 @@
 // Copyright © 2026 北京祺智科技有限公司. All rights reserved.
 // https://www.qzso.com/ · managecode@gmail.com
 
-import { useState, useCallback, useEffect } from 'react'
+import { lazy, Suspense, useState, useCallback, useEffect } from 'react'
 import { AuthProvider, useAuth } from './AuthContext'
 import * as api from './api/client'
 import { useLocale } from './useLocale'
 import { LoginPage } from './components/LoginPage'
 import { WorkflowList } from './components/WorkflowList'
-import { WorkflowEditor } from './components/WorkflowEditor'
-import { CredentialsPage } from './components/CredentialsPage'
-import { AuditLogPage } from './components/AuditLogPage'
-import { RunsPage } from './components/RunsPage'
-import { ExecutionDetailPage } from './components/ExecutionDetailPage'
-import { AnalyticsPage } from './components/AnalyticsPage'
-import { EnvironmentPage } from './components/EnvironmentPage'
-import { WorkspacePage } from './components/WorkspacePage'
-import { WebhookPage } from './components/WebhookPage'
-import { ApiKeysPage } from './components/ApiKeysPage'
-import { SsoSettingsPage } from './components/SsoSettingsPage'
-import { KnowledgeBasePage } from './components/KnowledgeBasePage'
-import { CustomNodesPage } from './components/CustomNodesPage'
-import { EventSubscriptionsPage } from './components/EventSubscriptionsPage'
-import { FormPage } from './components/FormPage'
-import { OrgPage } from './components/OrgPage'
-import { AccountPage } from './components/AccountPage'
-import { AffiliatePage } from './components/AffiliatePage'
-import { AdminPayoutsPage } from './components/AdminPayoutsPage'
-import { UsersPage } from './components/UsersPage'
-import { SchedulesPage } from './components/SchedulesPage'
-import { MonitoringPage } from './components/MonitoringPage'
-import { ApprovalsPage } from './components/ApprovalsPage'
-import { WorkflowDepsPage } from './components/WorkflowDepsPage'
 import { usePageRouter } from './routing'
 import { ToastProvider } from './toast'
 import { IconX } from './components/uiIcons'
 import logoIcon from './assets/logo.svg'
+
+const WorkflowEditor = lazy(() => import('./components/WorkflowEditor').then((m) => ({ default: m.WorkflowEditor })))
+const CredentialsPage = lazy(() => import('./components/CredentialsPage').then((m) => ({ default: m.CredentialsPage })))
+const AuditLogPage = lazy(() => import('./components/AuditLogPage').then((m) => ({ default: m.AuditLogPage })))
+const RunsPage = lazy(() => import('./components/RunsPage').then((m) => ({ default: m.RunsPage })))
+const ExecutionDetailPage = lazy(() => import('./components/ExecutionDetailPage').then((m) => ({ default: m.ExecutionDetailPage })))
+const AnalyticsPage = lazy(() => import('./components/AnalyticsPage').then((m) => ({ default: m.AnalyticsPage })))
+const EnvironmentPage = lazy(() => import('./components/EnvironmentPage').then((m) => ({ default: m.EnvironmentPage })))
+const WorkspacePage = lazy(() => import('./components/WorkspacePage').then((m) => ({ default: m.WorkspacePage })))
+const WebhookPage = lazy(() => import('./components/WebhookPage').then((m) => ({ default: m.WebhookPage })))
+const ApiKeysPage = lazy(() => import('./components/ApiKeysPage').then((m) => ({ default: m.ApiKeysPage })))
+const SsoSettingsPage = lazy(() => import('./components/SsoSettingsPage').then((m) => ({ default: m.SsoSettingsPage })))
+const KnowledgeBasePage = lazy(() => import('./components/KnowledgeBasePage').then((m) => ({ default: m.KnowledgeBasePage })))
+const CustomNodesPage = lazy(() => import('./components/CustomNodesPage').then((m) => ({ default: m.CustomNodesPage })))
+const EventSubscriptionsPage = lazy(() => import('./components/EventSubscriptionsPage').then((m) => ({ default: m.EventSubscriptionsPage })))
+const FormPage = lazy(() => import('./components/FormPage').then((m) => ({ default: m.FormPage })))
+const OrgPage = lazy(() => import('./components/OrgPage').then((m) => ({ default: m.OrgPage })))
+const AccountPage = lazy(() => import('./components/AccountPage').then((m) => ({ default: m.AccountPage })))
+const AffiliatePage = lazy(() => import('./components/AffiliatePage').then((m) => ({ default: m.AffiliatePage })))
+const AdminPayoutsPage = lazy(() => import('./components/AdminPayoutsPage').then((m) => ({ default: m.AdminPayoutsPage })))
+const UsersPage = lazy(() => import('./components/UsersPage').then((m) => ({ default: m.UsersPage })))
+const SchedulesPage = lazy(() => import('./components/SchedulesPage').then((m) => ({ default: m.SchedulesPage })))
+const MonitoringPage = lazy(() => import('./components/MonitoringPage').then((m) => ({ default: m.MonitoringPage })))
+const ApprovalsPage = lazy(() => import('./components/ApprovalsPage').then((m) => ({ default: m.ApprovalsPage })))
+const WorkflowDepsPage = lazy(() => import('./components/WorkflowDepsPage').then((m) => ({ default: m.WorkflowDepsPage })))
+
+function PageFallback() {
+  return <div role="status" aria-live="polite" style={{ padding: '2rem', color: 'var(--muted)' }}>Loading…</div>
+}
 
 function EmailVerificationBanner({ email }: { email?: string }) {
   const [dismissed, setDismissed] = useState(false)
@@ -288,7 +293,13 @@ function Footer() {
 }
 
 export function App() {
-  return <ToastProvider>{window.location.pathname.startsWith('/forms/') ? <PublicFormRoute /> : <AuthedApp />}</ToastProvider>
+  return (
+    <ToastProvider>
+      <Suspense fallback={<PageFallback />}>
+        {window.location.pathname.startsWith('/forms/') ? <PublicFormRoute /> : <AuthedApp />}
+      </Suspense>
+    </ToastProvider>
+  )
 }
 
 function AuthedApp() {

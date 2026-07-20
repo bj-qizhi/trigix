@@ -1,7 +1,7 @@
 // Copyright © 2026 北京祺智科技有限公司. All rights reserved.
 // https://www.qzso.com/ · managecode@gmail.com
 
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { IconSearch, ThemeToggleIcon, IconX} from './uiIcons'
 import { useAuth } from '../AuthContext'
 import * as api from '../api/client'
@@ -19,7 +19,6 @@ import {
   RecentRunsMini, FormsModal, CopilotPanel,
 } from './editor/WorkflowEditorPanels'
 import { ViewMenu, MoreActionsMenu } from './editor/EditorMenus'
-import { GenerateWorkflowModal } from './GenerateWorkflowModal'
 import { LimitsMenu } from './editor/LimitsMenu'
 import { TagEditor } from './editor/TagEditor'
 import { WorkflowTitleBar } from './editor/WorkflowTitleBar'
@@ -31,13 +30,15 @@ import { NodeIcon } from './nodeIcons'
 import { PiChartBar, PiFire } from 'react-icons/pi'
 
 const TB_ICON: React.CSSProperties = { verticalAlign: '-2px', marginRight: 4 }
-import { NodeConfigPanel } from './NodeConfigPanel'
 import { ExecutionPanel } from './ExecutionPanel'
 import { TestCasesModal } from './TestCasesModal'
 import { CommentsModal } from './CommentsModal'
 import { useTheme } from '../useTheme'
 import { useLocale } from '../useLocale'
 import { setLabelLocale } from './panels/i18nLabels'
+
+const GenerateWorkflowModal = lazy(() => import('./GenerateWorkflowModal').then((m) => ({ default: m.GenerateWorkflowModal })))
+const NodeConfigPanel = lazy(() => import('./NodeConfigPanel').then((m) => ({ default: m.NodeConfigPanel })))
 
 interface Props {
   workflowId: string
@@ -1452,26 +1453,28 @@ export function WorkflowEditor({ workflowId, onBack, initialInput }: Props) {
           </div>
 
           {/* Right config panel */}
-          <NodeConfigPanel
-            node={selectedNode}
-            onUpdateConfig={handleUpdateConfig}
-            onRenameId={renameNodeId}
-            recentExecutions={recentExecutions}
-            executionResult={selectedNode ? (nodeStatuses[selectedNode.id] ?? null) : null}
-            webhookUrl={webhookUrl}
-            webhookSecret={webhookSecret}
-            onDuplicate={selectedNode ? handleDuplicateNode : undefined}
-            upstreamNodes={upstreamNodes}
-            upstreamResults={nodeStatuses}
-            onSelectExecution={async (id) => {
-              try {
-                const rec = await api.getExecution(auth!.tenantId, id)
-                setExecution(rec)
-              } catch (e) {
-                toast(String(e), 'error')
-              }
-            }}
-          />
+          <Suspense fallback={<div style={{ width: 320, borderLeft: '1px solid var(--border)' }} />}>
+            <NodeConfigPanel
+              node={selectedNode}
+              onUpdateConfig={handleUpdateConfig}
+              onRenameId={renameNodeId}
+              recentExecutions={recentExecutions}
+              executionResult={selectedNode ? (nodeStatuses[selectedNode.id] ?? null) : null}
+              webhookUrl={webhookUrl}
+              webhookSecret={webhookSecret}
+              onDuplicate={selectedNode ? handleDuplicateNode : undefined}
+              upstreamNodes={upstreamNodes}
+              upstreamResults={nodeStatuses}
+              onSelectExecution={async (id) => {
+                try {
+                  const rec = await api.getExecution(auth!.tenantId, id)
+                  setExecution(rec)
+                } catch (e) {
+                  toast(String(e), 'error')
+                }
+              }}
+            />
+          </Suspense>
 
           {/* AI Copilot panel overlay */}
           {showCopilot && (
@@ -1558,20 +1561,22 @@ export function WorkflowEditor({ workflowId, onBack, initialInput }: Props) {
           onClose={() => setShowOutputSchema(false)}
         />
       )}
-      {showGenerate && (
-        <GenerateWorkflowModal
-          onClose={() => setShowGenerate(false)}
-          onImport={(graph) => {
-            const { nodes: fn, edges: fe } = graphFromApi(graph.nodes, graph.edges)
-            setNodes(fn)
-            setEdges(fe)
-            if (graph.input_schema) setInputSchema(graph.input_schema)
-            if (graph.output_schema) setOutputSchema(graph.output_schema)
-            setShowGenerate(false)
-            toast(zh ? 'AI 生成的工作流已应用到画布（Ctrl+S 保存）' : 'Generated workflow applied to canvas (Ctrl+S to save)', 'success')
-          }}
-        />
-      )}
+      <Suspense fallback={null}>
+        {showGenerate && (
+          <GenerateWorkflowModal
+            onClose={() => setShowGenerate(false)}
+            onImport={(graph) => {
+              const { nodes: fn, edges: fe } = graphFromApi(graph.nodes, graph.edges)
+              setNodes(fn)
+              setEdges(fe)
+              if (graph.input_schema) setInputSchema(graph.input_schema)
+              if (graph.output_schema) setOutputSchema(graph.output_schema)
+              setShowGenerate(false)
+              toast(zh ? 'AI 生成的工作流已应用到画布（Ctrl+S 保存）' : 'Generated workflow applied to canvas (Ctrl+S to save)', 'success')
+            }}
+          />
+        )}
+      </Suspense>
 
       {/* Node command palette (Ctrl+K) */}
       {showPalette && (

@@ -32,7 +32,7 @@ regex = "1"
 csv = "1"
 feed-rs = "2"
 suppaftp = { version = "6", features = ["native-tls"] }
-imap = "2"
+imap = "3.0.0-alpha.15"
 native-tls = "0.2"
 russh = "0.45"
 russh-sftp = "2"
