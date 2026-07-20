@@ -22,10 +22,12 @@ use trigix_platform::attribution::{
     PostgresAttributionStore,
 };
 use trigix_platform::billing::{BillingStore, PlatformBillingStore, TenantQuota};
+use trigix_platform::execution::{ExecutionStore, PostgresExecutionStore, StartExecutionRequest};
 use trigix_platform::token_usage::{
     PlatformTokenUsageStore, PostgresTokenUsageStore, TokenUsageRecord, TokenUsageStore,
 };
 use trigix_platform::users::{PlatformUserStore, UserStore};
+use workflow_core::{Node, NodeType, WorkflowGraph};
 
 /// Connects to `TEST_DATABASE_URL` and runs all migrations, or returns `None`
 /// (and prints a skip notice) when the env var is unset. `sqlx::migrate` takes a
@@ -64,6 +66,109 @@ async fn eventually(mut check: impl FnMut() -> bool) -> bool {
         tokio::time::sleep(std::time::Duration::from_millis(100)).await;
     }
     check()
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn tenant_rls_policy_covers_every_tenant_table() {
+    let Some(pool) = setup().await else { return };
+    let tenant_tables: i64 = sqlx::query_scalar(
+        r#"SELECT count(DISTINCT c.table_name)
+           FROM information_schema.columns c
+           JOIN information_schema.tables t
+             ON t.table_schema = c.table_schema AND t.table_name = c.table_name
+           WHERE c.table_schema = 'public' AND c.column_name = 'tenant_id'
+             AND t.table_type = 'BASE TABLE'"#,
+    )
+    .fetch_one(&pool)
+    .await
+    .expect("count tenant tables");
+    let policies: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM pg_policies WHERE schemaname = 'public' AND policyname = 'tenant_isolation'",
+    )
+    .fetch_one(&pool)
+    .await
+    .expect("count tenant policies");
+    assert_eq!(policies, tenant_tables);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn execution_transitions_are_durable_and_terminal_state_wins() {
+    let Some(pool) = setup().await else { return };
+    let store = PostgresExecutionStore::new(pool.clone());
+    let tenant_id = uniq("transition-tenant");
+    let request = || StartExecutionRequest {
+        tenant_id: tenant_id.clone(),
+        workflow_id: uniq("workflow"),
+        workflow_version_id: "version-1".to_string(),
+        graph: WorkflowGraph {
+            workflow_version_id: "version-1".to_string(),
+            nodes: vec![Node {
+                id: "trigger".to_string(),
+                node_type: NodeType::Trigger,
+                config: None,
+            }],
+            edges: vec![],
+            input_schema: vec![],
+            output_schema: vec![],
+        },
+        input_json: "{}".to_string(),
+        label: None,
+        callback_url: None,
+        trigger_type: None,
+        dry_run: false,
+        retried_from: None,
+    };
+
+    let completed = store.create(request()).await.expect("create execution");
+    store
+        .complete(
+            &tenant_id,
+            &completed.id,
+            execution_core::ExecutionReport {
+                execution_id: completed.id.clone(),
+                status: execution_core::ExecutionStatus::Succeeded,
+                node_results: vec![],
+            },
+        )
+        .await
+        .expect("complete execution");
+
+    let failed = store.create(request()).await.expect("create execution");
+    store
+        .fail(&tenant_id, &failed.id, "worker stopped".to_string())
+        .await
+        .expect("fail execution");
+    let late = store
+        .complete(
+            &tenant_id,
+            &failed.id,
+            execution_core::ExecutionReport {
+                execution_id: failed.id.clone(),
+                status: execution_core::ExecutionStatus::Succeeded,
+                node_results: vec![],
+            },
+        )
+        .await
+        .expect("ignore late completion");
+    assert_eq!(late.status, execution_core::ExecutionStatus::Failed);
+
+    let transitions: Vec<(String, String, Option<String>)> = sqlx::query_as(
+        r#"SELECT execution_id, to_status, from_status
+           FROM af_execution_state_transitions
+           WHERE tenant_id = $1
+           ORDER BY execution_id"#,
+    )
+    .bind(&tenant_id)
+    .fetch_all(&pool)
+    .await
+    .expect("load transition history");
+    assert_eq!(transitions.len(), 2);
+    assert!(transitions.iter().any(|(id, to, from)| {
+        id == &completed.id && to == "succeeded" && from.as_deref() == Some("running")
+    }));
+    assert!(transitions.iter().any(|(id, to, from)| {
+        id == &failed.id && to == "failed" && from.as_deref() == Some("running")
+    }));
 }
 
 /// The original regression: `af_users.created_at` is `timestamptz`, and a signup

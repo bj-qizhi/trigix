@@ -170,6 +170,12 @@ Model construction is owned by the AI Runtime Model Gateway. Agent and RAG
 share provider selection, Credential precedence, SDK retry ownership, and
 OpenAI-compatible endpoint handling through this boundary.
 
+The gateway boundary applies to Agent reasoning and RAG generation. Explicit
+provider Nodes in a Workflow are deterministic Connector-style capabilities;
+they remain Rust Node handlers so their request/response contracts are visible,
+versioned, and independently testable. They must not duplicate Agent provider
+selection logic.
+
 Recommended Python stack:
 
 ```text

@@ -1423,7 +1423,6 @@ impl ExecutionStore for PostgresExecutionStore {
         .execute(&self.pool)
         .await
         .map_err(|_| ExecutionError::StoreUnavailable)?;
-
         Ok(ExecutionRecord {
             id,
             tenant_id: request.tenant_id,
@@ -1512,18 +1511,41 @@ impl ExecutionStore for PostgresExecutionStore {
         );
         let now = unix_now() as i64;
 
-        sqlx::query(
-            r#"UPDATE af_executions SET status = $3, finished_at = $4, output_json = $5
-                WHERE tenant_id = $1 AND id = $2 AND status IN ('running', 'waiting_approval')"#,
+        let transition = sqlx::query(
+            r#"WITH previous AS (
+                    SELECT tenant_id, id, status
+                    FROM af_executions
+                    WHERE tenant_id = $1 AND id = $2
+                      AND status IN ('running', 'waiting_approval')
+                    FOR UPDATE
+                ), transitioned AS (
+                    UPDATE af_executions AS execution
+                    SET status = $3, finished_at = $4, output_json = $5
+                    FROM previous
+                    WHERE execution.tenant_id = previous.tenant_id
+                      AND execution.id = previous.id
+                      AND execution.status = previous.status
+                    RETURNING execution.tenant_id, execution.id, previous.status AS from_status
+                )
+                INSERT INTO af_execution_state_transitions
+                    (id, tenant_id, execution_id, from_status, to_status, reason, created_at)
+                SELECT $6, tenant_id, id, from_status, $3, 'executor completed', $4
+                FROM transitioned"#,
         )
         .bind(tenant_id)
         .bind(execution_id)
         .bind(status_to_str(&report.status))
         .bind(now)
         .bind(&output_json)
+        .bind(next_id())
         .execute(&self.pool)
         .await
         .map_err(|_| ExecutionError::StoreUnavailable)?;
+        if transition.rows_affected() == 0 {
+            // A concurrent cancel/failure won the compare-and-set. Do not write
+            // late Node results into a terminal Execution.
+            return self.get(tenant_id, execution_id).await;
+        }
 
         // Upsert each node result keyed on (tenant_id, execution_id, node_id).
         // The live progress callback may have already written some of these rows
@@ -1566,15 +1588,33 @@ impl ExecutionStore for PostgresExecutionStore {
         &self,
         tenant_id: &str,
         execution_id: &str,
-        _error: String,
+        error: String,
     ) -> Result<(), ExecutionError> {
         sqlx::query(
-            r#"UPDATE af_executions SET status = 'failed', finished_at = $3
-                WHERE tenant_id = $1 AND id = $2 AND status IN ('running', 'waiting_approval')"#,
+            r#"WITH previous AS (
+                    SELECT tenant_id, id, status
+                    FROM af_executions
+                    WHERE tenant_id = $1 AND id = $2
+                      AND status IN ('running', 'waiting_approval')
+                    FOR UPDATE
+                ), transitioned AS (
+                    UPDATE af_executions AS execution
+                    SET status = 'failed', finished_at = $3
+                    FROM previous
+                    WHERE execution.tenant_id = previous.tenant_id
+                      AND execution.id = previous.id
+                      AND execution.status = previous.status
+                    RETURNING execution.tenant_id, execution.id, previous.status AS from_status
+                )
+                INSERT INTO af_execution_state_transitions
+                    (id, tenant_id, execution_id, from_status, to_status, reason, created_at)
+                SELECT $4, tenant_id, id, from_status, 'failed', $5, $3 FROM transitioned"#,
         )
         .bind(tenant_id)
         .bind(execution_id)
         .bind(unix_now() as i64)
+        .bind(next_id())
+        .bind(error)
         .execute(&self.pool)
         .await
         .map_err(|_| ExecutionError::StoreUnavailable)?;
@@ -1584,15 +1624,31 @@ impl ExecutionStore for PostgresExecutionStore {
     async fn cancel(&self, tenant_id: &str, execution_id: &str) -> Result<(), ExecutionError> {
         sqlx::query(
             r#"
-            UPDATE af_executions
-            SET status = 'cancelled', finished_at = $3
-            WHERE tenant_id = $1 AND id = $2
-              AND status IN ('running', 'waiting_approval')
+            WITH previous AS (
+                SELECT tenant_id, id, status
+                FROM af_executions
+                WHERE tenant_id = $1 AND id = $2
+                  AND status IN ('running', 'waiting_approval')
+                FOR UPDATE
+            ), transitioned AS (
+                UPDATE af_executions AS execution
+                SET status = 'cancelled', finished_at = $3
+                FROM previous
+                WHERE execution.tenant_id = previous.tenant_id
+                  AND execution.id = previous.id
+                  AND execution.status = previous.status
+                RETURNING execution.tenant_id, execution.id, previous.status AS from_status
+            )
+            INSERT INTO af_execution_state_transitions
+                (id, tenant_id, execution_id, from_status, to_status, reason, created_at)
+            SELECT $4, tenant_id, id, from_status, 'cancelled', 'user cancelled', $3
+            FROM transitioned
             "#,
         )
         .bind(tenant_id)
         .bind(execution_id)
         .bind(unix_now() as i64)
+        .bind(next_id())
         .execute(&self.pool)
         .await
         .map_err(|_| ExecutionError::StoreUnavailable)?;
@@ -2874,6 +2930,29 @@ mod tests {
         service.cancel("tenant-1", &record.id).await.unwrap();
         let still_cancelled = service.get("tenant-1", &record.id).await.unwrap();
         assert_eq!(still_cancelled.status, ExecutionStatus::Cancelled);
+    }
+
+    #[tokio::test]
+    async fn late_completion_cannot_overwrite_failed_execution() {
+        let store = MemoryExecutionStore::default();
+        let record = store.create(valid_request()).await.unwrap();
+        store
+            .fail(&record.tenant_id, &record.id, "worker failed".to_string())
+            .await
+            .unwrap();
+        let completed = store
+            .complete(
+                &record.tenant_id,
+                &record.id,
+                ExecutionReport {
+                    execution_id: record.id.clone(),
+                    status: ExecutionStatus::Succeeded,
+                    node_results: vec![],
+                },
+            )
+            .await
+            .unwrap();
+        assert_eq!(completed.status, ExecutionStatus::Failed);
     }
 
     #[test]

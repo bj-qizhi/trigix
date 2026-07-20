@@ -1,5 +1,38 @@
 use workflow_core::NodeType;
 
+use crate::runtime::{ExecutionContext, NodeExecutionResult};
+use workflow_core::Node;
+
+pub(super) trait NodeHandlerRegistry: Send + Sync {
+    fn execute<'a>(
+        &'a self,
+        node: &'a Node,
+        context: &'a ExecutionContext,
+        client: &'a reqwest::Client,
+        runtime_base_url: Option<&'a str>,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = NodeExecutionResult> + Send + 'a>>;
+}
+
+#[derive(Clone, Copy, Default)]
+pub(super) struct BuiltinNodeHandlers;
+
+impl NodeHandlerRegistry for BuiltinNodeHandlers {
+    fn execute<'a>(
+        &'a self,
+        node: &'a Node,
+        context: &'a ExecutionContext,
+        client: &'a reqwest::Client,
+        runtime_base_url: Option<&'a str>,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = NodeExecutionResult> + Send + 'a>> {
+        Box::pin(super::dispatch_builtin(
+            node,
+            context,
+            client,
+            runtime_base_url,
+        ))
+    }
+}
+
 /// Runtime policy resolved by the Node registry before handler dispatch.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) enum NodeRuntimeKind {

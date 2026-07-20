@@ -17,7 +17,7 @@ use crate::approval::ApprovalGate;
 use crate::runtime::{ExecutionContext, NodeExecutionResult, NodeExecutor};
 
 mod registry;
-use registry::{runtime_kind, NodeRuntimeKind};
+use registry::{runtime_kind, BuiltinNodeHandlers, NodeHandlerRegistry, NodeRuntimeKind};
 
 // Third-party integration nodes, grouped by domain.
 mod nodes_ai_ext;
@@ -503,7 +503,8 @@ async fn dispatch_with_timeout(
     ai_runtime_base_url: Option<&str>,
     timeout_secs: Option<u64>,
 ) -> NodeExecutionResult {
-    let fut = dispatch(node, context, http_client, ai_runtime_base_url);
+    let handlers = BuiltinNodeHandlers;
+    let fut = handlers.execute(node, context, http_client, ai_runtime_base_url);
     match timeout_secs {
         Some(secs) => match tokio::time::timeout(std::time::Duration::from_secs(secs), fut).await {
             Ok(result) => result,
@@ -513,7 +514,7 @@ async fn dispatch_with_timeout(
     }
 }
 
-async fn dispatch(
+async fn dispatch_builtin(
     node: &Node,
     context: &ExecutionContext,
     http_client: &reqwest::Client,

@@ -536,7 +536,38 @@ fn spawn_queue_worker(state: AppState) {
                             &state.billing_store,
                         )));
                         use crate::execution::ExecutorClient;
-                        match inline.start(&record).await {
+                        let heartbeat_cache = state.cache.clone();
+                        let heartbeat_worker = worker_id.clone();
+                        let heartbeat_message = msg_id.clone();
+                        // Always renew before the configured reclaim threshold,
+                        // including deliberately short thresholds in tests.
+                        let heartbeat_every =
+                            std::time::Duration::from_millis((reclaim_idle_ms / 3).max(1));
+                        let (stop_heartbeat, mut heartbeat_stopped) =
+                            tokio::sync::oneshot::channel::<()>();
+                        let heartbeat = tokio::spawn(async move {
+                            let mut interval = tokio::time::interval(heartbeat_every);
+                            interval.tick().await;
+                            loop {
+                                tokio::select! {
+                                    _ = &mut heartbeat_stopped => break,
+                                    _ = interval.tick() => {
+                                        heartbeat_cache
+                                            .xclaim_lease(
+                                                stream,
+                                                group,
+                                                &heartbeat_worker,
+                                                &heartbeat_message,
+                                            )
+                                            .await;
+                                    }
+                                }
+                            }
+                        });
+                        let execution_result = inline.start(&record).await;
+                        let _ = stop_heartbeat.send(());
+                        let _ = heartbeat.await;
+                        match execution_result {
                             Ok(_) => None,
                             Err(e) => {
                                 tracing::error!(execution_id = %record.id, error = ?e, "Queue worker: execution failed");

@@ -212,6 +212,33 @@ impl CacheClient {
         }
     }
 
+    /// Refresh ownership of one pending message while a long Execution is
+    /// healthy, preventing another worker from reclaiming active work.
+    pub async fn xclaim_lease(
+        &self,
+        stream: &str,
+        group: &str,
+        consumer: &str,
+        message_id: &str,
+    ) -> bool {
+        match self {
+            Self::Noop => false,
+            Self::Redis(conn) => {
+                let mut c = conn.clone();
+                redis::cmd("XCLAIM")
+                    .arg(stream)
+                    .arg(group)
+                    .arg(consumer)
+                    .arg(0)
+                    .arg(message_id)
+                    .arg("JUSTID")
+                    .query_async::<redis::Value>(&mut c)
+                    .await
+                    .is_ok()
+            }
+        }
+    }
+
     /// Increment a recovery counter and keep it bounded in time. Used to stop
     /// poison jobs from being reclaimed forever after repeated worker crashes.
     pub async fn incr_with_ttl(&self, key: &str, ttl_secs: u64) -> Option<u64> {
