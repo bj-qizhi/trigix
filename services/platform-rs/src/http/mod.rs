@@ -434,23 +434,70 @@ fn spawn_queue_worker(state: AppState) {
         let stream = crate::cache::keys::exec_queue_stream();
         let group = crate::cache::keys::exec_queue_group();
         let worker_id = format!("worker-{}", uuid::Uuid::new_v4());
+        let reclaim_idle_ms = std::env::var("EXEC_QUEUE_RECLAIM_IDLE_MS")
+            .ok()
+            .and_then(|v| v.parse::<u64>().ok())
+            .unwrap_or(900_000)
+            .max(30_000);
+        let max_recoveries = std::env::var("EXEC_QUEUE_MAX_RECOVERIES")
+            .ok()
+            .and_then(|v| v.parse::<u64>().ok())
+            .unwrap_or(3)
+            .max(1);
 
         // Create consumer group (idempotent — BUSYGROUP error is swallowed).
         state.cache.xgroup_create_mkstream(stream, group).await;
         tracing::info!(worker_id = %worker_id, "Queue worker started");
 
         loop {
-            let messages = state
+            let mut messages: Vec<(String, Vec<(String, String)>, bool)> = state
                 .cache
-                .xreadgroup(stream, group, &worker_id, 10, 5000)
-                .await;
+                .xautoclaim(stream, group, &worker_id, reclaim_idle_ms, 10)
+                .await
+                .into_iter()
+                .map(|(id, fields)| (id, fields, true))
+                .collect();
+            messages.extend(
+                state
+                    .cache
+                    .xreadgroup(stream, group, &worker_id, 10, 5000)
+                    .await
+                    .into_iter()
+                    .map(|(id, fields)| (id, fields, false)),
+            );
 
-            for (msg_id, fields) in messages {
+            let mut seen = std::collections::HashSet::new();
+            for (msg_id, fields, recovered) in messages {
+                if !seen.insert(msg_id.clone()) {
+                    continue;
+                }
                 let job_json = fields
                     .iter()
                     .find(|(k, _)| k == "job")
                     .map(|(_, v)| v.clone())
                     .unwrap_or_default();
+
+                if recovered {
+                    let recovery_key = crate::cache::keys::exec_queue_recovery_count(&msg_id);
+                    let recoveries = state
+                        .cache
+                        .incr_with_ttl(&recovery_key, 86_400)
+                        .await
+                        .unwrap_or(1);
+                    if recoveries > max_recoveries {
+                        queue_dead_letter(
+                            &state,
+                            &job_json,
+                            &msg_id,
+                            &worker_id,
+                            &format!("recovery limit exceeded ({max_recoveries})"),
+                        )
+                        .await;
+                        state.cache.xack(stream, group, &msg_id).await;
+                        continue;
+                    }
+                    tracing::warn!(message_id = %msg_id, recoveries, "Reclaimed stale execution job");
+                }
 
                 // On any terminal failure, route the job to the dead-letter stream
                 // instead of dropping it, so it can be inspected and re-driven.
@@ -459,6 +506,27 @@ fn spawn_queue_worker(state: AppState) {
                 >(&job_json)
                 {
                     Ok(record) => {
+                        // A worker can finish just before its stale pending entry
+                        // is reclaimed. Terminal records make queue delivery
+                        // idempotent and prevent external nodes running twice.
+                        if state
+                            .execution_service
+                            .get(&record.tenant_id, &record.id)
+                            .await
+                            .map(|current| {
+                                matches!(
+                                    current.status,
+                                    execution_core::ExecutionStatus::Succeeded
+                                        | execution_core::ExecutionStatus::Failed
+                                        | execution_core::ExecutionStatus::Cancelled
+                                )
+                            })
+                            .unwrap_or(false)
+                        {
+                            tracing::info!(execution_id = %record.id, "Skipping terminal reclaimed execution");
+                            state.cache.xack(stream, group, &msg_id).await;
+                            continue;
+                        }
                         let inline = crate::execution::InlineExecutorClient::new(
                             state.execution_service.store().clone(),
                             Arc::clone(&state.approval_gate),
@@ -483,22 +551,7 @@ fn spawn_queue_worker(state: AppState) {
                 };
 
                 if let Some(reason) = dead_reason {
-                    let dead_stream = crate::cache::keys::exec_queue_dead_stream();
-                    let failed_at = crate::execution::unix_now().to_string();
-                    state
-                        .cache
-                        .xadd(
-                            dead_stream,
-                            &[
-                                ("job", &job_json),
-                                ("error", &reason),
-                                ("failed_at", &failed_at),
-                                ("original_msg_id", &msg_id),
-                                ("worker_id", &worker_id),
-                            ],
-                        )
-                        .await;
-                    METRIC_DLQ_TOTAL.fetch_add(1, Ordering::Relaxed);
+                    queue_dead_letter(&state, &job_json, &msg_id, &worker_id, &reason).await;
                 }
 
                 // ACK the original so it leaves the pending list; failures are now
@@ -507,6 +560,31 @@ fn spawn_queue_worker(state: AppState) {
             }
         }
     });
+}
+
+async fn queue_dead_letter(
+    state: &AppState,
+    job_json: &str,
+    msg_id: &str,
+    worker_id: &str,
+    reason: &str,
+) {
+    let dead_stream = crate::cache::keys::exec_queue_dead_stream();
+    let failed_at = crate::execution::unix_now().to_string();
+    state
+        .cache
+        .xadd(
+            dead_stream,
+            &[
+                ("job", job_json),
+                ("error", reason),
+                ("failed_at", &failed_at),
+                ("original_msg_id", msg_id),
+                ("worker_id", worker_id),
+            ],
+        )
+        .await;
+    METRIC_DLQ_TOTAL.fetch_add(1, Ordering::Relaxed);
 }
 
 /// After an execution is started, spawn a watcher task that fires user notification emails

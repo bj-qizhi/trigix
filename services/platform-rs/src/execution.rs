@@ -492,8 +492,9 @@ impl ExecutionStore for MemoryExecutionStore {
         let record = records
             .get_mut(&key(tenant_id, execution_id))
             .ok_or(ExecutionError::NotFound)?;
-        // Don't overwrite a terminal status set externally (e.g. cancelled).
-        if record.status == ExecutionStatus::Cancelled {
+        // Queue and HTTP delivery are at-least-once. A terminal record is the
+        // idempotency boundary and must never be rewritten by a late report.
+        if record.status.is_terminal() {
             return Ok(record.clone());
         }
         let node_results = build_node_execution_records(&record.graph, &report);
@@ -521,7 +522,7 @@ impl ExecutionStore for MemoryExecutionStore {
         let record = records
             .get_mut(&key(tenant_id, execution_id))
             .ok_or(ExecutionError::NotFound)?;
-        if record.status == ExecutionStatus::Cancelled {
+        if !record.status.can_transition_to(&ExecutionStatus::Failed) {
             return Ok(());
         }
         record.status = ExecutionStatus::Failed;
@@ -548,10 +549,7 @@ impl ExecutionStore for MemoryExecutionStore {
             .get_mut(&key(tenant_id, execution_id))
             .ok_or(ExecutionError::NotFound)?;
         // Only cancel if still in a non-terminal state.
-        if matches!(
-            record.status,
-            ExecutionStatus::Running | ExecutionStatus::WaitingApproval
-        ) {
+        if record.status.can_transition_to(&ExecutionStatus::Cancelled) {
             record.status = ExecutionStatus::Cancelled;
             record.finished_at = Some(unix_now());
         }
@@ -1503,6 +1501,9 @@ impl ExecutionStore for PostgresExecutionStore {
         report: ExecutionReport,
     ) -> Result<ExecutionRecord, ExecutionError> {
         let record = self.get(tenant_id, execution_id).await?;
+        if record.status.is_terminal() {
+            return Ok(record);
+        }
         let node_results = build_node_execution_records(&record.graph, &report);
         let output_json = build_workflow_output(
             &record.graph,
@@ -1512,7 +1513,8 @@ impl ExecutionStore for PostgresExecutionStore {
         let now = unix_now() as i64;
 
         sqlx::query(
-            r#"UPDATE af_executions SET status = $3, finished_at = $4, output_json = $5 WHERE tenant_id = $1 AND id = $2"#,
+            r#"UPDATE af_executions SET status = $3, finished_at = $4, output_json = $5
+                WHERE tenant_id = $1 AND id = $2 AND status IN ('running', 'waiting_approval')"#,
         )
         .bind(tenant_id)
         .bind(execution_id)
@@ -1567,7 +1569,8 @@ impl ExecutionStore for PostgresExecutionStore {
         _error: String,
     ) -> Result<(), ExecutionError> {
         sqlx::query(
-            r#"UPDATE af_executions SET status = 'failed', finished_at = $3 WHERE tenant_id = $1 AND id = $2"#,
+            r#"UPDATE af_executions SET status = 'failed', finished_at = $3
+                WHERE tenant_id = $1 AND id = $2 AND status IN ('running', 'waiting_approval')"#,
         )
         .bind(tenant_id)
         .bind(execution_id)
@@ -2695,6 +2698,10 @@ mod tests {
         assert_eq!(summaries[0].id, record.id);
         assert_eq!(summaries[0].status, ExecutionStatus::Running);
         assert!(other_tenant_summaries.is_empty());
+        assert_eq!(
+            service.get("tenant-2", &record.id).await.unwrap_err(),
+            ExecutionError::NotFound
+        );
     }
 
     #[tokio::test]

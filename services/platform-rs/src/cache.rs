@@ -182,6 +182,58 @@ impl CacheClient {
         }
     }
 
+    /// XAUTOCLAIM — transfer messages that have remained pending longer than
+    /// `min_idle_ms` to `consumer`. This is the crash-recovery counterpart to
+    /// `xreadgroup(..., ">")`, which only returns never-delivered messages.
+    pub async fn xautoclaim(
+        &self,
+        stream: &str,
+        group: &str,
+        consumer: &str,
+        min_idle_ms: u64,
+        count: usize,
+    ) -> Vec<(String, Vec<(String, String)>)> {
+        match self {
+            Self::Noop => vec![],
+            Self::Redis(conn) => {
+                let mut c = conn.clone();
+                let result: redis::RedisResult<redis::Value> = redis::cmd("XAUTOCLAIM")
+                    .arg(stream)
+                    .arg(group)
+                    .arg(consumer)
+                    .arg(min_idle_ms)
+                    .arg("0-0")
+                    .arg("COUNT")
+                    .arg(count)
+                    .query_async(&mut c)
+                    .await;
+                parse_xautoclaim_response(result)
+            }
+        }
+    }
+
+    /// Increment a recovery counter and keep it bounded in time. Used to stop
+    /// poison jobs from being reclaimed forever after repeated worker crashes.
+    pub async fn incr_with_ttl(&self, key: &str, ttl_secs: u64) -> Option<u64> {
+        match self {
+            Self::Noop => None,
+            Self::Redis(conn) => {
+                let mut c = conn.clone();
+                let value = redis::cmd("INCR")
+                    .arg(key)
+                    .query_async::<u64>(&mut c)
+                    .await
+                    .ok()?;
+                let _: redis::RedisResult<()> = redis::cmd("EXPIRE")
+                    .arg(key)
+                    .arg(ttl_secs)
+                    .query_async(&mut c)
+                    .await;
+                Some(value)
+            }
+        }
+    }
+
     /// XLEN stream — return number of messages in stream. Returns None on Noop/error.
     pub async fn xlen(&self, stream: &str) -> Option<u64> {
         match self {
@@ -287,6 +339,20 @@ fn parse_xreadgroup_response(
     out
 }
 
+/// Parse XAUTOCLAIM's `[next-id, messages, deleted-ids]` response.
+fn parse_xautoclaim_response(
+    result: redis::RedisResult<redis::Value>,
+) -> Vec<(String, Vec<(String, String)>)> {
+    let parts = match result {
+        Ok(redis::Value::Array(parts)) => parts,
+        _ => return vec![],
+    };
+    match parts.get(1) {
+        Some(redis::Value::Array(messages)) => parse_stream_messages(messages),
+        _ => vec![],
+    }
+}
+
 /// Parse a flat list of `[msg_id, [f1, v1, f2, v2, ...]]` entries (the shape
 /// returned by XRANGE/XREVRANGE and the inner list of an XREADGROUP response).
 fn parse_stream_messages(messages: &[redis::Value]) -> Vec<(String, Vec<(String, String)>)> {
@@ -370,6 +436,10 @@ pub mod keys {
     pub fn exec_queue_dead_stream() -> &'static str {
         "af:exec:queue:dead"
     }
+
+    pub fn exec_queue_recovery_count(message_id: &str) -> String {
+        format!("af:exec:queue:recoveries:{message_id}")
+    }
 }
 
 #[cfg(test)]
@@ -426,5 +496,21 @@ mod tests {
             Value::Array(vec![bulk("only-id")]), // missing fields list
         ];
         assert!(parse_stream_messages(&messages).is_empty());
+    }
+
+    #[test]
+    fn parses_xautoclaim_messages() {
+        let resp = Ok(Value::Array(vec![
+            bulk("0-0"),
+            Value::Array(vec![Value::Array(vec![
+                bulk("7-0"),
+                Value::Array(vec![bulk("job"), bulk("payload")]),
+            ])]),
+            Value::Array(vec![]),
+        ]));
+        let out = parse_xautoclaim_response(resp);
+        assert_eq!(out.len(), 1);
+        assert_eq!(out[0].0, "7-0");
+        assert_eq!(out[0].1[0], ("job".to_string(), "payload".to_string()));
     }
 }

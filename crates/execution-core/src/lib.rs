@@ -46,6 +46,31 @@ pub enum ExecutionStatus {
     Cancelled,
 }
 
+impl ExecutionStatus {
+    pub fn is_terminal(&self) -> bool {
+        matches!(self, Self::Succeeded | Self::Failed | Self::Cancelled)
+    }
+
+    /// Central transition policy shared by stores and transports. Repeating a
+    /// state is allowed so completion delivery remains idempotent.
+    pub fn can_transition_to(&self, next: &Self) -> bool {
+        if self == next {
+            return true;
+        }
+        match self {
+            Self::Running => matches!(
+                next,
+                Self::WaitingApproval | Self::Succeeded | Self::Failed | Self::Cancelled
+            ),
+            Self::WaitingApproval => matches!(
+                next,
+                Self::Running | Self::Succeeded | Self::Failed | Self::Cancelled
+            ),
+            Self::Succeeded | Self::Failed | Self::Cancelled => false,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum NodeStatus {
@@ -397,6 +422,16 @@ pub async fn run_workflow_with_progress(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn execution_status_enforces_terminal_boundaries() {
+        assert!(ExecutionStatus::Running.can_transition_to(&ExecutionStatus::WaitingApproval));
+        assert!(ExecutionStatus::WaitingApproval.can_transition_to(&ExecutionStatus::Running));
+        assert!(ExecutionStatus::Running.can_transition_to(&ExecutionStatus::Succeeded));
+        assert!(ExecutionStatus::Failed.is_terminal());
+        assert!(!ExecutionStatus::Failed.can_transition_to(&ExecutionStatus::Succeeded));
+        assert!(ExecutionStatus::Succeeded.can_transition_to(&ExecutionStatus::Succeeded));
+    }
     use std::sync::Mutex;
     use workflow_core::{Edge, NodeType};
 

@@ -12,24 +12,13 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
-from .agent.loop import AnthropicLLM, OpenAICompatLLM, run_agent_loop
+from .agent.loop import run_agent_loop
 from .agent.tools import build_tools
+from .model_gateway import build_llm
 from .rag.router import router as rag_router
 
 app = FastAPI(title="Trigix AI Runtime")
 app.include_router(rag_router)
-
-_anthropic_client: anthropic.Anthropic | None = None
-
-
-def get_anthropic_client() -> anthropic.Anthropic:
-    global _anthropic_client
-    if _anthropic_client is None:
-        # Retries are handled in the agent loop (_call_with_retries); disable the
-        # SDK's own so the two don't compound.
-        _anthropic_client = anthropic.Anthropic(max_retries=0)
-    return _anthropic_client
-
 
 class AgentNodeRequest(BaseModel):
     node_id: str
@@ -47,72 +36,9 @@ def healthz() -> dict[str, str]:
     return {"status": "ok"}
 
 
-def _select_provider(config: dict[str, Any]) -> str:
-    """Pick the LLM backend. An explicit `provider` wins; otherwise a configured
-    `base_url` or a non-Claude model implies the OpenAI-compatible path, so the
-    agent runs on Qwen/DeepSeek/Zhipu/Moonshot/self-hosted vLLM in deployments
-    where Anthropic is unreachable."""
-    provider = str(config.get("provider", "")).lower().strip()
-    if provider in ("openai", "anthropic"):
-        return provider
-    if config.get("base_url") or config.get("api_base"):
-        return "openai"
-    model = str(config.get("model", "")).lower()
-    if model == "" or model.startswith("claude"):
-        return "anthropic"
-    return "openai"
-
-
 def _build_llm(config: dict[str, Any], model: str, max_tokens: int):
-    if _select_provider(config) == "anthropic":
-        # A per-node api_key wins (resolved from {{credential.…}} by the platform
-        # before dispatch); otherwise fall back to the runtime's env var. This
-        # mirrors the OpenAI-compatible path and the other LLM nodes.
-        cfg_key = config.get("api_key")
-        if cfg_key:
-            client = anthropic.Anthropic(api_key=str(cfg_key), max_retries=0)
-        elif os.environ.get("ANTHROPIC_API_KEY"):
-            client = get_anthropic_client()
-        else:
-            raise HTTPException(
-                status_code=503,
-                detail="Anthropic agent requires an API key "
-                "(config.api_key or the ANTHROPIC_API_KEY env var)",
-            )
-        return AnthropicLLM(client, model, max_tokens)
-
-    # OpenAI-compatible provider.
-    base_url = (
-        config.get("base_url")
-        or config.get("api_base")
-        or os.environ.get("OPENAI_BASE_URL")
-    )
-    api_key = (
-        config.get("api_key")
-        or os.environ.get("OPENAI_API_KEY")
-        or os.environ.get("LLM_API_KEY")
-    )
-    if not api_key:
-        raise HTTPException(
-            status_code=503,
-            detail="OpenAI-compatible agent requires an API key "
-            "(config.api_key or the OPENAI_API_KEY / LLM_API_KEY env var)",
-        )
-    try:
-        from openai import OpenAI
-    except ImportError as exc:  # pragma: no cover - import guard
-        raise HTTPException(
-            status_code=503,
-            detail="The 'openai' package is not installed; install the runtime "
-            "with the [openai] extra to use an OpenAI-compatible provider",
-        ) from exc
-    # Retries are handled in the agent loop; disable the SDK's own to avoid
-    # compounding (see get_anthropic_client).
-    opts: dict[str, Any] = {"api_key": api_key, "max_retries": 0}
-    if base_url:
-        opts["base_url"] = base_url
-    client = OpenAI(**opts)
-    return OpenAICompatLLM(client, model, max_tokens)
+    # Compatibility seam for tests and callers that patch the old local helper.
+    return build_llm(config, model, max_tokens)
 
 
 async def _prepare_agent(request: AgentNodeRequest):

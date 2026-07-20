@@ -16,6 +16,9 @@ use workflow_core::{Node, NodeType};
 use crate::approval::ApprovalGate;
 use crate::runtime::{ExecutionContext, NodeExecutionResult, NodeExecutor};
 
+mod registry;
+use registry::{runtime_kind, NodeRuntimeKind};
+
 // Third-party integration nodes, grouped by domain.
 mod nodes_ai_ext;
 mod nodes_data_ext;
@@ -392,7 +395,7 @@ impl NodeExecutor for DispatchingNodeExecutor {
     ) -> std::pin::Pin<Box<dyn std::future::Future<Output = NodeExecutionResult> + Send + 'a>> {
         Box::pin(async move {
             // Approval nodes bypass retry/timeout — they block until a human acts.
-            if node.node_type == NodeType::Approval {
+            if runtime_kind(&node.node_type) == NodeRuntimeKind::Approval {
                 return match &self.approval_gate {
                     Some(gate) => execute_approval(context, gate).await,
                     None => NodeExecutionResult::failed("Approval gate not configured"),
@@ -401,7 +404,7 @@ impl NodeExecutor for DispatchingNodeExecutor {
 
             // Wait nodes also bypass retry/timeout: they either sleep for a
             // duration or suspend until resumed via the (approval) resume gate.
-            if node.node_type == NodeType::Wait {
+            if runtime_kind(&node.node_type) == NodeRuntimeKind::Wait {
                 return execute_wait(node, context, self.approval_gate.as_deref()).await;
             }
 
@@ -510,65 +513,13 @@ async fn dispatch_with_timeout(
     }
 }
 
-fn is_external_node(nt: &NodeType) -> bool {
-    !matches!(
-        nt,
-        NodeType::Trigger
-            | NodeType::Condition
-            | NodeType::Approval
-            | NodeType::Map
-            | NodeType::Filter
-            | NodeType::Aggregate
-            | NodeType::Sort
-            | NodeType::Transform
-            | NodeType::Assert
-            | NodeType::Catch
-            | NodeType::FanOut
-            | NodeType::FanIn
-            | NodeType::Code
-            | NodeType::Extract
-            | NodeType::Merge
-            | NodeType::Loop
-            | NodeType::Split
-            | NodeType::Join
-            | NodeType::Switch
-            | NodeType::Random
-            | NodeType::Dedupe
-            | NodeType::Regex
-            | NodeType::Csv
-            | NodeType::Rename
-            | NodeType::Format
-            | NodeType::Date
-            | NodeType::Handlebars
-            | NodeType::Math
-            | NodeType::ArrayUtils
-            | NodeType::Xml
-            | NodeType::Yaml
-            | NodeType::Crypto
-            | NodeType::Note
-            | NodeType::Validate
-            | NodeType::Delay
-            // Deterministic, no-network compute nodes — running them in dry-run
-            // gives a real output for downstream refs instead of a {dry_run:true}
-            // stub (verified: their execute fns make no HTTP/AI calls).
-            | NodeType::Hash
-            | NodeType::Jwt
-            | NodeType::TextSplitter
-            | NodeType::HtmlExtract
-            | NodeType::Zip
-            | NodeType::Image
-            | NodeType::PdfExtract
-            | NodeType::Ocr
-    )
-}
-
 async fn dispatch(
     node: &Node,
     context: &ExecutionContext,
     http_client: &reqwest::Client,
     ai_runtime_base_url: Option<&str>,
 ) -> NodeExecutionResult {
-    if context.dry_run && is_external_node(&node.node_type) {
+    if context.dry_run && runtime_kind(&node.node_type) == NodeRuntimeKind::External {
         return NodeExecutionResult::succeeded(
             serde_json::json!({"dry_run": true, "note": "external call skipped in dry-run mode"})
                 .to_string(),
