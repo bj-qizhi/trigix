@@ -430,6 +430,8 @@ fn spawn_execution_bus_bridge(state: AppState) {
 /// Each message contains a serialized `ExecutionRecord`; the worker runs it inline
 /// and ACKs the message on completion.
 fn spawn_queue_worker(state: AppState) {
+    type QueueMessage = (String, Vec<(String, String)>, bool);
+
     tokio::spawn(async move {
         let stream = crate::cache::keys::exec_queue_stream();
         let group = crate::cache::keys::exec_queue_group();
@@ -450,7 +452,7 @@ fn spawn_queue_worker(state: AppState) {
         tracing::info!(worker_id = %worker_id, "Queue worker started");
 
         loop {
-            let mut messages: Vec<(String, Vec<(String, String)>, bool)> = state
+            let mut messages: Vec<QueueMessage> = state
                 .cache
                 .xautoclaim(stream, group, &worker_id, reclaim_idle_ms, 10)
                 .await
