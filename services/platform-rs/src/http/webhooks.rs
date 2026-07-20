@@ -91,7 +91,7 @@ async fn trigger_webhook(
         if let Some(max_per_min) = webhook.max_calls_per_minute {
             if !state
                 .rate_limiter
-                .check_with_limit(&format!("wh:{}", &webhook.token), max_per_min)
+                .check_with_limit(&format!("wh:{}", webhook.token), max_per_min)
             {
                 return Err(ApiError {
                     status: StatusCode::TOO_MANY_REQUESTS,

@@ -141,7 +141,7 @@ async fn run_test_case_handler(
             workflow_version_id: version_id,
             graph,
             input_json: tc.input_json.clone(),
-            label: Some(format!("test:{}", &tc.name)),
+            label: Some(format!("test:{}", tc.name)),
             callback_url: None,
             trigger_type: Some("test".to_string()),
             dry_run: false,
