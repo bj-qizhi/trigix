@@ -35,7 +35,8 @@ Storage
   PostgreSQL + Redis + MinIO + pgvector / Qdrant
 
 Protocols
-  REST + gRPC + Redis Streams / NATS
+  REST/SSE + Redis Streams (implemented)
+  gRPC / NATS (future compatibility options)
 ```
 
 High-level flow:
@@ -164,6 +165,10 @@ Python owns fast-changing AI capabilities:
 - Tool calling
 - Structured output
 - Guardrails
+
+Model construction is owned by the AI Runtime Model Gateway. Agent and RAG
+share provider selection, Credential precedence, SDK retry ownership, and
+OpenAI-compatible endpoint handling through this boundary.
 
 Recommended Python stack:
 
