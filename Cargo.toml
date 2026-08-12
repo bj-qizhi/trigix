@@ -2,6 +2,10 @@
 members = [
   "crates/workflow-core",
   "crates/execution-core",
+  "crates/desktop-protocol",
+  "crates/desktop-agent-core",
+  "crates/desktop-host",
+  "services/desktop-device-simulator",
   "services/executor",
   "services/platform-rs",
 ]
