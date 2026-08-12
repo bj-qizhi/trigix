@@ -1,0 +1,9 @@
+[package]
+name = "trigix-desktop-host"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+desktop-agent-core = { path = "../../../crates/desktop-agent-core" }
+desktop-protocol = { path = "../../../crates/desktop-protocol" }
+serde_json = "1"

@@ -820,6 +820,32 @@ dependencies = [
 ]
 
 [[package]]
+name = "desktop-agent-core"
+version = "1.5.1"
+dependencies = [
+ "desktop-protocol",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "desktop-device-simulator"
+version = "1.5.1"
+dependencies = [
+ "desktop-agent-core",
+ "desktop-protocol",
+ "serde_json",
+]
+
+[[package]]
+name = "desktop-protocol"
+version = "1.5.1"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "digest"
 version = "0.10.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4405,6 +4431,15 @@ dependencies = [
  "tracing-core",
  "tracing-log",
  "tracing-serde",
+]
+
+[[package]]
+name = "trigix-desktop-host"
+version = "1.5.1"
+dependencies = [
+ "desktop-agent-core",
+ "desktop-protocol",
+ "serde_json",
 ]
 
 [[package]]
