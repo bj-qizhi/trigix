@@ -13,10 +13,11 @@ The desktop runtime is not an unrestricted remote shell. An Agent can select onl
 ## Repository Layout
 
 ```text
-apps/desktop/src-tauri/          desktop host boundary and future Tauri adapter
 crates/desktop-protocol/         versioned platform/device messages and validation
 crates/desktop-agent-core/       policy, Approval, replay protection, execution, audit
+crates/desktop-host/             tested presentation/host IPC boundary
 crates/desktop-windows/          planned Windows UI Automation adapter
+apps/desktop/                    planned Tauri and React application shell
 services/desktop-device-simulator/ deterministic protocol and execution simulator
 services/platform-rs/            planned device registry and command gateway
 ```

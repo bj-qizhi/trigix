@@ -11,7 +11,7 @@ Trigix Desktop must share domain contracts, security policy, CI, and release com
 
 Trigix Desktop remains in the existing monorepo. Tauri is the planned desktop application shell, with React presentation code and a Rust host. Protocol, policy, Approval, audit, and platform-specific automation live outside the presentation layer in independent Rust crates.
 
-The initial `apps/desktop/src-tauri` package implements only the tested host boundary. Tauri framework and Windows API dependencies are introduced with their vertical slices so the core remains platform-neutral and Linux CI remains useful.
+The initial `crates/desktop-host` package implements only the tested presentation/host IPC boundary. Tauri framework and Windows API dependencies are introduced with their vertical slices and a dedicated desktop build pipeline so the core remains platform-neutral, Linux CI remains useful, and the Platform container build does not depend on desktop application files.
 
 ## Consequences
 

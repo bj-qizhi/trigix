@@ -4,7 +4,7 @@ members = [
   "crates/execution-core",
   "crates/desktop-protocol",
   "crates/desktop-agent-core",
-  "apps/desktop/src-tauri",
+  "crates/desktop-host",
   "services/desktop-device-simulator",
   "services/executor",
   "services/platform-rs",
