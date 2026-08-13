@@ -2,8 +2,14 @@
 // https://www.qzso.com/ · managecode@gmail.com
 
 use super::*;
+use crate::desktop_commands::DesktopCommandError;
+use crate::device_connection::DeviceEvent;
 use crate::device_pairing::{CreatePairingSessionRequest, PairingError};
-use desktop_protocol::{DeviceConnectionAccepted, Envelope, Heartbeat, HeartbeatAccepted};
+use desktop_protocol::{
+    DesktopAction, DesktopCommand, DesktopCommandAcknowledgement, DesktopCommandCancellation,
+    DesktopCommandResult, DeviceConnectionAccepted, Envelope, ExecutionLease, Heartbeat,
+    HeartbeatAccepted,
+};
 
 #[derive(serde::Deserialize)]
 struct ApprovePairingRequest {
@@ -32,7 +38,31 @@ struct ClaimRotationRequest {
     current_credential: String,
 }
 
+#[derive(serde::Deserialize)]
+struct DispatchDesktopCommandRequest {
+    tenant_id: String,
+    project_id: String,
+    execution_id: String,
+    device_id: String,
+    action: DesktopAction,
+    #[serde(default = "default_command_lease_seconds")]
+    lease_seconds: u64,
+}
+
+fn default_command_lease_seconds() -> u64 {
+    60
+}
+
 const HEARTBEAT_INTERVAL_SECONDS: u32 = 30;
+
+fn command_event_data(command: &DesktopCommand) -> String {
+    serde_json::to_string(&Envelope::new(
+        format!("delivery-{}", command.command_id),
+        unix_millis(),
+        command.clone(),
+    ))
+    .unwrap_or_default()
+}
 
 fn device_auth(headers: &axum::http::HeaderMap) -> Result<(String, String), ApiError> {
     let secure = headers
@@ -66,6 +96,47 @@ fn device_auth(headers: &axum::http::HeaderMap) -> Result<(String, String), ApiE
         .filter(|value| value.len() == 73 && value.is_ascii())
         .ok_or_else(|| rotation_claim_error(PairingError::InvalidClaim))?;
     Ok((device_id.to_string(), credential.to_string()))
+}
+
+fn command_error(error: DesktopCommandError) -> ApiError {
+    match error {
+        DesktopCommandError::NotFound => ApiError::not_found("Desktop command not found"),
+        DesktopCommandError::Conflict => ApiError {
+            status: StatusCode::CONFLICT,
+            message: "Desktop command state conflict".to_string(),
+        },
+        DesktopCommandError::Expired => ApiError {
+            status: StatusCode::GONE,
+            message: "Desktop command lease expired".to_string(),
+        },
+        DesktopCommandError::Store(_) => ApiError::internal("desktop_command_store"),
+    }
+}
+
+async fn authenticated_device_session(
+    state: &AppState,
+    headers: &axum::http::HeaderMap,
+) -> Result<(String, String), ApiError> {
+    let (device_id, credential) = device_auth(headers)?;
+    state
+        .device_pairing_store
+        .authenticate_device(&device_id, &credential)
+        .await
+        .map_err(rotation_claim_error)?;
+    let session_id = headers
+        .get("x-device-session-id")
+        .and_then(|value| value.to_str().ok())
+        .filter(|value| uuid::Uuid::parse_str(value).is_ok())
+        .ok_or_else(|| rotation_claim_error(PairingError::InvalidClaim))?;
+    if !state
+        .device_pairing_store
+        .connection_is_current(&device_id, session_id)
+        .await
+        .map_err(rotation_claim_error)?
+    {
+        return Err(rotation_claim_error(PairingError::InvalidClaim));
+    }
+    Ok((device_id, session_id.to_string()))
 }
 
 fn pairing_error(error: PairingError) -> ApiError {
@@ -439,6 +510,25 @@ async fn connect_device(
         .await
         .map_err(|_| ApiError::internal("desktop_connection_channel"))?;
 
+    for pending in state
+        .desktop_command_store
+        .pending_for_device(&device_id)
+        .await
+    {
+        if state
+            .desktop_command_store
+            .mark_delivered(&pending.command.command_id, unix_millis())
+            .await
+            .is_ok()
+        {
+            let _ = tx
+                .send(Ok(Event::default()
+                    .event("command")
+                    .data(command_event_data(&pending.command))))
+                .await;
+        }
+    }
+
     state.audit_store.record(
         &device.tenant_id,
         crate::audit::action::DEVICE_CONNECTED,
@@ -450,6 +540,8 @@ async fn connect_device(
     let task_state = state.clone();
     tokio::spawn(async move {
         let mut cancellation = lease.cancellation;
+        let mut device_events = lease.events;
+        let mut device_events_open = true;
         let mut validation = tokio::time::interval(std::time::Duration::from_secs(15));
         validation.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
         validation.tick().await;
@@ -465,6 +557,24 @@ async fn connect_device(
                     break;
                 }
                 _ = tx.closed() => break,
+                event = device_events.recv(), if device_events_open => {
+                    match event {
+                        Ok(DeviceEvent::Command(command)) => {
+                            if task_state.desktop_command_store.mark_delivered(&command.command_id, unix_millis()).await.is_ok() {
+                                let _ = tx.send(Ok(Event::default().event("command").data(
+                                    command_event_data(&command)
+                                ))).await;
+                            }
+                        }
+                        Ok(DeviceEvent::Cancellation(cancellation)) => {
+                            let _ = tx.send(Ok(Event::default().event("command_cancelled").data(
+                                serde_json::to_string(&cancellation).unwrap_or_default()
+                            ))).await;
+                        }
+                        Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => continue,
+                        Err(tokio::sync::broadcast::error::RecvError::Closed) => device_events_open = false,
+                    }
+                }
                 _ = validation.tick() => {
                     let current = task_state
                         .device_pairing_store
@@ -548,6 +658,194 @@ async fn heartbeat_device(
     ))
 }
 
+async fn dispatch_desktop_command(
+    State(state): State<AppState>,
+    Extension(claims): Extension<Option<Claims>>,
+    Json(request): Json<DispatchDesktopCommandRequest>,
+) -> Result<
+    (
+        StatusCode,
+        Json<crate::desktop_commands::DesktopCommandRecord>,
+    ),
+    ApiError,
+> {
+    require_write(&claims)?;
+    let tenant_id = effective_tenant_id(&claims, &request.tenant_id);
+    let claims = claims.ok_or_else(|| ApiError::forbidden("Authentication required"))?;
+    if request.lease_seconds == 0 || request.lease_seconds > 300 {
+        return Err(ApiError::bad_request(
+            "lease_seconds must be between 1 and 300",
+        ));
+    }
+    if request.action.risk_level() > desktop_protocol::RiskLevel::Low {
+        require_admin(Some(claims.clone()))?;
+    }
+    let execution = state
+        .execution_service
+        .get(&tenant_id, &request.execution_id)
+        .await?;
+    if !matches!(
+        execution.status,
+        ExecutionStatus::Running | ExecutionStatus::WaitingApproval
+    ) {
+        return Err(ApiError {
+            status: StatusCode::CONFLICT,
+            message: "Workflow Execution is not active".to_string(),
+        });
+    }
+    let workflow = state
+        .workflow_service
+        .get_workflow(&tenant_id, &execution.workflow_id)
+        .await?;
+    if workflow.project_id != request.project_id
+        || (!claims.project_id.is_empty() && claims.project_id != request.project_id)
+    {
+        return Err(ApiError::forbidden(
+            "Project does not own this Workflow Execution",
+        ));
+    }
+    let device = state
+        .device_pairing_store
+        .get_device(&tenant_id, &request.device_id)
+        .await
+        .map_err(pairing_error)?
+        .ok_or_else(|| ApiError::not_found("Device not found"))?;
+    if !matches!(
+        device.state.as_str(),
+        "online" | "busy" | "awaiting_approval"
+    ) || device.stale
+    {
+        return Err(ApiError {
+            status: StatusCode::CONFLICT,
+            message: "Device is not eligible for command dispatch".to_string(),
+        });
+    }
+    if !device.capabilities.contains(&request.action.capability()) {
+        return Err(ApiError {
+            status: StatusCode::CONFLICT,
+            message: "Device does not advertise the required capability".to_string(),
+        });
+    }
+    let platform_major = env!("CARGO_PKG_VERSION").split('.').next();
+    let device_major = device.agent_version.split('.').next();
+    if device_major != platform_major {
+        return Err(ApiError {
+            status: StatusCode::CONFLICT,
+            message: "Device Agent version is incompatible".to_string(),
+        });
+    }
+    let now = unix_millis();
+    let actor_id = claims.user_id.clone().unwrap_or_else(|| claims.sub.clone());
+    let approval = (request.action.risk_level() > desktop_protocol::RiskLevel::Low).then(|| {
+        desktop_protocol::DesktopCommandApproval {
+            approved_by: actor_id.clone(),
+            expires_at_unix_ms: now + request.lease_seconds * 1000,
+        }
+    });
+    let command = DesktopCommand {
+        command_id: format!("desktop-command-{}", uuid::Uuid::new_v4()),
+        execution_id: execution.id,
+        tenant_id: tenant_id.clone(),
+        project_id: request.project_id,
+        requested_by: actor_id,
+        issued_at_unix_ms: now,
+        lease: ExecutionLease {
+            lease_id: format!("desktop-lease-{}", uuid::Uuid::new_v4()),
+            expires_at_unix_ms: now + request.lease_seconds * 1000,
+        },
+        approval,
+        action: request.action,
+    };
+    command
+        .validate(now)
+        .map_err(|error| ApiError::bad_request(&error.to_string()))?;
+    let record = state
+        .desktop_command_store
+        .create(command.clone(), request.device_id.clone(), workflow.id)
+        .await
+        .map_err(command_error)?;
+    state
+        .device_connections
+        .send(&request.device_id, DeviceEvent::Command(Box::new(command)));
+    Ok((StatusCode::CREATED, Json(record)))
+}
+
+async fn get_desktop_command(
+    State(state): State<AppState>,
+    Extension(claims): Extension<Option<Claims>>,
+    Path(command_id): Path<String>,
+    Query(query): Query<GetExecutionQuery>,
+) -> Result<Json<crate::desktop_commands::DesktopCommandRecord>, ApiError> {
+    require_write(&claims)?;
+    let tenant_id = effective_tenant_id(&claims, &query.tenant_id);
+    state
+        .desktop_command_store
+        .get(&tenant_id, &command_id)
+        .await
+        .map(Json)
+        .map_err(command_error)
+}
+
+async fn cancel_desktop_command(
+    State(state): State<AppState>,
+    Extension(claims): Extension<Option<Claims>>,
+    Path(command_id): Path<String>,
+    Query(query): Query<GetExecutionQuery>,
+) -> Result<Json<crate::desktop_commands::DesktopCommandRecord>, ApiError> {
+    require_write(&claims)?;
+    let tenant_id = effective_tenant_id(&claims, &query.tenant_id);
+    let record = state
+        .desktop_command_store
+        .cancel(&tenant_id, &command_id)
+        .await
+        .map_err(command_error)?;
+    state.device_connections.send(
+        &record.device_id,
+        DeviceEvent::Cancellation(DesktopCommandCancellation {
+            command_id: record.command.command_id.clone(),
+            execution_id: record.command.execution_id.clone(),
+            reason: "cancelled_by_platform".to_string(),
+        }),
+    );
+    Ok(Json(record))
+}
+
+async fn acknowledge_desktop_command(
+    State(state): State<AppState>,
+    headers: axum::http::HeaderMap,
+    Json(envelope): Json<Envelope<DesktopCommandAcknowledgement>>,
+) -> Result<Json<crate::desktop_commands::DesktopCommandRecord>, ApiError> {
+    let (device_id, _) = authenticated_device_session(&state, &headers).await?;
+    envelope
+        .validate()
+        .and_then(|_| envelope.payload.validate())
+        .map_err(|error| ApiError::bad_request(&error.to_string()))?;
+    state
+        .desktop_command_store
+        .acknowledge(&device_id, &envelope.payload, unix_millis())
+        .await
+        .map(Json)
+        .map_err(command_error)
+}
+
+async fn complete_desktop_command(
+    State(state): State<AppState>,
+    headers: axum::http::HeaderMap,
+    Json(envelope): Json<Envelope<DesktopCommandResult>>,
+) -> Result<Json<crate::desktop_commands::DesktopCommandRecord>, ApiError> {
+    let (device_id, _) = authenticated_device_session(&state, &headers).await?;
+    envelope
+        .validate()
+        .and_then(|_| envelope.payload.validate())
+        .map_err(|error| ApiError::bad_request(&error.to_string()))?;
+    state
+        .desktop_command_store
+        .complete(&device_id, envelope.payload)
+        .await
+        .map(Json)
+        .map_err(command_error)
+}
+
 fn unix_millis() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -624,6 +922,19 @@ pub(super) fn routes() -> Router<AppState> {
         )
         .route("/v1/desktop/device-connection", get(connect_device))
         .route("/v1/desktop/device-heartbeats", post(heartbeat_device))
+        .route("/v1/desktop/commands", post(dispatch_desktop_command))
+        .route(
+            "/v1/desktop/commands/:command_id",
+            get(get_desktop_command).delete(cancel_desktop_command),
+        )
+        .route(
+            "/v1/desktop/device-command-acknowledgements",
+            post(acknowledge_desktop_command),
+        )
+        .route(
+            "/v1/desktop/device-command-results",
+            post(complete_desktop_command),
+        )
 }
 
 #[cfg(test)]
@@ -926,6 +1237,7 @@ mod tests {
         use tokio_stream::StreamExt;
 
         let state = default_app_state();
+        let command_store = state.desktop_command_store.clone();
         let app = build_router(state);
         let admin_token = crate::auth::sign_token(&Claims {
             sub: "admin-1".to_string(),
@@ -1063,6 +1375,15 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(reconnect.status(), StatusCode::OK);
+        let mut reconnect_stream = reconnect.into_body().into_data_stream();
+        let connected_chunk = reconnect_stream.next().await.unwrap().unwrap();
+        let connected_text = String::from_utf8(connected_chunk.to_vec()).unwrap();
+        let connected_data = connected_text
+            .lines()
+            .find_map(|line| line.strip_prefix("data: "))
+            .unwrap();
+        let reconnected: serde_json::Value = serde_json::from_str(connected_data).unwrap();
+        let current_session = reconnected["session_id"].as_str().unwrap().to_string();
         let replaced_chunk =
             tokio::time::timeout(std::time::Duration::from_secs(1), first_stream.next())
                 .await
@@ -1074,6 +1395,7 @@ mod tests {
             .contains("replaced_by_newer_session"));
 
         let stale_session = app
+            .clone()
             .oneshot(
                 Request::post("/v1/desktop/device-heartbeats")
                     .header("x-forwarded-proto", "https")
@@ -1087,5 +1409,187 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(stale_session.status(), StatusCode::NOT_FOUND);
+
+        let execution = app
+            .clone()
+            .oneshot(
+                Request::post("/v1/executions")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        serde_json::json!({
+                            "tenant_id": "tenant-1",
+                            "workflow_id": "workflow-1",
+                            "workflow_version_id": "version-1",
+                            "graph": {
+                                "workflow_version_id": "version-1",
+                                "nodes": [
+                                    {"id": "trigger", "type": "trigger"},
+                                    {"id": "pause", "type": "delay", "config": {"seconds": 5}}
+                                ],
+                                "edges": [{"source": "trigger", "target": "pause"}]
+                            },
+                            "input_json": "{}"
+                        })
+                        .to_string(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(execution.status(), StatusCode::ACCEPTED);
+        let execution_id = response_json(execution).await["id"]
+            .as_str()
+            .unwrap()
+            .to_string();
+
+        let rejected = app
+            .clone()
+            .oneshot(
+                Request::post("/v1/desktop/commands")
+                    .header("authorization", format!("Bearer {admin_token}"))
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        serde_json::json!({"tenant_id":"tenant-1","project_id":"project-1","execution_id":execution_id,"device_id":"device-connection-http","action":{"kind":"focus_window","selector":{"executable":"notepad.exe","title":null,"automation_id":null}}}).to_string(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(rejected.status(), StatusCode::CONFLICT);
+
+        let dispatch = app
+            .clone()
+            .oneshot(
+                Request::post("/v1/desktop/commands")
+                    .header("authorization", format!("Bearer {admin_token}"))
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        serde_json::json!({"tenant_id":"tenant-1","project_id":"project-1","execution_id":execution_id,"device_id":"device-connection-http","action":{"kind":"read_system_information"},"lease_seconds":30}).to_string(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(dispatch.status(), StatusCode::CREATED);
+        let dispatched = response_json(dispatch).await;
+        let command_id = dispatched["command"]["command_id"].as_str().unwrap();
+        let lease_id = dispatched["command"]["lease"]["lease_id"].as_str().unwrap();
+
+        let command_chunk =
+            tokio::time::timeout(std::time::Duration::from_secs(1), reconnect_stream.next())
+                .await
+                .unwrap()
+                .unwrap()
+                .unwrap();
+        assert!(String::from_utf8(command_chunk.to_vec())
+            .unwrap()
+            .contains("event: command"));
+
+        let ack = app
+            .clone()
+            .oneshot(
+                Request::post("/v1/desktop/device-command-acknowledgements")
+                    .header("x-forwarded-proto", "https")
+                    .header("x-device-id", "device-connection-http")
+                    .header("x-device-session-id", &current_session)
+                    .header("authorization", format!("Device {credential}"))
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::json!({"protocol_version":"desktop.v1","message_id":"ack-1","sent_at_unix_ms":0,"payload":{"command_id":command_id,"execution_id":execution_id,"lease_id":lease_id,"acknowledged_at_unix_ms":0}}).to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(ack.status(), StatusCode::OK);
+        assert_eq!(response_json(ack).await["status"], "acknowledged");
+
+        let result_body = serde_json::json!({"protocol_version":"desktop.v1","message_id":"result-1","sent_at_unix_ms":0,"payload":{"command_id":command_id,"execution_id":execution_id,"outcome":"succeeded","completed_at_unix_ms":0,"output":{"hostname":"desktop"},"error_code":null,"error_message":null}});
+        for expected in [StatusCode::OK, StatusCode::OK] {
+            let result = app
+                .clone()
+                .oneshot(
+                    Request::post("/v1/desktop/device-command-results")
+                        .header("x-forwarded-proto", "https")
+                        .header("x-device-id", "device-connection-http")
+                        .header("x-device-session-id", &current_session)
+                        .header("authorization", format!("Device {credential}"))
+                        .header("content-type", "application/json")
+                        .body(Body::from(result_body.to_string()))
+                        .unwrap(),
+                )
+                .await
+                .unwrap();
+            assert_eq!(result.status(), expected);
+            assert_eq!(response_json(result).await["status"], "succeeded");
+        }
+
+        let cancellable = command_store
+            .create(
+                DesktopCommand {
+                    command_id: "cancel-command".to_string(),
+                    execution_id: execution_id.clone(),
+                    tenant_id: "tenant-1".to_string(),
+                    project_id: "project-1".to_string(),
+                    requested_by: "admin-1".to_string(),
+                    issued_at_unix_ms: unix_millis(),
+                    lease: ExecutionLease {
+                        lease_id: "cancel-lease".to_string(),
+                        expires_at_unix_ms: unix_millis() + 30_000,
+                    },
+                    approval: None,
+                    action: DesktopAction::ReadSystemInformation,
+                },
+                "device-connection-http".to_string(),
+                "workflow-1".to_string(),
+            )
+            .await
+            .unwrap();
+        let cancelled = app
+            .clone()
+            .oneshot(
+                Request::delete(format!(
+                    "/v1/desktop/commands/{}?tenant_id=tenant-1",
+                    cancellable.command.command_id
+                ))
+                .header("authorization", format!("Bearer {admin_token}"))
+                .body(Body::empty())
+                .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(cancelled.status(), StatusCode::OK);
+        assert_eq!(response_json(cancelled).await["status"], "cancelled");
+        let cancellation_chunk =
+            tokio::time::timeout(std::time::Duration::from_secs(1), reconnect_stream.next())
+                .await
+                .unwrap()
+                .unwrap()
+                .unwrap();
+        assert!(String::from_utf8(cancellation_chunk.to_vec())
+            .unwrap()
+            .contains("event: command_cancelled"));
+
+        let timeout_command = DesktopCommand {
+            command_id: "timeout-command".to_string(),
+            execution_id: execution_id.clone(),
+            tenant_id: "tenant-1".to_string(),
+            project_id: "project-1".to_string(),
+            requested_by: "admin-1".to_string(),
+            issued_at_unix_ms: 100,
+            lease: ExecutionLease {
+                lease_id: "timeout-lease".to_string(),
+                expires_at_unix_ms: 200,
+            },
+            approval: None,
+            action: DesktopAction::ReadSystemInformation,
+        };
+        command_store
+            .create(
+                timeout_command,
+                "device-connection-http".to_string(),
+                "workflow-1".to_string(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(command_store.expire(200).await[0].status, "timed_out");
     }
 }

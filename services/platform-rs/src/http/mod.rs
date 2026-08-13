@@ -199,6 +199,7 @@ pub struct AppState {
     custom_node_store: Arc<crate::custom_nodes::PlatformCustomNodeStore>,
     device_pairing_store: Arc<crate::device_pairing::PlatformDevicePairingStore>,
     device_connections: crate::device_connection::DeviceConnectionManager,
+    desktop_command_store: Arc<crate::desktop_commands::PlatformDesktopCommandStore>,
 }
 
 pub fn router() -> Router {
@@ -207,6 +208,7 @@ pub fn router() -> Router {
     spawn_execution_timeout_guard(state.clone());
     spawn_credential_expiry_checker(state.clone());
     spawn_device_stale_guard(state.clone());
+    spawn_desktop_command_timeout_guard(state.clone());
     build_router(state)
 }
 
@@ -267,6 +269,9 @@ pub(crate) fn default_app_state() -> AppState {
         custom_node_store: Arc::new(crate::custom_nodes::PlatformCustomNodeStore::default()),
         device_pairing_store: Arc::new(crate::device_pairing::PlatformDevicePairingStore::default()),
         device_connections: crate::device_connection::DeviceConnectionManager::default(),
+        desktop_command_store: Arc::new(
+            crate::desktop_commands::PlatformDesktopCommandStore::default(),
+        ),
     }
 }
 
@@ -324,6 +329,32 @@ fn spawn_device_stale_guard(state: AppState) {
                         .device_connections
                         .disconnect(&device_id, "heartbeat_timeout");
                 }
+            }
+        }
+    });
+}
+
+fn spawn_desktop_command_timeout_guard(state: AppState) {
+    tokio::spawn(async move {
+        let mut interval = tokio::time::interval(std::time::Duration::from_secs(5));
+        interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+        loop {
+            interval.tick().await;
+            let now = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_millis() as u64;
+            for record in state.desktop_command_store.expire(now).await {
+                state.device_connections.send(
+                    &record.device_id,
+                    crate::device_connection::DeviceEvent::Cancellation(
+                        desktop_protocol::DesktopCommandCancellation {
+                            command_id: record.command.command_id,
+                            execution_id: record.command.execution_id,
+                            reason: "lease_expired".to_string(),
+                        },
+                    ),
+                );
             }
         }
     });
@@ -905,6 +936,8 @@ async fn auth_middleware(State(state): State<AppState>, mut req: Request, next: 
             && path.ends_with("/credential-rotation/claim"))
         || path == "/v1/desktop/device-connection"
         || path == "/v1/desktop/device-heartbeats"
+        || path == "/v1/desktop/device-command-acknowledgements"
+        || path == "/v1/desktop/device-command-results"
         || path == "/healthz"
         || path == "/healthz/detail"
         || path == "/v1/system/info"
@@ -939,20 +972,25 @@ async fn auth_middleware(State(state): State<AppState>, mut req: Request, next: 
     }
 
     // Rate-limit by tenant_id (or fallback key for unauthenticated public routes)
-    let rate_key =
-        if path == "/v1/desktop/device-connection" || path == "/v1/desktop/device-heartbeats" {
-            req.headers()
-                .get("x-device-id")
-                .and_then(|value| value.to_str().ok())
-                .filter(|value| value.len() <= 128)
-                .map(|value| format!("desktop-device:{value}"))
-                .unwrap_or_else(|| "desktop-device:invalid".to_string())
-        } else {
-            claims
-                .as_ref()
-                .map(|c| c.tenant_id.clone())
-                .unwrap_or_else(|| "anonymous".to_string())
-        };
+    let rate_key = if matches!(
+        path.as_str(),
+        "/v1/desktop/device-connection"
+            | "/v1/desktop/device-heartbeats"
+            | "/v1/desktop/device-command-acknowledgements"
+            | "/v1/desktop/device-command-results"
+    ) {
+        req.headers()
+            .get("x-device-id")
+            .and_then(|value| value.to_str().ok())
+            .filter(|value| value.len() <= 128)
+            .map(|value| format!("desktop-device:{value}"))
+            .unwrap_or_else(|| "desktop-device:invalid".to_string())
+    } else {
+        claims
+            .as_ref()
+            .map(|c| c.tenant_id.clone())
+            .unwrap_or_else(|| "anonymous".to_string())
+    };
     if !state.rate_limiter.check(&rate_key) {
         return (
             StatusCode::TOO_MANY_REQUESTS,
@@ -1080,6 +1118,9 @@ pub fn router_with_services(
         custom_node_store: Arc::new(crate::custom_nodes::PlatformCustomNodeStore::default()),
         device_pairing_store: Arc::new(crate::device_pairing::PlatformDevicePairingStore::default()),
         device_connections: crate::device_connection::DeviceConnectionManager::default(),
+        desktop_command_store: Arc::new(
+            crate::desktop_commands::PlatformDesktopCommandStore::default(),
+        ),
     };
 
     build_router(state)
@@ -1118,6 +1159,7 @@ pub fn router_with_all_stores(
     sso_store: crate::sso::PlatformSsoStore,
     custom_node_store: crate::custom_nodes::PlatformCustomNodeStore,
     device_pairing_store: crate::device_pairing::PlatformDevicePairingStore,
+    desktop_command_store: crate::desktop_commands::PlatformDesktopCommandStore,
 ) -> Router {
     let state = AppState {
         execution_service: Arc::new(execution_service),
@@ -1156,11 +1198,13 @@ pub fn router_with_all_stores(
         custom_node_store: Arc::new(custom_node_store),
         device_pairing_store: Arc::new(device_pairing_store),
         device_connections: crate::device_connection::DeviceConnectionManager::default(),
+        desktop_command_store: Arc::new(desktop_command_store),
     };
     spawn_schedule_runner(state.clone());
     spawn_execution_timeout_guard(state.clone());
     spawn_execution_bus_bridge(state.clone());
     spawn_device_stale_guard(state.clone());
+    spawn_desktop_command_timeout_guard(state.clone());
     if state.cache.is_available() {
         spawn_queue_worker(state.clone());
     }

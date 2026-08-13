@@ -73,6 +73,10 @@ TLS terminates at the trusted ingress or reverse proxy, which must overwrite and
 
 Connection ownership is stored with the Device record so it remains authoritative across Platform replicas. A newer connection atomically replaces the previous session; heartbeats from the former session fail, and each stream periodically checks persisted ownership so replacement, suspension, or revocation disconnects it even when the administrative request reached another replica. The Device reconnect loop uses bounded exponential backoff with 80–120% jitter, resets after a successful long-lived connection, requires an HTTPS Platform URL, and supports an explicit HTTP CONNECT proxy.
 
+Desktop Command dispatch is a durable Platform-owned state machine. Before creating a command, the gateway authorizes the caller role and Tenant, verifies that the Project owns the active Workflow Execution, and checks Device lifecycle state, freshness, advertised capability, and Agent major-version compatibility. Every `desktop.v1` command has a unique command and lease identifier plus a bounded deadline. Commands move through queued, delivered, acknowledged, and an explicit terminal state: succeeded, failed, rejected, cancelled, or timed out.
+
+The active SSE connection carries typed command envelopes and cancellation events. A reconnect replays only unexpired queued or delivered work; the Device acknowledges the matching command, execution, and lease before executing. The Platform accepts a result only after acknowledgement and treats a byte-equivalent repeated result as idempotent, while rejecting conflicting completion attempts so duplicate delivery cannot repeat a completed side effect. PostgreSQL stores the command and redacted lifecycle Audit Log records transactionally for queued, acknowledged, completion, cancellation, and timeout transitions; result payloads remain in the command record rather than being copied into Audit Log detail.
+
 ## Protocol
 
 The first wire contract is `desktop.v1`, represented by `desktop-protocol` Rust types and Serde JSON. Every envelope contains:

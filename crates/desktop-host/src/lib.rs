@@ -44,6 +44,7 @@ mod tests {
                 lease_id: "lease-host-1".to_owned(),
                 expires_at_unix_ms: 5_000,
             },
+            approval: None,
             action: DesktopAction::ReadSystemInformation,
         };
         let mut processor = create_processor();

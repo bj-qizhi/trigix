@@ -277,6 +277,7 @@ mod tests {
                 lease_id: "lease-1".to_owned(),
                 expires_at_unix_ms: 5_000,
             },
+            approval: None,
             action,
         }
     }

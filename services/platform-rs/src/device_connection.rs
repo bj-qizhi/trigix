@@ -4,18 +4,28 @@
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
-use tokio::sync::{watch, OwnedMutexGuard};
+use desktop_protocol::{DesktopCommand, DesktopCommandCancellation};
+use tokio::sync::{broadcast, watch, OwnedMutexGuard};
+
+#[derive(Debug, Clone)]
+pub enum DeviceEvent {
+    Command(Box<DesktopCommand>),
+    Cancellation(DesktopCommandCancellation),
+}
 
 #[derive(Debug)]
 struct ActiveConnection {
     session_id: String,
     disconnect: watch::Sender<Option<String>>,
+    events: broadcast::Sender<DeviceEvent>,
 }
 
 pub struct ConnectionLease {
     pub session_id: String,
     pub replaced_session_id: Option<String>,
     pub cancellation: watch::Receiver<Option<String>>,
+    pub events: broadcast::Receiver<DeviceEvent>,
+    _event_sender: broadcast::Sender<DeviceEvent>,
 }
 
 #[derive(Clone, Default)]
@@ -38,11 +48,14 @@ impl DeviceConnectionManager {
 
     pub fn replace(&self, device_id: &str, session_id: String) -> ConnectionLease {
         let (disconnect, cancellation) = watch::channel(None);
+        let (events, event_receiver) = broadcast::channel(32);
+        let event_sender = events.clone();
         let replaced = self.active.lock().expect("device connections lock").insert(
             device_id.to_string(),
             ActiveConnection {
                 session_id: session_id.clone(),
                 disconnect,
+                events,
             },
         );
         let replaced_session_id = replaced.map(|connection| {
@@ -55,7 +68,17 @@ impl DeviceConnectionManager {
             session_id,
             replaced_session_id,
             cancellation,
+            events: event_receiver,
+            _event_sender: event_sender,
         }
+    }
+
+    pub fn send(&self, device_id: &str, event: DeviceEvent) -> bool {
+        self.active
+            .lock()
+            .expect("device connections lock")
+            .get(device_id)
+            .is_some_and(|connection| connection.events.send(event).is_ok())
     }
 
     pub fn owns(&self, device_id: &str, session_id: &str) -> bool {
