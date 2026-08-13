@@ -1,0 +1,10 @@
+{
+  "protocol_version": "desktop.v1",
+  "protocol_revision": 2,
+  "message_id": "approval-current-1",
+  "sent_at_unix_ms": 1700000001500,
+  "payload": {
+    "approved_by": "admin-current-1",
+    "expires_at_unix_ms": 1700000030000
+  }
+}

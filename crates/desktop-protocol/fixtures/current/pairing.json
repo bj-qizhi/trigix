@@ -1,0 +1,20 @@
+{
+  "protocol_version": "desktop.v1",
+  "protocol_revision": 2,
+  "message_id": "pairing-current-1",
+  "sent_at_unix_ms": 1700000000000,
+  "payload": {
+    "pairing_code": "AB12CD34",
+    "device": {
+      "device_id": "device-current-1",
+      "display_name": "Finance Workstation",
+      "operating_system": "windows-11",
+      "agent_version": "1.5.1",
+      "capabilities": [
+        "system_information",
+        "window_management"
+      ]
+    },
+    "device_public_key": "fixture-public-key-current"
+  }
+}

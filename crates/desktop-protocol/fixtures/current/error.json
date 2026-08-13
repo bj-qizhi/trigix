@@ -1,0 +1,12 @@
+{
+  "protocol_version": "desktop.v1",
+  "protocol_revision": 2,
+  "message_id": "error-current-1",
+  "sent_at_unix_ms": 1700000004000,
+  "payload": {
+    "code": "capability_unavailable",
+    "message": "required Device capability is unavailable",
+    "retryable": false,
+    "command_id": "command-current-1"
+  }
+}
