@@ -4,6 +4,7 @@ members = [
   "crates/execution-core",
   "crates/desktop-protocol",
   "crates/desktop-agent-core",
+  "crates/desktop-identity",
   "crates/desktop-host",
   "services/desktop-device-simulator",
   "services/executor",
