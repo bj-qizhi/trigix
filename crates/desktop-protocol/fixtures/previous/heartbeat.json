@@ -1,0 +1,13 @@
+{
+  "protocol_version": "desktop.v1",
+  "message_id": "heartbeat-previous-1",
+  "sent_at_unix_ms": 1699990001000,
+  "payload": {
+    "device_id": "device-previous-1",
+    "state": "online",
+    "agent_version": "1.4.0",
+    "capabilities": [
+      "system_information"
+    ]
+  }
+}

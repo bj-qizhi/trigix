@@ -1,0 +1,17 @@
+{
+  "protocol_version": "desktop.v1",
+  "protocol_revision": 2,
+  "message_id": "heartbeat-current-1",
+  "sent_at_unix_ms": 1700000001000,
+  "payload": {
+    "device_id": "device-current-1",
+    "state": "online",
+    "active_execution_id": null,
+    "agent_version": "1.5.1",
+    "capabilities": [
+      "system_information",
+      "window_management"
+    ],
+    "health_detail": null
+  }
+}

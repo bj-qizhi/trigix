@@ -1,0 +1,26 @@
+{
+  "protocol_version": "desktop.v1",
+  "protocol_revision": 2,
+  "message_id": "command-current-1",
+  "sent_at_unix_ms": 1700000002000,
+  "payload": {
+    "command_id": "command-current-1",
+    "execution_id": "execution-current-1",
+    "tenant_id": "tenant-current-1",
+    "project_id": "project-current-1",
+    "requested_by": "admin-current-1",
+    "issued_at_unix_ms": 1700000002000,
+    "lease": {
+      "lease_id": "lease-current-1",
+      "expires_at_unix_ms": 1700000060000
+    },
+    "approval": {
+      "approved_by": "admin-current-1",
+      "expires_at_unix_ms": 1700000030000
+    },
+    "action": {
+      "kind": "launch_application",
+      "application_id": "fixture.calculator"
+    }
+  }
+}

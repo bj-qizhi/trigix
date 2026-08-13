@@ -83,16 +83,21 @@ Recovery storage uses a synchronized temporary file and replace sequence, with a
 
 ## Protocol
 
-The first wire contract is `desktop.v1`, represented by `desktop-protocol` Rust types and Serde JSON. Every envelope contains:
+The first wire family is `desktop.v1`, represented by `desktop-protocol` Rust types and Serde JSON. Every envelope contains:
 
 - `protocol_version`
+- `protocol_revision`
 - globally unique `message_id`
 - sender timestamp
 - typed payload
 
 Every Desktop Command contains Tenant and Project scope, requesting actor, Workflow Execution identifier, a command identifier, an expiring lease, and one typed action. The local runtime rejects expired leases and duplicate completed commands.
 
-The production transport will use TLS with an authenticated outbound connection from the Device. Transport selection does not change the domain messages. The Platform must support the current protocol and one previous compatible version during staged desktop upgrades. Breaking changes require a new protocol version and a migration window; fields cannot be silently reinterpreted.
+The production transport will use TLS with an authenticated outbound connection from the Device. Transport selection does not change the domain messages. Within `desktop.v1`, revision 2 is current and revision 1 is the previous supported desktop release shape. A missing revision is interpreted as revision 1 so already deployed messages remain compatible; any other revision fails closed. The Platform must support the current and previous revisions during staged desktop upgrades. Breaking semantic changes require a new protocol family and a migration window; fields cannot be silently reinterpreted.
+
+Canonical current and previous fixtures live under `crates/desktop-protocol/fixtures/`. Current fixtures promise byte-stable pretty JSON for pairing, heartbeat, command, result, error, and Approval messages. Previous fixtures promise semantic round-trip compatibility, including safe defaults for fields added later. Workspace Rust tests exercise both fixture generations in CI and reject unknown versions, revisions, actions, extra fields, control characters, and invalid bounds.
+
+Removing the previous revision is a release decision, not a routine code cleanup. It requires persisted Device fleet telemetry proving the revision is no longer active, a staged migration window, and an ADR that records the evidence, rollback plan, and accountable owner before the supported revision constants change.
 
 ## Action and Risk Model
 

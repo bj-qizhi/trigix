@@ -1,0 +1,14 @@
+{
+  "protocol_version": "desktop.v1",
+  "message_id": "result-previous-1",
+  "sent_at_unix_ms": 1699990003000,
+  "payload": {
+    "command_id": "command-previous-1",
+    "execution_id": "execution-previous-1",
+    "outcome": "succeeded",
+    "completed_at_unix_ms": 1699990003000,
+    "output": {
+      "operating_system": "windows"
+    }
+  }
+}

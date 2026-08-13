@@ -3,10 +3,17 @@ use serde_json::Value;
 use std::fmt;
 
 pub const PROTOCOL_VERSION: &str = "desktop.v1";
+pub const CURRENT_PROTOCOL_REVISION: u16 = 2;
+pub const PREVIOUS_PROTOCOL_REVISION: u16 = 1;
+
+fn previous_protocol_revision() -> u16 {
+    PREVIOUS_PROTOCOL_REVISION
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ProtocolError {
     UnsupportedVersion(String),
+    UnsupportedRevision(u16),
     MissingField(&'static str),
     InvalidField(&'static str),
     ExpiredLease,
@@ -18,6 +25,9 @@ impl fmt::Display for ProtocolError {
             Self::UnsupportedVersion(version) => {
                 write!(formatter, "unsupported protocol version: {version}")
             }
+            Self::UnsupportedRevision(revision) => {
+                write!(formatter, "unsupported protocol revision: {revision}")
+            }
             Self::MissingField(field) => write!(formatter, "missing required field: {field}"),
             Self::InvalidField(field) => write!(formatter, "invalid field: {field}"),
             Self::ExpiredLease => formatter.write_str("execution lease has expired"),
@@ -28,8 +38,11 @@ impl fmt::Display for ProtocolError {
 impl std::error::Error for ProtocolError {}
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Envelope<T> {
     pub protocol_version: String,
+    #[serde(default = "previous_protocol_revision")]
+    pub protocol_revision: u16,
     pub message_id: String,
     pub sent_at_unix_ms: u64,
     pub payload: T,
@@ -39,6 +52,7 @@ impl<T> Envelope<T> {
     pub fn new(message_id: impl Into<String>, sent_at_unix_ms: u64, payload: T) -> Self {
         Self {
             protocol_version: PROTOCOL_VERSION.to_owned(),
+            protocol_revision: CURRENT_PROTOCOL_REVISION,
             message_id: message_id.into(),
             sent_at_unix_ms,
             payload,
@@ -51,11 +65,18 @@ impl<T> Envelope<T> {
                 self.protocol_version.clone(),
             ));
         }
+        if !matches!(
+            self.protocol_revision,
+            PREVIOUS_PROTOCOL_REVISION | CURRENT_PROTOCOL_REVISION
+        ) {
+            return Err(ProtocolError::UnsupportedRevision(self.protocol_revision));
+        }
         validate_identifier("message_id", &self.message_id)
     }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct DeviceDescriptor {
     pub device_id: String,
     pub display_name: String,
@@ -86,6 +107,7 @@ pub enum DeviceCapability {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct PairingRequest {
     pub pairing_code: String,
     pub device: DeviceDescriptor,
@@ -108,6 +130,7 @@ impl PairingRequest {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct PairingAccepted {
     pub device_id: String,
     pub tenant_id: String,
@@ -116,6 +139,7 @@ pub struct PairingAccepted {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct DeviceConnectionAccepted {
     pub device_id: String,
     pub session_id: String,
@@ -133,12 +157,15 @@ pub enum DeviceState {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Heartbeat {
     pub device_id: String,
     pub state: DeviceState,
+    #[serde(default)]
     pub active_execution_id: Option<String>,
     pub agent_version: String,
     pub capabilities: Vec<DeviceCapability>,
+    #[serde(default)]
     pub health_detail: Option<String>,
 }
 
@@ -163,6 +190,7 @@ impl Heartbeat {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct HeartbeatAccepted {
     pub device_id: String,
     pub session_id: String,
@@ -180,7 +208,7 @@ pub enum RiskLevel {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(tag = "kind", rename_all = "snake_case")]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum DesktopAction {
     ReadSystemInformation,
     FocusWindow {
@@ -234,9 +262,13 @@ impl DesktopAction {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct WindowSelector {
+    #[serde(default)]
     pub executable: Option<String>,
+    #[serde(default)]
     pub title: Option<String>,
+    #[serde(default)]
     pub automation_id: Option<String>,
 }
 
@@ -256,10 +288,14 @@ impl WindowSelector {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ElementSelector {
     pub window: WindowSelector,
+    #[serde(default)]
     pub automation_id: Option<String>,
+    #[serde(default)]
     pub name: Option<String>,
+    #[serde(default)]
     pub control_type: Option<String>,
 }
 
@@ -284,12 +320,14 @@ impl ElementSelector {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ExecutionLease {
     pub lease_id: String,
     pub expires_at_unix_ms: u64,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct DesktopCommand {
     pub command_id: String,
     pub execution_id: String,
@@ -304,12 +342,30 @@ pub struct DesktopCommand {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct DesktopCommandApproval {
     pub approved_by: String,
     pub expires_at_unix_ms: u64,
 }
 
+impl DesktopCommandApproval {
+    pub fn validate(
+        &self,
+        now_unix_ms: u64,
+        lease_expires_at_unix_ms: u64,
+    ) -> Result<(), ProtocolError> {
+        validate_identifier("approval.approved_by", &self.approved_by)?;
+        if self.expires_at_unix_ms <= now_unix_ms
+            || self.expires_at_unix_ms > lease_expires_at_unix_ms
+        {
+            return Err(ProtocolError::InvalidField("approval.expires_at_unix_ms"));
+        }
+        Ok(())
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct DesktopCommandAcknowledgement {
     pub command_id: String,
     pub execution_id: String,
@@ -326,6 +382,7 @@ impl DesktopCommandAcknowledgement {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct DesktopCommandCancellation {
     pub command_id: String,
     pub execution_id: String,
@@ -347,12 +404,7 @@ impl DesktopCommand {
             return Err(ProtocolError::ExpiredLease);
         }
         if let Some(approval) = &self.approval {
-            validate_identifier("approval.approved_by", &approval.approved_by)?;
-            if approval.expires_at_unix_ms <= now_unix_ms
-                || approval.expires_at_unix_ms > self.lease.expires_at_unix_ms
-            {
-                return Err(ProtocolError::InvalidField("approval.expires_at_unix_ms"));
-            }
+            approval.validate(now_unix_ms, self.lease.expires_at_unix_ms)?;
         }
         self.action.validate()
     }
@@ -370,14 +422,39 @@ pub enum CommandOutcome {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct DesktopCommandResult {
     pub command_id: String,
     pub execution_id: String,
     pub outcome: CommandOutcome,
     pub completed_at_unix_ms: u64,
+    #[serde(default)]
     pub output: Option<Value>,
+    #[serde(default)]
     pub error_code: Option<String>,
+    #[serde(default)]
     pub error_message: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct DesktopProtocolFailure {
+    pub code: String,
+    pub message: String,
+    pub retryable: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub command_id: Option<String>,
+}
+
+impl DesktopProtocolFailure {
+    pub fn validate(&self) -> Result<(), ProtocolError> {
+        validate_text("error.code", &self.code, 128)?;
+        validate_text("error.message", &self.message, 2048)?;
+        if let Some(command_id) = &self.command_id {
+            validate_identifier("error.command_id", command_id)?;
+        }
+        Ok(())
+    }
 }
 
 impl DesktopCommandResult {
@@ -432,6 +509,48 @@ fn validate_optional_text(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde::de::DeserializeOwned;
+    use std::fmt::Debug;
+
+    const CURRENT_PAIRING: &str = include_str!("../fixtures/current/pairing.json");
+    const CURRENT_HEARTBEAT: &str = include_str!("../fixtures/current/heartbeat.json");
+    const CURRENT_COMMAND: &str = include_str!("../fixtures/current/command.json");
+    const CURRENT_RESULT: &str = include_str!("../fixtures/current/result.json");
+    const CURRENT_ERROR: &str = include_str!("../fixtures/current/error.json");
+    const CURRENT_APPROVAL: &str = include_str!("../fixtures/current/approval.json");
+    const PREVIOUS_PAIRING: &str = include_str!("../fixtures/previous/pairing.json");
+    const PREVIOUS_HEARTBEAT: &str = include_str!("../fixtures/previous/heartbeat.json");
+    const PREVIOUS_COMMAND: &str = include_str!("../fixtures/previous/command.json");
+    const PREVIOUS_RESULT: &str = include_str!("../fixtures/previous/result.json");
+    const PREVIOUS_ERROR: &str = include_str!("../fixtures/previous/error.json");
+    const PREVIOUS_APPROVAL: &str = include_str!("../fixtures/previous/approval.json");
+
+    fn current_fixture<T>(source: &str) -> Envelope<T>
+    where
+        T: DeserializeOwned + Serialize + PartialEq + Debug,
+    {
+        let envelope: Envelope<T> = serde_json::from_str(source).unwrap();
+        envelope.validate().unwrap();
+        assert_eq!(envelope.protocol_revision, CURRENT_PROTOCOL_REVISION);
+        assert_eq!(
+            format!("{}\n", serde_json::to_string_pretty(&envelope).unwrap()),
+            source
+        );
+        envelope
+    }
+
+    fn previous_fixture<T>(source: &str) -> Envelope<T>
+    where
+        T: DeserializeOwned + Serialize + PartialEq + Debug,
+    {
+        let envelope: Envelope<T> = serde_json::from_str(source).unwrap();
+        envelope.validate().unwrap();
+        assert_eq!(envelope.protocol_revision, PREVIOUS_PROTOCOL_REVISION);
+        let round_trip: Envelope<T> =
+            serde_json::from_str(&serde_json::to_string(&envelope).unwrap()).unwrap();
+        assert_eq!(round_trip, envelope);
+        envelope
+    }
 
     fn command() -> DesktopCommand {
         DesktopCommand {
@@ -578,6 +697,103 @@ mod tests {
         assert_eq!(
             command.validate(1_500),
             Err(ProtocolError::MissingField("action.window_selector"))
+        );
+    }
+
+    #[test]
+    fn current_release_fixtures_are_byte_stable_and_valid() {
+        current_fixture::<PairingRequest>(CURRENT_PAIRING)
+            .payload
+            .validate()
+            .unwrap();
+        current_fixture::<Heartbeat>(CURRENT_HEARTBEAT)
+            .payload
+            .validate()
+            .unwrap();
+        current_fixture::<DesktopCommand>(CURRENT_COMMAND)
+            .payload
+            .validate(1_700_000_002_500)
+            .unwrap();
+        current_fixture::<DesktopCommandResult>(CURRENT_RESULT)
+            .payload
+            .validate()
+            .unwrap();
+        current_fixture::<DesktopProtocolFailure>(CURRENT_ERROR)
+            .payload
+            .validate()
+            .unwrap();
+        current_fixture::<DesktopCommandApproval>(CURRENT_APPROVAL)
+            .payload
+            .validate(1_700_000_002_500, 1_700_000_060_000)
+            .unwrap();
+    }
+
+    #[test]
+    fn previous_release_fixtures_remain_semantically_compatible() {
+        previous_fixture::<PairingRequest>(PREVIOUS_PAIRING)
+            .payload
+            .validate()
+            .unwrap();
+        let heartbeat = previous_fixture::<Heartbeat>(PREVIOUS_HEARTBEAT).payload;
+        heartbeat.validate().unwrap();
+        assert!(heartbeat.active_execution_id.is_none());
+        assert!(heartbeat.health_detail.is_none());
+        let command = previous_fixture::<DesktopCommand>(PREVIOUS_COMMAND).payload;
+        command.validate(1_699_990_002_500).unwrap();
+        assert!(command.approval.is_none());
+        let result = previous_fixture::<DesktopCommandResult>(PREVIOUS_RESULT).payload;
+        result.validate().unwrap();
+        assert!(result.error_code.is_none());
+        assert!(result.error_message.is_none());
+        previous_fixture::<DesktopProtocolFailure>(PREVIOUS_ERROR)
+            .payload
+            .validate()
+            .unwrap();
+        previous_fixture::<DesktopCommandApproval>(PREVIOUS_APPROVAL)
+            .payload
+            .validate(1_699_990_002_500, 1_699_990_060_000)
+            .unwrap();
+    }
+
+    #[test]
+    fn unknown_revision_action_and_fields_fail_closed() {
+        let mut envelope: Envelope<DesktopCommand> = serde_json::from_str(CURRENT_COMMAND).unwrap();
+        envelope.protocol_revision = CURRENT_PROTOCOL_REVISION + 1;
+        assert_eq!(
+            envelope.validate(),
+            Err(ProtocolError::UnsupportedRevision(3))
+        );
+
+        let mut unknown_action: Value = serde_json::from_str(CURRENT_COMMAND).unwrap();
+        unknown_action["payload"]["action"]["kind"] = Value::String("run_script".to_owned());
+        assert!(serde_json::from_value::<Envelope<DesktopCommand>>(unknown_action).is_err());
+
+        let mut unsafe_extra_field: Value = serde_json::from_str(CURRENT_COMMAND).unwrap();
+        unsafe_extra_field["payload"]["action"]["unrestricted_command"] =
+            Value::String("fixture".to_owned());
+        assert!(serde_json::from_value::<Envelope<DesktopCommand>>(unsafe_extra_field).is_err());
+
+        let mut unknown_envelope_field: Value = serde_json::from_str(CURRENT_PAIRING).unwrap();
+        unknown_envelope_field["credential"] = Value::String("fixture".to_owned());
+        assert!(
+            serde_json::from_value::<Envelope<PairingRequest>>(unknown_envelope_field).is_err()
+        );
+    }
+
+    #[test]
+    fn unsafe_fixture_values_fail_validation() {
+        let mut failure = current_fixture::<DesktopProtocolFailure>(CURRENT_ERROR).payload;
+        failure.message = "unsafe\nmessage".to_owned();
+        assert_eq!(
+            failure.validate(),
+            Err(ProtocolError::InvalidField("error.message"))
+        );
+
+        let mut pairing = current_fixture::<PairingRequest>(CURRENT_PAIRING).payload;
+        pairing.device.display_name = "unsafe\u{0000}name".to_owned();
+        assert_eq!(
+            pairing.validate(),
+            Err(ProtocolError::InvalidField("display_name"))
         );
     }
 }

@@ -1,0 +1,17 @@
+{
+  "protocol_version": "desktop.v1",
+  "protocol_revision": 2,
+  "message_id": "result-current-1",
+  "sent_at_unix_ms": 1700000003000,
+  "payload": {
+    "command_id": "command-current-1",
+    "execution_id": "execution-current-1",
+    "outcome": "succeeded",
+    "completed_at_unix_ms": 1700000003000,
+    "output": {
+      "launched": true
+    },
+    "error_code": null,
+    "error_message": null
+  }
+}

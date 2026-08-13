@@ -1,0 +1,11 @@
+{
+  "protocol_version": "desktop.v1",
+  "message_id": "error-previous-1",
+  "sent_at_unix_ms": 1699990004000,
+  "payload": {
+    "code": "lease_expired",
+    "message": "command lease expired",
+    "retryable": false,
+    "command_id": "command-previous-1"
+  }
+}

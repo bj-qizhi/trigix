@@ -1,0 +1,20 @@
+{
+  "protocol_version": "desktop.v1",
+  "message_id": "command-previous-1",
+  "sent_at_unix_ms": 1699990002000,
+  "payload": {
+    "command_id": "command-previous-1",
+    "execution_id": "execution-previous-1",
+    "tenant_id": "tenant-previous-1",
+    "project_id": "project-previous-1",
+    "requested_by": "user-previous-1",
+    "issued_at_unix_ms": 1699990002000,
+    "lease": {
+      "lease_id": "lease-previous-1",
+      "expires_at_unix_ms": 1699990060000
+    },
+    "action": {
+      "kind": "read_system_information"
+    }
+  }
+}

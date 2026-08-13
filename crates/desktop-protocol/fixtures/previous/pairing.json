@@ -1,0 +1,18 @@
+{
+  "protocol_version": "desktop.v1",
+  "message_id": "pairing-previous-1",
+  "sent_at_unix_ms": 1699990000000,
+  "payload": {
+    "pairing_code": "EF56GH78",
+    "device": {
+      "device_id": "device-previous-1",
+      "display_name": "Previous Workstation",
+      "operating_system": "windows-10",
+      "agent_version": "1.4.0",
+      "capabilities": [
+        "system_information"
+      ]
+    },
+    "device_public_key": "fixture-public-key-previous"
+  }
+}
