@@ -17,8 +17,10 @@ crates/desktop-protocol/         versioned platform/device messages and validati
 crates/desktop-agent-core/       policy, Approval, replay protection, execution, audit
 crates/desktop-identity/         Ed25519 identity and operating-system Credential boundary
 crates/desktop-host/             tested presentation/host IPC boundary
-crates/desktop-windows/          planned Windows UI Automation adapter
+crates/desktop-automation/       isolated IPC plus Windows target inspection adapter
 apps/desktop/                    planned Tauri and React application shell
+services/desktop-automation-host/ isolated automation child process
+services/desktop-automation-fixture/ deterministic native Windows fixture
 services/desktop-device-simulator/ deterministic protocol and execution simulator
 services/platform-rs/            device pairing service; registry and command gateway follow
 ```
@@ -119,6 +121,12 @@ Windows automation executes in the `desktop-automation-host` child process, not 
 The parent Device remains responsible for protocol validation, command leases, policy, Approval, persisted replay state, process startup deadlines, request timeouts, and terminating a hung host. The child receives only the already-authorized typed action plus opaque command and lease identifiers. A child crash therefore cannot grant authority, modify replay state, or terminate the connection owner. Restarting the child never implies permission to replay a side effect.
 
 `trigix-desktop-automation` provides the shared IPC contract and a deterministic non-Windows fixture adapter so Linux workspace CI exercises the same message boundary. `desktop-automation-fixture` builds a native Windows fixture window with stable class/control identifiers, including a normal input, submit button, and protected password input. The fixture is test-only and must be signed by the release pipeline before it is used on Windows qualification runners.
+
+Read-only target inspection is a typed low-risk Desktop action. Its request bounds element depth and count, wall-clock duration, and serialized payload size below the Host IPC limit. Results identify windows by executable, process identifier, title disclosure policy, and stable automation identifier. Elements carry a window-scoped semantic selector and only the automation patterns the adapter can support. Invisible controls are excluded. Password controls, credential-like labels, and oversized text never return their value; the result records only a redaction reason.
+
+Every inspection returns a snapshot identifier derived from the observed target structure. A caller may provide the expected identifier when re-inspecting immediately before execution; a mismatch returns `target_stale`, while an empty match returns `target_not_found`. Future mutating actions must resolve selectors against a fresh snapshot and return `target_ambiguous` rather than choosing among multiple matches. Truncation is explicit, so authoring tools cannot mistake a bounded partial tree for a complete application model.
+
+On Windows, the Host enumerates visible top-level windows and their visible native controls, resolves process executable names with limited query rights, and maps standard control classes to supported semantic patterns. The deterministic fixture covers duplicate executable matches, localized accessible names, missing targets, stale snapshots, and protected password values. Rich UI Automation provider traversal can extend the adapter behind the same result contract without changing Device or Platform authority.
 
 Windows automation will use this selector order:
 

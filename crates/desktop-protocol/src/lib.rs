@@ -5,6 +5,11 @@ use std::fmt;
 pub const PROTOCOL_VERSION: &str = "desktop.v1";
 pub const CURRENT_PROTOCOL_REVISION: u16 = 2;
 pub const PREVIOUS_PROTOCOL_REVISION: u16 = 1;
+pub const MAX_INSPECTION_DEPTH: u8 = 8;
+pub const MAX_INSPECTION_WINDOWS: u16 = 64;
+pub const MAX_INSPECTION_ELEMENTS: u16 = 256;
+pub const MAX_INSPECTION_DURATION_MS: u32 = 5_000;
+pub const MAX_INSPECTION_PAYLOAD_BYTES: u32 = 60 * 1024;
 
 fn previous_protocol_revision() -> u16 {
     PREVIOUS_PROTOCOL_REVISION
@@ -211,6 +216,9 @@ pub enum RiskLevel {
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum DesktopAction {
     ReadSystemInformation,
+    InspectTargets {
+        request: DesktopInspectionRequest,
+    },
     FocusWindow {
         selector: WindowSelector,
     },
@@ -229,7 +237,7 @@ pub enum DesktopAction {
 impl DesktopAction {
     pub fn risk_level(&self) -> RiskLevel {
         match self {
-            Self::ReadSystemInformation => RiskLevel::Low,
+            Self::ReadSystemInformation | Self::InspectTargets { .. } => RiskLevel::Low,
             Self::FocusWindow { .. } | Self::ClickElement { .. } => RiskLevel::Medium,
             Self::TypeText { .. } | Self::LaunchApplication { .. } => RiskLevel::High,
         }
@@ -238,6 +246,7 @@ impl DesktopAction {
     pub fn capability(&self) -> DeviceCapability {
         match self {
             Self::ReadSystemInformation => DeviceCapability::SystemInformation,
+            Self::InspectTargets { .. } => DeviceCapability::UiAutomation,
             Self::FocusWindow { .. } | Self::LaunchApplication { .. } => {
                 DeviceCapability::WindowManagement
             }
@@ -248,6 +257,7 @@ impl DesktopAction {
     pub fn validate(&self) -> Result<(), ProtocolError> {
         match self {
             Self::ReadSystemInformation => Ok(()),
+            Self::InspectTargets { request } => request.validate(),
             Self::FocusWindow { selector } => selector.validate(),
             Self::ClickElement { selector } => selector.validate(),
             Self::TypeText { selector, text } => {
@@ -316,6 +326,176 @@ impl ElementSelector {
             self.control_type.as_deref(),
             128,
         )
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct DesktopInspectionRequest {
+    #[serde(default)]
+    pub window: Option<WindowSelector>,
+    #[serde(default)]
+    pub expected_snapshot_id: Option<String>,
+    pub max_depth: u8,
+    pub max_windows: u16,
+    pub max_elements: u16,
+    pub max_duration_ms: u32,
+    pub max_payload_bytes: u32,
+}
+
+impl DesktopInspectionRequest {
+    pub fn bounded(window: Option<WindowSelector>) -> Self {
+        Self {
+            window,
+            expected_snapshot_id: None,
+            max_depth: MAX_INSPECTION_DEPTH,
+            max_windows: MAX_INSPECTION_WINDOWS,
+            max_elements: MAX_INSPECTION_ELEMENTS,
+            max_duration_ms: MAX_INSPECTION_DURATION_MS,
+            max_payload_bytes: MAX_INSPECTION_PAYLOAD_BYTES,
+        }
+    }
+
+    pub fn validate(&self) -> Result<(), ProtocolError> {
+        if let Some(window) = &self.window {
+            window.validate()?;
+        }
+        validate_optional_text(
+            "action.inspection.expected_snapshot_id",
+            self.expected_snapshot_id.as_deref(),
+            128,
+        )?;
+        if self.max_depth == 0 || self.max_depth > MAX_INSPECTION_DEPTH {
+            return Err(ProtocolError::InvalidField("action.inspection.max_depth"));
+        }
+        if self.max_windows == 0 || self.max_windows > MAX_INSPECTION_WINDOWS {
+            return Err(ProtocolError::InvalidField("action.inspection.max_windows"));
+        }
+        if self.max_elements == 0 || self.max_elements > MAX_INSPECTION_ELEMENTS {
+            return Err(ProtocolError::InvalidField(
+                "action.inspection.max_elements",
+            ));
+        }
+        if self.max_duration_ms == 0 || self.max_duration_ms > MAX_INSPECTION_DURATION_MS {
+            return Err(ProtocolError::InvalidField(
+                "action.inspection.max_duration_ms",
+            ));
+        }
+        if self.max_payload_bytes == 0 || self.max_payload_bytes > MAX_INSPECTION_PAYLOAD_BYTES {
+            return Err(ProtocolError::InvalidField(
+                "action.inspection.max_payload_bytes",
+            ));
+        }
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum WindowTitlePolicy {
+    Exact,
+    Redacted,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AutomationPattern {
+    Invoke,
+    Value,
+    Text,
+    Selection,
+    Toggle,
+    ExpandCollapse,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RedactionReason {
+    Password,
+    Credential,
+    Oversized,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct InspectedElement {
+    pub selector: ElementSelector,
+    pub depth: u8,
+    pub supported_patterns: Vec<AutomationPattern>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub value: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub redaction: Option<RedactionReason>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct InspectedWindow {
+    pub selector: WindowSelector,
+    pub process_id: u32,
+    pub title_policy: WindowTitlePolicy,
+    pub elements: Vec<InspectedElement>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct DesktopInspectionResult {
+    pub snapshot_id: String,
+    pub windows: Vec<InspectedWindow>,
+    pub truncated: bool,
+}
+
+impl DesktopInspectionResult {
+    pub fn validate(&self, request: &DesktopInspectionRequest) -> Result<(), ProtocolError> {
+        request.validate()?;
+        validate_identifier("inspection.snapshot_id", &self.snapshot_id)?;
+        if self.windows.len() > request.max_windows as usize {
+            return Err(ProtocolError::InvalidField("inspection.windows"));
+        }
+        let mut element_count = 0usize;
+        for window in &self.windows {
+            window.selector.validate()?;
+            if window.process_id == 0 {
+                return Err(ProtocolError::InvalidField("inspection.process_id"));
+            }
+            if window.title_policy == WindowTitlePolicy::Redacted && window.selector.title.is_some()
+            {
+                return Err(ProtocolError::InvalidField("inspection.window.title"));
+            }
+            for element in &window.elements {
+                element_count += 1;
+                element.selector.validate()?;
+                if element.depth == 0 || element.depth > request.max_depth {
+                    return Err(ProtocolError::InvalidField("inspection.element.depth"));
+                }
+                if element.value.is_some() && element.redaction.is_some() {
+                    return Err(ProtocolError::InvalidField("inspection.element.value"));
+                }
+                validate_optional_text("inspection.element.value", element.value.as_deref(), 512)?;
+                if element.supported_patterns.len() > 16 {
+                    return Err(ProtocolError::InvalidField(
+                        "inspection.element.supported_patterns",
+                    ));
+                }
+                for (index, pattern) in element.supported_patterns.iter().enumerate() {
+                    if element.supported_patterns[..index].contains(pattern) {
+                        return Err(ProtocolError::InvalidField(
+                            "inspection.element.supported_patterns",
+                        ));
+                    }
+                }
+            }
+        }
+        if element_count > request.max_elements as usize {
+            return Err(ProtocolError::InvalidField("inspection.elements"));
+        }
+        let payload_size = serde_json::to_vec(self)
+            .map_err(|_| ProtocolError::InvalidField("inspection.payload"))?
+            .len();
+        if payload_size > request.max_payload_bytes as usize {
+            return Err(ProtocolError::InvalidField("inspection.payload"));
+        }
+        Ok(())
     }
 }
 
@@ -697,6 +877,47 @@ mod tests {
         assert_eq!(
             command.validate(1_500),
             Err(ProtocolError::MissingField("action.window_selector"))
+        );
+    }
+
+    #[test]
+    fn inspection_requests_enforce_all_resource_limits() {
+        let mut request = DesktopInspectionRequest::bounded(None);
+        assert!(request.validate().is_ok());
+        request.max_depth = MAX_INSPECTION_DEPTH + 1;
+        assert_eq!(
+            request.validate(),
+            Err(ProtocolError::InvalidField("action.inspection.max_depth"))
+        );
+        request.max_depth = 1;
+        request.max_windows = 0;
+        assert_eq!(
+            request.validate(),
+            Err(ProtocolError::InvalidField("action.inspection.max_windows"))
+        );
+        request.max_windows = 1;
+        request.max_elements = 0;
+        assert_eq!(
+            request.validate(),
+            Err(ProtocolError::InvalidField(
+                "action.inspection.max_elements"
+            ))
+        );
+        request.max_elements = 1;
+        request.max_duration_ms = MAX_INSPECTION_DURATION_MS + 1;
+        assert_eq!(
+            request.validate(),
+            Err(ProtocolError::InvalidField(
+                "action.inspection.max_duration_ms"
+            ))
+        );
+        request.max_duration_ms = 1;
+        request.max_payload_bytes = MAX_INSPECTION_PAYLOAD_BYTES + 1;
+        assert_eq!(
+            request.validate(),
+            Err(ProtocolError::InvalidField(
+                "action.inspection.max_payload_bytes"
+            ))
         );
     }
 

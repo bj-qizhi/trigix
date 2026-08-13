@@ -4481,6 +4481,7 @@ dependencies = [
  "desktop-protocol",
  "serde",
  "serde_json",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
