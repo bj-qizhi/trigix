@@ -63,6 +63,10 @@ The first Platform pairing vertical slice is implemented. A Device creates a sho
 
 Pairing state is persisted in `af_desktop_pairing_sessions` and `af_desktop_devices`. Claim secrets and active device Credentials are stored only as hashes; the pending one-time Credential is protected with the configured Credential master key and erased after claim. Expiry, bounded attempts, per-endpoint rate limits, row locking, unique device/public-key constraints, and Tenant row-level-security policies make reuse and concurrent redemption fail closed.
 
+The Device registry is the administrative source of truth for identity, operating system, Agent version, declared capabilities, lifecycle state, last-seen time, and stale status. Registry reads and mutations require a Tenant administrator and always scope queries by Tenant. List operations use bounded pagination and optional lifecycle-state filtering; cross-Tenant lookup deliberately returns not found.
+
+Suspension and revocation fail Device authentication before heartbeat or command work can be accepted. Revocation also clears the active Credential hash and any pending rotation, and is irreversible through the registry API. Credential rotation is a two-party exchange: an administrator creates a pending rotation without receiving plaintext, then the authenticated Device claims the replacement exactly once using its current Credential. The replacement is encrypted while pending, claimed under a row lock, and atomically replaces the old hash so concurrent claims have one winner. Rename, suspend, revoke, and rotation events are recorded without Credential material.
+
 ## Protocol
 
 The first wire contract is `desktop.v1`, represented by `desktop-protocol` Rust types and Serde JSON. Every envelope contains:

@@ -12,6 +12,7 @@ use sqlx::{PgPool, Postgres, Transaction};
 
 pub const PAIRING_TTL_SECONDS: i64 = 300;
 pub const MAX_CLAIM_ATTEMPTS: i32 = 5;
+pub const DEVICE_STALE_AFTER_SECONDS: i64 = 90;
 
 fn unix_now() -> i64 {
     SystemTime::now()
@@ -76,6 +77,21 @@ pub struct PairedDevice {
     pub state: String,
     pub paired_by: String,
     pub created_at: i64,
+    pub updated_at: i64,
+    pub last_seen_at: Option<i64>,
+    pub stale: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct DeviceList {
+    pub items: Vec<PairedDevice>,
+    pub next_offset: Option<u32>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct CredentialRotationStarted {
+    pub device_id: String,
+    pub rotation_id: String,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -111,6 +127,7 @@ pub enum PairingError {
     InvalidClaim,
     AttemptsExceeded,
     DeviceConflict,
+    InvalidState,
     Store(String),
 }
 
@@ -124,6 +141,7 @@ impl std::fmt::Display for PairingError {
             Self::InvalidClaim => write!(f, "invalid pairing claim"),
             Self::AttemptsExceeded => write!(f, "pairing claim attempts exceeded"),
             Self::DeviceConflict => write!(f, "device identity is already paired"),
+            Self::InvalidState => write!(f, "device state does not allow this operation"),
             Self::Store(message) => write!(f, "pairing store error: {message}"),
         }
     }
@@ -139,6 +157,7 @@ impl PairingError {
             Self::InvalidClaim => "invalid_claim",
             Self::AttemptsExceeded => "attempts_exceeded",
             Self::DeviceConflict => "device_conflict",
+            Self::InvalidState => "invalid_state",
             Self::Store(_) => "store_error",
         }
     }
@@ -147,7 +166,15 @@ impl PairingError {
 #[derive(Default)]
 pub struct MemoryDevicePairingStore {
     sessions: Mutex<HashMap<String, PairingSession>>,
-    devices: Mutex<HashMap<String, PairedDevice>>,
+    devices: Mutex<HashMap<String, StoredDevice>>,
+}
+
+#[derive(Debug, Clone)]
+struct StoredDevice {
+    view: PairedDevice,
+    credential_id: String,
+    credential_hash: String,
+    pending_rotation: Option<(String, String)>,
 }
 
 impl MemoryDevicePairingStore {
@@ -226,8 +253,22 @@ impl MemoryDevicePairingStore {
             state: "paired".to_string(),
             paired_by: actor_id.to_string(),
             created_at: now,
+            updated_at: now,
+            last_seen_at: None,
+            stale: false,
         };
-        devices.insert(device.id.clone(), device.clone());
+        let credential = session.pending_credential.as_deref().ok_or_else(|| {
+            PairingError::Store("pending session is missing credential".to_string())
+        })?;
+        devices.insert(
+            device.id.clone(),
+            StoredDevice {
+                view: device.clone(),
+                credential_id: session.credential_id.clone(),
+                credential_hash: hash_secret(credential),
+                pending_rotation: None,
+            },
+        );
         session.tenant_id = Some(tenant_id.to_string());
         session.approved_by = Some(actor_id.to_string());
         session.status = "approved".to_string();
@@ -277,6 +318,157 @@ impl MemoryDevicePairingStore {
             credential_id: session.credential_id.clone(),
             credential,
         })
+    }
+
+    async fn list_devices(
+        &self,
+        tenant_id: &str,
+        state: Option<&str>,
+        limit: u32,
+        offset: u32,
+    ) -> DeviceList {
+        let mut devices: Vec<_> = self
+            .devices
+            .lock()
+            .expect("paired devices lock")
+            .values()
+            .filter(|stored| {
+                stored.view.tenant_id == tenant_id
+                    && state.is_none_or(|expected| stored.view.state == expected)
+            })
+            .map(|stored| stored.view.clone())
+            .collect();
+        devices.sort_by(|left, right| {
+            right
+                .created_at
+                .cmp(&left.created_at)
+                .then_with(|| left.id.cmp(&right.id))
+        });
+        let total = devices.len();
+        let items = devices
+            .into_iter()
+            .skip(offset as usize)
+            .take(limit as usize)
+            .collect::<Vec<_>>();
+        let consumed = offset as usize + items.len();
+        DeviceList {
+            items,
+            next_offset: (consumed < total).then_some(consumed.min(u32::MAX as usize) as u32),
+        }
+    }
+
+    async fn get_device(&self, tenant_id: &str, device_id: &str) -> Option<PairedDevice> {
+        self.devices
+            .lock()
+            .expect("paired devices lock")
+            .get(device_id)
+            .filter(|stored| stored.view.tenant_id == tenant_id)
+            .map(|stored| stored.view.clone())
+    }
+
+    async fn rename_device(
+        &self,
+        tenant_id: &str,
+        device_id: &str,
+        display_name: &str,
+    ) -> Result<PairedDevice, PairingError> {
+        let mut devices = self.devices.lock().expect("paired devices lock");
+        let stored = devices
+            .get_mut(device_id)
+            .filter(|stored| stored.view.tenant_id == tenant_id)
+            .ok_or(PairingError::NotFound)?;
+        stored.view.display_name = display_name.to_string();
+        stored.view.updated_at = unix_now();
+        Ok(stored.view.clone())
+    }
+
+    async fn set_device_state(
+        &self,
+        tenant_id: &str,
+        device_id: &str,
+        state: &str,
+    ) -> Result<PairedDevice, PairingError> {
+        let mut devices = self.devices.lock().expect("paired devices lock");
+        let stored = devices
+            .get_mut(device_id)
+            .filter(|stored| stored.view.tenant_id == tenant_id)
+            .ok_or(PairingError::NotFound)?;
+        if stored.view.state == "revoked" || !matches!(state, "suspended" | "revoked") {
+            return Err(PairingError::InvalidState);
+        }
+        stored.view.state = state.to_string();
+        stored.view.updated_at = unix_now();
+        if state == "revoked" {
+            stored.credential_hash.clear();
+            stored.pending_rotation = None;
+        }
+        Ok(stored.view.clone())
+    }
+
+    async fn start_rotation(
+        &self,
+        tenant_id: &str,
+        device_id: &str,
+    ) -> Result<CredentialRotationStarted, PairingError> {
+        let mut devices = self.devices.lock().expect("paired devices lock");
+        let stored = devices
+            .get_mut(device_id)
+            .filter(|stored| stored.view.tenant_id == tenant_id)
+            .ok_or(PairingError::NotFound)?;
+        if stored.view.state == "revoked" {
+            return Err(PairingError::InvalidState);
+        }
+        let rotation_id = uuid::Uuid::new_v4().to_string();
+        stored.pending_rotation = Some((rotation_id.clone(), random_secret("desktop_")));
+        stored.view.updated_at = unix_now();
+        Ok(CredentialRotationStarted {
+            device_id: device_id.to_string(),
+            rotation_id,
+        })
+    }
+
+    async fn claim_rotation(
+        &self,
+        device_id: &str,
+        current_credential: &str,
+    ) -> Result<DeviceCredential, PairingError> {
+        let mut devices = self.devices.lock().expect("paired devices lock");
+        let stored = devices.get_mut(device_id).ok_or(PairingError::NotFound)?;
+        if stored.view.state == "revoked"
+            || stored.credential_hash != hash_secret(current_credential)
+        {
+            return Err(PairingError::InvalidClaim);
+        }
+        let (_, credential) = stored
+            .pending_rotation
+            .take()
+            .ok_or(PairingError::InvalidState)?;
+        let credential_id = uuid::Uuid::new_v4().to_string();
+        stored.credential_hash = hash_secret(&credential);
+        stored.credential_id = credential_id.clone();
+        stored.view.updated_at = unix_now();
+        Ok(DeviceCredential {
+            device_id: device_id.to_string(),
+            tenant_id: stored.view.tenant_id.clone(),
+            credential_id,
+            credential,
+        })
+    }
+
+    async fn authenticate_device(
+        &self,
+        device_id: &str,
+        credential: &str,
+    ) -> Result<PairedDevice, PairingError> {
+        let devices = self.devices.lock().expect("paired devices lock");
+        let stored = devices.get(device_id).ok_or(PairingError::InvalidClaim)?;
+        if matches!(stored.view.state.as_str(), "suspended" | "revoked") {
+            return Err(PairingError::InvalidState);
+        }
+        if stored.credential_hash != hash_secret(credential) {
+            return Err(PairingError::InvalidClaim);
+        }
+        Ok(stored.view.clone())
     }
 }
 
@@ -443,6 +635,9 @@ impl PostgresDevicePairingStore {
             state: "paired".to_string(),
             paired_by: actor_id.to_string(),
             created_at: now,
+            updated_at: now,
+            last_seen_at: None,
+            stale: false,
         })
     }
 
@@ -527,6 +722,293 @@ impl PostgresDevicePairingStore {
             })?,
             credential_id: session.credential_id,
             credential,
+        })
+    }
+
+    async fn list_devices(
+        &self,
+        tenant_id: &str,
+        state: Option<&str>,
+        limit: u32,
+        offset: u32,
+    ) -> Result<DeviceList, PairingError> {
+        let rows: Vec<DeviceRow> = sqlx::query_as(
+            r#"SELECT id, tenant_id, display_name, operating_system, agent_version,
+                      capabilities_json, state, paired_by,
+                      EXTRACT(EPOCH FROM created_at)::BIGINT AS created_at,
+                      EXTRACT(EPOCH FROM updated_at)::BIGINT AS updated_at,
+                      EXTRACT(EPOCH FROM last_seen_at)::BIGINT AS last_seen_at
+               FROM af_desktop_devices
+               WHERE tenant_id = $1 AND ($2::TEXT IS NULL OR state = $2)
+               ORDER BY created_at DESC, id ASC LIMIT $3 OFFSET $4"#,
+        )
+        .bind(tenant_id)
+        .bind(state)
+        .bind(i64::from(limit) + 1)
+        .bind(i64::from(offset))
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|e| PairingError::Store(e.to_string()))?;
+        let has_more = rows.len() > limit as usize;
+        let items = rows
+            .into_iter()
+            .take(limit as usize)
+            .map(TryInto::try_into)
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(DeviceList {
+            next_offset: has_more.then_some(offset.saturating_add(items.len() as u32)),
+            items,
+        })
+    }
+
+    async fn get_device(
+        &self,
+        tenant_id: &str,
+        device_id: &str,
+    ) -> Result<Option<PairedDevice>, PairingError> {
+        let row: Option<DeviceRow> = sqlx::query_as(
+            r#"SELECT id, tenant_id, display_name, operating_system, agent_version,
+                      capabilities_json, state, paired_by,
+                      EXTRACT(EPOCH FROM created_at)::BIGINT AS created_at,
+                      EXTRACT(EPOCH FROM updated_at)::BIGINT AS updated_at,
+                      EXTRACT(EPOCH FROM last_seen_at)::BIGINT AS last_seen_at
+               FROM af_desktop_devices WHERE tenant_id = $1 AND id = $2"#,
+        )
+        .bind(tenant_id)
+        .bind(device_id)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(|e| PairingError::Store(e.to_string()))?;
+        row.map(TryInto::try_into).transpose()
+    }
+
+    async fn rename_device(
+        &self,
+        tenant_id: &str,
+        device_id: &str,
+        display_name: &str,
+    ) -> Result<PairedDevice, PairingError> {
+        sqlx::query(
+            r#"UPDATE af_desktop_devices SET display_name = $3, updated_at = now()
+               WHERE tenant_id = $1 AND id = $2"#,
+        )
+        .bind(tenant_id)
+        .bind(device_id)
+        .bind(display_name)
+        .execute(&self.pool)
+        .await
+        .map_err(|e| PairingError::Store(e.to_string()))?
+        .rows_affected()
+        .eq(&1)
+        .then_some(())
+        .ok_or(PairingError::NotFound)?;
+        self.get_device(tenant_id, device_id)
+            .await?
+            .ok_or(PairingError::NotFound)
+    }
+
+    async fn set_device_state(
+        &self,
+        tenant_id: &str,
+        device_id: &str,
+        state: &str,
+    ) -> Result<PairedDevice, PairingError> {
+        if !matches!(state, "suspended" | "revoked") {
+            return Err(PairingError::InvalidState);
+        }
+        let result = if state == "revoked" {
+            sqlx::query(
+                r#"UPDATE af_desktop_devices
+                   SET state = 'revoked', credential_hash = '',
+                       pending_rotation_id = NULL, pending_credential_ciphertext = NULL,
+                       updated_at = now()
+                   WHERE tenant_id = $1 AND id = $2 AND state <> 'revoked'"#,
+            )
+            .bind(tenant_id)
+            .bind(device_id)
+            .execute(&self.pool)
+            .await
+        } else {
+            sqlx::query(
+                r#"UPDATE af_desktop_devices SET state = 'suspended', updated_at = now()
+                   WHERE tenant_id = $1 AND id = $2 AND state <> 'revoked'"#,
+            )
+            .bind(tenant_id)
+            .bind(device_id)
+            .execute(&self.pool)
+            .await
+        }
+        .map_err(|e| PairingError::Store(e.to_string()))?;
+        if result.rows_affected() != 1 {
+            return if self.get_device(tenant_id, device_id).await?.is_some() {
+                Err(PairingError::InvalidState)
+            } else {
+                Err(PairingError::NotFound)
+            };
+        }
+        self.get_device(tenant_id, device_id)
+            .await?
+            .ok_or(PairingError::NotFound)
+    }
+
+    async fn start_rotation(
+        &self,
+        tenant_id: &str,
+        device_id: &str,
+    ) -> Result<CredentialRotationStarted, PairingError> {
+        let rotation_id = uuid::Uuid::new_v4().to_string();
+        let credential = random_secret("desktop_");
+        let result = sqlx::query(
+            r#"UPDATE af_desktop_devices
+               SET pending_rotation_id = $3, pending_credential_ciphertext = $4,
+                   updated_at = now()
+               WHERE tenant_id = $1 AND id = $2 AND state <> 'revoked'"#,
+        )
+        .bind(tenant_id)
+        .bind(device_id)
+        .bind(&rotation_id)
+        .bind(crate::crypto::encrypt(&credential))
+        .execute(&self.pool)
+        .await
+        .map_err(|e| PairingError::Store(e.to_string()))?;
+        if result.rows_affected() != 1 {
+            return if self.get_device(tenant_id, device_id).await?.is_some() {
+                Err(PairingError::InvalidState)
+            } else {
+                Err(PairingError::NotFound)
+            };
+        }
+        Ok(CredentialRotationStarted {
+            device_id: device_id.to_string(),
+            rotation_id,
+        })
+    }
+
+    async fn claim_rotation(
+        &self,
+        device_id: &str,
+        current_credential: &str,
+    ) -> Result<DeviceCredential, PairingError> {
+        #[derive(sqlx::FromRow)]
+        struct RotationRow {
+            tenant_id: String,
+            credential_hash: String,
+            pending_rotation_id: Option<String>,
+            pending_credential_ciphertext: Option<String>,
+            state: String,
+        }
+
+        let mut tx = self
+            .pool
+            .begin()
+            .await
+            .map_err(|e| PairingError::Store(e.to_string()))?;
+        let row: RotationRow = sqlx::query_as(
+            r#"SELECT tenant_id, credential_hash, pending_rotation_id,
+                      pending_credential_ciphertext, state
+               FROM af_desktop_devices WHERE id = $1 FOR UPDATE"#,
+        )
+        .bind(device_id)
+        .fetch_optional(&mut *tx)
+        .await
+        .map_err(|e| PairingError::Store(e.to_string()))?
+        .ok_or(PairingError::NotFound)?;
+        if row.state == "revoked" || row.credential_hash != hash_secret(current_credential) {
+            return Err(PairingError::InvalidClaim);
+        }
+        let _rotation_id = row.pending_rotation_id.ok_or(PairingError::InvalidState)?;
+        let ciphertext = row
+            .pending_credential_ciphertext
+            .ok_or(PairingError::InvalidState)?;
+        let credential = crate::crypto::decrypt(&ciphertext);
+        let credential_id = uuid::Uuid::new_v4().to_string();
+        sqlx::query(
+            r#"UPDATE af_desktop_devices
+               SET credential_id = $2, credential_hash = $3,
+                   pending_rotation_id = NULL, pending_credential_ciphertext = NULL,
+                   updated_at = now()
+               WHERE id = $1"#,
+        )
+        .bind(device_id)
+        .bind(&credential_id)
+        .bind(hash_secret(&credential))
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| PairingError::Store(e.to_string()))?;
+        tx.commit()
+            .await
+            .map_err(|e| PairingError::Store(e.to_string()))?;
+        Ok(DeviceCredential {
+            device_id: device_id.to_string(),
+            tenant_id: row.tenant_id,
+            credential_id,
+            credential,
+        })
+    }
+
+    async fn authenticate_device(
+        &self,
+        device_id: &str,
+        credential: &str,
+    ) -> Result<PairedDevice, PairingError> {
+        let row: Option<DeviceRow> = sqlx::query_as(
+            r#"SELECT id, tenant_id, display_name, operating_system, agent_version,
+                      capabilities_json, state, paired_by,
+                      EXTRACT(EPOCH FROM created_at)::BIGINT AS created_at,
+                      EXTRACT(EPOCH FROM updated_at)::BIGINT AS updated_at,
+                      EXTRACT(EPOCH FROM last_seen_at)::BIGINT AS last_seen_at
+               FROM af_desktop_devices
+               WHERE id = $1 AND credential_hash = $2
+                 AND state NOT IN ('suspended', 'revoked')"#,
+        )
+        .bind(device_id)
+        .bind(hash_secret(credential))
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(|e| PairingError::Store(e.to_string()))?;
+        row.map(TryInto::try_into)
+            .transpose()?
+            .ok_or(PairingError::InvalidClaim)
+    }
+}
+
+#[derive(sqlx::FromRow)]
+struct DeviceRow {
+    id: String,
+    tenant_id: String,
+    display_name: String,
+    operating_system: String,
+    agent_version: String,
+    capabilities_json: serde_json::Value,
+    state: String,
+    paired_by: String,
+    created_at: i64,
+    updated_at: i64,
+    last_seen_at: Option<i64>,
+}
+
+impl TryFrom<DeviceRow> for PairedDevice {
+    type Error = PairingError;
+
+    fn try_from(row: DeviceRow) -> Result<Self, Self::Error> {
+        let stale = matches!(row.state.as_str(), "online" | "offline")
+            && row
+                .last_seen_at
+                .is_some_and(|last_seen| unix_now() - last_seen > DEVICE_STALE_AFTER_SECONDS);
+        Ok(Self {
+            id: row.id,
+            tenant_id: row.tenant_id,
+            display_name: row.display_name,
+            operating_system: row.operating_system,
+            agent_version: row.agent_version,
+            capabilities: serde_json::from_value(row.capabilities_json)
+                .map_err(|e| PairingError::Store(e.to_string()))?,
+            state: row.state,
+            paired_by: row.paired_by,
+            created_at: row.created_at,
+            updated_at: row.updated_at,
+            last_seen_at: row.last_seen_at,
+            stale,
         })
     }
 }
@@ -618,6 +1100,95 @@ impl PlatformDevicePairingStore {
             Self::Postgres(store) => store.claim(session_id, claim_secret).await,
         }
     }
+
+    pub async fn list_devices(
+        &self,
+        tenant_id: &str,
+        state: Option<&str>,
+        limit: u32,
+        offset: u32,
+    ) -> Result<DeviceList, PairingError> {
+        match self {
+            Self::Memory(store) => Ok(store.list_devices(tenant_id, state, limit, offset).await),
+            Self::Postgres(store) => store.list_devices(tenant_id, state, limit, offset).await,
+        }
+    }
+
+    pub async fn get_device(
+        &self,
+        tenant_id: &str,
+        device_id: &str,
+    ) -> Result<Option<PairedDevice>, PairingError> {
+        match self {
+            Self::Memory(store) => Ok(store.get_device(tenant_id, device_id).await),
+            Self::Postgres(store) => store.get_device(tenant_id, device_id).await,
+        }
+    }
+
+    pub async fn rename_device(
+        &self,
+        tenant_id: &str,
+        device_id: &str,
+        display_name: &str,
+    ) -> Result<PairedDevice, PairingError> {
+        match self {
+            Self::Memory(store) => {
+                store
+                    .rename_device(tenant_id, device_id, display_name)
+                    .await
+            }
+            Self::Postgres(store) => {
+                store
+                    .rename_device(tenant_id, device_id, display_name)
+                    .await
+            }
+        }
+    }
+
+    pub async fn set_device_state(
+        &self,
+        tenant_id: &str,
+        device_id: &str,
+        state: &str,
+    ) -> Result<PairedDevice, PairingError> {
+        match self {
+            Self::Memory(store) => store.set_device_state(tenant_id, device_id, state).await,
+            Self::Postgres(store) => store.set_device_state(tenant_id, device_id, state).await,
+        }
+    }
+
+    pub async fn start_rotation(
+        &self,
+        tenant_id: &str,
+        device_id: &str,
+    ) -> Result<CredentialRotationStarted, PairingError> {
+        match self {
+            Self::Memory(store) => store.start_rotation(tenant_id, device_id).await,
+            Self::Postgres(store) => store.start_rotation(tenant_id, device_id).await,
+        }
+    }
+
+    pub async fn claim_rotation(
+        &self,
+        device_id: &str,
+        current_credential: &str,
+    ) -> Result<DeviceCredential, PairingError> {
+        match self {
+            Self::Memory(store) => store.claim_rotation(device_id, current_credential).await,
+            Self::Postgres(store) => store.claim_rotation(device_id, current_credential).await,
+        }
+    }
+
+    pub async fn authenticate_device(
+        &self,
+        device_id: &str,
+        credential: &str,
+    ) -> Result<PairedDevice, PairingError> {
+        match self {
+            Self::Memory(store) => store.authenticate_device(device_id, credential).await,
+            Self::Postgres(store) => store.authenticate_device(device_id, credential).await,
+        }
+    }
 }
 
 #[cfg(test)]
@@ -636,6 +1207,22 @@ mod tests {
             },
             device_public_key: "A".repeat(64),
         }
+    }
+
+    async fn pair_device(
+        store: &PlatformDevicePairingStore,
+        device_id: &str,
+        tenant_id: &str,
+    ) -> DeviceCredential {
+        let session = store.create_session(request(device_id)).await.unwrap();
+        store
+            .approve(&session.pairing_code, tenant_id, "admin-1")
+            .await
+            .unwrap();
+        store
+            .claim(&session.session_id, &session.claim_secret)
+            .await
+            .unwrap()
     }
 
     #[tokio::test]
@@ -732,6 +1319,122 @@ mod tests {
                 .claim(&session.session_id, &session.claim_secret)
                 .await,
             Err(PairingError::Expired)
+        ));
+    }
+
+    #[tokio::test]
+    async fn registry_is_tenant_scoped_filterable_and_paginated() {
+        let store = PlatformDevicePairingStore::default();
+        pair_device(&store, "device-a", "tenant-1").await;
+        pair_device(&store, "device-b", "tenant-1").await;
+        pair_device(&store, "device-c", "tenant-2").await;
+        store
+            .set_device_state("tenant-1", "device-b", "suspended")
+            .await
+            .unwrap();
+
+        let first = store.list_devices("tenant-1", None, 1, 0).await.unwrap();
+        assert_eq!(first.items.len(), 1);
+        assert_eq!(first.next_offset, Some(1));
+        let second = store
+            .list_devices("tenant-1", None, 1, first.next_offset.unwrap())
+            .await
+            .unwrap();
+        assert_eq!(second.items.len(), 1);
+        assert_eq!(second.next_offset, None);
+        assert!(first
+            .items
+            .iter()
+            .chain(second.items.iter())
+            .all(|device| device.tenant_id == "tenant-1"));
+        let suspended = store
+            .list_devices("tenant-1", Some("suspended"), 10, 0)
+            .await
+            .unwrap();
+        assert_eq!(suspended.items.len(), 1);
+        assert_eq!(suspended.items[0].id, "device-b");
+        assert!(store
+            .get_device("tenant-2", "device-a")
+            .await
+            .unwrap()
+            .is_none());
+    }
+
+    #[tokio::test]
+    async fn rotation_invalidates_old_credential_and_is_single_use() {
+        let store = PlatformDevicePairingStore::default();
+        let original = pair_device(&store, "device-rotation", "tenant-1").await;
+        store
+            .start_rotation("tenant-1", "device-rotation")
+            .await
+            .unwrap();
+        let rotated = store
+            .claim_rotation("device-rotation", &original.credential)
+            .await
+            .unwrap();
+        assert_ne!(rotated.credential_id, original.credential_id);
+        assert!(matches!(
+            store
+                .authenticate_device("device-rotation", &original.credential)
+                .await,
+            Err(PairingError::InvalidClaim)
+        ));
+        assert!(store
+            .authenticate_device("device-rotation", &rotated.credential)
+            .await
+            .is_ok());
+        assert!(matches!(
+            store
+                .claim_rotation("device-rotation", &rotated.credential)
+                .await,
+            Err(PairingError::InvalidState)
+        ));
+    }
+
+    #[tokio::test]
+    async fn concurrent_rotation_claim_has_one_winner() {
+        let store = Arc::new(PlatformDevicePairingStore::default());
+        let original = pair_device(&store, "device-concurrent-rotation", "tenant-1").await;
+        store
+            .start_rotation("tenant-1", "device-concurrent-rotation")
+            .await
+            .unwrap();
+        let first = Arc::clone(&store);
+        let second = Arc::clone(&store);
+        let first_credential = original.credential.clone();
+        let second_credential = original.credential;
+        let (left, right) = tokio::join!(
+            first.claim_rotation("device-concurrent-rotation", &first_credential),
+            second.claim_rotation("device-concurrent-rotation", &second_credential)
+        );
+        assert_eq!(usize::from(left.is_ok()) + usize::from(right.is_ok()), 1);
+    }
+
+    #[tokio::test]
+    async fn suspended_and_revoked_devices_cannot_authenticate() {
+        let store = PlatformDevicePairingStore::default();
+        let suspended = pair_device(&store, "device-suspended", "tenant-1").await;
+        store
+            .set_device_state("tenant-1", "device-suspended", "suspended")
+            .await
+            .unwrap();
+        assert!(matches!(
+            store
+                .authenticate_device("device-suspended", &suspended.credential)
+                .await,
+            Err(PairingError::InvalidState)
+        ));
+
+        let revoked = pair_device(&store, "device-revoked", "tenant-1").await;
+        store
+            .set_device_state("tenant-1", "device-revoked", "revoked")
+            .await
+            .unwrap();
+        assert!(matches!(
+            store
+                .authenticate_device("device-revoked", &revoked.credential)
+                .await,
+            Err(PairingError::InvalidState)
         ));
     }
 }

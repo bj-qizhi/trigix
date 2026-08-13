@@ -44,6 +44,11 @@ pub mod action {
     pub const DEVICE_PAIRED: &str = "device.paired";
     pub const DEVICE_PAIRING_REJECTED: &str = "device.pairing_rejected";
     pub const DEVICE_CREDENTIAL_CLAIMED: &str = "device.credential_claimed";
+    pub const DEVICE_UPDATED: &str = "device.updated";
+    pub const DEVICE_SUSPENDED: &str = "device.suspended";
+    pub const DEVICE_REVOKED: &str = "device.revoked";
+    pub const DEVICE_CREDENTIAL_ROTATION_STARTED: &str = "device.credential_rotation_started";
+    pub const DEVICE_CREDENTIAL_ROTATED: &str = "device.credential_rotated";
 }
 
 fn unix_now() -> u64 {
