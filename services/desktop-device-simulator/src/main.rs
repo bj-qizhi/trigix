@@ -1,6 +1,7 @@
 use desktop_agent_core::{
     connection::{DeviceEndpoint, ReconnectBackoff},
-    ApprovalGrant, CommandProcessor, ExecutionPolicy, InMemoryAuditSink, SystemInformationExecutor,
+    ApprovalGrant, CommandProcessor, ExecutionPolicy, FileCommandStateStore, InMemoryAuditSink,
+    RecoveryConfig, SystemInformationExecutor,
 };
 use desktop_protocol::{
     DesktopAction, DesktopCommand, DesktopCommandAcknowledgement, DeviceCapability,
@@ -8,6 +9,9 @@ use desktop_protocol::{
     PairingRequest,
 };
 use std::time::{SystemTime, UNIX_EPOCH};
+
+type ConnectedProcessor =
+    CommandProcessor<SystemInformationExecutor, InMemoryAuditSink, FileCommandStateStore>;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -86,11 +90,33 @@ async fn run_connected(
     }
     let client = client_builder.build()?;
     let mut backoff = ReconnectBackoff::default();
-    let mut processor = CommandProcessor::new(
+    let recovery_path = std::env::var_os("DESKTOP_RECOVERY_STATE_PATH")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|| {
+            let safe_device_id = device_id
+                .chars()
+                .map(|character| {
+                    if character.is_ascii_alphanumeric() || matches!(character, '-' | '_') {
+                        character
+                    } else {
+                        '_'
+                    }
+                })
+                .collect::<String>();
+            std::env::temp_dir().join(format!("trigix-{safe_device_id}-command-state.json"))
+        });
+    let now = SystemTime::now().duration_since(UNIX_EPOCH)?.as_millis() as u64;
+    let mut processor = CommandProcessor::with_recovery_store(
         SystemInformationExecutor,
         InMemoryAuditSink::default(),
         ExecutionPolicy::default(),
-    );
+        FileCommandStateStore::new(recovery_path),
+        RecoveryConfig::default(),
+        now,
+    )?;
+    for event in processor.audit_sink().events() {
+        eprintln!("{}", serde_json::to_string(event)?);
+    }
 
     loop {
         match run_connection_once(
@@ -116,7 +142,7 @@ async fn run_connection_once(
     device_id: &str,
     credential: &str,
     backoff: &mut ReconnectBackoff,
-    processor: &mut CommandProcessor<SystemInformationExecutor, InMemoryAuditSink>,
+    processor: &mut ConnectedProcessor,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let mut response = client
         .get(format!("{base_url}/v1/desktop/device-connection"))
@@ -176,6 +202,7 @@ async fn run_connection_once(
                                     let result = processor.process(&command, now, approval.as_ref())?;
                                     let result_envelope = Envelope::new(format!("result-{}", command.command_id), now, result);
                                     post_device_message(client, base_url, device_id, credential, &connected.session_id, "device-command-results", &result_envelope).await?;
+                                    processor.confirm_result_delivery(&command.command_id)?;
                                 }
                                 "command_cancelled" => {}
                                 _ => {}
@@ -187,16 +214,18 @@ async fn run_connection_once(
             }
             _ = heartbeat.tick() => {
                 let now = SystemTime::now().duration_since(UNIX_EPOCH)?.as_millis() as u64;
+                let recovery_events = processor.take_recovery_health_events();
+                let recovery_status = recovery_events.first().map(|event| event.status.as_str());
                 let envelope = Envelope::new(
                     format!("heartbeat-{now}"),
                     now,
                     Heartbeat {
                         device_id: device_id.to_string(),
-                        state: DeviceState::Online,
+                        state: if recovery_status.is_some() { DeviceState::Degraded } else { DeviceState::Online },
                         active_execution_id: None,
                         agent_version: env!("CARGO_PKG_VERSION").to_string(),
                         capabilities: vec![DeviceCapability::SystemInformation],
-                        health_detail: None,
+                        health_detail: recovery_status.map(|status| format!("command recovery: {status}")),
                     },
                 );
                 client

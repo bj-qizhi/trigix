@@ -77,6 +77,10 @@ Desktop Command dispatch is a durable Platform-owned state machine. Before creat
 
 The active SSE connection carries typed command envelopes and cancellation events. A reconnect replays only unexpired queued or delivered work; the Device acknowledges the matching command, execution, and lease before executing. The Platform accepts a result only after acknowledgement and treats a byte-equivalent repeated result as idempotent, while rejecting conflicting completion attempts so duplicate delivery cannot repeat a completed side effect. PostgreSQL stores the command and redacted lifecycle Audit Log records transactionally for queued, acknowledged, completion, cancellation, and timeout transitions; result payloads remain in the command record rather than being copied into Audit Log detail.
 
+The Device persists a bounded, versioned command recovery journal before starting any side effect. The journal retains completed command identifiers for a configurable safety window and keeps an undelivered typed result until the Platform confirms receipt. A restart can retry only explicitly idempotent work while its original lease remains valid. Expired work becomes timed out, and an interrupted non-idempotent action becomes a terminal recovery failure because its side effect cannot be proven safe to repeat. Corrupt, oversized, duplicate, or unsupported state fails closed; reaching the configured capacity rejects new execution instead of dropping live replay protection.
+
+Recovery storage uses a synchronized temporary file and replace sequence, with a recoverable backup when a process stops during replacement. Unix files are created owner-readable and owner-writable; the Windows application must place the journal under its per-user application-data ACL. The journal excludes action inputs from in-flight records, while pending results remain only until delivery acknowledgement. Recovery emits redacted local Audit Log records and one-shot degraded health signals without placing command identifiers or action payloads in heartbeat detail.
+
 ## Protocol
 
 The first wire contract is `desktop.v1`, represented by `desktop-protocol` Rust types and Serde JSON. Every envelope contains:
@@ -144,7 +148,7 @@ Run it with:
 cargo run -p desktop-device-simulator
 ```
 
-The simulator is deterministic in shape and intentionally does not register a real Device or persist Credentials.
+The simulator is deterministic in shape and intentionally does not register a real Device or persist Credentials. Connected mode persists command recovery state at `DESKTOP_RECOVERY_STATE_PATH`, or at a stable per-Device temporary path when the variable is absent.
 
 ## Test Strategy
 
