@@ -16,7 +16,7 @@
 //! Multi-thread flavor is required: the Postgres stores use
 //! `tokio::task::block_in_place`, which panics on the current-thread runtime.
 
-use desktop_protocol::{DeviceCapability, DeviceDescriptor};
+use desktop_protocol::{DeviceCapability, DeviceDescriptor, DeviceState, Heartbeat};
 use trigix_platform::affiliate::{AffiliateStore, PlatformAffiliateStore, PostgresAffiliateStore};
 use trigix_platform::attribution::{
     AttributionRecord, AttributionStore, CurrencyRevenue, PlatformAttributionStore,
@@ -332,9 +332,75 @@ async fn desktop_pairing_is_atomic_tenant_scoped_and_single_use() {
         .is_ok());
 
     store
+        .connect_device(&device_id, &rotated.credential, "connection-1")
+        .await
+        .expect("connect device");
+    store
+        .connect_device(&device_id, &rotated.credential, "connection-2")
+        .await
+        .expect("newest connection wins");
+    let heartbeat = Heartbeat {
+        device_id: device_id.clone(),
+        state: DeviceState::Degraded,
+        active_execution_id: None,
+        agent_version: "1.2.0".to_string(),
+        capabilities: vec![DeviceCapability::SystemInformation],
+        health_detail: Some("automation adapter unavailable".to_string()),
+    };
+    assert!(store
+        .record_heartbeat(&device_id, &rotated.credential, "connection-1", &heartbeat,)
+        .await
+        .is_err());
+    let heartbeat_device = store
+        .record_heartbeat(&device_id, &rotated.credential, "connection-2", &heartbeat)
+        .await
+        .expect("record heartbeat from owner");
+    assert_eq!(heartbeat_device.state, "degraded");
+    assert_eq!(heartbeat_device.agent_version, "1.2.0");
+    assert_eq!(
+        heartbeat_device.health_detail.as_deref(),
+        Some("automation adapter unavailable")
+    );
+    sqlx::query(
+        "UPDATE af_desktop_devices SET last_seen_at = now() - interval '5 minutes' WHERE id = $1",
+    )
+    .bind(&device_id)
+    .execute(&pool)
+    .await
+    .expect("age heartbeat");
+    let database_now: i64 = sqlx::query_scalar("SELECT EXTRACT(EPOCH FROM now())::BIGINT")
+        .fetch_one(&pool)
+        .await
+        .expect("load database time");
+    assert_eq!(
+        store
+            .expire_stale_devices(database_now)
+            .await
+            .expect("expire stale device"),
+        vec![device_id.clone()]
+    );
+    assert_eq!(
+        store
+            .get_device(&tenant_id, &device_id)
+            .await
+            .unwrap()
+            .unwrap()
+            .state,
+        "offline"
+    );
+    store
+        .connect_device(&device_id, &rotated.credential, "connection-before-suspend")
+        .await
+        .expect("reconnect before suspension");
+
+    store
         .set_device_state(&tenant_id, &device_id, "suspended")
         .await
         .expect("suspend device");
+    assert!(!store
+        .connection_is_current(&device_id, "connection-before-suspend")
+        .await
+        .expect("suspended connection lookup"));
     assert!(store
         .authenticate_device(&device_id, &rotated.credential)
         .await

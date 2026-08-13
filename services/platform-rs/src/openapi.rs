@@ -9,7 +9,7 @@ pub fn spec() -> Value {
       "openapi": "3.0.3",
       "info": {
         "title": "Trigix Platform API",
-        "description": "REST API for the Trigix low-code AI workflow platform. All endpoints (except /healthz, /metrics, /v1/auth/token, /v1/forms/*) require a Bearer JWT obtained from POST /v1/auth/token.",
+        "description": "REST API for the Trigix low-code AI workflow platform. Administrative endpoints use a Bearer JWT, Device connection endpoints use a Device Credential, and explicitly public system, authentication, and form endpoints declare no authentication requirement.",
         "version": env!("CARGO_PKG_VERSION"),
         "contact": { "name": "Trigix", "url": "https://github.com/trigix" }
       },
@@ -17,7 +17,8 @@ pub fn spec() -> Value {
       "security": [{ "bearerAuth": [] }],
       "components": {
         "securitySchemes": {
-          "bearerAuth": { "type": "http", "scheme": "bearer", "bearerFormat": "JWT" }
+          "bearerAuth": { "type": "http", "scheme": "bearer", "bearerFormat": "JWT" },
+          "deviceCredential": { "type": "apiKey", "in": "header", "name": "Authorization", "description": "Device Credential using the `Device <credential>` authorization scheme" }
         },
         "schemas": {
           "WorkflowRecord": {
@@ -142,7 +143,9 @@ pub fn spec() -> Value {
               "operating_system": { "type": "string" },
               "agent_version": { "type": "string" },
               "capabilities": { "type": "array", "items": { "type": "string" } },
-              "state": { "type": "string", "enum": ["paired", "online", "offline", "suspended", "revoked"] },
+              "state": { "type": "string", "enum": ["paired", "online", "offline", "busy", "awaiting_approval", "degraded", "suspended", "revoked"] },
+              "active_execution_id": { "type": "string", "nullable": true },
+              "health_detail": { "type": "string", "nullable": true },
               "paired_by": { "type": "string" },
               "created_at": { "type": "integer", "format": "int64" },
               "updated_at": { "type": "integer", "format": "int64" },
@@ -251,6 +254,29 @@ pub fn spec() -> Value {
             "security": [],
             "parameters": [{ "name": "device_id", "in": "path", "required": true, "schema": { "type": "string" } }],
             "responses": { "200": { "description": "Replacement Credential", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/DesktopDeviceCredential" } } } }, "404": { "description": "Invalid current Credential" }, "429": { "description": "Rate limited" } }
+          }
+        },
+        "/v1/desktop/device-connection": {
+          "get": {
+            "tags": ["Desktop Devices"],
+            "summary": "Open an authenticated outbound Device event stream",
+            "security": [{ "deviceCredential": [] }],
+            "parameters": [
+              { "name": "X-Device-Id", "in": "header", "required": true, "schema": { "type": "string" } }
+            ],
+            "responses": { "200": { "description": "Server-sent connection events" }, "404": { "description": "Invalid Device Credential" }, "426": { "description": "TLS required" } }
+          }
+        },
+        "/v1/desktop/device-heartbeats": {
+          "post": {
+            "tags": ["Desktop Devices"],
+            "summary": "Report authenticated Device health and capability state",
+            "security": [{ "deviceCredential": [] }],
+            "parameters": [
+              { "name": "X-Device-Id", "in": "header", "required": true, "schema": { "type": "string" } },
+              { "name": "X-Device-Session-Id", "in": "header", "required": true, "schema": { "type": "string", "format": "uuid" } }
+            ],
+            "responses": { "200": { "description": "Heartbeat accepted with authoritative server time" }, "400": { "description": "Invalid protocol message" }, "404": { "description": "Invalid or replaced session" }, "426": { "description": "TLS required" } }
           }
         },
         "/healthz": {

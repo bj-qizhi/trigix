@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use desktop_protocol::DeviceDescriptor;
+use desktop_protocol::{DeviceDescriptor, DeviceState, Heartbeat};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use sqlx::{PgPool, Postgres, Transaction};
@@ -75,6 +75,8 @@ pub struct PairedDevice {
     pub agent_version: String,
     pub capabilities: Vec<desktop_protocol::DeviceCapability>,
     pub state: String,
+    pub active_execution_id: Option<String>,
+    pub health_detail: Option<String>,
     pub paired_by: String,
     pub created_at: i64,
     pub updated_at: i64,
@@ -175,6 +177,8 @@ struct StoredDevice {
     credential_id: String,
     credential_hash: String,
     pending_rotation: Option<(String, String)>,
+    connection_session_id: Option<String>,
+    connected_at: Option<i64>,
 }
 
 impl MemoryDevicePairingStore {
@@ -251,6 +255,8 @@ impl MemoryDevicePairingStore {
             agent_version: session.device.agent_version.clone(),
             capabilities: session.device.capabilities.clone(),
             state: "paired".to_string(),
+            active_execution_id: None,
+            health_detail: None,
             paired_by: actor_id.to_string(),
             created_at: now,
             updated_at: now,
@@ -267,6 +273,8 @@ impl MemoryDevicePairingStore {
                 credential_id: session.credential_id.clone(),
                 credential_hash: hash_secret(credential),
                 pending_rotation: None,
+                connection_session_id: None,
+                connected_at: None,
             },
         );
         session.tenant_id = Some(tenant_id.to_string());
@@ -397,7 +405,9 @@ impl MemoryDevicePairingStore {
             return Err(PairingError::InvalidState);
         }
         stored.view.state = state.to_string();
+        stored.view.active_execution_id = None;
         stored.view.updated_at = unix_now();
+        stored.connection_session_id = None;
         if state == "revoked" {
             stored.credential_hash.clear();
             stored.pending_rotation = None;
@@ -469,6 +479,123 @@ impl MemoryDevicePairingStore {
             return Err(PairingError::InvalidClaim);
         }
         Ok(stored.view.clone())
+    }
+
+    async fn connect_device(
+        &self,
+        device_id: &str,
+        credential: &str,
+        session_id: &str,
+    ) -> Result<PairedDevice, PairingError> {
+        let mut devices = self.devices.lock().expect("paired devices lock");
+        let stored = devices
+            .get_mut(device_id)
+            .ok_or(PairingError::InvalidClaim)?;
+        if matches!(stored.view.state.as_str(), "suspended" | "revoked") {
+            return Err(PairingError::InvalidState);
+        }
+        if stored.credential_hash != hash_secret(credential) {
+            return Err(PairingError::InvalidClaim);
+        }
+        let now = unix_now();
+        stored.connection_session_id = Some(session_id.to_string());
+        stored.connected_at = Some(now);
+        stored.view.state = "online".to_string();
+        stored.view.active_execution_id = None;
+        stored.view.health_detail = None;
+        stored.view.last_seen_at = Some(now);
+        stored.view.updated_at = now;
+        stored.view.stale = false;
+        Ok(stored.view.clone())
+    }
+
+    async fn record_heartbeat(
+        &self,
+        device_id: &str,
+        credential: &str,
+        session_id: &str,
+        heartbeat: &Heartbeat,
+    ) -> Result<PairedDevice, PairingError> {
+        let mut devices = self.devices.lock().expect("paired devices lock");
+        let stored = devices
+            .get_mut(device_id)
+            .ok_or(PairingError::InvalidClaim)?;
+        if matches!(stored.view.state.as_str(), "suspended" | "revoked") {
+            return Err(PairingError::InvalidState);
+        }
+        if stored.credential_hash != hash_secret(credential)
+            || stored.connection_session_id.as_deref() != Some(session_id)
+        {
+            return Err(PairingError::InvalidClaim);
+        }
+        let now = unix_now();
+        stored.view.state = device_state_name(heartbeat.state).to_string();
+        stored.view.agent_version = heartbeat.agent_version.clone();
+        stored.view.capabilities = heartbeat.capabilities.clone();
+        stored.view.active_execution_id = heartbeat.active_execution_id.clone();
+        stored.view.health_detail = heartbeat.health_detail.clone();
+        stored.view.last_seen_at = Some(now);
+        stored.view.updated_at = now;
+        stored.view.stale = false;
+        Ok(stored.view.clone())
+    }
+
+    async fn disconnect_device(&self, device_id: &str, session_id: &str) -> bool {
+        let mut devices = self.devices.lock().expect("paired devices lock");
+        let Some(stored) = devices.get_mut(device_id) else {
+            return false;
+        };
+        if stored.connection_session_id.as_deref() != Some(session_id) {
+            return false;
+        }
+        stored.connection_session_id = None;
+        if !matches!(stored.view.state.as_str(), "suspended" | "revoked") {
+            stored.view.state = "offline".to_string();
+            stored.view.active_execution_id = None;
+            stored.view.updated_at = unix_now();
+        }
+        true
+    }
+
+    async fn expire_stale_devices(&self, cutoff: i64) -> Vec<String> {
+        let mut devices = self.devices.lock().expect("paired devices lock");
+        let mut expired = Vec::new();
+        for stored in devices.values_mut() {
+            if stored.view.last_seen_at.is_some_and(|seen| seen < cutoff)
+                && matches!(
+                    stored.view.state.as_str(),
+                    "online" | "busy" | "awaiting_approval" | "degraded"
+                )
+            {
+                stored.view.state = "offline".to_string();
+                stored.view.active_execution_id = None;
+                stored.view.updated_at = unix_now();
+                stored.view.stale = true;
+                stored.connection_session_id = None;
+                expired.push(stored.view.id.clone());
+            }
+        }
+        expired
+    }
+
+    async fn connection_is_current(&self, device_id: &str, session_id: &str) -> bool {
+        self.devices
+            .lock()
+            .expect("paired devices lock")
+            .get(device_id)
+            .is_some_and(|stored| {
+                stored.connection_session_id.as_deref() == Some(session_id)
+                    && !matches!(stored.view.state.as_str(), "suspended" | "revoked")
+            })
+    }
+}
+
+fn device_state_name(state: DeviceState) -> &'static str {
+    match state {
+        DeviceState::Online => "online",
+        DeviceState::Busy => "busy",
+        DeviceState::AwaitingApproval => "awaiting_approval",
+        DeviceState::Degraded => "degraded",
     }
 }
 
@@ -633,6 +760,8 @@ impl PostgresDevicePairingStore {
             agent_version: session.device.agent_version,
             capabilities: session.device.capabilities,
             state: "paired".to_string(),
+            active_execution_id: None,
+            health_detail: None,
             paired_by: actor_id.to_string(),
             created_at: now,
             updated_at: now,
@@ -734,7 +863,7 @@ impl PostgresDevicePairingStore {
     ) -> Result<DeviceList, PairingError> {
         let rows: Vec<DeviceRow> = sqlx::query_as(
             r#"SELECT id, tenant_id, display_name, operating_system, agent_version,
-                      capabilities_json, state, paired_by,
+                      capabilities_json, state, active_execution_id, health_detail, paired_by,
                       EXTRACT(EPOCH FROM created_at)::BIGINT AS created_at,
                       EXTRACT(EPOCH FROM updated_at)::BIGINT AS updated_at,
                       EXTRACT(EPOCH FROM last_seen_at)::BIGINT AS last_seen_at
@@ -768,7 +897,7 @@ impl PostgresDevicePairingStore {
     ) -> Result<Option<PairedDevice>, PairingError> {
         let row: Option<DeviceRow> = sqlx::query_as(
             r#"SELECT id, tenant_id, display_name, operating_system, agent_version,
-                      capabilities_json, state, paired_by,
+                      capabilities_json, state, active_execution_id, health_detail, paired_by,
                       EXTRACT(EPOCH FROM created_at)::BIGINT AS created_at,
                       EXTRACT(EPOCH FROM updated_at)::BIGINT AS updated_at,
                       EXTRACT(EPOCH FROM last_seen_at)::BIGINT AS last_seen_at
@@ -821,6 +950,7 @@ impl PostgresDevicePairingStore {
                 r#"UPDATE af_desktop_devices
                    SET state = 'revoked', credential_hash = '',
                        pending_rotation_id = NULL, pending_credential_ciphertext = NULL,
+                       connection_session_id = NULL, active_execution_id = NULL,
                        updated_at = now()
                    WHERE tenant_id = $1 AND id = $2 AND state <> 'revoked'"#,
             )
@@ -830,7 +960,9 @@ impl PostgresDevicePairingStore {
             .await
         } else {
             sqlx::query(
-                r#"UPDATE af_desktop_devices SET state = 'suspended', updated_at = now()
+                r#"UPDATE af_desktop_devices
+                   SET state = 'suspended', connection_session_id = NULL,
+                       active_execution_id = NULL, updated_at = now()
                    WHERE tenant_id = $1 AND id = $2 AND state <> 'revoked'"#,
             )
             .bind(tenant_id)
@@ -953,7 +1085,7 @@ impl PostgresDevicePairingStore {
     ) -> Result<PairedDevice, PairingError> {
         let row: Option<DeviceRow> = sqlx::query_as(
             r#"SELECT id, tenant_id, display_name, operating_system, agent_version,
-                      capabilities_json, state, paired_by,
+                      capabilities_json, state, active_execution_id, health_detail, paired_by,
                       EXTRACT(EPOCH FROM created_at)::BIGINT AS created_at,
                       EXTRACT(EPOCH FROM updated_at)::BIGINT AS updated_at,
                       EXTRACT(EPOCH FROM last_seen_at)::BIGINT AS last_seen_at
@@ -970,6 +1102,129 @@ impl PostgresDevicePairingStore {
             .transpose()?
             .ok_or(PairingError::InvalidClaim)
     }
+
+    async fn connect_device(
+        &self,
+        device_id: &str,
+        credential: &str,
+        session_id: &str,
+    ) -> Result<PairedDevice, PairingError> {
+        let row: Option<DeviceRow> = sqlx::query_as(
+            r#"UPDATE af_desktop_devices
+               SET connection_session_id = $3, connected_at = now(), last_seen_at = now(),
+                   state = 'online', active_execution_id = NULL, health_detail = NULL,
+                   updated_at = now()
+               WHERE id = $1 AND credential_hash = $2
+                 AND state NOT IN ('suspended', 'revoked')
+               RETURNING id, tenant_id, display_name, operating_system, agent_version,
+                         capabilities_json, state, active_execution_id, health_detail, paired_by,
+                         EXTRACT(EPOCH FROM created_at)::BIGINT AS created_at,
+                         EXTRACT(EPOCH FROM updated_at)::BIGINT AS updated_at,
+                         EXTRACT(EPOCH FROM last_seen_at)::BIGINT AS last_seen_at"#,
+        )
+        .bind(device_id)
+        .bind(hash_secret(credential))
+        .bind(session_id)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(|e| PairingError::Store(e.to_string()))?;
+        row.map(TryInto::try_into)
+            .transpose()?
+            .ok_or(PairingError::InvalidClaim)
+    }
+
+    async fn record_heartbeat(
+        &self,
+        device_id: &str,
+        credential: &str,
+        session_id: &str,
+        heartbeat: &Heartbeat,
+    ) -> Result<PairedDevice, PairingError> {
+        let capabilities = serde_json::to_value(&heartbeat.capabilities)
+            .map_err(|e| PairingError::Store(e.to_string()))?;
+        let row: Option<DeviceRow> = sqlx::query_as(
+            r#"UPDATE af_desktop_devices
+               SET state = $4, agent_version = $5, capabilities_json = $6,
+                   health_detail = $7, active_execution_id = $8,
+                   last_seen_at = now(), updated_at = now()
+               WHERE id = $1 AND credential_hash = $2 AND connection_session_id = $3
+                 AND state NOT IN ('suspended', 'revoked')
+               RETURNING id, tenant_id, display_name, operating_system, agent_version,
+                         capabilities_json, state, active_execution_id, health_detail, paired_by,
+                         EXTRACT(EPOCH FROM created_at)::BIGINT AS created_at,
+                         EXTRACT(EPOCH FROM updated_at)::BIGINT AS updated_at,
+                         EXTRACT(EPOCH FROM last_seen_at)::BIGINT AS last_seen_at"#,
+        )
+        .bind(device_id)
+        .bind(hash_secret(credential))
+        .bind(session_id)
+        .bind(device_state_name(heartbeat.state))
+        .bind(&heartbeat.agent_version)
+        .bind(capabilities)
+        .bind(heartbeat.health_detail.as_deref())
+        .bind(heartbeat.active_execution_id.as_deref())
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(|e| PairingError::Store(e.to_string()))?;
+        row.map(TryInto::try_into)
+            .transpose()?
+            .ok_or(PairingError::InvalidClaim)
+    }
+
+    async fn disconnect_device(
+        &self,
+        device_id: &str,
+        session_id: &str,
+    ) -> Result<bool, PairingError> {
+        let result = sqlx::query(
+            r#"UPDATE af_desktop_devices
+               SET state = 'offline', connection_session_id = NULL,
+                   active_execution_id = NULL, updated_at = now()
+               WHERE id = $1 AND connection_session_id = $2
+                 AND state NOT IN ('suspended', 'revoked')"#,
+        )
+        .bind(device_id)
+        .bind(session_id)
+        .execute(&self.pool)
+        .await
+        .map_err(|e| PairingError::Store(e.to_string()))?;
+        Ok(result.rows_affected() == 1)
+    }
+
+    async fn expire_stale_devices(&self, cutoff: i64) -> Result<Vec<String>, PairingError> {
+        let ids: Vec<String> = sqlx::query_scalar(
+            r#"UPDATE af_desktop_devices
+               SET state = 'offline', connection_session_id = NULL,
+                   active_execution_id = NULL, updated_at = now()
+               WHERE last_seen_at < to_timestamp($1)
+                 AND state IN ('online', 'busy', 'awaiting_approval', 'degraded')
+               RETURNING id"#,
+        )
+        .bind(cutoff)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|e| PairingError::Store(e.to_string()))?;
+        Ok(ids)
+    }
+
+    async fn connection_is_current(
+        &self,
+        device_id: &str,
+        session_id: &str,
+    ) -> Result<bool, PairingError> {
+        sqlx::query_scalar(
+            r#"SELECT EXISTS(
+                   SELECT 1 FROM af_desktop_devices
+                   WHERE id = $1 AND connection_session_id = $2
+                     AND state NOT IN ('suspended', 'revoked')
+               )"#,
+        )
+        .bind(device_id)
+        .bind(session_id)
+        .fetch_one(&self.pool)
+        .await
+        .map_err(|e| PairingError::Store(e.to_string()))
+    }
 }
 
 #[derive(sqlx::FromRow)]
@@ -981,6 +1236,8 @@ struct DeviceRow {
     agent_version: String,
     capabilities_json: serde_json::Value,
     state: String,
+    active_execution_id: Option<String>,
+    health_detail: Option<String>,
     paired_by: String,
     created_at: i64,
     updated_at: i64,
@@ -991,10 +1248,12 @@ impl TryFrom<DeviceRow> for PairedDevice {
     type Error = PairingError;
 
     fn try_from(row: DeviceRow) -> Result<Self, Self::Error> {
-        let stale = matches!(row.state.as_str(), "online" | "offline")
-            && row
-                .last_seen_at
-                .is_some_and(|last_seen| unix_now() - last_seen > DEVICE_STALE_AFTER_SECONDS);
+        let stale = matches!(
+            row.state.as_str(),
+            "online" | "offline" | "busy" | "awaiting_approval" | "degraded"
+        ) && row
+            .last_seen_at
+            .is_some_and(|last_seen| unix_now() - last_seen > DEVICE_STALE_AFTER_SECONDS);
         Ok(Self {
             id: row.id,
             tenant_id: row.tenant_id,
@@ -1004,6 +1263,8 @@ impl TryFrom<DeviceRow> for PairedDevice {
             capabilities: serde_json::from_value(row.capabilities_json)
                 .map_err(|e| PairingError::Store(e.to_string()))?,
             state: row.state,
+            active_execution_id: row.active_execution_id,
+            health_detail: row.health_detail,
             paired_by: row.paired_by,
             created_at: row.created_at,
             updated_at: row.updated_at,
@@ -1187,6 +1448,77 @@ impl PlatformDevicePairingStore {
         match self {
             Self::Memory(store) => store.authenticate_device(device_id, credential).await,
             Self::Postgres(store) => store.authenticate_device(device_id, credential).await,
+        }
+    }
+
+    pub async fn connect_device(
+        &self,
+        device_id: &str,
+        credential: &str,
+        session_id: &str,
+    ) -> Result<PairedDevice, PairingError> {
+        match self {
+            Self::Memory(store) => {
+                store
+                    .connect_device(device_id, credential, session_id)
+                    .await
+            }
+            Self::Postgres(store) => {
+                store
+                    .connect_device(device_id, credential, session_id)
+                    .await
+            }
+        }
+    }
+
+    pub async fn record_heartbeat(
+        &self,
+        device_id: &str,
+        credential: &str,
+        session_id: &str,
+        heartbeat: &Heartbeat,
+    ) -> Result<PairedDevice, PairingError> {
+        match self {
+            Self::Memory(store) => {
+                store
+                    .record_heartbeat(device_id, credential, session_id, heartbeat)
+                    .await
+            }
+            Self::Postgres(store) => {
+                store
+                    .record_heartbeat(device_id, credential, session_id, heartbeat)
+                    .await
+            }
+        }
+    }
+
+    pub async fn disconnect_device(
+        &self,
+        device_id: &str,
+        session_id: &str,
+    ) -> Result<bool, PairingError> {
+        match self {
+            Self::Memory(store) => Ok(store.disconnect_device(device_id, session_id).await),
+            Self::Postgres(store) => store.disconnect_device(device_id, session_id).await,
+        }
+    }
+
+    pub async fn expire_stale_devices(&self, now: i64) -> Result<Vec<String>, PairingError> {
+        let cutoff = now - DEVICE_STALE_AFTER_SECONDS;
+        match self {
+            Self::Memory(store) => Ok(store.expire_stale_devices(cutoff).await),
+            Self::Postgres(store) => store.expire_stale_devices(cutoff).await,
+        }
+    }
+
+    pub async fn connection_is_current(
+        &self,
+        device_id: &str,
+        session_id: &str,
+    ) -> Result<bool, PairingError> {
+        match self {
+            Self::Memory(store) => Ok(store.connection_is_current(device_id, session_id).await),
+            Self::Postgres(store) => store.connection_is_current(device_id, session_id).await,
         }
     }
 }
@@ -1436,5 +1768,121 @@ mod tests {
                 .await,
             Err(PairingError::InvalidState)
         ));
+    }
+
+    #[tokio::test]
+    async fn newest_connection_owns_heartbeats_and_stale_sessions_expire() {
+        let store = PlatformDevicePairingStore::default();
+        let credential = pair_device(&store, "device-heartbeat", "tenant-1").await;
+        store
+            .connect_device("device-heartbeat", &credential.credential, "session-1")
+            .await
+            .unwrap();
+        store
+            .connect_device("device-heartbeat", &credential.credential, "session-2")
+            .await
+            .unwrap();
+        let heartbeat = Heartbeat {
+            device_id: "device-heartbeat".to_string(),
+            state: DeviceState::Busy,
+            active_execution_id: Some("execution-1".to_string()),
+            agent_version: "1.1.0".to_string(),
+            capabilities: vec![DeviceCapability::SystemInformation],
+            health_detail: None,
+        };
+        assert!(matches!(
+            store
+                .record_heartbeat(
+                    "device-heartbeat",
+                    &credential.credential,
+                    "session-1",
+                    &heartbeat,
+                )
+                .await,
+            Err(PairingError::InvalidClaim)
+        ));
+        let device = store
+            .record_heartbeat(
+                "device-heartbeat",
+                &credential.credential,
+                "session-2",
+                &heartbeat,
+            )
+            .await
+            .unwrap();
+        assert_eq!(device.state, "busy");
+        assert_eq!(device.agent_version, "1.1.0");
+
+        let PlatformDevicePairingStore::Memory(memory) = &store else {
+            unreachable!();
+        };
+        memory
+            .devices
+            .lock()
+            .unwrap()
+            .get_mut("device-heartbeat")
+            .unwrap()
+            .view
+            .last_seen_at = Some(unix_now() - DEVICE_STALE_AFTER_SECONDS - 1);
+        let expired = store.expire_stale_devices(unix_now()).await.unwrap();
+        assert_eq!(expired, vec!["device-heartbeat"]);
+        let device = store
+            .get_device("tenant-1", "device-heartbeat")
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(device.state, "offline");
+        assert!(device.stale);
+    }
+
+    #[tokio::test]
+    async fn long_session_keeps_one_owner_across_repeated_heartbeats() {
+        let store = PlatformDevicePairingStore::default();
+        let credential = pair_device(&store, "device-long-session", "tenant-1").await;
+        store
+            .connect_device(
+                "device-long-session",
+                &credential.credential,
+                "long-session",
+            )
+            .await
+            .unwrap();
+        for sequence in 0..1_000 {
+            let heartbeat = Heartbeat {
+                device_id: "device-long-session".to_string(),
+                state: if sequence % 2 == 0 {
+                    DeviceState::Online
+                } else {
+                    DeviceState::Busy
+                },
+                active_execution_id: (sequence % 2 == 1).then(|| "execution-1".to_string()),
+                agent_version: "1.1.0".to_string(),
+                capabilities: vec![DeviceCapability::SystemInformation],
+                health_detail: None,
+            };
+            store
+                .record_heartbeat(
+                    "device-long-session",
+                    &credential.credential,
+                    "long-session",
+                    &heartbeat,
+                )
+                .await
+                .unwrap();
+        }
+        assert!(store
+            .connection_is_current("device-long-session", "long-session")
+            .await
+            .unwrap());
+        assert_eq!(
+            store
+                .get_device("tenant-1", "device-long-session")
+                .await
+                .unwrap()
+                .unwrap()
+                .active_execution_id
+                .as_deref(),
+            Some("execution-1")
+        );
     }
 }

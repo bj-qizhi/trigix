@@ -6,6 +6,8 @@ use serde_json::{json, Value};
 use std::collections::HashSet;
 use std::fmt;
 
+pub mod connection;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CoreError {
     Protocol(ProtocolError),

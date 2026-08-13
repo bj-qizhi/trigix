@@ -67,6 +67,12 @@ The Device registry is the administrative source of truth for identity, operatin
 
 Suspension and revocation fail Device authentication before heartbeat or command work can be accepted. Revocation also clears the active Credential hash and any pending rotation, and is irreversible through the registry API. Credential rotation is a two-party exchange: an administrator creates a pending rotation without receiving plaintext, then the authenticated Device claims the replacement exactly once using its current Credential. The replacement is encrypted while pending, claimed under a row lock, and atomically replaces the old hash so concurrent claims have one winner. Rename, suspend, revoke, and rotation events are recorded without Credential material.
 
+The Device maintains an outbound HTTPS server-sent event stream and posts typed `desktop.v1` Heartbeats over the same TLS and proxy-compatible HTTP path. The Platform authenticates the Device Credential, resolves its Tenant from the registry, assigns an opaque connection session, and uses server receipt time rather than trusting the Device clock. Heartbeats report online, busy, awaiting Approval, or degraded state together with Agent version and capabilities. A background guard changes missed-heartbeat sessions to offline after 90 seconds.
+
+TLS terminates at the trusted ingress or reverse proxy, which must overwrite and forward the original scheme. The Platform service port is not exposed directly to untrusted networks; Device endpoints reject requests that do not carry trusted HTTPS transport metadata.
+
+Connection ownership is stored with the Device record so it remains authoritative across Platform replicas. A newer connection atomically replaces the previous session; heartbeats from the former session fail, and each stream periodically checks persisted ownership so replacement, suspension, or revocation disconnects it even when the administrative request reached another replica. The Device reconnect loop uses bounded exponential backoff with 80–120% jitter, resets after a successful long-lived connection, requires an HTTPS Platform URL, and supports an explicit HTTP CONNECT proxy.
+
 ## Protocol
 
 The first wire contract is `desktop.v1`, represented by `desktop-protocol` Rust types and Serde JSON. Every envelope contains:

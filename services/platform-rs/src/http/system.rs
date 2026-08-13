@@ -459,6 +459,15 @@ mod tests {
         let spec: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
         assert_eq!(spec["openapi"], "3.0.3");
         assert!(spec["paths"].as_object().unwrap().len() > 20);
+        assert_eq!(
+            spec["paths"]["/v1/desktop/device-connection"]["get"]["security"][0]
+                ["deviceCredential"],
+            serde_json::json!([])
+        );
+        assert_eq!(
+            spec["components"]["securitySchemes"]["deviceCredential"]["name"],
+            "Authorization"
+        );
     }
 
     #[tokio::test]
