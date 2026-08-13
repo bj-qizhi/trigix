@@ -157,6 +157,10 @@ async fn main() {
                 );
             let device_pairing_store =
                 trigix_platform::device_pairing::PlatformDevicePairingStore::postgres(pool.clone());
+            let desktop_command_store =
+                trigix_platform::desktop_commands::PlatformDesktopCommandStore::postgres(
+                    pool.clone(),
+                );
             let email_client = trigix_platform::email::EmailClient::from_env();
 
             // Background data-retention sweeper (opt-in via DATA_RETENTION_DAYS).
@@ -193,6 +197,7 @@ async fn main() {
                 sso_store,
                 custom_node_store,
                 device_pairing_store,
+                desktop_command_store,
             )
         }
         Err(_) => {

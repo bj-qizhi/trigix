@@ -163,6 +163,18 @@ pub fn spec() -> Value {
               "credential": { "type": "string", "writeOnly": true }
             }
           },
+          "DesktopCommandRecord": {
+            "type": "object",
+            "required": ["command", "device_id", "workflow_id", "status", "created_at_unix_ms"],
+            "properties": {
+              "command": { "type": "object", "description": "Typed desktop.v1 command with execution identity and expiring lease" },
+              "device_id": { "type": "string" },
+              "workflow_id": { "type": "string" },
+              "status": { "type": "string", "enum": ["queued", "delivered", "acknowledged", "succeeded", "failed", "rejected", "cancelled", "timed_out"] },
+              "result": { "type": "object", "nullable": true },
+              "created_at_unix_ms": { "type": "integer", "format": "int64" }
+            }
+          },
           "ApiError": {
             "type": "object",
             "properties": {
@@ -277,6 +289,43 @@ pub fn spec() -> Value {
               { "name": "X-Device-Session-Id", "in": "header", "required": true, "schema": { "type": "string", "format": "uuid" } }
             ],
             "responses": { "200": { "description": "Heartbeat accepted with authoritative server time" }, "400": { "description": "Invalid protocol message" }, "404": { "description": "Invalid or replaced session" }, "426": { "description": "TLS required" } }
+          }
+        },
+        "/v1/desktop/commands": {
+          "post": {
+            "tags": ["Desktop Devices"],
+            "summary": "Authorize and dispatch a leased Desktop Command",
+            "responses": { "201": { "description": "Durable queued command", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/DesktopCommandRecord" } } } }, "403": { "description": "Tenant, Project, Execution, or role authorization failed" }, "409": { "description": "Device state, capability, or version is ineligible" } }
+          }
+        },
+        "/v1/desktop/commands/{command_id}": {
+          "get": {
+            "tags": ["Desktop Devices"],
+            "summary": "Get a tenant-scoped Desktop Command",
+            "parameters": [{ "name": "command_id", "in": "path", "required": true, "schema": { "type": "string" } }],
+            "responses": { "200": { "description": "Desktop Command", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/DesktopCommandRecord" } } } } }
+          },
+          "delete": {
+            "tags": ["Desktop Devices"],
+            "summary": "Cancel a non-terminal Desktop Command",
+            "parameters": [{ "name": "command_id", "in": "path", "required": true, "schema": { "type": "string" } }],
+            "responses": { "200": { "description": "Cancelled Desktop Command" }, "409": { "description": "Command is already terminal" } }
+          }
+        },
+        "/v1/desktop/device-command-acknowledgements": {
+          "post": {
+            "tags": ["Desktop Devices"],
+            "summary": "Acknowledge a command and matching lease",
+            "security": [{ "deviceCredential": [] }],
+            "responses": { "200": { "description": "Acknowledged command" }, "409": { "description": "Lease or command state conflict" }, "426": { "description": "TLS required" } }
+          }
+        },
+        "/v1/desktop/device-command-results": {
+          "post": {
+            "tags": ["Desktop Devices"],
+            "summary": "Persist a typed terminal command result idempotently",
+            "security": [{ "deviceCredential": [] }],
+            "responses": { "200": { "description": "Terminal Desktop Command" }, "409": { "description": "Conflicting or unacknowledged result" }, "426": { "description": "TLS required" } }
           }
         },
         "/healthz": {

@@ -16,13 +16,18 @@
 //! Multi-thread flavor is required: the Postgres stores use
 //! `tokio::task::block_in_place`, which panics on the current-thread runtime.
 
-use desktop_protocol::{DeviceCapability, DeviceDescriptor, DeviceState, Heartbeat};
+use desktop_protocol::{
+    CommandOutcome, DesktopAction, DesktopCommand, DesktopCommandAcknowledgement,
+    DesktopCommandResult, DeviceCapability, DeviceDescriptor, DeviceState, ExecutionLease,
+    Heartbeat,
+};
 use trigix_platform::affiliate::{AffiliateStore, PlatformAffiliateStore, PostgresAffiliateStore};
 use trigix_platform::attribution::{
     AttributionRecord, AttributionStore, CurrencyRevenue, PlatformAttributionStore,
     PostgresAttributionStore,
 };
 use trigix_platform::billing::{BillingStore, PlatformBillingStore, TenantQuota};
+use trigix_platform::desktop_commands::PlatformDesktopCommandStore;
 use trigix_platform::device_pairing::{CreatePairingSessionRequest, PlatformDevicePairingStore};
 use trigix_platform::execution::{ExecutionStore, PostgresExecutionStore, StartExecutionRequest};
 use trigix_platform::token_usage::{
@@ -387,6 +392,88 @@ async fn desktop_pairing_is_atomic_tenant_scoped_and_single_use() {
             .unwrap()
             .state,
         "offline"
+    );
+
+    let execution_id = uniq("desktop-execution");
+    sqlx::query("INSERT INTO af_executions (id, tenant_id, workflow_id, workflow_version_id, status, started_at) VALUES ($1,$2,'workflow-1','version-1','running',1)")
+        .bind(&execution_id)
+        .bind(&tenant_id)
+        .execute(&pool)
+        .await
+        .expect("insert command execution");
+    let command_store = PlatformDesktopCommandStore::postgres(pool.clone());
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_millis() as u64;
+    let command = DesktopCommand {
+        command_id: uniq("desktop-command"),
+        execution_id: execution_id.clone(),
+        tenant_id: tenant_id.clone(),
+        project_id: "project-1".to_string(),
+        requested_by: "admin-1".to_string(),
+        issued_at_unix_ms: now,
+        lease: ExecutionLease {
+            lease_id: uniq("desktop-lease"),
+            expires_at_unix_ms: now + 60_000,
+        },
+        approval: None,
+        action: DesktopAction::ReadSystemInformation,
+    };
+    command_store
+        .create(command.clone(), device_id.clone(), "workflow-1".to_string())
+        .await
+        .expect("persist command");
+    command_store
+        .mark_delivered(&command.command_id, now)
+        .await
+        .expect("deliver command");
+    command_store
+        .acknowledge(
+            &device_id,
+            &DesktopCommandAcknowledgement {
+                command_id: command.command_id.clone(),
+                execution_id: execution_id.clone(),
+                lease_id: command.lease.lease_id.clone(),
+                acknowledged_at_unix_ms: now,
+            },
+            now,
+        )
+        .await
+        .expect("acknowledge command");
+    let result = DesktopCommandResult {
+        command_id: command.command_id.clone(),
+        execution_id: execution_id.clone(),
+        outcome: CommandOutcome::Succeeded,
+        completed_at_unix_ms: now,
+        output: Some(serde_json::json!({"hostname": "desktop"})),
+        error_code: None,
+        error_message: None,
+    };
+    assert_eq!(
+        command_store
+            .complete(&device_id, result.clone())
+            .await
+            .expect("complete command")
+            .status,
+        "succeeded"
+    );
+    assert!(command_store.complete(&device_id, result).await.is_ok());
+    let audit_actions: Vec<String> = sqlx::query_scalar(
+        "SELECT action FROM af_audit_log WHERE tenant_id=$1 AND resource_id=$2 ORDER BY created_at",
+    )
+    .bind(&tenant_id)
+    .bind(&command.command_id)
+    .fetch_all(&pool)
+    .await
+    .expect("load command audit");
+    assert_eq!(
+        audit_actions,
+        vec![
+            "desktop.command.queued",
+            "desktop.command.acknowledged",
+            "desktop.command.succeeded"
+        ]
     );
     store
         .connect_device(&device_id, &rotated.credential, "connection-before-suspend")

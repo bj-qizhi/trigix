@@ -835,6 +835,7 @@ dependencies = [
  "desktop-agent-core",
  "desktop-protocol",
  "reqwest",
+ "serde",
  "serde_json",
  "tokio",
 ]

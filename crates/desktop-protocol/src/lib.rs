@@ -298,7 +298,38 @@ pub struct DesktopCommand {
     pub requested_by: String,
     pub issued_at_unix_ms: u64,
     pub lease: ExecutionLease,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub approval: Option<DesktopCommandApproval>,
     pub action: DesktopAction,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DesktopCommandApproval {
+    pub approved_by: String,
+    pub expires_at_unix_ms: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DesktopCommandAcknowledgement {
+    pub command_id: String,
+    pub execution_id: String,
+    pub lease_id: String,
+    pub acknowledged_at_unix_ms: u64,
+}
+
+impl DesktopCommandAcknowledgement {
+    pub fn validate(&self) -> Result<(), ProtocolError> {
+        validate_identifier("command_id", &self.command_id)?;
+        validate_identifier("execution_id", &self.execution_id)?;
+        validate_identifier("lease_id", &self.lease_id)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DesktopCommandCancellation {
+    pub command_id: String,
+    pub execution_id: String,
+    pub reason: String,
 }
 
 impl DesktopCommand {
@@ -315,6 +346,14 @@ impl DesktopCommand {
         if self.lease.expires_at_unix_ms <= now_unix_ms {
             return Err(ProtocolError::ExpiredLease);
         }
+        if let Some(approval) = &self.approval {
+            validate_identifier("approval.approved_by", &approval.approved_by)?;
+            if approval.expires_at_unix_ms <= now_unix_ms
+                || approval.expires_at_unix_ms > self.lease.expires_at_unix_ms
+            {
+                return Err(ProtocolError::InvalidField("approval.expires_at_unix_ms"));
+            }
+        }
         self.action.validate()
     }
 }
@@ -326,6 +365,8 @@ pub enum CommandOutcome {
     Failed,
     Rejected,
     AwaitingApproval,
+    Cancelled,
+    TimedOut,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -337,6 +378,26 @@ pub struct DesktopCommandResult {
     pub output: Option<Value>,
     pub error_code: Option<String>,
     pub error_message: Option<String>,
+}
+
+impl DesktopCommandResult {
+    pub fn validate(&self) -> Result<(), ProtocolError> {
+        validate_identifier("command_id", &self.command_id)?;
+        validate_identifier("execution_id", &self.execution_id)?;
+        validate_optional_text("error_code", self.error_code.as_deref(), 128)?;
+        validate_optional_text("error_message", self.error_message.as_deref(), 2048)?;
+        if matches!(self.outcome, CommandOutcome::Succeeded) && self.error_code.is_some() {
+            return Err(ProtocolError::InvalidField("error_code"));
+        }
+        if matches!(
+            self.outcome,
+            CommandOutcome::Failed | CommandOutcome::Rejected
+        ) && self.error_code.is_none()
+        {
+            return Err(ProtocolError::MissingField("error_code"));
+        }
+        Ok(())
+    }
 }
 
 fn validate_identifier(field: &'static str, value: &str) -> Result<(), ProtocolError> {
@@ -384,6 +445,7 @@ mod tests {
                 lease_id: "lease-1".to_owned(),
                 expires_at_unix_ms: 2_000,
             },
+            approval: None,
             action: DesktopAction::ReadSystemInformation,
         }
     }
@@ -428,6 +490,49 @@ mod tests {
     #[test]
     fn command_rejects_expired_leases() {
         assert_eq!(command().validate(2_000), Err(ProtocolError::ExpiredLease));
+    }
+
+    #[test]
+    fn command_approval_must_be_bounded_by_the_lease() {
+        let mut value = command();
+        value.approval = Some(DesktopCommandApproval {
+            approved_by: "admin-1".to_string(),
+            expires_at_unix_ms: 2_001,
+        });
+        assert_eq!(
+            value.validate(1_500),
+            Err(ProtocolError::InvalidField("approval.expires_at_unix_ms"))
+        );
+    }
+
+    #[test]
+    fn acknowledgement_and_result_require_consistent_bounded_fields() {
+        let mut acknowledgement = DesktopCommandAcknowledgement {
+            command_id: "command-1".to_string(),
+            execution_id: "execution-1".to_string(),
+            lease_id: "lease-1".to_string(),
+            acknowledged_at_unix_ms: 1_500,
+        };
+        assert!(acknowledgement.validate().is_ok());
+        acknowledgement.lease_id.clear();
+        assert_eq!(
+            acknowledgement.validate(),
+            Err(ProtocolError::MissingField("lease_id"))
+        );
+
+        let failed = DesktopCommandResult {
+            command_id: "command-1".to_string(),
+            execution_id: "execution-1".to_string(),
+            outcome: CommandOutcome::Failed,
+            completed_at_unix_ms: 1_600,
+            output: None,
+            error_code: None,
+            error_message: Some("failed".to_string()),
+        };
+        assert_eq!(
+            failed.validate(),
+            Err(ProtocolError::MissingField("error_code"))
+        );
     }
 
     #[test]
