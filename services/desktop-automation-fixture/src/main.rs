@@ -22,16 +22,15 @@ mod windows_fixture {
     use windows_sys::Win32::System::LibraryLoader::GetModuleHandleW;
     use windows_sys::Win32::UI::WindowsAndMessaging::{
         CreateWindowExW, DefWindowProcW, DispatchMessageW, GetMessageW, LoadCursorW,
-        PostQuitMessage, RegisterClassW, SetWindowTextW, ShowWindow, TranslateMessage,
-        BS_DEFPUSHBUTTON, CS_HREDRAW, CS_VREDRAW, CW_USEDEFAULT, ES_AUTOHSCROLL, ES_PASSWORD,
-        HMENU, IDC_ARROW, MSG, SW_SHOW, WM_DESTROY, WNDCLASSW, WS_CHILD, WS_OVERLAPPEDWINDOW,
-        WS_TABSTOP, WS_VISIBLE,
+        PostQuitMessage, RegisterClassW, ShowWindow, TranslateMessage, BS_DEFPUSHBUTTON,
+        CS_HREDRAW, CS_VREDRAW, CW_USEDEFAULT, ES_AUTOHSCROLL, ES_PASSWORD, HMENU, IDC_ARROW, MSG,
+        SW_SHOW, WM_DESTROY, WNDCLASSW, WS_CHILD, WS_OVERLAPPEDWINDOW, WS_TABSTOP, WS_VISIBLE,
     };
 
     pub fn run() {
         unsafe {
             let instance = GetModuleHandleW(ptr::null());
-            let class_name = wide("TrigixAutomationFixtureWindow");
+            let class_name = wide(FIXTURE_WINDOW_AUTOMATION_ID);
             let window_class = WNDCLASSW {
                 style: CS_HREDRAW | CS_VREDRAW,
                 lpfnWndProc: Some(window_proc),
@@ -61,8 +60,6 @@ mod windows_fixture {
             if window.is_null() {
                 panic!("failed to create fixture window");
             }
-            let automation_title = wide(FIXTURE_WINDOW_AUTOMATION_ID);
-            SetWindowTextW(window, automation_title.as_ptr());
             create_control(
                 window,
                 instance,

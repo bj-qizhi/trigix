@@ -1,6 +1,11 @@
 use std::io::{self, BufReader};
 use std::time::{SystemTime, UNIX_EPOCH};
-use trigix_desktop_automation::{run_host, FixtureAutomationAdapter};
+use trigix_desktop_automation::run_host;
+
+#[cfg(not(windows))]
+use trigix_desktop_automation::FixtureAutomationAdapter as PlatformAutomationAdapter;
+#[cfg(windows)]
+use trigix_desktop_automation::WindowsAutomationAdapter as PlatformAutomationAdapter;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let stdin = io::stdin();
@@ -8,7 +13,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     run_host(
         BufReader::new(stdin.lock()),
         stdout.lock(),
-        FixtureAutomationAdapter,
+        PlatformAutomationAdapter::default(),
         || {
             SystemTime::now()
                 .duration_since(UNIX_EPOCH)
