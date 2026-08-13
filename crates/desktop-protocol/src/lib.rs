@@ -217,7 +217,7 @@ pub enum RiskLevel {
 pub enum DesktopAction {
     ReadSystemInformation,
     InspectTargets {
-        request: DesktopInspectionRequest,
+        request: Box<DesktopInspectionRequest>,
     },
     FocusWindow {
         selector: WindowSelector,
@@ -230,7 +230,7 @@ pub enum DesktopAction {
         text: String,
     },
     LaunchApplication {
-        application_id: String,
+        application_id: ApplicationIdentity,
     },
 }
 
@@ -264,9 +264,7 @@ impl DesktopAction {
                 selector.validate()?;
                 validate_text("action.text", text, 16_384)
             }
-            Self::LaunchApplication { application_id } => {
-                validate_text("action.application_id", application_id, 256)
-            }
+            Self::LaunchApplication { application_id } => application_id.validate(),
         }
     }
 }
@@ -280,6 +278,8 @@ pub struct WindowSelector {
     pub title: Option<String>,
     #[serde(default)]
     pub automation_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub snapshot_id: Option<String>,
 }
 
 impl WindowSelector {
@@ -293,7 +293,32 @@ impl WindowSelector {
             "action.window.automation_id",
             self.automation_id.as_deref(),
             256,
+        )?;
+        validate_optional_text(
+            "action.window.snapshot_id",
+            self.snapshot_id.as_deref(),
+            128,
         )
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct ApplicationIdentity(pub String);
+
+impl ApplicationIdentity {
+    pub fn new(value: impl Into<String>) -> Self {
+        Self(value.into())
+    }
+
+    pub fn validate(&self) -> Result<(), ProtocolError> {
+        validate_text("action.application_id", &self.0, 128)?;
+        if !self.0.chars().all(|character| {
+            character.is_ascii_alphanumeric() || matches!(character, '.' | '-' | '_')
+        }) {
+            return Err(ProtocolError::InvalidField("action.application_id"));
+        }
+        Ok(())
     }
 }
 
@@ -851,7 +876,7 @@ mod tests {
         );
         assert_eq!(
             DesktopAction::LaunchApplication {
-                application_id: "calculator".to_owned()
+                application_id: ApplicationIdentity::new("calculator")
             }
             .risk_level(),
             RiskLevel::High
@@ -867,6 +892,7 @@ mod tests {
                     executable: None,
                     title: None,
                     automation_id: None,
+                    snapshot_id: None,
                 },
                 automation_id: None,
                 name: None,
@@ -918,6 +944,21 @@ mod tests {
             Err(ProtocolError::InvalidField(
                 "action.inspection.max_payload_bytes"
             ))
+        );
+    }
+
+    #[test]
+    fn application_identity_cannot_encode_commands_or_arguments() {
+        assert!(ApplicationIdentity::new("trigix.calculator")
+            .validate()
+            .is_ok());
+        assert_eq!(
+            ApplicationIdentity::new("cmd.exe /c whoami").validate(),
+            Err(ProtocolError::InvalidField("action.application_id"))
+        );
+        assert_eq!(
+            ApplicationIdentity::new("C:\\Windows\\System32\\calc.exe").validate(),
+            Err(ProtocolError::InvalidField("action.application_id"))
         );
     }
 

@@ -22,6 +22,9 @@ pub enum AutomationHostError {
     TargetNotFound,
     TargetAmbiguous,
     TargetStale,
+    ApplicationNotAllowed,
+    AccessDenied,
+    LaunchFailed,
     Adapter(String),
     Io(String),
 }
@@ -35,6 +38,11 @@ impl fmt::Display for AutomationHostError {
             Self::TargetNotFound => formatter.write_str("automation target was not found"),
             Self::TargetAmbiguous => formatter.write_str("automation target is ambiguous"),
             Self::TargetStale => formatter.write_str("automation target snapshot is stale"),
+            Self::ApplicationNotAllowed => {
+                formatter.write_str("application is not present in the launch allowlist")
+            }
+            Self::AccessDenied => formatter.write_str("operating system denied the action"),
+            Self::LaunchFailed => formatter.write_str("application launch failed"),
             Self::Adapter(message) => write!(formatter, "automation adapter failed: {message}"),
             Self::Io(message) => write!(formatter, "automation host I/O failed: {message}"),
         }
@@ -105,7 +113,7 @@ pub enum AutomationHostOperation {
         command_id: String,
         lease_id: String,
         lease_expires_at_unix_ms: u64,
-        action: DesktopAction,
+        action: Box<DesktopAction>,
     },
     Cancel {
         target_request_id: String,
@@ -207,12 +215,45 @@ impl AutomationAdapter for FixtureAutomationAdapter {
                 serde_json::to_value(self.inspect(request)?)
                     .map_err(|error| AutomationHostError::Adapter(error.to_string()))
             }
+            DesktopAction::FocusWindow { selector } => self.focus(selector),
+            DesktopAction::LaunchApplication { application_id } => {
+                if application_id.0 != "trigix.automation-fixture" {
+                    return Err(AutomationHostError::ApplicationNotAllowed);
+                }
+                Ok(json!({
+                    "application_id": application_id.0,
+                    "launched": true,
+                }))
+            }
             _ => Err(AutomationHostError::UnsupportedAction),
         }
     }
 }
 
 impl FixtureAutomationAdapter {
+    fn focus(&self, selector: &WindowSelector) -> Result<Value, AutomationHostError> {
+        if selector
+            .snapshot_id
+            .as_deref()
+            .is_some_and(|expected| expected != self.snapshot_id)
+        {
+            return Err(AutomationHostError::TargetStale);
+        }
+        let matches = fixture_windows()
+            .into_iter()
+            .filter(|window| window_matches(&window.selector, selector))
+            .collect::<Vec<_>>();
+        match matches.as_slice() {
+            [] => Err(AutomationHostError::TargetNotFound),
+            [window] => Ok(json!({
+                "focused": true,
+                "process_id": window.process_id,
+                "selector_strategy": "automation_id",
+            })),
+            _ => Err(AutomationHostError::TargetAmbiguous),
+        }
+    }
+
     fn inspect(
         &self,
         request: &DesktopInspectionRequest,
@@ -231,6 +272,7 @@ impl FixtureAutomationAdapter {
         if windows.is_empty() {
             return Err(AutomationHostError::TargetNotFound);
         }
+        attach_snapshot(&mut windows, &self.snapshot_id);
         bound_result(
             DesktopInspectionResult {
                 snapshot_id: self.snapshot_id.clone(),
@@ -242,12 +284,22 @@ impl FixtureAutomationAdapter {
     }
 }
 
+fn attach_snapshot(windows: &mut [InspectedWindow], snapshot_id: &str) {
+    for window in windows {
+        window.selector.snapshot_id = Some(snapshot_id.to_owned());
+        for element in &mut window.elements {
+            element.selector.window.snapshot_id = Some(snapshot_id.to_owned());
+        }
+    }
+}
+
 fn fixture_windows() -> Vec<InspectedWindow> {
     let descriptor = AutomationFixtureDescriptor::default();
     let primary = WindowSelector {
         executable: Some("desktop-automation-fixture.exe".to_owned()),
         title: Some("Trigix 自动化测试".to_owned()),
         automation_id: Some(descriptor.window_automation_id.clone()),
+        snapshot_id: None,
     };
     let elements = vec![
         InspectedElement {
@@ -299,6 +351,7 @@ fn fixture_windows() -> Vec<InspectedWindow> {
                 executable: Some("desktop-automation-fixture.exe".to_owned()),
                 title: Some("Trigix Automation Fixture Secondary".to_owned()),
                 automation_id: Some("Trigix.AutomationFixture.Secondary".to_owned()),
+                snapshot_id: None,
             },
             process_id: 4_242,
             title_policy: WindowTitlePolicy::Exact,
@@ -372,9 +425,12 @@ fn bound_result(
 #[cfg(windows)]
 mod windows_adapter {
     use super::*;
-    use std::collections::hash_map::DefaultHasher;
+    use serde::Deserialize;
+    use std::collections::{hash_map::DefaultHasher, HashMap};
+    use std::env;
     use std::hash::{Hash, Hasher};
     use std::path::Path;
+    use std::process::Command;
     use std::time::{Duration, Instant};
     use windows_sys::Win32::Foundation::{CloseHandle, HWND, LPARAM};
     use windows_sys::Win32::System::Threading::{
@@ -382,12 +438,101 @@ mod windows_adapter {
     };
     use windows_sys::Win32::UI::WindowsAndMessaging::{
         EnumChildWindows, EnumWindows, GetClassNameW, GetDlgCtrlID, GetWindowLongW,
-        GetWindowTextLengthW, GetWindowTextW, GetWindowThreadProcessId, IsWindowVisible,
-        ES_PASSWORD, GWL_STYLE,
+        GetWindowTextLengthW, GetWindowTextW, GetWindowThreadProcessId, IsIconic, IsWindowVisible,
+        SetForegroundWindow, ShowWindow, ES_PASSWORD, GWL_STYLE, SW_RESTORE,
     };
 
+    const APPLICATION_ALLOWLIST_ENV: &str = "TRIGIX_DESKTOP_APPLICATION_ALLOWLIST";
+
+    #[derive(Debug, Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct ApplicationRegistration {
+        application_id: String,
+        executable_path: String,
+    }
+
     #[derive(Debug, Default)]
-    pub struct WindowsAutomationAdapter;
+    pub struct WindowsAutomationAdapter {
+        applications: HashMap<String, String>,
+    }
+
+    impl WindowsAutomationAdapter {
+        pub fn from_environment() -> Result<Self, AutomationHostError> {
+            let Some(value) = env::var_os(APPLICATION_ALLOWLIST_ENV) else {
+                return Ok(Self::default());
+            };
+            let registrations: Vec<ApplicationRegistration> = serde_json::from_str(
+                value
+                    .to_str()
+                    .ok_or(AutomationHostError::InvalidRequest("application_allowlist"))?,
+            )
+            .map_err(|_| AutomationHostError::InvalidRequest("application_allowlist"))?;
+            let mut applications = HashMap::new();
+            for registration in registrations {
+                desktop_protocol::ApplicationIdentity::new(&registration.application_id)
+                    .validate()?;
+                let path = Path::new(&registration.executable_path);
+                if !path.is_absolute()
+                    || registration.executable_path.chars().any(char::is_control)
+                    || applications
+                        .insert(registration.application_id, registration.executable_path)
+                        .is_some()
+                {
+                    return Err(AutomationHostError::InvalidRequest("application_allowlist"));
+                }
+            }
+            Ok(Self { applications })
+        }
+
+        fn focus(&self, selector: &WindowSelector) -> Result<Value, AutomationHostError> {
+            if let Some(snapshot_id) = &selector.snapshot_id {
+                let mut request = DesktopInspectionRequest::bounded(None);
+                request.expected_snapshot_id = Some(snapshot_id.clone());
+                inspect_windows(&request)?;
+            }
+            let matches = matching_windows(selector);
+            let [window] = matches.as_slice() else {
+                return if matches.is_empty() {
+                    Err(AutomationHostError::TargetNotFound)
+                } else {
+                    Err(AutomationHostError::TargetAmbiguous)
+                };
+            };
+            let mut process_id = 0;
+            unsafe {
+                GetWindowThreadProcessId(*window, &mut process_id);
+                if IsIconic(*window) != 0 {
+                    ShowWindow(*window, SW_RESTORE);
+                }
+                if SetForegroundWindow(*window) == 0 {
+                    return Err(AutomationHostError::AccessDenied);
+                }
+            }
+            Ok(json!({
+                "focused": true,
+                "process_id": process_id,
+                "selector_strategy": selector_strategy(selector),
+            }))
+        }
+
+        fn launch(
+            &self,
+            application_id: &desktop_protocol::ApplicationIdentity,
+        ) -> Result<Value, AutomationHostError> {
+            let executable = self
+                .applications
+                .get(&application_id.0)
+                .ok_or(AutomationHostError::ApplicationNotAllowed)?;
+            let child = Command::new(executable)
+                .spawn()
+                .map_err(|_| AutomationHostError::LaunchFailed)?;
+            Ok(json!({
+                "application_id": application_id.0,
+                "process_id": child.id(),
+                "launched": true,
+            }))
+        }
+    }
 
     impl AutomationAdapter for WindowsAutomationAdapter {
         fn execute(&mut self, action: &DesktopAction) -> Result<Value, AutomationHostError> {
@@ -400,6 +545,8 @@ mod windows_adapter {
                     serde_json::to_value(inspect_windows(request)?)
                         .map_err(|error| AutomationHostError::Adapter(error.to_string()))
                 }
+                DesktopAction::FocusWindow { selector } => self.focus(selector),
+                DesktopAction::LaunchApplication { application_id } => self.launch(application_id),
                 _ => Err(AutomationHostError::UnsupportedAction),
             }
         }
@@ -440,6 +587,7 @@ mod windows_adapter {
         {
             return Err(AutomationHostError::TargetStale);
         }
+        attach_snapshot(&mut context.windows, &snapshot_id);
         bound_result(
             DesktopInspectionResult {
                 snapshot_id,
@@ -480,6 +628,7 @@ mod windows_adapter {
             executable: process_executable(process_id),
             title: if title_sensitive { None } else { title },
             automation_id: Some(class_name),
+            snapshot_id: None,
         };
         if context
             .request
@@ -582,6 +731,56 @@ mod windows_adapter {
         1
     }
 
+    struct MatchingWindows<'a> {
+        selector: &'a WindowSelector,
+        windows: Vec<HWND>,
+    }
+
+    fn matching_windows(selector: &WindowSelector) -> Vec<HWND> {
+        let mut context = MatchingWindows {
+            selector,
+            windows: Vec::new(),
+        };
+        unsafe {
+            EnumWindows(
+                Some(match_window),
+                (&mut context as *mut MatchingWindows<'_>) as LPARAM,
+            );
+        }
+        context.windows
+    }
+
+    unsafe extern "system" fn match_window(window: HWND, parameter: LPARAM) -> i32 {
+        let context = &mut *(parameter as *mut MatchingWindows<'_>);
+        if IsWindowVisible(window) == 0 {
+            return 1;
+        }
+        let mut process_id = 0;
+        GetWindowThreadProcessId(window, &mut process_id);
+        let selector = WindowSelector {
+            executable: process_executable(process_id),
+            title: window_text(window).filter(|title| !is_credential_text(title)),
+            automation_id: Some(window_class(window)),
+            snapshot_id: None,
+        };
+        if window_matches(&selector, context.selector) {
+            context.windows.push(window);
+        }
+        1
+    }
+
+    fn selector_strategy(selector: &WindowSelector) -> &'static str {
+        if selector.automation_id.is_some() {
+            "automation_id"
+        } else if selector.executable.is_some() && selector.title.is_some() {
+            "executable_and_title"
+        } else if selector.executable.is_some() {
+            "executable"
+        } else {
+            "title"
+        }
+    }
+
     unsafe fn window_text(window: HWND) -> Option<String> {
         let length = GetWindowTextLengthW(window);
         if length <= 0 {
@@ -659,7 +858,7 @@ where
             .map_err(|_| AutomationHostError::InvalidRequest("json"))?;
         request.validate(clock())?;
         let should_shutdown = matches!(request.operation, AutomationHostOperation::Shutdown);
-        let response = dispatch_request(&mut adapter, request);
+        let response = dispatch_request(&mut adapter, request, clock());
         response.validate()?;
         serde_json::to_writer(&mut writer, &response)
             .map_err(|error| AutomationHostError::Io(error.to_string()))?;
@@ -701,8 +900,17 @@ fn read_bounded_line(reader: &mut impl BufRead) -> Result<Option<Vec<u8>>, Autom
 fn dispatch_request(
     adapter: &mut impl AutomationAdapter,
     request: AutomationHostRequest,
+    now_unix_ms: u64,
 ) -> AutomationHostResponse {
     let request_id = request.request_id;
+    if request.deadline_unix_ms <= now_unix_ms {
+        return failure_response(
+            request_id,
+            AutomationHostStatus::Rejected,
+            "deadline_expired",
+            "automation request deadline expired before execution",
+        );
+    }
     match request.operation {
         AutomationHostOperation::Health => response(request_id, AutomationHostStatus::Ready, None),
         AutomationHostOperation::Shutdown => {
@@ -713,6 +921,15 @@ fn dispatch_request(
             AutomationHostStatus::Rejected,
             "target_not_active",
             &format!("request {target_request_id} is not active"),
+        ),
+        AutomationHostOperation::Execute {
+            lease_expires_at_unix_ms,
+            ..
+        } if lease_expires_at_unix_ms <= now_unix_ms => failure_response(
+            request_id,
+            AutomationHostStatus::Rejected,
+            "lease_expired",
+            "execution lease expired before the side effect",
         ),
         AutomationHostOperation::Execute { action, .. } => match adapter.execute(&action) {
             Ok(output) => response(request_id, AutomationHostStatus::Succeeded, Some(output)),
@@ -739,6 +956,24 @@ fn dispatch_request(
                 AutomationHostStatus::Rejected,
                 "target_stale",
                 "automation target snapshot is stale",
+            ),
+            Err(AutomationHostError::ApplicationNotAllowed) => failure_response(
+                request_id,
+                AutomationHostStatus::Rejected,
+                "application_not_allowed",
+                "application is not present in the launch allowlist",
+            ),
+            Err(AutomationHostError::AccessDenied) => failure_response(
+                request_id,
+                AutomationHostStatus::Rejected,
+                "access_denied",
+                "operating system denied the action",
+            ),
+            Err(AutomationHostError::LaunchFailed) => failure_response(
+                request_id,
+                AutomationHostStatus::Failed,
+                "launch_failed",
+                "application launch failed",
             ),
             Err(error) => failure_response(
                 request_id,
@@ -818,7 +1053,7 @@ mod tests {
             command_id: "command-1".to_owned(),
             lease_id: "lease-1".to_owned(),
             lease_expires_at_unix_ms: 1_900,
-            action: DesktopAction::ReadSystemInformation,
+            action: Box::new(DesktopAction::ReadSystemInformation),
         });
         let mut shutdown = request(AutomationHostOperation::Shutdown);
         shutdown.request_id = "request-2".to_owned();
@@ -848,20 +1083,24 @@ mod tests {
     }
 
     #[test]
-    fn unsupported_action_is_rejected_without_side_effect() {
+    fn unallowlisted_application_is_rejected_without_side_effect() {
         let response = dispatch_request(
             &mut FixtureAutomationAdapter::default(),
             request(AutomationHostOperation::Execute {
                 command_id: "command-1".to_owned(),
                 lease_id: "lease-1".to_owned(),
                 lease_expires_at_unix_ms: 1_900,
-                action: DesktopAction::LaunchApplication {
-                    application_id: "fixture".to_owned(),
-                },
+                action: Box::new(DesktopAction::LaunchApplication {
+                    application_id: desktop_protocol::ApplicationIdentity::new("fixture"),
+                }),
             }),
+            1_500,
         );
         assert_eq!(response.status, AutomationHostStatus::Rejected);
-        assert_eq!(response.error_code.as_deref(), Some("unsupported_action"));
+        assert_eq!(
+            response.error_code.as_deref(),
+            Some("application_not_allowed")
+        );
     }
 
     #[test]
@@ -875,7 +1114,7 @@ mod tests {
             command_id: "command-1".to_owned(),
             lease_id: "lease-1".to_owned(),
             lease_expires_at_unix_ms: 1_400,
-            action: DesktopAction::ReadSystemInformation,
+            action: Box::new(DesktopAction::ReadSystemInformation),
         });
         assert_eq!(
             lease_expired.validate(1_500),
@@ -883,6 +1122,21 @@ mod tests {
                 "lease_expires_at_unix_ms"
             ))
         );
+        let rechecked = dispatch_request(
+            &mut FixtureAutomationAdapter::default(),
+            request(AutomationHostOperation::Execute {
+                command_id: "command-1".to_owned(),
+                lease_id: "lease-1".to_owned(),
+                lease_expires_at_unix_ms: 1_900,
+                action: Box::new(DesktopAction::LaunchApplication {
+                    application_id: desktop_protocol::ApplicationIdentity::new(
+                        "trigix.automation-fixture",
+                    ),
+                }),
+            }),
+            1_900,
+        );
+        assert_eq!(rechecked.error_code.as_deref(), Some("lease_expired"));
 
         let input = vec![b'x'; MAX_HOST_MESSAGE_BYTES as usize + 1];
         assert_eq!(
@@ -903,6 +1157,7 @@ mod tests {
             request(AutomationHostOperation::Cancel {
                 target_request_id: "request-missing".to_owned(),
             }),
+            1_500,
         );
         assert_eq!(response.status, AutomationHostStatus::Rejected);
         assert_eq!(response.error_code.as_deref(), Some("target_not_active"));
@@ -930,7 +1185,7 @@ mod tests {
     fn inspection_preserves_stable_ids_and_redacts_sensitive_values() {
         let output = FixtureAutomationAdapter::default()
             .execute(&DesktopAction::InspectTargets {
-                request: DesktopInspectionRequest::bounded(None),
+                request: Box::new(DesktopInspectionRequest::bounded(None)),
             })
             .unwrap();
         let result: DesktopInspectionResult = serde_json::from_value(output).unwrap();
@@ -958,6 +1213,7 @@ mod tests {
             executable: None,
             title: None,
             automation_id: Some("missing-window".to_owned()),
+            snapshot_id: None,
         }));
         let response = dispatch_request(
             &mut FixtureAutomationAdapter::default(),
@@ -965,10 +1221,11 @@ mod tests {
                 command_id: "command-1".to_owned(),
                 lease_id: "lease-1".to_owned(),
                 lease_expires_at_unix_ms: 1_900,
-                action: DesktopAction::InspectTargets {
-                    request: missing.clone(),
-                },
+                action: Box::new(DesktopAction::InspectTargets {
+                    request: Box::new(missing.clone()),
+                }),
             }),
+            1_500,
         );
         assert_eq!(response.error_code.as_deref(), Some("target_not_found"));
 
@@ -980,8 +1237,11 @@ mod tests {
                 command_id: "command-2".to_owned(),
                 lease_id: "lease-2".to_owned(),
                 lease_expires_at_unix_ms: 1_900,
-                action: DesktopAction::InspectTargets { request: missing },
+                action: Box::new(DesktopAction::InspectTargets {
+                    request: Box::new(missing),
+                }),
             }),
+            1_500,
         );
         assert_eq!(response.error_code.as_deref(), Some("target_stale"));
     }
@@ -992,14 +1252,85 @@ mod tests {
             executable: Some("desktop-automation-fixture.exe".to_owned()),
             title: None,
             automation_id: None,
+            snapshot_id: None,
         }));
         limits.max_elements = 1;
         let output = FixtureAutomationAdapter::default()
-            .execute(&DesktopAction::InspectTargets { request: limits })
+            .execute(&DesktopAction::InspectTargets {
+                request: Box::new(limits),
+            })
             .unwrap();
         let result: DesktopInspectionResult = serde_json::from_value(output).unwrap();
         assert_eq!(result.windows.len(), 2);
         assert_eq!(result.windows[0].elements.len(), 1);
         assert!(result.truncated);
+    }
+
+    #[test]
+    fn fixture_focus_requires_a_unique_fresh_selector() {
+        let adapter = &mut FixtureAutomationAdapter::default();
+        let focused = adapter
+            .execute(&DesktopAction::FocusWindow {
+                selector: WindowSelector {
+                    executable: Some("desktop-automation-fixture.exe".to_owned()),
+                    title: None,
+                    automation_id: Some(FIXTURE_WINDOW_AUTOMATION_ID.to_owned()),
+                    snapshot_id: Some("fixture-snapshot-1".to_owned()),
+                },
+            })
+            .unwrap();
+        assert_eq!(focused["focused"], true);
+        assert_eq!(focused["selector_strategy"], "automation_id");
+
+        let ambiguous = adapter.execute(&DesktopAction::FocusWindow {
+            selector: WindowSelector {
+                executable: Some("desktop-automation-fixture.exe".to_owned()),
+                title: None,
+                automation_id: None,
+                snapshot_id: None,
+            },
+        });
+        assert_eq!(ambiguous, Err(AutomationHostError::TargetAmbiguous));
+
+        let stale = adapter.execute(&DesktopAction::FocusWindow {
+            selector: WindowSelector {
+                executable: None,
+                title: None,
+                automation_id: Some(FIXTURE_WINDOW_AUTOMATION_ID.to_owned()),
+                snapshot_id: Some("old-snapshot".to_owned()),
+            },
+        });
+        assert_eq!(stale, Err(AutomationHostError::TargetStale));
+    }
+
+    #[test]
+    fn fixture_launch_accepts_only_registered_application_identity() {
+        let adapter = &mut FixtureAutomationAdapter::default();
+        let launched = adapter
+            .execute(&DesktopAction::LaunchApplication {
+                application_id: desktop_protocol::ApplicationIdentity::new(
+                    "trigix.automation-fixture",
+                ),
+            })
+            .unwrap();
+        assert_eq!(launched["launched"], true);
+        assert!(launched.get("executable_path").is_none());
+
+        let rejected = dispatch_request(
+            adapter,
+            request(AutomationHostOperation::Execute {
+                command_id: "command-1".to_owned(),
+                lease_id: "lease-1".to_owned(),
+                lease_expires_at_unix_ms: 1_900,
+                action: Box::new(DesktopAction::LaunchApplication {
+                    application_id: desktop_protocol::ApplicationIdentity::new("cmd.exe /c whoami"),
+                }),
+            }),
+            1_500,
+        );
+        assert_eq!(
+            rejected.error_code.as_deref(),
+            Some("application_not_allowed")
+        );
     }
 }
