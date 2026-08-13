@@ -1,0 +1,15 @@
+[package]
+name = "desktop-automation-fixture"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+trigix-desktop-automation = { path = "../../crates/desktop-automation" }
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.59", features = [
+  "Win32_Foundation",
+  "Win32_Graphics_Gdi",
+  "Win32_System_LibraryLoader",
+  "Win32_UI_WindowsAndMessaging",
+] }
