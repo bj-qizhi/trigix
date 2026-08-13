@@ -25,6 +25,10 @@ pub enum AutomationHostError {
     ApplicationNotAllowed,
     AccessDenied,
     LaunchFailed,
+    UnsupportedPattern,
+    ProtectedControl,
+    FocusChanged,
+    PartialEntry,
     Adapter(String),
     Io(String),
 }
@@ -43,6 +47,16 @@ impl fmt::Display for AutomationHostError {
             }
             Self::AccessDenied => formatter.write_str("operating system denied the action"),
             Self::LaunchFailed => formatter.write_str("application launch failed"),
+            Self::UnsupportedPattern => {
+                formatter.write_str("target does not support the requested semantic pattern")
+            }
+            Self::ProtectedControl => {
+                formatter.write_str("text entry into a protected control is prohibited")
+            }
+            Self::FocusChanged => formatter.write_str("target window is not in the foreground"),
+            Self::PartialEntry => {
+                formatter.write_str("text entry could not be verified completely")
+            }
             Self::Adapter(message) => write!(formatter, "automation adapter failed: {message}"),
             Self::Io(message) => write!(formatter, "automation host I/O failed: {message}"),
         }
@@ -193,12 +207,14 @@ pub trait AutomationAdapter {
 #[derive(Debug)]
 pub struct FixtureAutomationAdapter {
     snapshot_id: String,
+    focused_window_id: String,
 }
 
 impl Default for FixtureAutomationAdapter {
     fn default() -> Self {
         Self {
             snapshot_id: "fixture-snapshot-1".to_owned(),
+            focused_window_id: FIXTURE_WINDOW_AUTOMATION_ID.to_owned(),
         }
     }
 }
@@ -225,13 +241,14 @@ impl AutomationAdapter for FixtureAutomationAdapter {
                     "launched": true,
                 }))
             }
-            _ => Err(AutomationHostError::UnsupportedAction),
+            DesktopAction::ClickElement { selector } => self.click(selector),
+            DesktopAction::TypeText { selector, text } => self.type_text(selector, text),
         }
     }
 }
 
 impl FixtureAutomationAdapter {
-    fn focus(&self, selector: &WindowSelector) -> Result<Value, AutomationHostError> {
+    fn focus(&mut self, selector: &WindowSelector) -> Result<Value, AutomationHostError> {
         if selector
             .snapshot_id
             .as_deref()
@@ -245,13 +262,84 @@ impl FixtureAutomationAdapter {
             .collect::<Vec<_>>();
         match matches.as_slice() {
             [] => Err(AutomationHostError::TargetNotFound),
-            [window] => Ok(json!({
-                "focused": true,
-                "process_id": window.process_id,
-                "selector_strategy": "automation_id",
-            })),
+            [window] => {
+                self.focused_window_id = window
+                    .selector
+                    .automation_id
+                    .clone()
+                    .ok_or(AutomationHostError::TargetNotFound)?;
+                Ok(json!({
+                    "focused": true,
+                    "process_id": window.process_id,
+                    "selector_strategy": "automation_id",
+                }))
+            }
             _ => Err(AutomationHostError::TargetAmbiguous),
         }
+    }
+
+    fn resolve_element(
+        &self,
+        selector: &ElementSelector,
+    ) -> Result<InspectedElement, AutomationHostError> {
+        if selector
+            .window
+            .snapshot_id
+            .as_deref()
+            .is_some_and(|expected| expected != self.snapshot_id)
+        {
+            return Err(AutomationHostError::TargetStale);
+        }
+        if selector.window.automation_id.as_deref() != Some(&self.focused_window_id) {
+            return Err(AutomationHostError::FocusChanged);
+        }
+        let matches = fixture_windows()
+            .into_iter()
+            .filter(|window| window_matches(&window.selector, &selector.window))
+            .flat_map(|window| window.elements)
+            .filter(|element| element_matches(&element.selector, selector))
+            .collect::<Vec<_>>();
+        match matches.as_slice() {
+            [] => Err(AutomationHostError::TargetNotFound),
+            [element] => Ok(element.clone()),
+            _ => Err(AutomationHostError::TargetAmbiguous),
+        }
+    }
+
+    fn click(&self, selector: &ElementSelector) -> Result<Value, AutomationHostError> {
+        let element = self.resolve_element(selector)?;
+        if !element
+            .supported_patterns
+            .contains(&AutomationPattern::Invoke)
+        {
+            return Err(AutomationHostError::UnsupportedPattern);
+        }
+        Ok(json!({
+            "clicked": true,
+            "semantic_pattern": "invoke",
+        }))
+    }
+
+    fn type_text(
+        &self,
+        selector: &ElementSelector,
+        text: &str,
+    ) -> Result<Value, AutomationHostError> {
+        let element = self.resolve_element(selector)?;
+        if element.redaction == Some(RedactionReason::Password) {
+            return Err(AutomationHostError::ProtectedControl);
+        }
+        if !element
+            .supported_patterns
+            .contains(&AutomationPattern::Value)
+        {
+            return Err(AutomationHostError::UnsupportedPattern);
+        }
+        Ok(json!({
+            "entered": true,
+            "characters_entered": text.chars().count(),
+            "semantic_pattern": "value",
+        }))
     }
 
     fn inspect(
@@ -376,6 +464,24 @@ fn window_matches(candidate: &WindowSelector, query: &WindowSelector) -> bool {
             .is_none_or(|value| candidate.automation_id.as_ref() == Some(value))
 }
 
+fn element_matches(candidate: &ElementSelector, query: &ElementSelector) -> bool {
+    window_matches(&candidate.window, &query.window)
+        && query
+            .automation_id
+            .as_ref()
+            .is_none_or(|value| candidate.automation_id.as_ref() == Some(value))
+        && query
+            .name
+            .as_ref()
+            .is_none_or(|value| candidate.name.as_ref() == Some(value))
+        && query.control_type.as_ref().is_none_or(|value| {
+            candidate
+                .control_type
+                .as_ref()
+                .is_some_and(|actual| actual.eq_ignore_ascii_case(value))
+        })
+}
+
 fn bound_result(
     mut result: DesktopInspectionResult,
     request: &DesktopInspectionRequest,
@@ -437,9 +543,10 @@ mod windows_adapter {
         OpenProcess, QueryFullProcessImageNameW, PROCESS_QUERY_LIMITED_INFORMATION,
     };
     use windows_sys::Win32::UI::WindowsAndMessaging::{
-        EnumChildWindows, EnumWindows, GetClassNameW, GetDlgCtrlID, GetWindowLongW,
-        GetWindowTextLengthW, GetWindowTextW, GetWindowThreadProcessId, IsIconic, IsWindowVisible,
-        SetForegroundWindow, ShowWindow, ES_PASSWORD, GWL_STYLE, SW_RESTORE,
+        EnumChildWindows, EnumWindows, GetClassNameW, GetDlgCtrlID, GetForegroundWindow,
+        GetWindowLongW, GetWindowTextLengthW, GetWindowTextW, GetWindowThreadProcessId, IsIconic,
+        IsWindowVisible, SendMessageW, SetForegroundWindow, SetWindowTextW, ShowWindow, BM_CLICK,
+        ES_PASSWORD, GWL_STYLE, SW_RESTORE,
     };
 
     const APPLICATION_ALLOWLIST_ENV: &str = "TRIGIX_DESKTOP_APPLICATION_ALLOWLIST";
@@ -532,6 +639,74 @@ mod windows_adapter {
                 "launched": true,
             }))
         }
+
+        fn resolve_element(
+            &self,
+            selector: &ElementSelector,
+        ) -> Result<ResolvedElement, AutomationHostError> {
+            if let Some(snapshot_id) = &selector.window.snapshot_id {
+                let mut request = DesktopInspectionRequest::bounded(None);
+                request.expected_snapshot_id = Some(snapshot_id.clone());
+                inspect_windows(&request)?;
+            }
+            let matches = matching_elements(selector);
+            match matches.as_slice() {
+                [] => Err(AutomationHostError::TargetNotFound),
+                [element] => Ok(*element),
+                _ => Err(AutomationHostError::TargetAmbiguous),
+            }
+        }
+
+        fn click(&self, selector: &ElementSelector) -> Result<Value, AutomationHostError> {
+            let element = self.resolve_element(selector)?;
+            unsafe {
+                if GetForegroundWindow() != element.root {
+                    return Err(AutomationHostError::FocusChanged);
+                }
+                if element.control_type != "button" {
+                    return Err(AutomationHostError::UnsupportedPattern);
+                }
+                SendMessageW(element.control, BM_CLICK, 0, 0);
+            }
+            Ok(json!({
+                "clicked": true,
+                "semantic_pattern": "invoke",
+            }))
+        }
+
+        fn type_text(
+            &self,
+            selector: &ElementSelector,
+            text: &str,
+        ) -> Result<Value, AutomationHostError> {
+            let element = self.resolve_element(selector)?;
+            if element.password {
+                return Err(AutomationHostError::ProtectedControl);
+            }
+            if element.control_type != "edit" {
+                return Err(AutomationHostError::UnsupportedPattern);
+            }
+            let wide = text
+                .encode_utf16()
+                .chain(std::iter::once(0))
+                .collect::<Vec<_>>();
+            unsafe {
+                if GetForegroundWindow() != element.root {
+                    return Err(AutomationHostError::FocusChanged);
+                }
+                if SetWindowTextW(element.control, wide.as_ptr()) == 0 {
+                    return Err(AutomationHostError::AccessDenied);
+                }
+                if window_text(element.control).as_deref() != Some(text) {
+                    return Err(AutomationHostError::PartialEntry);
+                }
+            }
+            Ok(json!({
+                "entered": true,
+                "characters_entered": text.chars().count(),
+                "semantic_pattern": "value",
+            }))
+        }
     }
 
     impl AutomationAdapter for WindowsAutomationAdapter {
@@ -547,7 +722,8 @@ mod windows_adapter {
                 }
                 DesktopAction::FocusWindow { selector } => self.focus(selector),
                 DesktopAction::LaunchApplication { application_id } => self.launch(application_id),
-                _ => Err(AutomationHostError::UnsupportedAction),
+                DesktopAction::ClickElement { selector } => self.click(selector),
+                DesktopAction::TypeText { selector, text } => self.type_text(selector, text),
             }
         }
     }
@@ -769,6 +945,72 @@ mod windows_adapter {
         1
     }
 
+    #[derive(Clone, Copy)]
+    struct ResolvedElement {
+        root: HWND,
+        control: HWND,
+        password: bool,
+        control_type: &'static str,
+    }
+
+    struct MatchingElements<'a> {
+        root: HWND,
+        selector: &'a ElementSelector,
+        elements: Vec<ResolvedElement>,
+    }
+
+    fn matching_elements(selector: &ElementSelector) -> Vec<ResolvedElement> {
+        let mut matches = Vec::new();
+        for root in matching_windows(&selector.window) {
+            let mut context = MatchingElements {
+                root,
+                selector,
+                elements: Vec::new(),
+            };
+            unsafe {
+                EnumChildWindows(
+                    root,
+                    Some(match_element),
+                    (&mut context as *mut MatchingElements<'_>) as LPARAM,
+                );
+            }
+            matches.extend(context.elements);
+        }
+        matches
+    }
+
+    unsafe extern "system" fn match_element(window: HWND, parameter: LPARAM) -> i32 {
+        let context = &mut *(parameter as *mut MatchingElements<'_>);
+        if IsWindowVisible(window) == 0 {
+            return 1;
+        }
+        let class_name = window_class(window).to_ascii_lowercase();
+        let control_type = match class_name.as_str() {
+            "button" => "button",
+            "edit" => "edit",
+            "combobox" => "combobox",
+            "listbox" => "listbox",
+            _ => "custom",
+        };
+        let control_id = GetDlgCtrlID(window);
+        let candidate = ElementSelector {
+            window: context.selector.window.clone(),
+            automation_id: (control_id > 0).then(|| control_id.to_string()),
+            name: window_text(window),
+            control_type: Some(control_type.to_owned()),
+        };
+        if element_matches(&candidate, context.selector) {
+            context.elements.push(ResolvedElement {
+                root: context.root,
+                control: window,
+                password: control_type == "edit"
+                    && GetWindowLongW(window, GWL_STYLE) as u32 & ES_PASSWORD as u32 != 0,
+                control_type,
+            });
+        }
+        1
+    }
+
     fn selector_strategy(selector: &WindowSelector) -> &'static str {
         if selector.automation_id.is_some() {
             "automation_id"
@@ -974,6 +1216,30 @@ fn dispatch_request(
                 AutomationHostStatus::Failed,
                 "launch_failed",
                 "application launch failed",
+            ),
+            Err(AutomationHostError::UnsupportedPattern) => failure_response(
+                request_id,
+                AutomationHostStatus::Rejected,
+                "unsupported_pattern",
+                "target does not support the requested semantic pattern",
+            ),
+            Err(AutomationHostError::ProtectedControl) => failure_response(
+                request_id,
+                AutomationHostStatus::Rejected,
+                "protected_control",
+                "text entry into a protected control is prohibited",
+            ),
+            Err(AutomationHostError::FocusChanged) => failure_response(
+                request_id,
+                AutomationHostStatus::Rejected,
+                "focus_changed",
+                "target window is not in the foreground",
+            ),
+            Err(AutomationHostError::PartialEntry) => failure_response(
+                request_id,
+                AutomationHostStatus::Failed,
+                "partial_entry",
+                "text entry could not be verified completely",
             ),
             Err(error) => failure_response(
                 request_id,
@@ -1332,5 +1598,67 @@ mod tests {
             rejected.error_code.as_deref(),
             Some("application_not_allowed")
         );
+    }
+
+    fn fixture_element(automation_id: &str, control_type: &str) -> ElementSelector {
+        ElementSelector {
+            window: WindowSelector {
+                executable: Some("desktop-automation-fixture.exe".to_owned()),
+                title: None,
+                automation_id: Some(FIXTURE_WINDOW_AUTOMATION_ID.to_owned()),
+                snapshot_id: Some("fixture-snapshot-1".to_owned()),
+            },
+            automation_id: Some(automation_id.to_owned()),
+            name: None,
+            control_type: Some(control_type.to_owned()),
+        }
+    }
+
+    #[test]
+    fn fixture_click_uses_invoke_and_rejects_unsupported_or_ambiguous_targets() {
+        let adapter = &mut FixtureAutomationAdapter::default();
+        let clicked = adapter
+            .execute(&DesktopAction::ClickElement {
+                selector: fixture_element(FIXTURE_SUBMIT_AUTOMATION_ID, "button"),
+            })
+            .unwrap();
+        assert_eq!(clicked["semantic_pattern"], "invoke");
+
+        let unsupported = adapter.execute(&DesktopAction::ClickElement {
+            selector: fixture_element(FIXTURE_INPUT_AUTOMATION_ID, "edit"),
+        });
+        assert_eq!(unsupported, Err(AutomationHostError::UnsupportedPattern));
+
+        let mut ambiguous = fixture_element(FIXTURE_INPUT_AUTOMATION_ID, "edit");
+        ambiguous.automation_id = None;
+        let ambiguous = adapter.execute(&DesktopAction::ClickElement {
+            selector: ambiguous,
+        });
+        assert_eq!(ambiguous, Err(AutomationHostError::TargetAmbiguous));
+    }
+
+    #[test]
+    fn fixture_text_entry_redacts_input_and_rejects_password_or_focus_change() {
+        let adapter = &mut FixtureAutomationAdapter::default();
+        let entered = adapter
+            .execute(&DesktopAction::TypeText {
+                selector: fixture_element(FIXTURE_INPUT_AUTOMATION_ID, "edit"),
+                text: "private input".to_owned(),
+            })
+            .unwrap();
+        assert_eq!(entered["characters_entered"], 13);
+        assert!(!entered.to_string().contains("private input"));
+
+        let protected = adapter.execute(&DesktopAction::TypeText {
+            selector: fixture_element(FIXTURE_PASSWORD_AUTOMATION_ID, "edit"),
+            text: "never-enter-this".to_owned(),
+        });
+        assert_eq!(protected, Err(AutomationHostError::ProtectedControl));
+
+        adapter.focused_window_id = "Trigix.AutomationFixture.Secondary".to_owned();
+        let focus_changed = adapter.execute(&DesktopAction::ClickElement {
+            selector: fixture_element(FIXTURE_SUBMIT_AUTOMATION_ID, "button"),
+        });
+        assert_eq!(focus_changed, Err(AutomationHostError::FocusChanged));
     }
 }

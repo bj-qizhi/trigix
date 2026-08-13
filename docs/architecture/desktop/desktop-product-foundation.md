@@ -134,6 +134,10 @@ Application launch accepts a typed application identity containing only ASCII id
 
 Focus remains a medium-risk action and launch remains high risk, so local policy and command-specific Approval are authoritative before the Host is invoked. The Host validates the request deadline and execution lease on receipt and rechecks them immediately before adapter dispatch. Cancellation remains owned by the parent Device, which terminates an in-flight Host action when required; the child process cannot extend a lease or convert cancellation into permission.
 
+Element actions reuse the inspected window-scoped selector and snapshot. The Windows adapter resolves the window and control again, requires exactly one visible match, and verifies that the target window is still in the foreground. Click invokes a supported semantic control pattern (`Invoke` for native buttons); it does not fall back to screen coordinates. Text entry supports native editable value controls, rejects password controls before writing, and reads the value back to detect partial entry. A focus change, stale snapshot, ambiguous control, unsupported pattern, protected control, access denial, or incomplete verification is an explicit terminal error.
+
+Text remains present only in the authorized command and the transient Host request needed to perform the action. Adapter results contain a character count and semantic pattern but never the text, and failure messages are fixed rather than derived from input. Audit and recovery records continue to store action class and outcome only. Because typing is non-idempotent, replay protection persists the in-flight command before dispatch and never repeats an uncertain write after interruption.
+
 Windows automation will use this selector order:
 
 1. UI Automation identifier and control type
