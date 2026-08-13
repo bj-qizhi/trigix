@@ -6,7 +6,10 @@ members = [
   "crates/desktop-agent-core",
   "crates/desktop-identity",
   "crates/desktop-host",
+  "crates/desktop-automation",
   "services/desktop-device-simulator",
+  "services/desktop-automation-host",
+  "services/desktop-automation-fixture",
   "services/executor",
   "services/platform-rs",
 ]

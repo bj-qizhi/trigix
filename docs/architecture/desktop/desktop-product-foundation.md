@@ -114,6 +114,12 @@ Approval grants are command-specific, actor-attributed, short-lived, and unusabl
 
 ## Windows Automation Adapter
 
+Windows automation executes in the `desktop-automation-host` child process, not in the presentation shell or Device connection loop. Its stdin/stdout boundary accepts one newline-delimited, size-bounded typed request at a time. Requests carry a unique identifier and absolute deadline; malformed, oversized, expired, unknown, and unsupported operations fail closed. Health, execute, cancel, and shutdown are explicit operations, and every response has an explicit ready, succeeded, rejected, cancelled, failed, or shutting-down status.
+
+The parent Device remains responsible for protocol validation, command leases, policy, Approval, persisted replay state, process startup deadlines, request timeouts, and terminating a hung host. The child receives only the already-authorized typed action plus opaque command and lease identifiers. A child crash therefore cannot grant authority, modify replay state, or terminate the connection owner. Restarting the child never implies permission to replay a side effect.
+
+`trigix-desktop-automation` provides the shared IPC contract and a deterministic non-Windows fixture adapter so Linux workspace CI exercises the same message boundary. `desktop-automation-fixture` builds a native Windows fixture window with stable class/control identifiers, including a normal input, submit button, and protected password input. The fixture is test-only and must be signed by the release pipeline before it is used on Windows qualification runners.
+
 Windows automation will use this selector order:
 
 1. UI Automation identifier and control type

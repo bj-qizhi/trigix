@@ -1,0 +1,10 @@
+[package]
+name = "desktop-automation-host"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+trigix-desktop-automation = { path = "../../crates/desktop-automation" }
+
+[dev-dependencies]
+serde_json = "1"
