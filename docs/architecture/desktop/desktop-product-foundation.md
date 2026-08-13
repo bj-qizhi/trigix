@@ -128,6 +128,12 @@ Every inspection returns a snapshot identifier derived from the observed target 
 
 On Windows, the Host enumerates visible top-level windows and their visible native controls, resolves process executable names with limited query rights, and maps standard control classes to supported semantic patterns. The deterministic fixture covers duplicate executable matches, localized accessible names, missing targets, stale snapshots, and protected password values. Rich UI Automation provider traversal can extend the adapter behind the same result contract without changing Device or Platform authority.
 
+Window focus resolves the selector again immediately before calling the operating system. A selector can carry the inspection snapshot that produced it; a changed snapshot, zero matches, multiple matches, or foreground access denial returns a distinct failure and never falls back to a best-effort window. The result exposes only the process identifier and selector strategy, not window text or executable paths.
+
+Application launch accepts a typed application identity containing only ASCII identifier characters. The Windows Host maps that identity through `TRIGIX_DESKTOP_APPLICATION_ALLOWLIST`, a JSON array of unique identity and absolute executable-path registrations supplied by trusted local deployment configuration. It starts the exact registered executable with no arguments and never invokes a command shell. An absent identity, invalid allowlist, operating-system denial, and process creation failure fail explicitly. Executable paths are not returned in command results.
+
+Focus remains a medium-risk action and launch remains high risk, so local policy and command-specific Approval are authoritative before the Host is invoked. The Host validates the request deadline and execution lease on receipt and rechecks them immediately before adapter dispatch. Cancellation remains owned by the parent Device, which terminates an in-flight Host action when required; the child process cannot extend a lease or convert cancellation into permission.
+
 Windows automation will use this selector order:
 
 1. UI Automation identifier and control type

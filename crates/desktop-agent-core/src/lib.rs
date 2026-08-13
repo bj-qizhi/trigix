@@ -950,6 +950,7 @@ mod tests {
                     executable: Some("fixture.exe".to_owned()),
                     title: None,
                     automation_id: None,
+                    snapshot_id: None,
                 },
                 automation_id: Some("name-field".to_owned()),
                 name: None,

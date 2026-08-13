@@ -10,16 +10,15 @@ use trigix_desktop_automation::WindowsAutomationAdapter as PlatformAutomationAda
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let stdin = io::stdin();
     let stdout = io::stdout();
-    run_host(
-        BufReader::new(stdin.lock()),
-        stdout.lock(),
-        PlatformAutomationAdapter::default(),
-        || {
-            SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .map(|duration| duration.as_millis() as u64)
-                .unwrap_or(u64::MAX)
-        },
-    )?;
+    #[cfg(not(windows))]
+    let adapter = PlatformAutomationAdapter::default();
+    #[cfg(windows)]
+    let adapter = PlatformAutomationAdapter::from_environment()?;
+    run_host(BufReader::new(stdin.lock()), stdout.lock(), adapter, || {
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|duration| duration.as_millis() as u64)
+            .unwrap_or(u64::MAX)
+    })?;
     Ok(())
 }
