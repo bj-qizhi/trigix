@@ -8,6 +8,7 @@ mod auth;
 mod billing;
 mod credentials;
 mod custom_nodes;
+mod desktop_devices;
 mod event_subscriptions;
 mod executions;
 mod forms;
@@ -196,6 +197,7 @@ pub struct AppState {
     notification_store: Arc<PlatformNotificationStore>,
     sso_store: Arc<crate::sso::PlatformSsoStore>,
     custom_node_store: Arc<crate::custom_nodes::PlatformCustomNodeStore>,
+    device_pairing_store: Arc<crate::device_pairing::PlatformDevicePairingStore>,
 }
 
 pub fn router() -> Router {
@@ -261,6 +263,7 @@ pub(crate) fn default_app_state() -> AppState {
         notification_store: Arc::new(PlatformNotificationStore::default()),
         sso_store: Arc::new(crate::sso::PlatformSsoStore::default()),
         custom_node_store: Arc::new(crate::custom_nodes::PlatformCustomNodeStore::default()),
+        device_pairing_store: Arc::new(crate::device_pairing::PlatformDevicePairingStore::default()),
     }
 }
 
@@ -874,6 +877,8 @@ async fn auth_middleware(State(state): State<AppState>, mut req: Request, next: 
         || path.starts_with("/v1/invitations/")
         || path.starts_with("/v1/webhooks/")
         || path.starts_with("/v1/sso/")
+        || path == "/v1/desktop/pairing-sessions"
+        || (path.starts_with("/v1/desktop/pairing-sessions/") && path.ends_with("/claim"))
         || path == "/healthz"
         || path == "/healthz/detail"
         || path == "/v1/system/info"
@@ -936,6 +941,7 @@ pub(crate) fn build_router(state: AppState) -> Router {
         .merge(billing::routes())
         .merge(credentials::routes())
         .merge(custom_nodes::routes())
+        .merge(desktop_devices::routes())
         .merge(event_subscriptions::routes())
         .merge(executions::routes())
         .merge(forms::routes())
@@ -1036,6 +1042,7 @@ pub fn router_with_services(
         notification_store: Arc::new(PlatformNotificationStore::default()),
         sso_store: Arc::new(crate::sso::PlatformSsoStore::default()),
         custom_node_store: Arc::new(crate::custom_nodes::PlatformCustomNodeStore::default()),
+        device_pairing_store: Arc::new(crate::device_pairing::PlatformDevicePairingStore::default()),
     };
 
     build_router(state)
@@ -1073,6 +1080,7 @@ pub fn router_with_all_stores(
     billing_store: PlatformBillingStore,
     sso_store: crate::sso::PlatformSsoStore,
     custom_node_store: crate::custom_nodes::PlatformCustomNodeStore,
+    device_pairing_store: crate::device_pairing::PlatformDevicePairingStore,
 ) -> Router {
     let state = AppState {
         execution_service: Arc::new(execution_service),
@@ -1109,6 +1117,7 @@ pub fn router_with_all_stores(
         notification_store: Arc::new(PlatformNotificationStore::default()),
         sso_store: Arc::new(sso_store),
         custom_node_store: Arc::new(custom_node_store),
+        device_pairing_store: Arc::new(device_pairing_store),
     };
     spawn_schedule_runner(state.clone());
     spawn_execution_timeout_guard(state.clone());

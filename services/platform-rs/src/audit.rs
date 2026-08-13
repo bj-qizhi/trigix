@@ -41,6 +41,9 @@ pub mod action {
     pub const CREDENTIAL_DELETED: &str = "credential.deleted";
     pub const SCHEDULE_REGISTERED: &str = "schedule.registered";
     pub const SCHEDULE_REMOVED: &str = "schedule.removed";
+    pub const DEVICE_PAIRED: &str = "device.paired";
+    pub const DEVICE_PAIRING_REJECTED: &str = "device.pairing_rejected";
+    pub const DEVICE_CREDENTIAL_CLAIMED: &str = "device.credential_claimed";
 }
 
 fn unix_now() -> u64 {

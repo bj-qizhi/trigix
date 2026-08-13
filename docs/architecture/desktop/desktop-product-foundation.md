@@ -15,11 +15,12 @@ The desktop runtime is not an unrestricted remote shell. An Agent can select onl
 ```text
 crates/desktop-protocol/         versioned platform/device messages and validation
 crates/desktop-agent-core/       policy, Approval, replay protection, execution, audit
+crates/desktop-identity/         Ed25519 identity and operating-system Credential boundary
 crates/desktop-host/             tested presentation/host IPC boundary
 crates/desktop-windows/          planned Windows UI Automation adapter
 apps/desktop/                    planned Tauri and React application shell
 services/desktop-device-simulator/ deterministic protocol and execution simulator
-services/platform-rs/            planned device registry and command gateway
+services/platform-rs/            device pairing service; registry and command gateway follow
 ```
 
 The protocol and policy crates are independent of Tauri and Windows APIs. This makes security rules testable on Linux CI and prevents presentation code from becoming an execution authority.
@@ -58,7 +59,9 @@ Every boundary fails closed. Missing tenant context, an invalid protocol version
 5. The Device opens an authenticated outbound connection and sends heartbeats.
 6. Administrators can suspend, rotate, or revoke the Device without uninstalling it.
 
-The initial `PairingRequest` type is implemented. Credential issuance and persistent Device registration belong to the Platform vertical slice and must not use the simulator's placeholder public key.
+The first Platform pairing vertical slice is implemented. A Device creates a short-lived session with its locally generated Ed25519 public key and receives a pairing code plus a separate claim secret. `desktop-identity` generates the private key locally, fails closed unless it can persist it, and uses Windows Credential Manager in production Windows builds. A Tenant administrator approves the code, atomically binding the Device, Tenant, public key, and approving actor. The Device then uses the claim secret exactly once to retrieve its Credential. The administrative response and Audit Log never contain the claim secret or Credential plaintext.
+
+Pairing state is persisted in `af_desktop_pairing_sessions` and `af_desktop_devices`. Claim secrets and active device Credentials are stored only as hashes; the pending one-time Credential is protected with the configured Credential master key and erased after claim. Expiry, bounded attempts, per-endpoint rate limits, row locking, unique device/public-key constraints, and Tenant row-level-security policies make reuse and concurrent redemption fail closed.
 
 ## Protocol
 

@@ -16,12 +16,14 @@
 //! Multi-thread flavor is required: the Postgres stores use
 //! `tokio::task::block_in_place`, which panics on the current-thread runtime.
 
+use desktop_protocol::{DeviceCapability, DeviceDescriptor};
 use trigix_platform::affiliate::{AffiliateStore, PlatformAffiliateStore, PostgresAffiliateStore};
 use trigix_platform::attribution::{
     AttributionRecord, AttributionStore, CurrencyRevenue, PlatformAttributionStore,
     PostgresAttributionStore,
 };
 use trigix_platform::billing::{BillingStore, PlatformBillingStore, TenantQuota};
+use trigix_platform::device_pairing::{CreatePairingSessionRequest, PlatformDevicePairingStore};
 use trigix_platform::execution::{ExecutionStore, PostgresExecutionStore, StartExecutionRequest};
 use trigix_platform::token_usage::{
     PlatformTokenUsageStore, PostgresTokenUsageStore, TokenUsageRecord, TokenUsageStore,
@@ -202,6 +204,65 @@ async fn users_create_verify_find_roundtrip() {
     assert_eq!(by_email.id, created.id);
     assert_eq!(by_email.created_at, created.created_at);
     assert!(store.find_by_id(&created.id).is_some());
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn desktop_pairing_is_atomic_tenant_scoped_and_single_use() {
+    let Some(pool) = setup().await else { return };
+    let store = PlatformDevicePairingStore::postgres(pool.clone());
+    let device_id = uniq("desktop-device");
+    let tenant_id = uniq("desktop-tenant");
+    let session = store
+        .create_session(CreatePairingSessionRequest {
+            device: DeviceDescriptor {
+                device_id: device_id.clone(),
+                display_name: "Postgres Test Device".to_string(),
+                operating_system: "windows".to_string(),
+                agent_version: "1.0.0".to_string(),
+                capabilities: vec![DeviceCapability::SystemInformation],
+            },
+            device_public_key: format!("public-key-{device_id}"),
+        })
+        .await
+        .expect("create pairing session");
+
+    let device = store
+        .approve(&session.pairing_code, &tenant_id, "admin-1")
+        .await
+        .expect("approve pairing");
+    assert_eq!(device.tenant_id, tenant_id);
+    assert!(store
+        .approve(&session.pairing_code, "wrong-tenant", "admin-2")
+        .await
+        .is_err());
+
+    let claimed = store
+        .claim(&session.session_id, &session.claim_secret)
+        .await
+        .expect("claim credential");
+    assert_eq!(claimed.device_id, device_id);
+    assert!(claimed.credential.starts_with("desktop_"));
+    assert!(store
+        .claim(&session.session_id, &session.claim_secret)
+        .await
+        .is_err());
+
+    let row: (String, String, Option<String>) = sqlx::query_as(
+        r#"SELECT d.tenant_id, d.credential_hash, s.pending_credential_ciphertext
+           FROM af_desktop_devices d
+           JOIN af_desktop_pairing_sessions s ON s.credential_id = d.credential_id
+           WHERE d.id = $1"#,
+    )
+    .bind(&device_id)
+    .fetch_one(&pool)
+    .await
+    .expect("load paired device");
+    assert_eq!(row.0, tenant_id);
+    assert_ne!(row.1, claimed.credential);
+    assert!(
+        row.2.is_none(),
+        "claimed plaintext must not remain recoverable"
+    );
 }
 
 /// First-touch attribution persists and is not overwritten by a later signup.
