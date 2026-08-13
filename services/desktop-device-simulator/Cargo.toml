@@ -6,4 +6,6 @@ edition.workspace = true
 [dependencies]
 desktop-agent-core = { path = "../../crates/desktop-agent-core" }
 desktop-protocol = { path = "../../crates/desktop-protocol" }
+reqwest = { version = "0.12", features = ["json", "stream"] }
 serde_json = "1"
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "time"] }

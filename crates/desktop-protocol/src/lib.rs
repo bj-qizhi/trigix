@@ -115,6 +115,14 @@ pub struct PairingAccepted {
     pub heartbeat_interval_seconds: u32,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DeviceConnectionAccepted {
+    pub device_id: String,
+    pub session_id: String,
+    pub server_time_unix_ms: u64,
+    pub heartbeat_interval_seconds: u32,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum DeviceState {
@@ -130,6 +138,8 @@ pub struct Heartbeat {
     pub state: DeviceState,
     pub active_execution_id: Option<String>,
     pub agent_version: String,
+    pub capabilities: Vec<DeviceCapability>,
+    pub health_detail: Option<String>,
 }
 
 impl Heartbeat {
@@ -139,8 +149,25 @@ impl Heartbeat {
         if let Some(execution_id) = &self.active_execution_id {
             validate_identifier("active_execution_id", execution_id)?;
         }
+        if self.capabilities.len() > 32 {
+            return Err(ProtocolError::InvalidField("capabilities"));
+        }
+        for (index, capability) in self.capabilities.iter().enumerate() {
+            if self.capabilities[..index].contains(capability) {
+                return Err(ProtocolError::InvalidField("capabilities"));
+            }
+        }
+        validate_optional_text("health_detail", self.health_detail.as_deref(), 256)?;
         Ok(())
     }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HeartbeatAccepted {
+    pub device_id: String,
+    pub session_id: String,
+    pub state: DeviceState,
+    pub server_time_unix_ms: u64,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
@@ -324,7 +351,7 @@ fn validate_text(
     if value.trim().is_empty() {
         return Err(ProtocolError::MissingField(field));
     }
-    if value.len() > maximum_length {
+    if value.len() > maximum_length || value.chars().any(char::is_control) {
         return Err(ProtocolError::InvalidField(field));
     }
     Ok(())
@@ -369,6 +396,32 @@ mod tests {
         assert_eq!(
             envelope.validate(),
             Err(ProtocolError::UnsupportedVersion("desktop.v2".to_owned()))
+        );
+    }
+
+    #[test]
+    fn heartbeat_rejects_duplicate_capabilities_and_unsafe_health_detail() {
+        let mut heartbeat = Heartbeat {
+            device_id: "device-1".to_owned(),
+            state: DeviceState::Online,
+            active_execution_id: None,
+            agent_version: "1.0.0".to_owned(),
+            capabilities: vec![
+                DeviceCapability::SystemInformation,
+                DeviceCapability::SystemInformation,
+            ],
+            health_detail: None,
+        };
+        assert_eq!(
+            heartbeat.validate(),
+            Err(ProtocolError::InvalidField("capabilities"))
+        );
+
+        heartbeat.capabilities.truncate(1);
+        heartbeat.health_detail = Some("x".repeat(257));
+        assert_eq!(
+            heartbeat.validate(),
+            Err(ProtocolError::InvalidField("health_detail"))
         );
     }
 

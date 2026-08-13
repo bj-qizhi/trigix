@@ -198,6 +198,7 @@ pub struct AppState {
     sso_store: Arc<crate::sso::PlatformSsoStore>,
     custom_node_store: Arc<crate::custom_nodes::PlatformCustomNodeStore>,
     device_pairing_store: Arc<crate::device_pairing::PlatformDevicePairingStore>,
+    device_connections: crate::device_connection::DeviceConnectionManager,
 }
 
 pub fn router() -> Router {
@@ -205,6 +206,7 @@ pub fn router() -> Router {
     spawn_schedule_runner(state.clone());
     spawn_execution_timeout_guard(state.clone());
     spawn_credential_expiry_checker(state.clone());
+    spawn_device_stale_guard(state.clone());
     build_router(state)
 }
 
@@ -264,6 +266,7 @@ pub(crate) fn default_app_state() -> AppState {
         sso_store: Arc::new(crate::sso::PlatformSsoStore::default()),
         custom_node_store: Arc::new(crate::custom_nodes::PlatformCustomNodeStore::default()),
         device_pairing_store: Arc::new(crate::device_pairing::PlatformDevicePairingStore::default()),
+        device_connections: crate::device_connection::DeviceConnectionManager::default(),
     }
 }
 
@@ -302,6 +305,25 @@ fn spawn_schedule_runner(state: AppState) {
                         retried_from: None,
                     })
                     .await;
+            }
+        }
+    });
+}
+
+fn spawn_device_stale_guard(state: AppState) {
+    tokio::spawn(async move {
+        loop {
+            tokio::time::sleep(std::time::Duration::from_secs(30)).await;
+            let now = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs() as i64;
+            if let Ok(expired) = state.device_pairing_store.expire_stale_devices(now).await {
+                for device_id in expired {
+                    state
+                        .device_connections
+                        .disconnect(&device_id, "heartbeat_timeout");
+                }
             }
         }
     });
@@ -881,6 +903,8 @@ async fn auth_middleware(State(state): State<AppState>, mut req: Request, next: 
         || (path.starts_with("/v1/desktop/pairing-sessions/") && path.ends_with("/claim"))
         || (path.starts_with("/v1/desktop/devices/")
             && path.ends_with("/credential-rotation/claim"))
+        || path == "/v1/desktop/device-connection"
+        || path == "/v1/desktop/device-heartbeats"
         || path == "/healthz"
         || path == "/healthz/detail"
         || path == "/v1/system/info"
@@ -915,10 +939,20 @@ async fn auth_middleware(State(state): State<AppState>, mut req: Request, next: 
     }
 
     // Rate-limit by tenant_id (or fallback key for unauthenticated public routes)
-    let rate_key = claims
-        .as_ref()
-        .map(|c| c.tenant_id.clone())
-        .unwrap_or_else(|| "anonymous".to_string());
+    let rate_key =
+        if path == "/v1/desktop/device-connection" || path == "/v1/desktop/device-heartbeats" {
+            req.headers()
+                .get("x-device-id")
+                .and_then(|value| value.to_str().ok())
+                .filter(|value| value.len() <= 128)
+                .map(|value| format!("desktop-device:{value}"))
+                .unwrap_or_else(|| "desktop-device:invalid".to_string())
+        } else {
+            claims
+                .as_ref()
+                .map(|c| c.tenant_id.clone())
+                .unwrap_or_else(|| "anonymous".to_string())
+        };
     if !state.rate_limiter.check(&rate_key) {
         return (
             StatusCode::TOO_MANY_REQUESTS,
@@ -1045,6 +1079,7 @@ pub fn router_with_services(
         sso_store: Arc::new(crate::sso::PlatformSsoStore::default()),
         custom_node_store: Arc::new(crate::custom_nodes::PlatformCustomNodeStore::default()),
         device_pairing_store: Arc::new(crate::device_pairing::PlatformDevicePairingStore::default()),
+        device_connections: crate::device_connection::DeviceConnectionManager::default(),
     };
 
     build_router(state)
@@ -1120,10 +1155,12 @@ pub fn router_with_all_stores(
         sso_store: Arc::new(sso_store),
         custom_node_store: Arc::new(custom_node_store),
         device_pairing_store: Arc::new(device_pairing_store),
+        device_connections: crate::device_connection::DeviceConnectionManager::default(),
     };
     spawn_schedule_runner(state.clone());
     spawn_execution_timeout_guard(state.clone());
     spawn_execution_bus_bridge(state.clone());
+    spawn_device_stale_guard(state.clone());
     if state.cache.is_available() {
         spawn_queue_worker(state.clone());
     }

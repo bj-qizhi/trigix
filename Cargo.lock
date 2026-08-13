@@ -834,7 +834,9 @@ version = "1.5.1"
 dependencies = [
  "desktop-agent-core",
  "desktop-protocol",
+ "reqwest",
  "serde_json",
+ "tokio",
 ]
 
 [[package]]

@@ -12,6 +12,7 @@ pub mod comments;
 pub mod credentials;
 pub mod crypto;
 pub mod custom_nodes;
+pub mod device_connection;
 pub mod device_pairing;
 pub mod env_vars;
 pub mod event_subscriptions;
