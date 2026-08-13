@@ -924,7 +924,6 @@ fn dispatch_request(
         ),
         AutomationHostOperation::Execute {
             lease_expires_at_unix_ms,
-            action: _,
             ..
         } if lease_expires_at_unix_ms <= now_unix_ms => failure_response(
             request_id,
