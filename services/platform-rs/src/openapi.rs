@@ -132,6 +132,34 @@ pub fn spec() -> Value {
               "updated_at": { "type": "integer" }
             }
           },
+          "DesktopDevice": {
+            "type": "object",
+            "required": ["id", "tenant_id", "display_name", "operating_system", "agent_version", "capabilities", "state", "paired_by", "created_at", "updated_at", "stale"],
+            "properties": {
+              "id": { "type": "string" },
+              "tenant_id": { "type": "string" },
+              "display_name": { "type": "string" },
+              "operating_system": { "type": "string" },
+              "agent_version": { "type": "string" },
+              "capabilities": { "type": "array", "items": { "type": "string" } },
+              "state": { "type": "string", "enum": ["paired", "online", "offline", "suspended", "revoked"] },
+              "paired_by": { "type": "string" },
+              "created_at": { "type": "integer", "format": "int64" },
+              "updated_at": { "type": "integer", "format": "int64" },
+              "last_seen_at": { "type": "integer", "format": "int64", "nullable": true },
+              "stale": { "type": "boolean" }
+            }
+          },
+          "DesktopDeviceCredential": {
+            "type": "object",
+            "required": ["device_id", "tenant_id", "credential_id", "credential"],
+            "properties": {
+              "device_id": { "type": "string" },
+              "tenant_id": { "type": "string" },
+              "credential_id": { "type": "string" },
+              "credential": { "type": "string", "writeOnly": true }
+            }
+          },
           "ApiError": {
             "type": "object",
             "properties": {
@@ -142,6 +170,89 @@ pub fn spec() -> Value {
         }
       },
       "paths": {
+        "/v1/desktop/pairing-sessions": {
+          "post": {
+            "tags": ["Desktop Devices"],
+            "summary": "Create a short-lived Device pairing session",
+            "security": [],
+            "responses": { "201": { "description": "Pairing code and one-time claim secret" }, "400": { "description": "Invalid Device descriptor" }, "429": { "description": "Rate limited" } }
+          }
+        },
+        "/v1/desktop/pairing-sessions/approve": {
+          "post": {
+            "tags": ["Desktop Devices"],
+            "summary": "Approve a pairing session as a Tenant administrator",
+            "responses": { "200": { "description": "Paired Device", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/DesktopDevice" } } } }, "403": { "description": "Tenant administrator required" } }
+          }
+        },
+        "/v1/desktop/pairing-sessions/{session_id}/claim": {
+          "post": {
+            "tags": ["Desktop Devices"],
+            "summary": "Claim the initial Device Credential once",
+            "security": [],
+            "parameters": [{ "name": "session_id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }],
+            "responses": { "200": { "description": "Device Credential", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/DesktopDeviceCredential" } } } }, "404": { "description": "Invalid claim" } }
+          }
+        },
+        "/v1/desktop/devices": {
+          "get": {
+            "tags": ["Desktop Devices"],
+            "summary": "List Tenant Devices",
+            "parameters": [
+              { "name": "state", "in": "query", "schema": { "type": "string" } },
+              { "name": "limit", "in": "query", "schema": { "type": "integer", "minimum": 1, "maximum": 100, "default": 50 } },
+              { "name": "offset", "in": "query", "schema": { "type": "integer", "minimum": 0, "default": 0 } }
+            ],
+            "responses": { "200": { "description": "Paginated Device list" }, "403": { "description": "Tenant administrator required" } }
+          }
+        },
+        "/v1/desktop/devices/{device_id}": {
+          "get": {
+            "tags": ["Desktop Devices"],
+            "summary": "Get a Tenant Device",
+            "parameters": [{ "name": "device_id", "in": "path", "required": true, "schema": { "type": "string" } }],
+            "responses": { "200": { "description": "Device", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/DesktopDevice" } } } }, "404": { "description": "Device not found" } }
+          },
+          "patch": {
+            "tags": ["Desktop Devices"],
+            "summary": "Rename a Tenant Device",
+            "parameters": [{ "name": "device_id", "in": "path", "required": true, "schema": { "type": "string" } }],
+            "responses": { "200": { "description": "Updated Device" }, "403": { "description": "Tenant administrator required" } }
+          }
+        },
+        "/v1/desktop/devices/{device_id}/suspend": {
+          "post": {
+            "tags": ["Desktop Devices"],
+            "summary": "Suspend a Device",
+            "parameters": [{ "name": "device_id", "in": "path", "required": true, "schema": { "type": "string" } }],
+            "responses": { "200": { "description": "Suspended Device" }, "409": { "description": "Invalid lifecycle state" } }
+          }
+        },
+        "/v1/desktop/devices/{device_id}/revoke": {
+          "post": {
+            "tags": ["Desktop Devices"],
+            "summary": "Irreversibly revoke a Device Credential",
+            "parameters": [{ "name": "device_id", "in": "path", "required": true, "schema": { "type": "string" } }],
+            "responses": { "200": { "description": "Revoked Device" }, "409": { "description": "Invalid lifecycle state" } }
+          }
+        },
+        "/v1/desktop/devices/{device_id}/credential-rotation": {
+          "post": {
+            "tags": ["Desktop Devices"],
+            "summary": "Start Credential rotation without exposing plaintext",
+            "parameters": [{ "name": "device_id", "in": "path", "required": true, "schema": { "type": "string" } }],
+            "responses": { "201": { "description": "Rotation identifier" }, "409": { "description": "Invalid lifecycle state" } }
+          }
+        },
+        "/v1/desktop/devices/{device_id}/credential-rotation/claim": {
+          "post": {
+            "tags": ["Desktop Devices"],
+            "summary": "Atomically claim a replacement Credential",
+            "security": [],
+            "parameters": [{ "name": "device_id", "in": "path", "required": true, "schema": { "type": "string" } }],
+            "responses": { "200": { "description": "Replacement Credential", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/DesktopDeviceCredential" } } } }, "404": { "description": "Invalid current Credential" }, "429": { "description": "Rate limited" } }
+          }
+        },
         "/healthz": {
           "get": {
             "tags": ["System"],

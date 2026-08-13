@@ -263,6 +263,87 @@ async fn desktop_pairing_is_atomic_tenant_scoped_and_single_use() {
         row.2.is_none(),
         "claimed plaintext must not remain recoverable"
     );
+
+    assert!(store
+        .get_device("wrong-tenant", &device_id)
+        .await
+        .expect("tenant-scoped lookup")
+        .is_none());
+    let renamed = store
+        .rename_device(&tenant_id, &device_id, "Renamed Postgres Device")
+        .await
+        .expect("rename device");
+    assert_eq!(renamed.display_name, "Renamed Postgres Device");
+    let list = store
+        .list_devices(&tenant_id, Some("paired"), 1, 0)
+        .await
+        .expect("list devices");
+    assert_eq!(list.items.len(), 1);
+    assert_eq!(list.items[0].id, device_id);
+
+    sqlx::query(
+        "UPDATE af_desktop_devices SET state = 'online', last_seen_at = now() - interval '5 minutes' WHERE id = $1",
+    )
+    .bind(&device_id)
+    .execute(&pool)
+    .await
+    .expect("make device stale");
+    assert!(
+        store
+            .get_device(&tenant_id, &device_id)
+            .await
+            .expect("get stale device")
+            .expect("device exists")
+            .stale
+    );
+
+    store
+        .start_rotation(&tenant_id, &device_id)
+        .await
+        .expect("start credential rotation");
+    let store = std::sync::Arc::new(store);
+    let first_store = std::sync::Arc::clone(&store);
+    let second_store = std::sync::Arc::clone(&store);
+    let first_secret = claimed.credential.clone();
+    let second_secret = claimed.credential.clone();
+    let first_device = device_id.clone();
+    let second_device = device_id.clone();
+    let (first, second) = tokio::join!(
+        async move {
+            first_store
+                .claim_rotation(&first_device, &first_secret)
+                .await
+        },
+        async move {
+            second_store
+                .claim_rotation(&second_device, &second_secret)
+                .await
+        }
+    );
+    assert_eq!(usize::from(first.is_ok()) + usize::from(second.is_ok()), 1);
+    let rotated = first.or(second).expect("one rotation claim succeeds");
+    assert!(store
+        .authenticate_device(&device_id, &claimed.credential)
+        .await
+        .is_err());
+    assert!(store
+        .authenticate_device(&device_id, &rotated.credential)
+        .await
+        .is_ok());
+
+    store
+        .set_device_state(&tenant_id, &device_id, "suspended")
+        .await
+        .expect("suspend device");
+    assert!(store
+        .authenticate_device(&device_id, &rotated.credential)
+        .await
+        .is_err());
+    store
+        .set_device_state(&tenant_id, &device_id, "revoked")
+        .await
+        .expect("revoke device");
+    assert!(store.start_rotation(&tenant_id, &device_id).await.is_err());
 }
 
 /// First-touch attribution persists and is not overwritten by a later signup.

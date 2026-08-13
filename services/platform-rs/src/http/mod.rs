@@ -879,6 +879,8 @@ async fn auth_middleware(State(state): State<AppState>, mut req: Request, next: 
         || path.starts_with("/v1/sso/")
         || path == "/v1/desktop/pairing-sessions"
         || (path.starts_with("/v1/desktop/pairing-sessions/") && path.ends_with("/claim"))
+        || (path.starts_with("/v1/desktop/devices/")
+            && path.ends_with("/credential-rotation/claim"))
         || path == "/healthz"
         || path == "/healthz/detail"
         || path == "/v1/system/info"
