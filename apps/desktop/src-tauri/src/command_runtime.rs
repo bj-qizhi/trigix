@@ -2,7 +2,7 @@ use desktop_agent_core::{
     ApprovalGrant, CommandProcessor, ExecutionPolicy, FileCommandStateStore, InMemoryAuditSink,
     RecoveryConfig,
 };
-use desktop_protocol::{DesktopCommand, DesktopCommandResult, DeviceCapability};
+use desktop_protocol::{CommandOutcome, DesktopCommand, DesktopCommandResult, DeviceCapability};
 use std::path::PathBuf;
 use std::sync::Mutex;
 use trigix_desktop_automation::{
@@ -148,11 +148,17 @@ impl CommandRuntime {
             .map_err(|_| RuntimeError::Execution)
     }
 
-    pub fn confirm_result_delivery(&self, command_id: &str) -> Result<(), RuntimeError> {
+    pub fn confirm_result_delivery(
+        &self,
+        result: &DesktopCommandResult,
+    ) -> Result<(), RuntimeError> {
+        if result.outcome == CommandOutcome::AwaitingApproval {
+            return Ok(());
+        }
         self.processor
             .lock()
             .map_err(|_| RuntimeError::StateUnavailable)?
-            .confirm_result_delivery(command_id)
+            .confirm_result_delivery(&result.command_id)
             .map_err(|_| RuntimeError::RecoveryUnavailable)
     }
 
@@ -228,9 +234,7 @@ mod tests {
         };
         let result = runtime.execute(&command, now + 1).unwrap();
         assert_eq!(result.outcome, CommandOutcome::Succeeded);
-        runtime
-            .confirm_result_delivery(&command.command_id)
-            .unwrap();
+        runtime.confirm_result_delivery(&result).unwrap();
         assert_eq!(runtime.active_execution_id(), None);
 
         let mut cancelled = command;
@@ -240,9 +244,17 @@ mod tests {
         assert!(runtime.cancel(&cancelled.command_id));
         let result = runtime.execute(&cancelled, now + 2).unwrap();
         assert_eq!(result.outcome, CommandOutcome::Cancelled);
-        runtime
-            .confirm_result_delivery(&cancelled.command_id)
-            .unwrap();
+        runtime.confirm_result_delivery(&result).unwrap();
+
+        let mut awaiting_approval = cancelled;
+        awaiting_approval.command_id = "command-awaiting-approval".to_owned();
+        awaiting_approval.execution_id = "execution-awaiting-approval".to_owned();
+        awaiting_approval.action = DesktopAction::LaunchApplication {
+            application_id: desktop_protocol::ApplicationIdentity::new("notepad"),
+        };
+        let result = runtime.execute(&awaiting_approval, now + 3).unwrap();
+        assert_eq!(result.outcome, CommandOutcome::AwaitingApproval);
+        runtime.confirm_result_delivery(&result).unwrap();
         std::fs::remove_dir_all(root).unwrap();
     }
 
