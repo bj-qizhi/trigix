@@ -256,8 +256,8 @@ mod native {
     };
     use desktop_identity::{DeviceIdentity, WindowsCredentialStore, WindowsDeviceCredentialStore};
     use desktop_protocol::{
-        DesktopCommandAcknowledgement, DeviceCapability, DeviceDescriptor, DeviceState, Envelope,
-        Heartbeat,
+        CommandOutcome, DesktopCommandAcknowledgement, DeviceCapability, DeviceDescriptor,
+        DeviceState, Envelope, Heartbeat,
     };
     use std::path::PathBuf;
     use std::sync::atomic::{AtomicU64, Ordering};
@@ -685,6 +685,12 @@ mod native {
                         Ok(result) => result,
                         Err(_) => return (ConnectionError::UnsupportedCommand, true),
                     };
+                    if result.outcome == CommandOutcome::AwaitingApproval {
+                        let _ = shell.update_runtime(
+                            ConnectionState::Online,
+                            AutomationState::AwaitingApproval,
+                        );
+                    }
                     let result_envelope = Envelope::new(
                         format!("result-{command_id}"),
                         unix_millis(),
@@ -702,7 +708,7 @@ mod native {
                     if command
                         .as_deref()
                         .ok_or(ConnectionError::UnsupportedCommand)
-                        .and_then(|runtime| runtime.confirm_result_delivery(&command_id).map_err(|_| ConnectionError::Transport))
+                        .and_then(|runtime| runtime.confirm_result_delivery(&result_envelope.payload).map_err(|_| ConnectionError::Transport))
                         .is_err()
                     {
                         return (ConnectionError::Transport, true);
