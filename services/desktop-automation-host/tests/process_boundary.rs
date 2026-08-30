@@ -1,4 +1,6 @@
+#[cfg(unix)]
 use desktop_agent_core::{CommandProcessor, ExecutionPolicy, InMemoryAuditSink};
+#[cfg(unix)]
 use desktop_protocol::{CommandOutcome, DesktopAction, DesktopCommand, ExecutionLease};
 use std::io::{BufRead, BufReader, Write};
 use std::process::{Command, Stdio};
@@ -6,9 +8,11 @@ use std::sync::mpsc;
 use std::sync::Arc;
 use std::time::Duration;
 use std::time::{SystemTime, UNIX_EPOCH};
+#[cfg(unix)]
+use trigix_desktop_automation::SupervisedActionExecutor;
 use trigix_desktop_automation::{
     AutomationCancellation, AutomationHostOperation, AutomationHostRequest, AutomationHostResponse,
-    AutomationHostStatus, AutomationHostSupervisor, SupervisedActionExecutor, SupervisorConfig,
+    AutomationHostStatus, AutomationHostSupervisor, SupervisorConfig,
 };
 
 fn now_unix_ms() -> u64 {
@@ -28,6 +32,7 @@ fn request(request_id: &str, operation: AutomationHostOperation) -> AutomationHo
     }
 }
 
+#[cfg(unix)]
 fn command(command_id: &str, lease_expires_at_unix_ms: u64) -> DesktopCommand {
     DesktopCommand {
         command_id: command_id.to_owned(),

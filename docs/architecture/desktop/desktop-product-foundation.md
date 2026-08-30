@@ -162,6 +162,8 @@ PostgreSQL enforces referential links and tenant row-level security for evidence
 
 The Windows adapter runs out of process from the presentation shell where practical. A crash or timeout terminates the action and returns a failure without granting the UI process broader authority.
 
+The supported operating-system, session, policy, and resource budgets are defined in [Windows Automation Qualification](windows-automation-qualification.md). Its pinned Windows Server lanes are blocking qualification proxies; signed Windows 11 client smoke evidence remains a release-signing gate.
+
 ## Voice and Avatar Boundaries
 
 Voice input produces conversation events; it does not directly produce operating-system calls. Speech recognition output enters the same Agent, Tool, policy, and Approval path as typed input. Microphone use must have a visible local indicator and immediate stop control.

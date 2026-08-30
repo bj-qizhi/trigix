@@ -10,3 +10,9 @@ trigix-desktop-automation = { path = "../../crates/desktop-automation" }
 desktop-agent-core = { path = "../../crates/desktop-agent-core" }
 desktop-protocol = { path = "../../crates/desktop-protocol" }
 serde_json = "1"
+
+[target.'cfg(windows)'.dev-dependencies]
+windows-sys = { version = "0.59", features = [
+  "Win32_System_ProcessStatus",
+  "Win32_System_Threading",
+] }
