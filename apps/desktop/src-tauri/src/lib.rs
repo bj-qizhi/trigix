@@ -4,6 +4,8 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 
 #[cfg_attr(not(target_os = "windows"), allow(dead_code))]
+mod command_runtime;
+#[cfg_attr(not(target_os = "windows"), allow(dead_code))]
 mod connection;
 mod pairing;
 
@@ -33,12 +35,20 @@ pub enum AutomationState {
     Stopping,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AutomationHostState {
+    Ready,
+    Unavailable,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct ShellSnapshot {
     pub revision: u64,
     pub connection: ConnectionState,
     pub automation: AutomationState,
+    pub automation_host: AutomationHostState,
     pub can_request_stop: bool,
 }
 
@@ -71,6 +81,7 @@ struct ShellState {
     revision: u64,
     connection: ConnectionState,
     automation: AutomationState,
+    automation_host: AutomationHostState,
     seen_requests: HashSet<String>,
     request_order: VecDeque<String>,
 }
@@ -81,6 +92,7 @@ impl Default for ShellState {
             revision: 1,
             connection: ConnectionState::Offline,
             automation: AutomationState::Idle,
+            automation_host: AutomationHostState::Unavailable,
             seen_requests: HashSet::new(),
             request_order: VecDeque::new(),
         }
@@ -177,6 +189,21 @@ impl ShellController {
         }
         Ok(snapshot_from(&state))
     }
+
+    pub fn update_automation_host(
+        &self,
+        automation_host: AutomationHostState,
+    ) -> Result<ShellSnapshot, ShellIpcError> {
+        let mut state = self
+            .state
+            .lock()
+            .map_err(|_| ShellIpcError::StateUnavailable)?;
+        if state.automation_host != automation_host {
+            state.revision = state.revision.saturating_add(1);
+            state.automation_host = automation_host;
+        }
+        Ok(snapshot_from(&state))
+    }
 }
 
 fn snapshot_from(state: &ShellState) -> ShellSnapshot {
@@ -184,6 +211,7 @@ fn snapshot_from(state: &ShellState) -> ShellSnapshot {
         revision: state.revision,
         connection: state.connection,
         automation: state.automation,
+        automation_host: state.automation_host,
         can_request_stop: matches!(
             state.automation,
             AutomationState::Running | AutomationState::AwaitingApproval
@@ -215,23 +243,42 @@ fn remember_request(state: &mut ShellState, request_id: String) {
 
 #[cfg(target_os = "windows")]
 mod native {
+    use super::command_runtime::CommandRuntime;
     use super::connection::{
-        reconnect_delay, ConnectedEvent, ConnectionError, SseDecoder, SseEvent,
+        parse_cancellation_event, parse_command_event, reconnect_delay, ConnectedEvent,
+        ConnectionError, SseDecoder, SseEvent,
     };
     use super::pairing::ClaimedDeviceCredential;
     use super::{
-        ConnectionState, PairingController, PairingIpcError, PairingSessionCreated,
-        PairingSnapshot, ShellController, ShellIpcError, ShellSnapshot, StartPairingInput,
-        StopAccepted, StopRequest,
+        AutomationHostState, AutomationState, ConnectionState, PairingController, PairingIpcError,
+        PairingSessionCreated, PairingSnapshot, ShellController, ShellIpcError, ShellSnapshot,
+        StartPairingInput, StopAccepted, StopRequest,
     };
     use desktop_identity::{DeviceIdentity, WindowsCredentialStore, WindowsDeviceCredentialStore};
-    use desktop_protocol::{DeviceDescriptor, DeviceState, Envelope, Heartbeat};
+    use desktop_protocol::{
+        DesktopCommandAcknowledgement, DeviceCapability, DeviceDescriptor, DeviceState, Envelope,
+        Heartbeat,
+    };
+    use std::path::PathBuf;
     use std::sync::atomic::{AtomicU64, Ordering};
     use std::sync::Arc;
     use std::time::{Duration, SystemTime, UNIX_EPOCH};
-    use tauri::State;
+    use tauri::{Manager, State};
 
     static HEARTBEAT_SEQUENCE: AtomicU64 = AtomicU64::new(1);
+
+    struct NativeRuntimeState {
+        command: Option<Arc<CommandRuntime>>,
+    }
+
+    impl NativeRuntimeState {
+        fn capabilities(&self) -> Vec<DeviceCapability> {
+            self.command
+                .as_deref()
+                .map(CommandRuntime::capabilities)
+                .unwrap_or_default()
+        }
+    }
 
     #[tauri::command]
     fn shell_status(
@@ -243,9 +290,14 @@ mod native {
     #[tauri::command]
     fn request_automation_stop(
         controller: State<'_, Arc<ShellController>>,
+        runtime: State<'_, NativeRuntimeState>,
         request: StopRequest,
     ) -> Result<StopAccepted, ShellIpcError> {
-        controller.request_stop(request)
+        let accepted = controller.request_stop(request)?;
+        if let Some(command) = runtime.command.as_deref() {
+            command.cancel_active();
+        }
+        Ok(accepted)
     }
 
     #[tauri::command]
@@ -258,6 +310,7 @@ mod native {
     #[tauri::command(async)]
     async fn start_device_pairing(
         controller: State<'_, Arc<PairingController>>,
+        runtime: State<'_, NativeRuntimeState>,
         input: StartPairingInput,
     ) -> Result<PairingSnapshot, PairingIpcError> {
         let input = input.validate()?;
@@ -270,7 +323,7 @@ mod native {
                 display_name: input.display_name,
                 operating_system: "windows".to_owned(),
                 agent_version: env!("CARGO_PKG_VERSION").to_owned(),
-                capabilities: vec![],
+                capabilities: runtime.capabilities(),
             },
             "device_public_key": identity.public_key(),
         });
@@ -377,7 +430,11 @@ mod native {
             .map_err(|_| ConnectionError::Transport)
     }
 
-    fn spawn_connection_runtime(shell: Arc<ShellController>, pairing: Arc<PairingController>) {
+    fn spawn_connection_runtime(
+        shell: Arc<ShellController>,
+        pairing: Arc<PairingController>,
+        command: Option<Arc<CommandRuntime>>,
+    ) {
         let thread_shell = shell.clone();
         if std::thread::Builder::new()
             .name("trigix-device-connection".to_owned())
@@ -387,7 +444,9 @@ mod native {
                     .worker_threads(1)
                     .build();
                 match runtime {
-                    Ok(runtime) => runtime.block_on(connection_loop(thread_shell, pairing)),
+                    Ok(runtime) => {
+                        runtime.block_on(connection_loop(thread_shell, pairing, command))
+                    }
                     Err(_) => {
                         let _ = thread_shell.update_connection(ConnectionState::Degraded);
                     }
@@ -399,7 +458,11 @@ mod native {
         }
     }
 
-    async fn connection_loop(shell: Arc<ShellController>, pairing: Arc<PairingController>) {
+    async fn connection_loop(
+        shell: Arc<ShellController>,
+        pairing: Arc<PairingController>,
+        command: Option<Arc<CommandRuntime>>,
+    ) {
         let client = match connection_client() {
             Ok(client) => client,
             Err(_) => {
@@ -424,7 +487,12 @@ mod native {
                 }
             };
             let _ = shell.update_connection(ConnectionState::Connecting);
-            let (error, established) = connection_once(&client, &secret, &shell, &pairing).await;
+            let (error, established) =
+                connection_once(&client, &secret, &shell, &pairing, command.clone()).await;
+            if let Some(command) = command.as_deref() {
+                command.cancel_active();
+            }
+            let _ = shell.update_runtime(ConnectionState::Degraded, AutomationState::Idle);
             if error == ConnectionError::Unpaired {
                 attempt = 0;
                 let _ = shell.update_connection(ConnectionState::Offline);
@@ -450,6 +518,7 @@ mod native {
         secret: &super::pairing::ConnectionSecret,
         shell: &ShellController,
         pairing: &PairingController,
+        command: Option<Arc<CommandRuntime>>,
     ) -> (ConnectionError, bool) {
         let response = match client
             .get(format!(
@@ -477,6 +546,9 @@ mod native {
         let mut heartbeat_interval = Duration::from_secs(30);
         let mut next_heartbeat = tokio::time::Instant::now() + heartbeat_interval;
         let mut next_pairing_check = tokio::time::Instant::now() + Duration::from_secs(1);
+        let mut next_stop_check = tokio::time::Instant::now() + Duration::from_millis(100);
+        let (result_sender, mut result_receiver) = tokio::sync::mpsc::channel(1);
+        let mut active_command = None;
         loop {
             tokio::select! {
                 chunk = response.chunk() => {
@@ -489,6 +561,76 @@ mod native {
                         Err(error) => return (error, session_id.is_some()),
                     };
                     for event in events {
+                        if event.event == "command" {
+                            let Some(session_id) = session_id.as_deref() else {
+                                return (ConnectionError::InvalidStream, false);
+                            };
+                            let Some(runtime) = command.as_ref() else {
+                                return (ConnectionError::UnsupportedCommand, true);
+                            };
+                            if active_command.is_some() {
+                                return (ConnectionError::UnsupportedCommand, true);
+                            }
+                            let now = unix_millis();
+                            let desktop_command = match parse_command_event(&event.data, now) {
+                                Ok(command) => command,
+                                Err(error) => return (error, true),
+                            };
+                            if runtime.reserve(&desktop_command).is_err() {
+                                return (ConnectionError::UnsupportedCommand, true);
+                            }
+                            let acknowledgement = Envelope::new(
+                                format!("ack-{}", desktop_command.command_id),
+                                now,
+                                DesktopCommandAcknowledgement {
+                                    command_id: desktop_command.command_id.clone(),
+                                    execution_id: desktop_command.execution_id.clone(),
+                                    lease_id: desktop_command.lease.lease_id.clone(),
+                                    acknowledged_at_unix_ms: now,
+                                },
+                            );
+                            if let Err(error) = post_device_message(
+                                client,
+                                secret,
+                                session_id,
+                                "device-command-acknowledgements",
+                                &acknowledgement,
+                            ).await {
+                                runtime.abandon(&desktop_command.command_id);
+                                return (error, true);
+                            }
+                            active_command = Some((
+                                desktop_command.command_id.clone(),
+                                desktop_command.execution_id.clone(),
+                            ));
+                            let _ = shell.update_runtime(ConnectionState::Online, AutomationState::Running);
+                            let runtime = runtime.clone();
+                            let sender = result_sender.clone();
+                            tokio::task::spawn_blocking(move || {
+                                let command_id = desktop_command.command_id.clone();
+                                let result = runtime.execute(&desktop_command, unix_millis());
+                                let _ = sender.blocking_send((command_id, result));
+                            });
+                            continue;
+                        }
+                        if event.event == "command_cancelled" {
+                            let Some((active_command_id, active_execution_id)) = active_command.as_ref() else {
+                                return (ConnectionError::InvalidStream, true);
+                            };
+                            let cancellation = match parse_cancellation_event(
+                                &event.data,
+                                active_command_id,
+                                active_execution_id,
+                            ) {
+                                Ok(cancellation) => cancellation,
+                                Err(error) => return (error, true),
+                            };
+                            if let Some(runtime) = command.as_deref() {
+                                runtime.cancel(&cancellation.command_id);
+                            }
+                            let _ = shell.update_runtime(ConnectionState::Online, AutomationState::Stopping);
+                            continue;
+                        }
                         match handle_event(event, &secret.device_id, session_id.is_none()) {
                             Ok(Some(connected)) => {
                                 heartbeat_interval = Duration::from_secs(u64::from(
@@ -508,6 +650,7 @@ mod native {
                         client,
                         secret,
                         session_id.as_deref().unwrap_or_default(),
+                        command.as_deref(),
                     ).await;
                     if let Err(error) = result {
                         return (error, true);
@@ -525,6 +668,47 @@ mod native {
                         Err(error) => return (error, session_id.is_some()),
                     }
                     next_pairing_check = tokio::time::Instant::now() + Duration::from_secs(1);
+                }
+                _ = tokio::time::sleep_until(next_stop_check) => {
+                    if shell.take_stop_request() {
+                        if let Some(runtime) = command.as_deref() {
+                            runtime.cancel_active();
+                        }
+                    }
+                    next_stop_check = tokio::time::Instant::now() + Duration::from_millis(100);
+                }
+                Some((command_id, result)) = result_receiver.recv(), if active_command.is_some() => {
+                    if active_command.as_ref().map(|active| active.0.as_str()) != Some(&command_id) {
+                        return (ConnectionError::InvalidStream, true);
+                    }
+                    let result = match result {
+                        Ok(result) => result,
+                        Err(_) => return (ConnectionError::UnsupportedCommand, true),
+                    };
+                    let result_envelope = Envelope::new(
+                        format!("result-{command_id}"),
+                        unix_millis(),
+                        result,
+                    );
+                    if let Err(error) = post_device_message(
+                        client,
+                        secret,
+                        session_id.as_deref().unwrap_or_default(),
+                        "device-command-results",
+                        &result_envelope,
+                    ).await {
+                        return (error, true);
+                    }
+                    if command
+                        .as_deref()
+                        .ok_or(ConnectionError::UnsupportedCommand)
+                        .and_then(|runtime| runtime.confirm_result_delivery(&command_id).map_err(|_| ConnectionError::Transport))
+                        .is_err()
+                    {
+                        return (ConnectionError::Transport, true);
+                    }
+                    active_command = None;
+                    let _ = shell.update_runtime(ConnectionState::Online, AutomationState::Idle);
                 }
             }
         }
@@ -564,18 +748,26 @@ mod native {
         client: &reqwest::Client,
         secret: &super::pairing::ConnectionSecret,
         session_id: &str,
+        command: Option<&CommandRuntime>,
     ) -> Result<(), ConnectionError> {
         let now = unix_millis();
         let sequence = HEARTBEAT_SEQUENCE.fetch_add(1, Ordering::Relaxed);
+        let active_execution_id = command.and_then(CommandRuntime::active_execution_id);
         let heartbeat = Envelope::new(
             format!("heartbeat-{now}-{sequence}"),
             now,
             Heartbeat {
                 device_id: secret.device_id.clone(),
-                state: DeviceState::Online,
-                active_execution_id: None,
+                state: if active_execution_id.is_some() {
+                    DeviceState::Busy
+                } else {
+                    DeviceState::Online
+                },
+                active_execution_id,
                 agent_version: env!("CARGO_PKG_VERSION").to_owned(),
-                capabilities: vec![],
+                capabilities: command
+                    .map(CommandRuntime::capabilities)
+                    .unwrap_or_default(),
                 health_detail: None,
             },
         );
@@ -588,6 +780,31 @@ mod native {
             .header("x-device-session-id", session_id)
             .header("authorization", format!("Device {}", secret.credential))
             .json(&heartbeat)
+            .send()
+            .await
+            .map_err(|_| ConnectionError::Transport)?;
+        if matches!(response.status().as_u16(), 401 | 403) {
+            return Err(ConnectionError::CredentialRejected);
+        }
+        if !response.status().is_success() {
+            return Err(ConnectionError::Transport);
+        }
+        Ok(())
+    }
+
+    async fn post_device_message<T: serde::Serialize>(
+        client: &reqwest::Client,
+        secret: &super::pairing::ConnectionSecret,
+        session_id: &str,
+        path: &str,
+        message: &T,
+    ) -> Result<(), ConnectionError> {
+        let response = client
+            .post(format!("{}/v1/desktop/{path}", secret.platform_url))
+            .header("x-device-id", &secret.device_id)
+            .header("x-device-session-id", session_id)
+            .header("authorization", format!("Device {}", secret.credential))
+            .json(message)
             .send()
             .await
             .map_err(|_| ConnectionError::Transport)?;
@@ -616,13 +833,43 @@ mod native {
         controller
     }
 
+    fn initialize_command_runtime(app: &tauri::App) -> Option<Arc<CommandRuntime>> {
+        let executable = std::env::current_exe().ok()?;
+        let host_executable = executable
+            .parent()?
+            .join(PathBuf::from("desktop-automation-host.exe"));
+        let recovery_path = app
+            .path()
+            .app_local_data_dir()
+            .ok()?
+            .join("desktop-command-recovery.json");
+        CommandRuntime::initialize(host_executable, recovery_path, unix_millis())
+            .ok()
+            .map(Arc::new)
+    }
+
     pub fn run() {
         let shell = Arc::new(ShellController::default());
         let pairing = Arc::new(create_pairing_controller());
-        spawn_connection_runtime(shell.clone(), pairing.clone());
+        let setup_shell = shell.clone();
+        let setup_pairing = pairing.clone();
         tauri::Builder::default()
             .manage(shell)
             .manage(pairing)
+            .setup(move |app| {
+                let command = initialize_command_runtime(app);
+                let host_state = if command.is_some() {
+                    AutomationHostState::Ready
+                } else {
+                    AutomationHostState::Unavailable
+                };
+                let _ = setup_shell.update_automation_host(host_state);
+                app.manage(NativeRuntimeState {
+                    command: command.clone(),
+                });
+                spawn_connection_runtime(setup_shell.clone(), setup_pairing.clone(), command);
+                Ok(())
+            })
             .invoke_handler(tauri::generate_handler![
                 shell_status,
                 request_automation_stop,
@@ -646,6 +893,9 @@ mod tests {
     fn active_controller() -> ShellController {
         let controller = ShellController::default();
         controller
+            .update_automation_host(AutomationHostState::Ready)
+            .unwrap();
+        controller
             .update_runtime(ConnectionState::Online, AutomationState::Running)
             .unwrap();
         controller
@@ -658,6 +908,7 @@ mod tests {
 
         assert_eq!(snapshot.connection, ConnectionState::Online);
         assert_eq!(snapshot.automation, AutomationState::Running);
+        assert_eq!(snapshot.automation_host, AutomationHostState::Ready);
         assert!(snapshot.can_request_stop);
     }
 
@@ -748,6 +999,14 @@ mod tests {
         assert!(!csp.contains("unsafe-inline"));
         assert!(!csp.contains("unsafe-eval"));
         assert!(!csp.contains("https:"));
+
+        let bundle = &config["bundle"];
+        assert_eq!(bundle["active"], true);
+        assert_eq!(bundle["targets"], serde_json::json!(["nsis"]));
+        assert_eq!(
+            bundle["externalBin"],
+            serde_json::json!(["binaries/desktop-automation-host"])
+        );
     }
 
     #[test]

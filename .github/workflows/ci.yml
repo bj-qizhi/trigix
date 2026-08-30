@@ -92,14 +92,18 @@ jobs:
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2
 
+      - name: Prepare isolated Host sidecar
+        shell: pwsh
+        run: ./apps/desktop/scripts/prepare-sidecar.ps1 -Configuration debug
+
       - name: Clippy Windows desktop targets
         run: cargo clippy -p trigix-desktop-shell -p trigix-desktop-automation -p desktop-automation-host -p desktop-automation-fixture --all-targets -- -D warnings
 
       - name: Check native Tauri shell
         run: cargo check -p trigix-desktop-shell
 
-      - name: Build native fixture and isolated host
-        run: cargo build -p desktop-automation-fixture -p desktop-automation-host
+      - name: Build native fixture
+        run: cargo build -p desktop-automation-fixture
 
       - name: Record qualification environment
         shell: pwsh
@@ -116,10 +120,18 @@ jobs:
           cargo test -p desktop-automation-host --test windows_qualification -- --nocapture --test-threads=1
 
       - name: Run Windows automation unit and process tests
+        shell: pwsh
         run: |
+          $hostTriple = rustc -vV | Select-String '^host: ' | ForEach-Object { $_.Line.Substring(6).Trim() }
+          $env:TRIGIX_AUTOMATION_HOST_EXE = (Resolve-Path "target/$hostTriple/debug/desktop-automation-host.exe").Path
           cargo test -p trigix-desktop-shell --lib
           cargo test -p trigix-desktop-automation
           cargo test -p desktop-automation-host --test process_boundary
+
+      - name: Build unsigned NSIS qualification package
+        if: matrix.os == 'windows-2022'
+        working-directory: apps/desktop
+        run: npx --yes @tauri-apps/cli@2 build --debug --bundles nsis
 
   web:
     name: Web (typecheck, build)

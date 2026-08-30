@@ -6674,6 +6674,7 @@ dependencies = [
  "tauri",
  "tauri-build",
  "tokio",
+ "trigix-desktop-automation",
  "url",
 ]
 

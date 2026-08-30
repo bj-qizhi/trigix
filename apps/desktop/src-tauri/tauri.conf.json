@@ -26,8 +26,9 @@
     }
   },
   "bundle": {
-    "active": false,
-    "targets": "all",
+    "active": true,
+    "targets": ["nsis"],
+    "externalBin": ["binaries/desktop-automation-host"],
     "icon": ["icons/icon.png", "icons/icon.ico"]
   }
 }

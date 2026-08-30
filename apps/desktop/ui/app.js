@@ -1,5 +1,6 @@
 const connection = document.querySelector("#connection");
 const automation = document.querySelector("#automation");
+const automationHost = document.querySelector("#automation-host");
 const revision = document.querySelector("#revision");
 const stopButton = document.querySelector("#stop");
 const notice = document.querySelector("#notice");
@@ -27,6 +28,7 @@ function render(snapshot) {
   currentRevision = snapshot.revision;
   connection.textContent = readable(snapshot.connection);
   automation.textContent = readable(snapshot.automation);
+  automationHost.textContent = readable(snapshot.automation_host);
   revision.textContent = String(snapshot.revision);
   stopButton.disabled = !snapshot.can_request_stop;
   statusPanel.setAttribute("aria-busy", "false");

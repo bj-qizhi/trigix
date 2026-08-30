@@ -55,7 +55,7 @@ h1 {
 
 .status-panel {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(4, 1fr);
   margin-top: 64px;
   border-top: 1px solid #343a43;
   border-bottom: 1px solid #343a43;
