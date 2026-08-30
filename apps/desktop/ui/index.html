@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="dark" />
+    <title>Trigix Desktop</title>
+    <link rel="stylesheet" href="./styles.css" />
+    <script src="./app.js" defer></script>
+  </head>
+  <body>
+    <main class="shell" aria-labelledby="product-title">
+      <header>
+        <p class="eyebrow">LOCAL DEVICE CONTROL</p>
+        <h1 id="product-title">Trigix Desktop</h1>
+        <p class="lede">Governed automation stays visible and interruptible.</p>
+      </header>
+
+      <section class="status-panel" aria-live="polite" aria-busy="true">
+        <div>
+          <span class="label">Connection</span>
+          <strong id="connection">Checking</strong>
+        </div>
+        <div>
+          <span class="label">Automation</span>
+          <strong id="automation">Checking</strong>
+        </div>
+        <div>
+          <span class="label">State revision</span>
+          <strong id="revision">—</strong>
+        </div>
+      </section>
+
+      <section class="control-panel" aria-labelledby="control-title">
+        <div>
+          <p class="eyebrow">SAFETY CONTROL</p>
+          <h2 id="control-title">Immediate stop</h2>
+          <p>Requests cancellation through the local runtime. It cannot approve or start an action.</p>
+        </div>
+        <button id="stop" type="button" disabled>Stop automation</button>
+      </section>
+
+      <p id="notice" class="notice" role="status">Loading local runtime state…</p>
+    </main>
+  </body>
+</html>

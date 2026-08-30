@@ -7,6 +7,7 @@ members = [
   "crates/desktop-identity",
   "crates/desktop-host",
   "crates/desktop-automation",
+  "apps/desktop/src-tauri",
   "services/desktop-device-simulator",
   "services/desktop-automation-host",
   "services/desktop-automation-fixture",

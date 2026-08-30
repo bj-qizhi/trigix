@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-request-automation-stop"
+description = "Enables the request_automation_stop command without any pre-configured scope."
+commands.allow = ["request_automation_stop"]
+
+[[permission]]
+identifier = "deny-request-automation-stop"
+description = "Denies the request_automation_stop command without any pre-configured scope."
+commands.deny = ["request_automation_stop"]
