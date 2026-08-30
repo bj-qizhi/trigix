@@ -6,6 +6,10 @@
   "platforms": ["windows"],
   "permissions": [
     "allow-shell-status",
-    "allow-request-automation-stop"
+    "allow-request-automation-stop",
+    "allow-pairing-status",
+    "allow-start-device-pairing",
+    "allow-complete-device-pairing",
+    "allow-forget-device-pairing"
   ]
 }

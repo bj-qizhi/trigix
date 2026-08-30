@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-forget-device-pairing"
+description = "Enables the forget_device_pairing command without any pre-configured scope."
+commands.allow = ["forget_device_pairing"]
+
+[[permission]]
+identifier = "deny-forget-device-pairing"
+description = "Denies the forget_device_pairing command without any pre-configured scope."
+commands.deny = ["forget_device_pairing"]

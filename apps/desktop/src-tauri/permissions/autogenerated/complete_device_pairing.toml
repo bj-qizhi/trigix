@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-complete-device-pairing"
+description = "Enables the complete_device_pairing command without any pre-configured scope."
+commands.allow = ["complete_device_pairing"]
+
+[[permission]]
+identifier = "deny-complete-device-pairing"
+description = "Denies the complete_device_pairing command without any pre-configured scope."
+commands.deny = ["complete_device_pairing"]

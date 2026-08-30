@@ -1191,6 +1191,7 @@ dependencies = [
  "ed25519-dalek",
  "keyring",
  "rand_core 0.6.4",
+ "sha2",
 ]
 
 [[package]]
@@ -6664,10 +6665,16 @@ dependencies = [
 name = "trigix-desktop-shell"
 version = "1.5.1"
 dependencies = [
+ "desktop-agent-core",
+ "desktop-identity",
+ "desktop-protocol",
+ "reqwest 0.12.28",
  "serde",
  "serde_json",
  "tauri",
  "tauri-build",
+ "tokio",
+ "url",
 ]
 
 [[package]]

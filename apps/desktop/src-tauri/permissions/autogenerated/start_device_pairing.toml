@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-start-device-pairing"
+description = "Enables the start_device_pairing command without any pre-configured scope."
+commands.allow = ["start_device_pairing"]
+
+[[permission]]
+identifier = "deny-start-device-pairing"
+description = "Denies the start_device_pairing command without any pre-configured scope."
+commands.deny = ["start_device_pairing"]
