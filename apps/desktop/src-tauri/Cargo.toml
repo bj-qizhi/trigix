@@ -1,0 +1,25 @@
+[package]
+name = "trigix-desktop-shell"
+version.workspace = true
+edition.workspace = true
+publish = false
+
+[lib]
+name = "trigix_desktop_shell"
+path = "src/lib.rs"
+
+[[bin]]
+name = "trigix-desktop"
+path = "src/main.rs"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+
+[target.'cfg(windows)'.dependencies]
+tauri = { version = "2.11.5", default-features = false, features = ["wry"] }
+
+[build-dependencies]
+tauri-build = "2.6.3"
+
+[dev-dependencies]
+serde_json = "1"

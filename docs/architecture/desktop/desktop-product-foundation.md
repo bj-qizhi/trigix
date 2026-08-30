@@ -18,7 +18,7 @@ crates/desktop-agent-core/       policy, Approval, replay protection, execution,
 crates/desktop-identity/         Ed25519 identity and operating-system Credential boundary
 crates/desktop-host/             tested presentation/host IPC boundary
 crates/desktop-automation/       isolated IPC plus Windows target inspection adapter
-apps/desktop/                    planned Tauri and React application shell
+apps/desktop/                    Tauri application shell and local presentation assets
 services/desktop-automation-host/ isolated automation child process
 services/desktop-automation-fixture/ deterministic native Windows fixture
 services/desktop-device-simulator/ deterministic protocol and execution simulator
@@ -26,6 +26,8 @@ services/platform-rs/            device pairing service; registry and command ga
 ```
 
 The protocol and policy crates are independent of Tauri and Windows APIs. This makes security rules testable on Linux CI and prevents presentation code from becoming an execution authority.
+
+The initial Tauri shell and its least-privilege IPC boundary are defined in [Secure Desktop Shell](secure-desktop-shell.md). Its WebView can read sanitized runtime state and request cancellation only; it cannot submit actions or bypass the Device command path.
 
 ## Trust Boundaries
 

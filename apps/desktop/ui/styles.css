@@ -1,0 +1,145 @@
+:root {
+  font-family: "Segoe UI Variable", "Segoe UI", sans-serif;
+  color: #f2f4f7;
+  background: #0d1014;
+  font-synthesis: none;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+  background: #0d1014;
+}
+
+.shell {
+  width: min(1040px, calc(100% - 64px));
+  margin: 0 auto;
+  padding: 72px 0;
+}
+
+.eyebrow,
+.label {
+  color: #8f9ba8;
+  font-size: 12px;
+  font-weight: 650;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+h1,
+h2,
+p {
+  margin-top: 0;
+}
+
+h1 {
+  margin-bottom: 12px;
+  font-size: clamp(44px, 7vw, 76px);
+  font-weight: 520;
+  letter-spacing: -0.055em;
+}
+
+.lede {
+  color: #aeb7c2;
+  font-size: 20px;
+}
+
+.status-panel {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  margin-top: 64px;
+  border-top: 1px solid #343a43;
+  border-bottom: 1px solid #343a43;
+}
+
+.status-panel > div {
+  display: grid;
+  gap: 14px;
+  padding: 28px 24px 32px 0;
+}
+
+.status-panel > div + div {
+  border-left: 1px solid #343a43;
+  padding-left: 24px;
+}
+
+.status-panel strong {
+  font-size: 24px;
+  font-weight: 540;
+}
+
+.control-panel {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 48px;
+  margin-top: 72px;
+  padding: 32px;
+  background: #171b20;
+}
+
+.control-panel h2 {
+  margin-bottom: 12px;
+  font-size: 32px;
+  font-weight: 540;
+}
+
+.control-panel p:last-child,
+.notice {
+  color: #aeb7c2;
+  line-height: 1.55;
+}
+
+button {
+  min-width: 184px;
+  padding: 14px 20px;
+  border: 1px solid #ff6b5f;
+  background: #ff6b5f;
+  color: #160403;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+button:focus-visible {
+  outline: 3px solid #ffffff;
+  outline-offset: 3px;
+}
+
+button:disabled {
+  border-color: #414852;
+  background: transparent;
+  color: #717b87;
+  cursor: not-allowed;
+}
+
+.notice {
+  margin-top: 20px;
+}
+
+@media (max-width: 720px) {
+  .shell {
+    width: min(100% - 32px, 1040px);
+    padding: 40px 0;
+  }
+
+  .status-panel {
+    grid-template-columns: 1fr;
+  }
+
+  .status-panel > div + div {
+    border-top: 1px solid #343a43;
+    border-left: 0;
+    padding-left: 0;
+  }
+
+  .control-panel {
+    align-items: stretch;
+    flex-direction: column;
+  }
+}

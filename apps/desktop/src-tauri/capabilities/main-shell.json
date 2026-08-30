@@ -1,0 +1,11 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "main-shell",
+  "description": "Least-privilege presentation capability for the main local shell.",
+  "windows": ["main"],
+  "platforms": ["windows"],
+  "permissions": [
+    "allow-shell-status",
+    "allow-request-automation-stop"
+  ]
+}

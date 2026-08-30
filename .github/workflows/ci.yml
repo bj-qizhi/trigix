@@ -92,8 +92,11 @@ jobs:
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2
 
-      - name: Clippy Windows automation targets
-        run: cargo clippy -p trigix-desktop-automation -p desktop-automation-host -p desktop-automation-fixture --all-targets -- -D warnings
+      - name: Clippy Windows desktop targets
+        run: cargo clippy -p trigix-desktop-shell -p trigix-desktop-automation -p desktop-automation-host -p desktop-automation-fixture --all-targets -- -D warnings
+
+      - name: Check native Tauri shell
+        run: cargo check -p trigix-desktop-shell
 
       - name: Build native fixture and isolated host
         run: cargo build -p desktop-automation-fixture -p desktop-automation-host
@@ -114,6 +117,7 @@ jobs:
 
       - name: Run Windows automation unit and process tests
         run: |
+          cargo test -p trigix-desktop-shell --lib
           cargo test -p trigix-desktop-automation
           cargo test -p desktop-automation-host --test process_boundary
 

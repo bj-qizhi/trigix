@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-shell-status"
+description = "Enables the shell_status command without any pre-configured scope."
+commands.allow = ["shell_status"]
+
+[[permission]]
+identifier = "deny-shell-status"
+description = "Denies the shell_status command without any pre-configured scope."
+commands.deny = ["shell_status"]
