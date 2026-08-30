@@ -8,6 +8,12 @@ use serde_json::{json, Value};
 use std::fmt;
 use std::io::{self, BufRead, Write};
 
+mod agent_executor;
+mod supervisor;
+
+pub use agent_executor::{SupervisedActionExecutor, SupervisedActionExecutorHandle};
+pub use supervisor::{AutomationCancellation, AutomationHostSupervisor, SupervisorConfig};
+
 pub const MAX_HOST_MESSAGE_BYTES: u64 = 64 * 1024;
 pub const FIXTURE_WINDOW_AUTOMATION_ID: &str = "Trigix.AutomationFixture.Main";
 pub const FIXTURE_INPUT_AUTOMATION_ID: &str = "1001";
@@ -29,6 +35,9 @@ pub enum AutomationHostError {
     ProtectedControl,
     FocusChanged,
     PartialEntry,
+    HostCrashed,
+    LeaseExpired,
+    DeadlineExpired,
     Adapter(String),
     Io(String),
 }
@@ -56,6 +65,11 @@ impl fmt::Display for AutomationHostError {
             Self::FocusChanged => formatter.write_str("target window is not in the foreground"),
             Self::PartialEntry => {
                 formatter.write_str("text entry could not be verified completely")
+            }
+            Self::HostCrashed => formatter.write_str("automation host exited without a result"),
+            Self::LeaseExpired => formatter.write_str("execution lease expired before side effect"),
+            Self::DeadlineExpired => {
+                formatter.write_str("automation request deadline expired before side effect")
             }
             Self::Adapter(message) => write!(formatter, "automation adapter failed: {message}"),
             Self::Io(message) => write!(formatter, "automation host I/O failed: {message}"),
@@ -142,6 +156,7 @@ pub enum AutomationHostStatus {
     Succeeded,
     Rejected,
     Cancelled,
+    TimedOut,
     Failed,
     ShuttingDown,
 }
@@ -164,7 +179,10 @@ impl AutomationHostResponse {
         validate_identifier(&self.request_id, "request_id")?;
         let failed = matches!(
             self.status,
-            AutomationHostStatus::Rejected | AutomationHostStatus::Failed
+            AutomationHostStatus::Rejected
+                | AutomationHostStatus::Cancelled
+                | AutomationHostStatus::TimedOut
+                | AutomationHostStatus::Failed
         );
         if failed != self.error_code.is_some() {
             return Err(AutomationHostError::InvalidRequest("error_code"));
@@ -200,8 +218,36 @@ impl Default for AutomationFixtureDescriptor {
     }
 }
 
+pub struct AutomationExecutionGuard<'a> {
+    deadline_unix_ms: u64,
+    lease_expires_at_unix_ms: u64,
+    clock: &'a dyn Fn() -> u64,
+}
+
+impl AutomationExecutionGuard<'_> {
+    pub fn ensure_active(&self) -> Result<(), AutomationHostError> {
+        let now = (self.clock)();
+        if now >= self.deadline_unix_ms {
+            return Err(AutomationHostError::DeadlineExpired);
+        }
+        if now >= self.lease_expires_at_unix_ms {
+            return Err(AutomationHostError::LeaseExpired);
+        }
+        Ok(())
+    }
+}
+
 pub trait AutomationAdapter {
     fn execute(&mut self, action: &DesktopAction) -> Result<Value, AutomationHostError>;
+
+    fn execute_guarded(
+        &mut self,
+        action: &DesktopAction,
+        guard: &AutomationExecutionGuard<'_>,
+    ) -> Result<Value, AutomationHostError> {
+        guard.ensure_active()?;
+        self.execute(action)
+    }
 }
 
 #[derive(Debug)]
@@ -591,7 +637,11 @@ mod windows_adapter {
             Ok(Self { applications })
         }
 
-        fn focus(&self, selector: &WindowSelector) -> Result<Value, AutomationHostError> {
+        fn focus(
+            &self,
+            selector: &WindowSelector,
+            guard: Option<&AutomationExecutionGuard<'_>>,
+        ) -> Result<Value, AutomationHostError> {
             if let Some(snapshot_id) = &selector.snapshot_id {
                 let mut request = DesktopInspectionRequest::bounded(None);
                 request.expected_snapshot_id = Some(snapshot_id.clone());
@@ -606,6 +656,9 @@ mod windows_adapter {
                 };
             };
             let mut process_id = 0;
+            if let Some(guard) = guard {
+                guard.ensure_active()?;
+            }
             unsafe {
                 GetWindowThreadProcessId(*window, &mut process_id);
                 if IsIconic(*window) != 0 {
@@ -625,11 +678,15 @@ mod windows_adapter {
         fn launch(
             &self,
             application_id: &desktop_protocol::ApplicationIdentity,
+            guard: Option<&AutomationExecutionGuard<'_>>,
         ) -> Result<Value, AutomationHostError> {
             let executable = self
                 .applications
                 .get(&application_id.0)
                 .ok_or(AutomationHostError::ApplicationNotAllowed)?;
+            if let Some(guard) = guard {
+                guard.ensure_active()?;
+            }
             let child = Command::new(executable)
                 .spawn()
                 .map_err(|_| AutomationHostError::LaunchFailed)?;
@@ -657,8 +714,15 @@ mod windows_adapter {
             }
         }
 
-        fn click(&self, selector: &ElementSelector) -> Result<Value, AutomationHostError> {
+        fn click(
+            &self,
+            selector: &ElementSelector,
+            guard: Option<&AutomationExecutionGuard<'_>>,
+        ) -> Result<Value, AutomationHostError> {
             let element = self.resolve_element(selector)?;
+            if let Some(guard) = guard {
+                guard.ensure_active()?;
+            }
             unsafe {
                 if GetForegroundWindow() != element.root {
                     return Err(AutomationHostError::FocusChanged);
@@ -678,6 +742,7 @@ mod windows_adapter {
             &self,
             selector: &ElementSelector,
             text: &str,
+            guard: Option<&AutomationExecutionGuard<'_>>,
         ) -> Result<Value, AutomationHostError> {
             let element = self.resolve_element(selector)?;
             if element.password {
@@ -690,6 +755,9 @@ mod windows_adapter {
                 .encode_utf16()
                 .chain(std::iter::once(0))
                 .collect::<Vec<_>>();
+            if let Some(guard) = guard {
+                guard.ensure_active()?;
+            }
             unsafe {
                 if GetForegroundWindow() != element.root {
                     return Err(AutomationHostError::FocusChanged);
@@ -720,10 +788,33 @@ mod windows_adapter {
                     serde_json::to_value(inspect_windows(request)?)
                         .map_err(|error| AutomationHostError::Adapter(error.to_string()))
                 }
-                DesktopAction::FocusWindow { selector } => self.focus(selector),
-                DesktopAction::LaunchApplication { application_id } => self.launch(application_id),
-                DesktopAction::ClickElement { selector } => self.click(selector),
-                DesktopAction::TypeText { selector, text } => self.type_text(selector, text),
+                DesktopAction::FocusWindow { selector } => self.focus(selector, None),
+                DesktopAction::LaunchApplication { application_id } => {
+                    self.launch(application_id, None)
+                }
+                DesktopAction::ClickElement { selector } => self.click(selector, None),
+                DesktopAction::TypeText { selector, text } => self.type_text(selector, text, None),
+            }
+        }
+
+        fn execute_guarded(
+            &mut self,
+            action: &DesktopAction,
+            guard: &AutomationExecutionGuard<'_>,
+        ) -> Result<Value, AutomationHostError> {
+            guard.ensure_active()?;
+            match action {
+                DesktopAction::ReadSystemInformation | DesktopAction::InspectTargets { .. } => {
+                    self.execute(action)
+                }
+                DesktopAction::FocusWindow { selector } => self.focus(selector, Some(guard)),
+                DesktopAction::LaunchApplication { application_id } => {
+                    self.launch(application_id, Some(guard))
+                }
+                DesktopAction::ClickElement { selector } => self.click(selector, Some(guard)),
+                DesktopAction::TypeText { selector, text } => {
+                    self.type_text(selector, text, Some(guard))
+                }
             }
         }
     }
@@ -1100,7 +1191,7 @@ where
             .map_err(|_| AutomationHostError::InvalidRequest("json"))?;
         request.validate(clock())?;
         let should_shutdown = matches!(request.operation, AutomationHostOperation::Shutdown);
-        let response = dispatch_request(&mut adapter, request, clock());
+        let response = dispatch_request(&mut adapter, request, &clock);
         response.validate()?;
         serde_json::to_writer(&mut writer, &response)
             .map_err(|error| AutomationHostError::Io(error.to_string()))?;
@@ -1142,9 +1233,10 @@ fn read_bounded_line(reader: &mut impl BufRead) -> Result<Option<Vec<u8>>, Autom
 fn dispatch_request(
     adapter: &mut impl AutomationAdapter,
     request: AutomationHostRequest,
-    now_unix_ms: u64,
+    clock: &dyn Fn() -> u64,
 ) -> AutomationHostResponse {
     let request_id = request.request_id;
+    let now_unix_ms = clock();
     if request.deadline_unix_ms <= now_unix_ms {
         return failure_response(
             request_id,
@@ -1173,7 +1265,18 @@ fn dispatch_request(
             "lease_expired",
             "execution lease expired before the side effect",
         ),
-        AutomationHostOperation::Execute { action, .. } => match adapter.execute(&action) {
+        AutomationHostOperation::Execute {
+            lease_expires_at_unix_ms,
+            action,
+            ..
+        } => match adapter.execute_guarded(
+            &action,
+            &AutomationExecutionGuard {
+                deadline_unix_ms: request.deadline_unix_ms,
+                lease_expires_at_unix_ms,
+                clock,
+            },
+        ) {
             Ok(output) => response(request_id, AutomationHostStatus::Succeeded, Some(output)),
             Err(AutomationHostError::UnsupportedAction) => failure_response(
                 request_id,
@@ -1241,6 +1344,18 @@ fn dispatch_request(
                 "partial_entry",
                 "text entry could not be verified completely",
             ),
+            Err(AutomationHostError::LeaseExpired) => failure_response(
+                request_id,
+                AutomationHostStatus::TimedOut,
+                "lease_expired",
+                "execution lease expired before the side effect",
+            ),
+            Err(AutomationHostError::DeadlineExpired) => failure_response(
+                request_id,
+                AutomationHostStatus::TimedOut,
+                "deadline_expired",
+                "automation request deadline expired before the side effect",
+            ),
             Err(error) => failure_response(
                 request_id,
                 AutomationHostStatus::Failed,
@@ -1303,6 +1418,8 @@ fn validate_text(
 mod tests {
     use super::*;
     use std::io::{BufReader, Cursor};
+    use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+    use std::sync::Arc;
 
     fn request(operation: AutomationHostOperation) -> AutomationHostRequest {
         AutomationHostRequest {
@@ -1360,7 +1477,7 @@ mod tests {
                     application_id: desktop_protocol::ApplicationIdentity::new("fixture"),
                 }),
             }),
-            1_500,
+            &|| 1_500,
         );
         assert_eq!(response.status, AutomationHostStatus::Rejected);
         assert_eq!(
@@ -1400,7 +1517,7 @@ mod tests {
                     ),
                 }),
             }),
-            1_900,
+            &|| 1_900,
         );
         assert_eq!(rechecked.error_code.as_deref(), Some("lease_expired"));
 
@@ -1423,7 +1540,7 @@ mod tests {
             request(AutomationHostOperation::Cancel {
                 target_request_id: "request-missing".to_owned(),
             }),
-            1_500,
+            &|| 1_500,
         );
         assert_eq!(response.status, AutomationHostStatus::Rejected);
         assert_eq!(response.error_code.as_deref(), Some("target_not_active"));
@@ -1491,7 +1608,7 @@ mod tests {
                     request: Box::new(missing.clone()),
                 }),
             }),
-            1_500,
+            &|| 1_500,
         );
         assert_eq!(response.error_code.as_deref(), Some("target_not_found"));
 
@@ -1507,7 +1624,7 @@ mod tests {
                     request: Box::new(missing),
                 }),
             }),
-            1_500,
+            &|| 1_500,
         );
         assert_eq!(response.error_code.as_deref(), Some("target_stale"));
     }
@@ -1592,7 +1709,7 @@ mod tests {
                     application_id: desktop_protocol::ApplicationIdentity::new("cmd.exe /c whoami"),
                 }),
             }),
-            1_500,
+            &|| 1_500,
         );
         assert_eq!(
             rejected.error_code.as_deref(),
@@ -1660,5 +1777,52 @@ mod tests {
             selector: fixture_element(FIXTURE_SUBMIT_AUTOMATION_ID, "button"),
         });
         assert_eq!(focus_changed, Err(AutomationHostError::FocusChanged));
+    }
+
+    #[test]
+    fn lease_is_rechecked_after_resolution_and_before_side_effect() {
+        struct ResolvingAdapter {
+            clock: Arc<AtomicU64>,
+            side_effect: Arc<AtomicBool>,
+        }
+
+        impl AutomationAdapter for ResolvingAdapter {
+            fn execute(&mut self, _: &DesktopAction) -> Result<Value, AutomationHostError> {
+                self.side_effect.store(true, Ordering::Release);
+                Ok(json!({"executed": true}))
+            }
+
+            fn execute_guarded(
+                &mut self,
+                action: &DesktopAction,
+                guard: &AutomationExecutionGuard<'_>,
+            ) -> Result<Value, AutomationHostError> {
+                guard.ensure_active()?;
+                self.clock.store(1_900, Ordering::Release);
+                guard.ensure_active()?;
+                self.execute(action)
+            }
+        }
+
+        let clock = Arc::new(AtomicU64::new(1_500));
+        let side_effect = Arc::new(AtomicBool::new(false));
+        let mut adapter = ResolvingAdapter {
+            clock: Arc::clone(&clock),
+            side_effect: Arc::clone(&side_effect),
+        };
+        let response = dispatch_request(
+            &mut adapter,
+            request(AutomationHostOperation::Execute {
+                command_id: "command-guarded".to_owned(),
+                lease_id: "lease-guarded".to_owned(),
+                lease_expires_at_unix_ms: 1_900,
+                action: Box::new(DesktopAction::ReadSystemInformation),
+            }),
+            &|| clock.load(Ordering::Acquire),
+        );
+        assert_eq!(response.status, AutomationHostStatus::TimedOut);
+        assert_eq!(response.error_code.as_deref(), Some("lease_expired"));
+        assert!(!side_effect.load(Ordering::Acquire));
+        response.validate().unwrap();
     }
 }

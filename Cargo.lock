@@ -840,6 +840,8 @@ dependencies = [
 name = "desktop-automation-host"
 version = "1.5.1"
 dependencies = [
+ "desktop-agent-core",
+ "desktop-protocol",
  "serde_json",
  "trigix-desktop-automation",
 ]
@@ -4478,6 +4480,7 @@ dependencies = [
 name = "trigix-desktop-automation"
 version = "1.5.1"
 dependencies = [
+ "desktop-agent-core",
  "desktop-protocol",
  "serde",
  "serde_json",
