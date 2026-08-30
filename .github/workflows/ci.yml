@@ -73,6 +73,50 @@ jobs:
           TEST_DATABASE_URL: postgres://t:t@localhost:5432/t
         run: cargo test -p trigix-platform --test postgres_integration
 
+  windows-automation:
+    name: Windows automation (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-2022, windows-2025]
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Clippy Windows automation targets
+        run: cargo clippy -p trigix-desktop-automation -p desktop-automation-host -p desktop-automation-fixture --all-targets -- -D warnings
+
+      - name: Build native fixture and isolated host
+        run: cargo build -p desktop-automation-fixture -p desktop-automation-host
+
+      - name: Record qualification environment
+        shell: pwsh
+        run: |
+          Write-Host "OS=$([Environment]::OSVersion.VersionString)"
+          Write-Host "Architecture=$([Runtime.InteropServices.RuntimeInformation]::OSArchitecture)"
+          Write-Host "Culture=$((Get-Culture).Name)"
+          Write-Host "Session=$([Environment]::UserInteractive)"
+
+      - name: Run native adapter qualification
+        shell: pwsh
+        run: |
+          $env:TRIGIX_WINDOWS_FIXTURE_EXE = (Resolve-Path target/debug/desktop-automation-fixture.exe).Path
+          cargo test -p desktop-automation-host --test windows_qualification -- --nocapture --test-threads=1
+
+      - name: Run Windows automation unit and process tests
+        run: |
+          cargo test -p trigix-desktop-automation
+          cargo test -p desktop-automation-host --test process_boundary
+
   web:
     name: Web (typecheck, build)
     runs-on: ubuntu-latest

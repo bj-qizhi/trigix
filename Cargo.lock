@@ -844,6 +844,7 @@ dependencies = [
  "desktop-protocol",
  "serde_json",
  "trigix-desktop-automation",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
