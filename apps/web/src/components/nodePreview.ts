@@ -4,6 +4,7 @@
 // One-line canvas preview per node type, derived from its config. Data-driven
 // table extracted from Canvas's FlowNodeComponent.
 const NODE_PREVIEW: Record<string, (c: Record<string, unknown>) => string> = {
+  desktop: (c) => `${String(c.action_kind ?? 'click_element')} · ${c.device_id ? String(c.device_id) : 'No Device'}`,
   http: (c) => (c.url as string) || 'No URL set',
   agent: (c) => (c.model as string) || 'claude-sonnet-4-6',
   condition: (c) => c.field ? `if ${String(c.field)}` : 'No field set',

@@ -3,7 +3,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import type { FlowNode } from './Canvas'
-import type { NodeType, ExecutionSummary, NodeExecutionRecord } from '../types'
+import type { NodeType, ExecutionRecord, ExecutionSummary, NodeExecutionRecord } from '../types'
 import type { TranslationKey } from '../i18n'
 import type { ConfigProps } from './panels/types'
 import { useLocale } from '../useLocale'
@@ -11,6 +11,7 @@ import { useAuth } from '../AuthContext'
 import * as api from '../api/client'
 import { captureField, isInsertableField, insertText, subscribe, replaceRange, type FieldSnapshot } from './varInsert'
 import { JsonTree } from './JsonTree'
+import { DesktopActionConfig } from './panels/DesktopActionConfig'
 
 import {
   TriggerConfig, HttpConfig, AgentConfig, ApprovalConfig, CodeConfig, SubWorkflowConfig, CustomConfig,
@@ -53,6 +54,7 @@ import {
 } from './panels/IntegrationPanels2'
 
 const NODE_DESCRIPTIONS: Partial<Record<NodeType, { en: string; zh: string }>> = {
+  desktop:      { en: 'Runs a schema-bounded action on an eligible paired Device through the governed Platform command path.', zh: '通过受治理的平台命令通道，在符合条件的已配对设备上运行字段受限的操作。' },
   trigger:      { en: 'Starts the workflow. Supports manual, schedule (interval/cron), and webhook triggers.', zh: '工作流入口节点。支持手动触发、定时调度（间隔/Cron表达式）和 Webhook 触发。' },
   http:         { en: 'Makes an HTTP request to any URL. Supports GET/POST/PUT/DELETE with custom headers and body.', zh: '发起 HTTP 请求。支持 GET/POST/PUT/DELETE，可设置自定义请求头和请求体。' },
   agent:        { en: 'Runs an AI agent loop with tool use. Connects to the Python AI runtime.', zh: 'AI 智能体节点，支持工具调用循环，连接 Python AI 运行时。' },
@@ -150,6 +152,7 @@ const NODE_DESCRIPTIONS: Partial<Record<NodeType, { en: string; zh: string }>> =
 }
 
 const NODE_LABELS: Partial<Record<NodeType, string>> = {
+  desktop: 'Desktop Action',
   trigger: 'Trigger',
   http: 'HTTP',
   agent: 'Agent',
@@ -227,6 +230,7 @@ const NODE_LABELS: Partial<Record<NodeType, string>> = {
 }
 
 const NODE_COLORS: Partial<Record<NodeType, string>> = {
+  desktop: '#2563eb',
   trigger: 'var(--node-trigger)',
   http: 'var(--node-http)',
   agent: 'var(--node-agent)',
@@ -305,6 +309,7 @@ const NODE_COLORS: Partial<Record<NodeType, string>> = {
 }
 
 const NODE_OUTPUTS: Partial<Record<NodeType, string[]>> = {
+  desktop:      ['outcome', 'output'],
   trigger:      ['input'],
   http:         ['status', 'body', 'headers'],
   // agent / transform / code emit a model- or script-defined shape with no fixed
@@ -415,6 +420,8 @@ interface Props {
   upstreamNodes?: FlowNode[]
   upstreamResults?: Record<string, NodeExecutionRecord>
   onRenameId?: (oldId: string, newId: string) => { ok: boolean; error?: string }
+  workflowProjectId?: string
+  activeExecution?: ExecutionRecord | null
 }
 
 function CopyIdButton({ id }: { id: string }) {
@@ -492,7 +499,7 @@ function PasteConfigButton({ onPaste }: { onPaste: (cfg: Record<string, unknown>
 }
 
 
-export function NodeConfigPanel({ node, onUpdateConfig, recentExecutions, onSelectExecution, executionResult, webhookUrl, webhookSecret, onDuplicate, upstreamNodes, upstreamResults, onRenameId }: Props) {
+export function NodeConfigPanel({ node, onUpdateConfig, recentExecutions, onSelectExecution, executionResult, webhookUrl, webhookSecret, onDuplicate, upstreamNodes, upstreamResults, onRenameId, workflowProjectId, activeExecution }: Props) {
   const { locale, t } = useLocale()
 
   // ── Hooks must all be called before any early return (Rules of Hooks) ──
@@ -685,6 +692,7 @@ export function NodeConfigPanel({ node, onUpdateConfig, recentExecutions, onSele
           />
         </div>
         {nt === 'trigger' && <TriggerConfig config={config} set={set} str={str} num={num} webhookUrl={webhookUrl} webhookSecret={webhookSecret} />}
+        {nt === 'desktop' && <DesktopActionConfig config={config} set={set} str={str} num={num} workflowProjectId={workflowProjectId} activeExecution={activeExecution} recentExecutions={recentExecutions} />}
         {nt === 'http' && <HttpConfig config={config} set={set} str={str} num={num} />}
         {nt === 'agent' && <AgentConfig config={config} set={set} str={str} num={num} />}
         {nt === 'condition' && <ConditionConfig config={config} set={set} str={str} num={num} />}
@@ -1280,4 +1288,3 @@ function NodeResultBox({ result, locale: _locale, t }: { result: NodeExecutionRe
     </div>
   )
 }
-

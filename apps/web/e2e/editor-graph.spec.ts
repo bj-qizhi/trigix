@@ -298,6 +298,74 @@ test('integration node config panel renders after the domain split', async ({ pa
   expect(errors, errors.join('\n')).toHaveLength(0)
 })
 
+test('desktop inspector persists a typed stable selector through the governed command API', async ({ page }) => {
+  const errors = trackErrors(page)
+  await mockBackend(page)
+  const posts = captureVersionPosts(page)
+  const actions: Record<string, unknown>[] = []
+  const desktopVersion = {
+    ...VERSION,
+    graph: {
+      workflow_version_id: 'v1',
+      nodes: [
+        { id: 'trigger', type: 'trigger', config: {} },
+        { id: 'desktop', type: 'desktop', config: { action_kind: 'click_element' } },
+      ],
+      edges: [{ source: 'trigger', target: 'desktop' }],
+    },
+  }
+  await page.route(/\/v1\/workflow-versions\/v1/, (route) => route.fulfill({ json: desktopVersion }))
+  await page.route(/\/v1\/executions(\?|$)/, (route) => route.fulfill({ json: [{
+    id: 'exec-active', tenant_id: 't', workflow_id: 'wf1', workflow_version_id: 'v1',
+    status: 'waiting_approval', started_at: 1,
+  }] }))
+  await page.route(/\/v1\/desktop\/devices/, (route) => route.fulfill({ json: { items: [{
+    id: 'device-1', tenant_id: 't', display_name: 'QA Desktop', operating_system: 'windows',
+    agent_version: '1.5.1', capabilities: ['ui_automation'], state: 'online', stale: false, compatible: true,
+  }] } }))
+  await page.route(/\/v1\/desktop\/commands$/, async (route) => {
+    const body = route.request().postDataJSON() as { action: Record<string, unknown> }
+    actions.push(body.action)
+    await route.fulfill({ json: {
+      command: { command_id: 'command-1', execution_id: 'exec-active' }, device_id: 'device-1', workflow_id: 'wf1', status: 'succeeded',
+      result: { outcome: 'succeeded', output: {
+        snapshot_id: 'snapshot-1', truncated: false, windows: [{
+          selector: { executable: 'fixture.exe', automation_id: 'Fixture.Main' }, process_id: 42, title_policy: 'redacted',
+          elements: [{
+            selector: { window: { executable: 'fixture.exe', automation_id: 'Fixture.Main' }, automation_id: '1002', name: 'Submit', control_type: 'Button' },
+            depth: 1, supported_patterns: ['invoke'], redaction: 'credential',
+          }],
+        }],
+      } },
+    } })
+  })
+
+  await page.goto('/')
+  await page.getByText('Editor WF').click()
+  await expect(page.getByTestId('rf__node-desktop')).toBeVisible({ timeout: 10_000 })
+  await page.getByTestId('rf__node-desktop').click({ position: { x: 10, y: 10 } })
+  await page.locator('.config-panel-body select').nth(1).selectOption('device-1')
+  await page.getByRole('button', { name: /检查桌面目标|Inspect desktop targets/ }).click()
+  await expect(page.getByText(/受保护值|protected value/)).toBeVisible()
+  await page.getByRole('button', { name: /选择控件|Select control/ }).click()
+
+  expect(actions).toHaveLength(1)
+  expect(actions[0]).toEqual(expect.objectContaining({ kind: 'inspect_targets' }))
+  expect(JSON.stringify(actions[0])).not.toContain('credential')
+
+  await blurToCanvas(page)
+  await page.keyboard.press('Control+s')
+  await expect.poll(() => posts.length).toBeGreaterThan(0)
+  const desktop = posts.at(-1)!.graph.nodes.find((node) => node.id === 'desktop')
+  expect(desktop?.type).toBe('desktop')
+  expect(desktop?.config.selector).toEqual({
+    window: { executable: 'fixture.exe', automation_id: 'Fixture.Main', snapshot_id: 'snapshot-1' },
+    automation_id: '1002', name: 'Submit', control_type: 'Button',
+  })
+  expect(JSON.stringify(desktop?.config)).not.toContain('credential')
+  expect(errors, errors.join('\n')).toHaveLength(0)
+})
+
 test('typing {{credential. autocompletes the saved credentials', async ({ page }) => {
   const errors = trackErrors(page)
   await mockBackend(page)

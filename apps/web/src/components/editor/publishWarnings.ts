@@ -9,6 +9,7 @@ import type { FlowNode, FlowEdge } from '../Canvas'
 interface NodeFieldSpec { name: string; fields: Array<[string, string]> }
 
 const NODE_REQUIRED_FIELDS: Record<string, NodeFieldSpec> = {
+  desktop: { name: 'Desktop Action', fields: [['action_kind', 'action type'], ['device_id', 'Device']] },
   http: { name: 'HTTP', fields: [['url', 'URL']] },
   openai: { name: 'OpenAI', fields: [['api_key', 'API key']] },
   gemini: { name: 'Gemini', fields: [['api_key', 'API key']] },
@@ -180,6 +181,18 @@ export function collectPublishWarnings(nodes: FlowNode[], edges: FlowEdge[]): Pu
     if (spec) {
       for (const [field, desc] of spec.fields) {
         if (!c[field]) warnings.push({ message: `${spec.name} node "${label}" has no ${desc}`, nodeId: id })
+      }
+    }
+    if (nt === 'desktop') {
+      const action = c.action_kind as string | undefined
+      if (['focus_window', 'click_element', 'type_text'].includes(action ?? '') && !c.selector) {
+        warnings.push({ message: `Desktop Action node "${label}" has no stable selector`, nodeId: id })
+      }
+      if (action === 'type_text' && typeof c.text !== 'string') {
+        warnings.push({ message: `Desktop Action node "${label}" has no text`, nodeId: id })
+      }
+      if (action === 'launch_application' && !c.application_id) {
+        warnings.push({ message: `Desktop Action node "${label}" has no application ID`, nodeId: id })
       }
     }
   }

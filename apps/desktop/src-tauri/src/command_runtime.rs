@@ -73,8 +73,6 @@ impl CommandRuntime {
             DeviceCapability::SystemInformation,
             DeviceCapability::WindowManagement,
             DeviceCapability::UiAutomation,
-            DeviceCapability::KeyboardInput,
-            DeviceCapability::PointerInput,
         ]
     }
 
@@ -217,7 +215,14 @@ mod tests {
         std::fs::set_permissions(&host, permissions).unwrap();
 
         let runtime = CommandRuntime::initialize(host, root.join("recovery.json"), now).unwrap();
-        assert_eq!(runtime.capabilities().len(), 5);
+        assert_eq!(
+            runtime.capabilities(),
+            vec![
+                DeviceCapability::SystemInformation,
+                DeviceCapability::WindowManagement,
+                DeviceCapability::UiAutomation,
+            ]
+        );
         let command = DesktopCommand {
             command_id: "command-1".to_owned(),
             execution_id: "execution-1".to_owned(),
@@ -282,7 +287,14 @@ mod windows_tests {
         let runtime =
             CommandRuntime::initialize(host, root.join("recovery.json"), current_millis())
                 .expect("qualified native Host must initialize");
-        assert_eq!(runtime.capabilities().len(), 5);
+        assert_eq!(
+            runtime.capabilities(),
+            vec![
+                DeviceCapability::SystemInformation,
+                DeviceCapability::WindowManagement,
+                DeviceCapability::UiAutomation,
+            ]
+        );
     }
 
     fn current_millis() -> u64 {

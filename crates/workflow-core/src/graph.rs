@@ -347,6 +347,8 @@ pub enum NodeType {
     /// Community/third-party node served over HTTP via the node SDK. The node's
     /// endpoint is resolved from the custom-node registry at execution start.
     Custom,
+    /// A Platform-governed action executed by a paired desktop Device.
+    Desktop,
 }
 
 impl WorkflowGraph {
@@ -625,6 +627,13 @@ mod tests {
         .unwrap();
         assert_eq!(generic.node_type, NodeType::OpenaiCompat);
         assert_eq!(generic.config.unwrap()["provider"], "qwen");
+
+        let desktop: Node = serde_json::from_str(
+            r#"{"id":"d","type":"desktop","config":{"action_kind":"click_element","device_id":"device-1"}}"#,
+        )
+        .unwrap();
+        assert_eq!(desktop.node_type, NodeType::Desktop);
+        assert_eq!(desktop.config.unwrap()["device_id"], "device-1");
     }
 
     #[test]

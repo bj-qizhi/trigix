@@ -535,6 +535,9 @@ async fn dispatch_builtin(
             execute_rag_ingest(node, context, http_client, ai_runtime_base_url).await
         }
         NodeType::Custom => execute_custom(node, context, http_client).await,
+        NodeType::Desktop => NodeExecutionResult::failed(
+            "Desktop actions must be dispatched by the Platform command gateway",
+        ),
         NodeType::Condition => execute_condition(node, context),
         NodeType::Map => execute_map(node, context),
         NodeType::Filter => execute_filter(node, context),

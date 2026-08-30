@@ -12,7 +12,7 @@ export type NodeType = 'trigger' | 'http' | 'agent' | 'condition' | 'approval' |
  | 'embedding' | 'reranker' | 'text_splitter' | 'structured_output' | 'classifier' | 'image_gen' | 'video_gen' | 'speech_to_text' | 'tts'
  | 'html_extract' | 'rss' | 'mysql' | 'snowflake' | 'bigquery' | 'ftp' | 'sftp' | 'ssh' | 'imap' | 'wait' | 'sqlserver'
  | 'minimax' | 'ernie'
- | 'openai_compat'
+ | 'openai_compat' | 'desktop'
  | 'rag' | 'rag_ingest' | 'custom'
 
 export interface ApiNode {
@@ -136,6 +136,69 @@ export interface ExecutionSummary {
   node_count?: number
   completed_node_count?: number
   retried_from?: string
+}
+
+export type DesktopCapability = 'system_information' | 'window_management' | 'ui_automation'
+  | 'keyboard_input' | 'pointer_input' | 'voice_conversation' | 'avatar_rendering'
+
+export interface DesktopDevice {
+  id: string
+  tenant_id: string
+  display_name: string
+  operating_system: string
+  agent_version: string
+  capabilities: DesktopCapability[]
+  state: 'paired' | 'online' | 'offline' | 'busy' | 'awaiting_approval' | 'degraded' | 'suspended' | 'revoked'
+  active_execution_id?: string | null
+  health_detail?: string | null
+  last_seen_at?: number | null
+  stale: boolean
+  compatible: boolean
+}
+
+export interface DesktopWindowSelector {
+  executable?: string
+  title?: string
+  automation_id?: string
+  snapshot_id?: string
+}
+
+export interface DesktopElementSelector {
+  window: DesktopWindowSelector
+  automation_id?: string
+  name?: string
+  control_type?: string
+}
+
+export interface DesktopInspectedElement {
+  selector: DesktopElementSelector
+  depth: number
+  supported_patterns: string[]
+  redaction?: 'password' | 'credential' | 'oversized'
+}
+
+export interface DesktopInspectionResult {
+  snapshot_id: string
+  windows: Array<{
+    selector: DesktopWindowSelector
+    process_id: number
+    title_policy: 'exact' | 'redacted'
+    elements: DesktopInspectedElement[]
+  }>
+  truncated: boolean
+}
+
+export interface DesktopCommandRecord {
+  command: { command_id: string; execution_id: string }
+  device_id: string
+  workflow_id: string
+  status: 'queued' | 'delivered' | 'acknowledged' | 'succeeded' | 'failed' | 'rejected' | 'cancelled' | 'timed_out'
+  result?: {
+    outcome: string
+    output?: DesktopInspectionResult | Record<string, unknown> | null
+    error_code?: string | null
+    error_message?: string | null
+  } | null
 }
 
 export interface WebhookInfo {

@@ -11,8 +11,8 @@ use crate::device_pairing::{CreatePairingSessionRequest, PairingError};
 use axum::extract::DefaultBodyLimit;
 use desktop_protocol::{
     DesktopAction, DesktopCommand, DesktopCommandAcknowledgement, DesktopCommandCancellation,
-    DesktopCommandResult, DeviceConnectionAccepted, Envelope, ExecutionLease, Heartbeat,
-    HeartbeatAccepted,
+    DesktopCommandResult, DesktopInspectionResult, DeviceConnectionAccepted, Envelope,
+    ExecutionLease, Heartbeat, HeartbeatAccepted,
 };
 
 #[derive(serde::Deserialize)]
@@ -188,6 +188,29 @@ fn evidence_matches_action(request: &EvidenceUploadRequest, action: &DesktopActi
     }
 }
 
+fn validate_command_output(
+    action: &DesktopAction,
+    result: &mut DesktopCommandResult,
+) -> Result<(), ApiError> {
+    if let DesktopAction::InspectTargets { request } = action {
+        if matches!(result.outcome, desktop_protocol::CommandOutcome::Succeeded) {
+            let output = result
+                .output
+                .take()
+                .ok_or_else(|| ApiError::bad_request("Inspection result is missing"))?;
+            let inspection: DesktopInspectionResult = serde_json::from_value(output)
+                .map_err(|_| ApiError::bad_request("Inspection result is invalid"))?;
+            inspection
+                .validate(request)
+                .map_err(|error| ApiError::bad_request(&error.to_string()))?;
+            result.output = serde_json::to_value(inspection).ok();
+        } else {
+            result.output = None;
+        }
+    }
+    Ok(())
+}
+
 fn pairing_error(error: PairingError) -> ApiError {
     match error {
         PairingError::InvalidRequest(message) => ApiError::bad_request(&message),
@@ -338,7 +361,11 @@ async fn list_devices(
     Extension(claims): Extension<Option<Claims>>,
     Query(query): Query<DeviceListQuery>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
-    let claims = require_admin(claims)?;
+    require_write(&claims)?;
+    let claims = claims.ok_or_else(|| ApiError::forbidden("Authentication required"))?;
+    if claims.tenant_id.trim().is_empty() {
+        return Err(ApiError::forbidden("Tenant context required"));
+    }
     let state_filter = query.state.as_deref().map(str::trim);
     if state_filter.is_some_and(|value| {
         !matches!(
@@ -365,7 +392,24 @@ async fn list_devices(
         )
         .await
         .map_err(pairing_error)?;
-    Ok(Json(serde_json::to_value(list).unwrap_or_default()))
+    let platform_major = env!("CARGO_PKG_VERSION").split('.').next();
+    let mut response = serde_json::to_value(list).unwrap_or_default();
+    if let Some(items) = response
+        .get_mut("items")
+        .and_then(serde_json::Value::as_array_mut)
+    {
+        for item in items {
+            let compatible = item
+                .get("agent_version")
+                .and_then(serde_json::Value::as_str)
+                .and_then(|version| version.split('.').next())
+                == platform_major;
+            if let Some(object) = item.as_object_mut() {
+                object.insert("compatible".to_string(), compatible.into());
+            }
+        }
+    }
+    Ok(Json(response))
 }
 
 async fn get_device(
@@ -880,13 +924,19 @@ async fn acknowledge_desktop_command(
 async fn complete_desktop_command(
     State(state): State<AppState>,
     headers: axum::http::HeaderMap,
-    Json(envelope): Json<Envelope<DesktopCommandResult>>,
+    Json(mut envelope): Json<Envelope<DesktopCommandResult>>,
 ) -> Result<Json<crate::desktop_commands::DesktopCommandRecord>, ApiError> {
     let (device, _) = authenticated_device_session(&state, &headers).await?;
     envelope
         .validate()
         .and_then(|_| envelope.payload.validate())
         .map_err(|error| ApiError::bad_request(&error.to_string()))?;
+    let command = state
+        .desktop_command_store
+        .get(&device.tenant_id, &envelope.payload.command_id)
+        .await
+        .map_err(command_error)?;
+    validate_command_output(&command.command.action, &mut envelope.payload)?;
     state
         .desktop_command_store
         .complete(&device.id, envelope.payload)
@@ -1264,6 +1314,103 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(response.status(), StatusCode::FORBIDDEN);
+    }
+
+    #[tokio::test]
+    async fn editor_can_list_only_tenant_device_metadata_with_compatibility() {
+        let app = build_router(default_app_state());
+        let admin_token = crate::auth::sign_token(&Claims {
+            sub: "admin-1".to_string(),
+            tenant_id: "tenant-1".to_string(),
+            role: crate::auth::Role::Admin,
+            ..Default::default()
+        })
+        .unwrap();
+        let editor_token = crate::auth::sign_token(&Claims {
+            sub: "editor-1".to_string(),
+            tenant_id: "tenant-1".to_string(),
+            role: crate::auth::Role::Editor,
+            ..Default::default()
+        })
+        .unwrap();
+        let create = app
+            .clone()
+            .oneshot(
+                Request::post("/v1/desktop/pairing-sessions")
+                    .header("content-type", "application/json")
+                    .body(Body::from(create_body("device-authoring-http").to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let created = response_json(create).await;
+        let approve = app
+            .clone()
+            .oneshot(
+                Request::post("/v1/desktop/pairing-sessions/approve")
+                    .header("authorization", format!("Bearer {admin_token}"))
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        serde_json::json!({"pairing_code": created["pairing_code"]}).to_string(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(approve.status(), StatusCode::OK);
+
+        let list = app
+            .oneshot(
+                Request::get("/v1/desktop/devices")
+                    .header("authorization", format!("Bearer {editor_token}"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(list.status(), StatusCode::OK);
+        let body = response_json(list).await;
+        assert_eq!(body["items"].as_array().unwrap().len(), 1);
+        assert_eq!(body["items"][0]["tenant_id"], "tenant-1");
+        assert_eq!(body["items"][0]["compatible"], true);
+        assert!(body["items"][0].get("credential").is_none());
+    }
+
+    #[test]
+    fn platform_rejects_inspection_results_that_mix_protected_redaction_and_values() {
+        let action = DesktopAction::InspectTargets {
+            request: Box::new(desktop_protocol::DesktopInspectionRequest::bounded(None)),
+        };
+        let mut result = DesktopCommandResult {
+            command_id: "command-1".to_string(),
+            execution_id: "execution-1".to_string(),
+            outcome: desktop_protocol::CommandOutcome::Succeeded,
+            completed_at_unix_ms: 1,
+            output: Some(serde_json::json!({
+                "snapshot_id": "snapshot-1",
+                "truncated": false,
+                "windows": [{
+                    "selector": {"executable": "fixture.exe", "automation_id": "Fixture.Main"},
+                    "process_id": 42,
+                    "title_policy": "redacted",
+                    "elements": [{
+                        "selector": {
+                            "window": {"executable": "fixture.exe", "automation_id": "Fixture.Main"},
+                            "automation_id": "1003",
+                            "name": "Password",
+                            "control_type": "Edit"
+                        },
+                        "depth": 1,
+                        "supported_patterns": ["value"],
+                        "value": "must-not-cross-platform",
+                        "redaction": "password"
+                    }]
+                }]
+            })),
+            error_code: None,
+            error_message: None,
+        };
+        assert!(validate_command_output(&action, &mut result).is_err());
     }
 
     #[tokio::test]

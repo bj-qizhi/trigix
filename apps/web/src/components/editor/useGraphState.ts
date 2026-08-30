@@ -85,7 +85,8 @@ export function useGraphState({ zh, toast }: GraphStateOptions): GraphState {
   const addNodeAt = useCallback((type: NodeType, position: { x: number; y: number }) => {
     pushHistory()
     const id = `${type}-${Date.now()}`
-    const newNode: FlowNode = { id, type, position, data: { label: id, nodeType: type, config: {} } }
+    const config: Record<string, unknown> = type === 'desktop' ? { action_kind: 'click_element' } : {}
+    const newNode: FlowNode = { id, type, position, data: { label: id, nodeType: type, config } }
     setNodes((prev) => [...prev, newNode])
     setSelectedNodeId(id)
     // Track recently used

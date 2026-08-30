@@ -150,7 +150,8 @@ pub fn spec() -> Value {
               "created_at": { "type": "integer", "format": "int64" },
               "updated_at": { "type": "integer", "format": "int64" },
               "last_seen_at": { "type": "integer", "format": "int64", "nullable": true },
-              "stale": { "type": "boolean" }
+              "stale": { "type": "boolean" },
+              "compatible": { "type": "boolean", "description": "Present on list responses; true when the Device Agent major version matches the Platform" }
             }
           },
           "DesktopDeviceCredential": {
@@ -243,7 +244,7 @@ pub fn spec() -> Value {
               { "name": "limit", "in": "query", "schema": { "type": "integer", "minimum": 1, "maximum": 100, "default": 50 } },
               { "name": "offset", "in": "query", "schema": { "type": "integer", "minimum": 0, "default": 0 } }
             ],
-            "responses": { "200": { "description": "Paginated Device list" }, "403": { "description": "Tenant administrator required" } }
+            "responses": { "200": { "description": "Paginated Device list with Platform compatibility metadata" }, "403": { "description": "Editor role and Tenant context required" } }
           }
         },
         "/v1/desktop/devices/{device_id}": {

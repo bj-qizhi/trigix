@@ -97,6 +97,7 @@ export const NODE_ICON: Record<NodeType, IconType> = {
   contentful: SiContentful, supabase: SiSupabase, firebase: SiFirebase,
   okta: SiOkta, calendly: SiCalendly, gcal: SiGooglecalendar, docusign: PiSignature,
   rss: PiRss, html_extract: PiBracketsAngle, wait: PiHourglass, custom: PiPuzzlePiece,
+  desktop: PiCpu,
 }
 
 export function NodeIcon({ type, size = 16, className, style }: {

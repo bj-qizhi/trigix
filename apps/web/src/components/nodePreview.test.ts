@@ -14,6 +14,7 @@ describe('nodePreview', () => {
     expect(nodePreview('http', { url: 'https://x.test' })).toBe('https://x.test')
     expect(nodePreview('condition', { field: 'amount' })).toBe('if amount')
     expect(nodePreview('sub_workflow', { workflow_id: 'wf-9' })).toBe('wf-9')
+    expect(nodePreview('desktop', { action_kind: 'click_element', device_id: 'device-1' })).toBe('click_element · device-1')
   })
 
   it('falls back to placeholders when config is empty', () => {
