@@ -19,6 +19,9 @@ pub enum CoreError {
     DuplicateCommand(String),
     UnsupportedAction,
     Execution(String),
+    ExecutionRejected { code: String, message: String },
+    ExecutionCancelled,
+    ExecutionTimedOut,
     Recovery(String),
 }
 
@@ -33,6 +36,11 @@ impl fmt::Display for CoreError {
                 formatter.write_str("action is not supported by this executor")
             }
             Self::Execution(message) => write!(formatter, "action execution failed: {message}"),
+            Self::ExecutionRejected { code, message } => {
+                write!(formatter, "action execution rejected ({code}): {message}")
+            }
+            Self::ExecutionCancelled => formatter.write_str("action execution was cancelled"),
+            Self::ExecutionTimedOut => formatter.write_str("action execution timed out"),
             Self::Recovery(message) => write!(formatter, "command recovery failed: {message}"),
         }
     }
@@ -101,7 +109,7 @@ impl ApprovalGrant {
 }
 
 pub trait ActionExecutor {
-    fn execute(&mut self, action: &DesktopAction) -> Result<Value, CoreError>;
+    fn execute(&mut self, command: &DesktopCommand) -> Result<Value, CoreError>;
 }
 
 pub trait AuditSink {
@@ -796,7 +804,7 @@ impl<E: ActionExecutor, A: AuditSink, S: CommandStateStore> CommandProcessor<E, 
     }
 
     fn execute(&mut self, command: &DesktopCommand, now_unix_ms: u64) -> DesktopCommandResult {
-        match self.executor.execute(&command.action) {
+        match self.executor.execute(command) {
             Ok(output) => DesktopCommandResult {
                 command_id: command.command_id.clone(),
                 execution_id: command.execution_id.clone(),
@@ -805,6 +813,33 @@ impl<E: ActionExecutor, A: AuditSink, S: CommandStateStore> CommandProcessor<E, 
                 output: Some(output),
                 error_code: None,
                 error_message: None,
+            },
+            Err(CoreError::ExecutionRejected { code, message }) => DesktopCommandResult {
+                command_id: command.command_id.clone(),
+                execution_id: command.execution_id.clone(),
+                outcome: CommandOutcome::Rejected,
+                completed_at_unix_ms: now_unix_ms,
+                output: None,
+                error_code: Some(code),
+                error_message: Some(message),
+            },
+            Err(CoreError::ExecutionCancelled) => DesktopCommandResult {
+                command_id: command.command_id.clone(),
+                execution_id: command.execution_id.clone(),
+                outcome: CommandOutcome::Cancelled,
+                completed_at_unix_ms: now_unix_ms,
+                output: None,
+                error_code: Some("cancelled".to_owned()),
+                error_message: Some("desktop action was cancelled".to_owned()),
+            },
+            Err(CoreError::ExecutionTimedOut) => DesktopCommandResult {
+                command_id: command.command_id.clone(),
+                execution_id: command.execution_id.clone(),
+                outcome: CommandOutcome::TimedOut,
+                completed_at_unix_ms: now_unix_ms,
+                output: None,
+                error_code: Some("execution_timed_out".to_owned()),
+                error_message: Some("desktop action exceeded its execution lease".to_owned()),
             },
             Err(error) => DesktopCommandResult {
                 command_id: command.command_id.clone(),
@@ -895,8 +930,8 @@ fn validate_persisted_state(
 pub struct SystemInformationExecutor;
 
 impl ActionExecutor for SystemInformationExecutor {
-    fn execute(&mut self, action: &DesktopAction) -> Result<Value, CoreError> {
-        if action != &DesktopAction::ReadSystemInformation {
+    fn execute(&mut self, command: &DesktopCommand) -> Result<Value, CoreError> {
+        if command.action != DesktopAction::ReadSystemInformation {
             return Err(CoreError::UnsupportedAction);
         }
         Ok(json!({
@@ -1335,7 +1370,7 @@ mod tests {
     struct CountingExecutor(Arc<AtomicUsize>);
 
     impl ActionExecutor for CountingExecutor {
-        fn execute(&mut self, _action: &DesktopAction) -> Result<Value, CoreError> {
+        fn execute(&mut self, _command: &DesktopCommand) -> Result<Value, CoreError> {
             self.0.fetch_add(1, Ordering::SeqCst);
             Ok(json!({"ok": true}))
         }

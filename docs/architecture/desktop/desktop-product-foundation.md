@@ -138,6 +138,12 @@ Element actions reuse the inspected window-scoped selector and snapshot. The Win
 
 Text remains present only in the authorized command and the transient Host request needed to perform the action. Adapter results contain a character count and semantic pattern but never the text, and failure messages are fixed rather than derived from input. Audit and recovery records continue to store action class and outcome only. Because typing is non-idempotent, replay protection persists the in-flight command before dispatch and never repeats an uncertain write after interruption.
 
+The Device owns an `AutomationHostSupervisor` and never lends process ownership to UI or adapter code. A supervisor accepts one command at a time for its Device, so queued and active work obey a limit of one and actions for the same application cannot overlap. Waiting for that permit remains bounded by the command deadline and observes cancellation. Each admitted request receives a fresh short-lived Host process; stdin is closed after the one typed request, and the parent waits for or forcibly reaps the child after every terminal path.
+
+The parent polls an explicit cancellation token and the absolute request deadline while the Host is active. Cancellation or timeout terminates and reaps a hung Host without terminating the Device connection process, returning `cancelled` or `timed_out` as a typed command outcome. Empty output is classified as `host_crashed`; malformed or mismatched output is a protocol failure. A cancellation handle is independent of the synchronous command processor, allowing connection work to cancel active or queued commands without taking execution ownership.
+
+Before adapter dispatch, the Host validates the lease again. Production Windows adapters also recheck an execution guard after target resolution and immediately before every focus, launch, invoke, or value side effect. A lease or request deadline that expires during resolution therefore prevents the operating-system call. The command processor persists in-flight state before the supervisor starts: parent crashes retry only read-only idempotent work, while an uncertain write becomes a terminal recovery failure. Cancelled, timed-out, crashed, and successful results are persisted through the same replay boundary, so reconnect cannot repeat their side effects.
+
 Windows automation will use this selector order:
 
 1. UI Automation identifier and control type
