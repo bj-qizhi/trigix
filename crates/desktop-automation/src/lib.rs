@@ -1,7 +1,7 @@
 use desktop_protocol::{
     AutomationPattern, DesktopAction, DesktopInspectionRequest, DesktopInspectionResult,
-    ElementSelector, InspectedElement, InspectedWindow, ProtocolError, RedactionReason,
-    WindowSelector, WindowTitlePolicy,
+    ElementSelector, InspectedElement, InspectedWindow, KeyboardModifier, PointerButton,
+    ProtocolError, RedactionReason, WindowSelector, WindowTitlePolicy,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -289,6 +289,16 @@ impl AutomationAdapter for FixtureAutomationAdapter {
             }
             DesktopAction::ClickElement { selector } => self.click(selector),
             DesktopAction::TypeText { selector, text } => self.type_text(selector, text),
+            DesktopAction::PressKey {
+                selector,
+                key,
+                modifiers,
+            } => self.press_key(selector, key, modifiers),
+            DesktopAction::PointerClick {
+                selector,
+                button,
+                click_count,
+            } => self.pointer_click(selector, *button, *click_count),
         }
     }
 }
@@ -385,6 +395,55 @@ impl FixtureAutomationAdapter {
             "entered": true,
             "characters_entered": text.chars().count(),
             "semantic_pattern": "value",
+        }))
+    }
+
+    fn press_key(
+        &self,
+        selector: &WindowSelector,
+        key: &str,
+        modifiers: &[KeyboardModifier],
+    ) -> Result<Value, AutomationHostError> {
+        if selector
+            .snapshot_id
+            .as_deref()
+            .is_some_and(|expected| expected != self.snapshot_id)
+        {
+            return Err(AutomationHostError::TargetStale);
+        }
+        let matches = fixture_windows()
+            .into_iter()
+            .filter(|window| window_matches(&window.selector, selector))
+            .collect::<Vec<_>>();
+        if matches.len() != 1 {
+            return if matches.is_empty() {
+                Err(AutomationHostError::TargetNotFound)
+            } else {
+                Err(AutomationHostError::TargetAmbiguous)
+            };
+        }
+        if matches[0].selector.automation_id.as_deref() != Some(&self.focused_window_id) {
+            return Err(AutomationHostError::FocusChanged);
+        }
+        Ok(json!({
+            "pressed": true,
+            "key": key,
+            "modifier_count": modifiers.len(),
+        }))
+    }
+
+    fn pointer_click(
+        &self,
+        selector: &ElementSelector,
+        button: PointerButton,
+        click_count: u8,
+    ) -> Result<Value, AutomationHostError> {
+        self.resolve_element(selector)?;
+        Ok(json!({
+            "clicked": true,
+            "pointer_button": button,
+            "click_count": click_count,
+            "targeting": "selector_center",
         }))
     }
 
@@ -581,18 +640,27 @@ mod windows_adapter {
     use std::collections::{hash_map::DefaultHasher, HashMap};
     use std::env;
     use std::hash::{Hash, Hasher};
+    use std::mem;
     use std::path::Path;
     use std::process::Command;
     use std::time::{Duration, Instant};
-    use windows_sys::Win32::Foundation::{CloseHandle, HWND, LPARAM};
+    use windows_sys::Win32::Foundation::{CloseHandle, HWND, LPARAM, RECT};
     use windows_sys::Win32::System::Threading::{
         OpenProcess, QueryFullProcessImageNameW, PROCESS_QUERY_LIMITED_INFORMATION,
     };
+    use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
+        SendInput, INPUT, INPUT_0, INPUT_KEYBOARD, INPUT_MOUSE, KEYBDINPUT, KEYEVENTF_KEYUP,
+        MOUSEEVENTF_LEFTDOWN, MOUSEEVENTF_LEFTUP, MOUSEEVENTF_MIDDLEDOWN, MOUSEEVENTF_MIDDLEUP,
+        MOUSEEVENTF_RIGHTDOWN, MOUSEEVENTF_RIGHTUP, MOUSEINPUT, VK_BACK, VK_CONTROL, VK_DELETE,
+        VK_DOWN, VK_END, VK_ESCAPE, VK_F1, VK_HOME, VK_LEFT, VK_LMENU, VK_LSHIFT, VK_LWIN, VK_NEXT,
+        VK_PRIOR, VK_RETURN, VK_RIGHT, VK_SPACE, VK_TAB, VK_UP,
+    };
     use windows_sys::Win32::UI::WindowsAndMessaging::{
         EnumChildWindows, EnumWindows, GetClassNameW, GetDlgCtrlID, GetForegroundWindow,
-        GetWindowLongW, GetWindowTextLengthW, GetWindowTextW, GetWindowThreadProcessId, IsIconic,
-        IsWindowVisible, SendMessageW, SetForegroundWindow, SetWindowTextW, ShowWindow, BM_CLICK,
-        ES_PASSWORD, GWL_STYLE, SW_RESTORE,
+        GetWindowLongW, GetWindowRect, GetWindowTextLengthW, GetWindowTextW,
+        GetWindowThreadProcessId, IsIconic, IsWindowVisible, SendMessageW, SetCursorPos,
+        SetForegroundWindow, SetWindowTextW, ShowWindow, BM_CLICK, ES_PASSWORD, GWL_STYLE,
+        SW_RESTORE,
     };
 
     const APPLICATION_ALLOWLIST_ENV: &str = "TRIGIX_DESKTOP_APPLICATION_ALLOWLIST";
@@ -775,6 +843,135 @@ mod windows_adapter {
                 "semantic_pattern": "value",
             }))
         }
+
+        fn press_key(
+            &self,
+            selector: &WindowSelector,
+            key: &str,
+            modifiers: &[KeyboardModifier],
+            guard: Option<&AutomationExecutionGuard<'_>>,
+        ) -> Result<Value, AutomationHostError> {
+            if let Some(snapshot_id) = &selector.snapshot_id {
+                let mut request = DesktopInspectionRequest::bounded(None);
+                request.expected_snapshot_id = Some(snapshot_id.clone());
+                inspect_windows(&request)?;
+            }
+            let matches = matching_windows(selector);
+            let [window] = matches.as_slice() else {
+                return if matches.is_empty() {
+                    Err(AutomationHostError::TargetNotFound)
+                } else {
+                    Err(AutomationHostError::TargetAmbiguous)
+                };
+            };
+            if let Some(guard) = guard {
+                guard.ensure_active()?;
+            }
+            unsafe {
+                if GetForegroundWindow() != *window {
+                    return Err(AutomationHostError::FocusChanged);
+                }
+            }
+            let key_code = virtual_key(key).ok_or(AutomationHostError::UnsupportedPattern)?;
+            let modifier_codes = modifiers
+                .iter()
+                .map(|modifier| match modifier {
+                    KeyboardModifier::Control => VK_CONTROL,
+                    KeyboardModifier::Alt => VK_LMENU,
+                    KeyboardModifier::Shift => VK_LSHIFT,
+                    KeyboardModifier::Meta => VK_LWIN,
+                })
+                .collect::<Vec<_>>();
+            let mut inputs = Vec::with_capacity(modifier_codes.len() * 2 + 2);
+            inputs.extend(
+                modifier_codes
+                    .iter()
+                    .copied()
+                    .map(|code| keyboard_input(code, 0)),
+            );
+            inputs.push(keyboard_input(key_code, 0));
+            inputs.push(keyboard_input(key_code, KEYEVENTF_KEYUP));
+            inputs.extend(
+                modifier_codes
+                    .iter()
+                    .rev()
+                    .copied()
+                    .map(|code| keyboard_input(code, KEYEVENTF_KEYUP)),
+            );
+            if let Some(guard) = guard {
+                guard.ensure_active()?;
+            }
+            if let Err(error) = send_inputs(&inputs) {
+                let mut releases = vec![keyboard_input(key_code, KEYEVENTF_KEYUP)];
+                releases.extend(
+                    modifier_codes
+                        .iter()
+                        .rev()
+                        .copied()
+                        .map(|code| keyboard_input(code, KEYEVENTF_KEYUP)),
+                );
+                let _ = send_inputs(&releases);
+                return Err(error);
+            }
+            Ok(json!({
+                "pressed": true,
+                "key": key,
+                "modifier_count": modifiers.len(),
+            }))
+        }
+
+        fn pointer_click(
+            &self,
+            selector: &ElementSelector,
+            button: PointerButton,
+            click_count: u8,
+            guard: Option<&AutomationExecutionGuard<'_>>,
+        ) -> Result<Value, AutomationHostError> {
+            let element = self.resolve_element(selector)?;
+            if let Some(guard) = guard {
+                guard.ensure_active()?;
+            }
+            unsafe {
+                if GetForegroundWindow() != element.root {
+                    return Err(AutomationHostError::FocusChanged);
+                }
+            }
+            let mut bounds: RECT = unsafe { mem::zeroed() };
+            if unsafe { GetWindowRect(element.control, &mut bounds) } == 0
+                || bounds.right <= bounds.left
+                || bounds.bottom <= bounds.top
+            {
+                return Err(AutomationHostError::TargetNotFound);
+            }
+            let center_x = bounds.left + (bounds.right - bounds.left) / 2;
+            let center_y = bounds.top + (bounds.bottom - bounds.top) / 2;
+            if let Some(guard) = guard {
+                guard.ensure_active()?;
+            }
+            if unsafe { SetCursorPos(center_x, center_y) } == 0 {
+                return Err(AutomationHostError::AccessDenied);
+            }
+            let (down, up) = match button {
+                PointerButton::Left => (MOUSEEVENTF_LEFTDOWN, MOUSEEVENTF_LEFTUP),
+                PointerButton::Right => (MOUSEEVENTF_RIGHTDOWN, MOUSEEVENTF_RIGHTUP),
+                PointerButton::Middle => (MOUSEEVENTF_MIDDLEDOWN, MOUSEEVENTF_MIDDLEUP),
+            };
+            let mut inputs = Vec::with_capacity(click_count as usize * 2);
+            for _ in 0..click_count {
+                inputs.push(mouse_input(down));
+                inputs.push(mouse_input(up));
+            }
+            if let Err(error) = send_inputs(&inputs) {
+                let _ = send_inputs(&[mouse_input(up)]);
+                return Err(error);
+            }
+            Ok(json!({
+                "clicked": true,
+                "pointer_button": button,
+                "click_count": click_count,
+                "targeting": "selector_center",
+            }))
+        }
     }
 
     impl AutomationAdapter for WindowsAutomationAdapter {
@@ -794,6 +991,16 @@ mod windows_adapter {
                 }
                 DesktopAction::ClickElement { selector } => self.click(selector, None),
                 DesktopAction::TypeText { selector, text } => self.type_text(selector, text, None),
+                DesktopAction::PressKey {
+                    selector,
+                    key,
+                    modifiers,
+                } => self.press_key(selector, key, modifiers, None),
+                DesktopAction::PointerClick {
+                    selector,
+                    button,
+                    click_count,
+                } => self.pointer_click(selector, *button, *click_count, None),
             }
         }
 
@@ -815,8 +1022,93 @@ mod windows_adapter {
                 DesktopAction::TypeText { selector, text } => {
                     self.type_text(selector, text, Some(guard))
                 }
+                DesktopAction::PressKey {
+                    selector,
+                    key,
+                    modifiers,
+                } => self.press_key(selector, key, modifiers, Some(guard)),
+                DesktopAction::PointerClick {
+                    selector,
+                    button,
+                    click_count,
+                } => self.pointer_click(selector, *button, *click_count, Some(guard)),
             }
         }
+    }
+
+    fn virtual_key(key: &str) -> Option<u16> {
+        if key.len() == 1 {
+            let value = key.as_bytes()[0];
+            return (value.is_ascii_lowercase() || value.is_ascii_digit())
+                .then_some(value.to_ascii_uppercase() as u16);
+        }
+        match key {
+            "enter" => Some(VK_RETURN),
+            "escape" => Some(VK_ESCAPE),
+            "tab" => Some(VK_TAB),
+            "backspace" => Some(VK_BACK),
+            "delete" => Some(VK_DELETE),
+            "space" => Some(VK_SPACE),
+            "home" => Some(VK_HOME),
+            "end" => Some(VK_END),
+            "page_up" => Some(VK_PRIOR),
+            "page_down" => Some(VK_NEXT),
+            "arrow_up" => Some(VK_UP),
+            "arrow_down" => Some(VK_DOWN),
+            "arrow_left" => Some(VK_LEFT),
+            "arrow_right" => Some(VK_RIGHT),
+            value if value.len() <= 3 && value.starts_with('f') => value[1..]
+                .parse::<u16>()
+                .ok()
+                .filter(|number| (1..=12).contains(number))
+                .map(|number| VK_F1 + number - 1),
+            _ => None,
+        }
+    }
+
+    fn keyboard_input(code: u16, flags: u32) -> INPUT {
+        INPUT {
+            r#type: INPUT_KEYBOARD,
+            Anonymous: INPUT_0 {
+                ki: KEYBDINPUT {
+                    wVk: code,
+                    wScan: 0,
+                    dwFlags: flags,
+                    time: 0,
+                    dwExtraInfo: 0,
+                },
+            },
+        }
+    }
+
+    fn mouse_input(flags: u32) -> INPUT {
+        INPUT {
+            r#type: INPUT_MOUSE,
+            Anonymous: INPUT_0 {
+                mi: MOUSEINPUT {
+                    dx: 0,
+                    dy: 0,
+                    mouseData: 0,
+                    dwFlags: flags,
+                    time: 0,
+                    dwExtraInfo: 0,
+                },
+            },
+        }
+    }
+
+    fn send_inputs(inputs: &[INPUT]) -> Result<(), AutomationHostError> {
+        let sent = unsafe {
+            SendInput(
+                inputs.len() as u32,
+                inputs.as_ptr(),
+                mem::size_of::<INPUT>() as i32,
+            )
+        };
+        if sent != inputs.len() as u32 {
+            return Err(AutomationHostError::AccessDenied);
+        }
+        Ok(())
     }
 
     struct WindowEnumeration<'a> {
@@ -1777,6 +2069,32 @@ mod tests {
             selector: fixture_element(FIXTURE_SUBMIT_AUTOMATION_ID, "button"),
         });
         assert_eq!(focus_changed, Err(AutomationHostError::FocusChanged));
+    }
+
+    #[test]
+    fn fixture_keyboard_and_pointer_actions_remain_selector_targeted() {
+        let adapter = &mut FixtureAutomationAdapter::default();
+        let window = fixture_element(FIXTURE_SUBMIT_AUTOMATION_ID, "button").window;
+        let pressed = adapter
+            .execute(&DesktopAction::PressKey {
+                selector: window,
+                key: "enter".to_owned(),
+                modifiers: vec![KeyboardModifier::Control],
+            })
+            .unwrap();
+        assert_eq!(pressed["pressed"], true);
+        assert_eq!(pressed["modifier_count"], 1);
+
+        let clicked = adapter
+            .execute(&DesktopAction::PointerClick {
+                selector: fixture_element(FIXTURE_SUBMIT_AUTOMATION_ID, "button"),
+                button: PointerButton::Right,
+                click_count: 2,
+            })
+            .unwrap();
+        assert_eq!(clicked["targeting"], "selector_center");
+        assert_eq!(clicked["click_count"], 2);
+        assert!(!clicked.to_string().contains("coordinate"));
     }
 
     #[test]

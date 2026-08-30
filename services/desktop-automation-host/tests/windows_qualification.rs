@@ -2,7 +2,7 @@
 
 use desktop_protocol::{
     DesktopAction, DesktopInspectionRequest, DesktopInspectionResult, ElementSelector,
-    WindowSelector,
+    KeyboardModifier, PointerButton, WindowSelector,
 };
 use std::mem;
 use std::path::PathBuf;
@@ -88,6 +88,24 @@ fn native_fixture_actions_meet_reliability_latency_and_resource_budgets() {
         }),
         Err(AutomationHostError::ProtectedControl)
     );
+
+    let pressed = adapter
+        .execute(&DesktopAction::PressKey {
+            selector: window.clone(),
+            key: "tab".to_owned(),
+            modifiers: vec![KeyboardModifier::Shift],
+        })
+        .expect("send bounded key input to focused native fixture");
+    assert_eq!(pressed["pressed"], true);
+
+    let pointer = adapter
+        .execute(&DesktopAction::PointerClick {
+            selector: submit.clone(),
+            button: PointerButton::Left,
+            click_count: 1,
+        })
+        .expect("send selector-targeted pointer input to native fixture");
+    assert_eq!(pointer["targeting"], "selector_center");
 
     let handles_before = process_handle_count();
     let working_set_before = process_working_set();

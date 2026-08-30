@@ -185,11 +185,18 @@ export function collectPublishWarnings(nodes: FlowNode[], edges: FlowEdge[]): Pu
     }
     if (nt === 'desktop') {
       const action = c.action_kind as string | undefined
-      if (['focus_window', 'click_element', 'type_text'].includes(action ?? '') && !c.selector) {
+      const selector = c.selector as Record<string, unknown> | undefined
+      const needsWindow = ['focus_window', 'press_key'].includes(action ?? '')
+      const needsElement = ['click_element', 'type_text', 'pointer_click'].includes(action ?? '')
+      const wrongSelectorShape = (needsWindow && !!selector?.window) || (needsElement && !selector?.window)
+      if ((needsWindow || needsElement) && (!selector || wrongSelectorShape)) {
         warnings.push({ message: `Desktop Action node "${label}" has no stable selector`, nodeId: id })
       }
       if (action === 'type_text' && typeof c.text !== 'string') {
         warnings.push({ message: `Desktop Action node "${label}" has no text`, nodeId: id })
+      }
+      if (action === 'press_key' && typeof c.key !== 'string') {
+        warnings.push({ message: `Desktop Action node "${label}" has no bounded key`, nodeId: id })
       }
       if (action === 'launch_application' && !c.application_id) {
         warnings.push({ message: `Desktop Action node "${label}" has no application ID`, nodeId: id })

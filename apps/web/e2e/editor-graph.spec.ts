@@ -366,6 +366,80 @@ test('desktop inspector persists a typed stable selector through the governed co
   expect(errors, errors.join('\n')).toHaveLength(0)
 })
 
+test('desktop pointer test shows its target and stops through the governed cancellation API', async ({ page }) => {
+  const errors = trackErrors(page)
+  await mockBackend(page)
+  const actions: Record<string, unknown>[] = []
+  let cancelled = false
+  const desktopVersion = {
+    ...VERSION,
+    graph: {
+      workflow_version_id: 'v1',
+      nodes: [
+        { id: 'trigger', type: 'trigger', config: {} },
+        { id: 'desktop', type: 'desktop', config: { action_kind: 'pointer_click' } },
+      ],
+      edges: [{ source: 'trigger', target: 'desktop' }],
+    },
+  }
+  const command = (status: string, id = 'pointer-command') => ({
+    command: { command_id: id, execution_id: 'exec-active' },
+    device_id: 'device-1', workflow_id: 'wf1', status,
+    ...(status === 'cancelled' ? { result: { outcome: 'cancelled', error_code: 'cancelled', error_message: 'cancelled' } } : {}),
+  })
+  await page.route(/\/v1\/workflow-versions\/v1/, (route) => route.fulfill({ json: desktopVersion }))
+  await page.route(/\/v1\/executions(\?|$)/, (route) => route.fulfill({ json: [{
+    id: 'exec-active', tenant_id: 't', workflow_id: 'wf1', workflow_version_id: 'v1', status: 'running', started_at: 1,
+  }] }))
+  await page.route(/\/v1\/desktop\/devices/, (route) => route.fulfill({ json: { items: [{
+    id: 'device-1', tenant_id: 't', display_name: 'QA Desktop', operating_system: 'windows',
+    agent_version: '1.5.1', capabilities: ['ui_automation', 'pointer_input'], state: 'online', stale: false, compatible: true,
+  }] } }))
+  await page.route(/\/v1\/desktop\/commands$/, async (route) => {
+    const body = route.request().postDataJSON() as { action: Record<string, unknown> }
+    actions.push(body.action)
+    if (body.action.kind === 'inspect_targets') {
+      return route.fulfill({ json: {
+        ...command('succeeded', 'inspect-command'),
+        result: { outcome: 'succeeded', output: {
+          snapshot_id: 'snapshot-1', truncated: false, windows: [{
+            selector: { executable: 'fixture.exe', automation_id: 'Fixture.Main' }, process_id: 42, title_policy: 'exact',
+            elements: [{
+              selector: { window: { executable: 'fixture.exe', automation_id: 'Fixture.Main' }, automation_id: '1002', name: 'Submit', control_type: 'Button' },
+              depth: 1, supported_patterns: ['invoke'],
+            }],
+          }],
+        } },
+      } })
+    }
+    return route.fulfill({ json: command('acknowledged') })
+  })
+  await page.route(/\/v1\/desktop\/commands\/pointer-command(\?|$)/, async (route) => {
+    if (route.request().method() === 'DELETE') {
+      cancelled = true
+      return route.fulfill({ json: command('cancelled') })
+    }
+    return route.fulfill({ json: command(cancelled ? 'cancelled' : 'acknowledged') })
+  })
+
+  await page.goto('/')
+  await page.getByText('Editor WF').click()
+  await page.getByTestId('rf__node-desktop').click({ position: { x: 10, y: 10 } })
+  await page.locator('.config-panel-body select').nth(1).selectOption('device-1')
+  await page.getByRole('button', { name: /检查桌面目标|Inspect desktop targets/ }).click()
+  await page.getByRole('button', { name: /选择控件|Select control/ }).click()
+  await page.getByRole('button', { name: /测试操作|Test action/ }).click()
+
+  await expect(page.getByText(/QA Desktop · pointer_click · 1002/)).toBeVisible()
+  await expect(page.getByText(/acknowledged/)).toBeVisible()
+  await page.getByRole('button', { name: /立即停止测试|Stop test now/ }).click()
+  await expect(page.getByText(/cancelled/)).toBeVisible()
+  expect(cancelled).toBe(true)
+  expect(actions.at(-1)).toEqual(expect.objectContaining({ kind: 'pointer_click', button: 'left', click_count: 1 }))
+  expect(JSON.stringify(actions.at(-1))).not.toMatch(/\"[xy]\"/)
+  expect(errors, errors.join('\n')).toHaveLength(0)
+})
+
 test('typing {{credential. autocompletes the saved credentials', async ({ page }) => {
   const errors = trackErrors(page)
   await mockBackend(page)

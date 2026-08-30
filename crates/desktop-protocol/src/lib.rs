@@ -212,6 +212,27 @@ pub enum RiskLevel {
     Critical,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum KeyboardModifier {
+    Control,
+    Alt,
+    Shift,
+    Meta,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PointerButton {
+    Left,
+    Right,
+    Middle,
+}
+
+fn default_click_count() -> u8 {
+    1
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum DesktopAction {
@@ -229,6 +250,18 @@ pub enum DesktopAction {
         selector: ElementSelector,
         text: String,
     },
+    PressKey {
+        selector: WindowSelector,
+        key: String,
+        #[serde(default)]
+        modifiers: Vec<KeyboardModifier>,
+    },
+    PointerClick {
+        selector: ElementSelector,
+        button: PointerButton,
+        #[serde(default = "default_click_count")]
+        click_count: u8,
+    },
     LaunchApplication {
         application_id: ApplicationIdentity,
     },
@@ -239,7 +272,10 @@ impl DesktopAction {
         match self {
             Self::ReadSystemInformation | Self::InspectTargets { .. } => RiskLevel::Low,
             Self::FocusWindow { .. } | Self::ClickElement { .. } => RiskLevel::Medium,
-            Self::TypeText { .. } | Self::LaunchApplication { .. } => RiskLevel::High,
+            Self::TypeText { .. }
+            | Self::PressKey { .. }
+            | Self::PointerClick { .. }
+            | Self::LaunchApplication { .. } => RiskLevel::High,
         }
     }
 
@@ -251,6 +287,8 @@ impl DesktopAction {
                 DeviceCapability::WindowManagement
             }
             Self::ClickElement { .. } | Self::TypeText { .. } => DeviceCapability::UiAutomation,
+            Self::PressKey { .. } => DeviceCapability::KeyboardInput,
+            Self::PointerClick { .. } => DeviceCapability::PointerInput,
         }
     }
 
@@ -264,8 +302,78 @@ impl DesktopAction {
                 selector.validate()?;
                 validate_text("action.text", text, 16_384)
             }
+            Self::PressKey {
+                selector,
+                key,
+                modifiers,
+            } => {
+                selector.validate()?;
+                validate_keyboard_key(key)?;
+                if modifiers.len() > 4 {
+                    return Err(ProtocolError::InvalidField("action.modifiers"));
+                }
+                for (index, modifier) in modifiers.iter().enumerate() {
+                    if modifiers[..index].contains(modifier) {
+                        return Err(ProtocolError::InvalidField("action.modifiers"));
+                    }
+                }
+                Ok(())
+            }
+            Self::PointerClick {
+                selector,
+                click_count,
+                ..
+            } => {
+                selector.validate()?;
+                if !(1..=2).contains(click_count) {
+                    return Err(ProtocolError::InvalidField("action.click_count"));
+                }
+                Ok(())
+            }
             Self::LaunchApplication { application_id } => application_id.validate(),
         }
+    }
+}
+
+fn validate_keyboard_key(key: &str) -> Result<(), ProtocolError> {
+    let named = matches!(
+        key,
+        "enter"
+            | "escape"
+            | "tab"
+            | "backspace"
+            | "delete"
+            | "space"
+            | "home"
+            | "end"
+            | "page_up"
+            | "page_down"
+            | "arrow_up"
+            | "arrow_down"
+            | "arrow_left"
+            | "arrow_right"
+            | "f1"
+            | "f2"
+            | "f3"
+            | "f4"
+            | "f5"
+            | "f6"
+            | "f7"
+            | "f8"
+            | "f9"
+            | "f10"
+            | "f11"
+            | "f12"
+    );
+    let single_ascii = key.len() == 1
+        && key
+            .as_bytes()
+            .first()
+            .is_some_and(|value| value.is_ascii_lowercase() || value.is_ascii_digit());
+    if named || single_ascii {
+        Ok(())
+    } else {
+        Err(ProtocolError::InvalidField("action.key"))
     }
 }
 
@@ -880,6 +988,73 @@ mod tests {
             }
             .risk_level(),
             RiskLevel::High
+        );
+        assert_eq!(
+            DesktopAction::PressKey {
+                selector: WindowSelector {
+                    executable: Some("fixture.exe".to_owned()),
+                    title: None,
+                    automation_id: None,
+                    snapshot_id: None,
+                },
+                key: "enter".to_owned(),
+                modifiers: vec![],
+            }
+            .capability(),
+            DeviceCapability::KeyboardInput
+        );
+    }
+
+    #[test]
+    fn input_actions_reject_unbounded_or_ambiguous_values() {
+        let window = WindowSelector {
+            executable: Some("fixture.exe".to_owned()),
+            title: None,
+            automation_id: None,
+            snapshot_id: None,
+        };
+        let mut key = DesktopAction::PressKey {
+            selector: window.clone(),
+            key: "enter".to_owned(),
+            modifiers: vec![KeyboardModifier::Control],
+        };
+        assert!(key.validate().is_ok());
+        if let DesktopAction::PressKey { key, modifiers, .. } = &mut key {
+            *key = "unbounded_key_name".to_owned();
+            assert_eq!(
+                DesktopAction::PressKey {
+                    selector: window.clone(),
+                    key: key.clone(),
+                    modifiers: modifiers.clone(),
+                }
+                .validate(),
+                Err(ProtocolError::InvalidField("action.key"))
+            );
+            *key = "a".to_owned();
+            modifiers.push(KeyboardModifier::Control);
+        }
+        assert_eq!(
+            key.validate(),
+            Err(ProtocolError::InvalidField("action.modifiers"))
+        );
+
+        let mut pointer = DesktopAction::PointerClick {
+            selector: ElementSelector {
+                window,
+                automation_id: Some("submit".to_owned()),
+                name: None,
+                control_type: Some("button".to_owned()),
+            },
+            button: PointerButton::Left,
+            click_count: 2,
+        };
+        assert!(pointer.validate().is_ok());
+        if let DesktopAction::PointerClick { click_count, .. } = &mut pointer {
+            *click_count = 3;
+        }
+        assert_eq!(
+            pointer.validate(),
+            Err(ProtocolError::InvalidField("action.click_count"))
         );
     }
 

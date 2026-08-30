@@ -73,6 +73,8 @@ impl CommandRuntime {
             DeviceCapability::SystemInformation,
             DeviceCapability::WindowManagement,
             DeviceCapability::UiAutomation,
+            DeviceCapability::KeyboardInput,
+            DeviceCapability::PointerInput,
         ]
     }
 
@@ -221,6 +223,8 @@ mod tests {
                 DeviceCapability::SystemInformation,
                 DeviceCapability::WindowManagement,
                 DeviceCapability::UiAutomation,
+                DeviceCapability::KeyboardInput,
+                DeviceCapability::PointerInput,
             ]
         );
         let command = DesktopCommand {
@@ -293,6 +297,8 @@ mod windows_tests {
                 DeviceCapability::SystemInformation,
                 DeviceCapability::WindowManagement,
                 DeviceCapability::UiAutomation,
+                DeviceCapability::KeyboardInput,
+                DeviceCapability::PointerInput,
             ]
         );
     }
