@@ -113,7 +113,9 @@ jobs:
           cargo test -p desktop-automation-host --test windows_qualification -- --nocapture --test-threads=1
 
       - name: Run Windows automation unit and process tests
-        run: cargo test -p trigix-desktop-automation -p desktop-automation-host
+        run: |
+          cargo test -p trigix-desktop-automation
+          cargo test -p desktop-automation-host --test process_boundary
 
   web:
     name: Web (typecheck, build)
