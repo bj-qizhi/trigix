@@ -28,6 +28,10 @@ use trigix_platform::attribution::{
 };
 use trigix_platform::billing::{BillingStore, PlatformBillingStore, TenantQuota};
 use trigix_platform::desktop_commands::PlatformDesktopCommandStore;
+use trigix_platform::desktop_evidence::{
+    prepare_evidence, EvidenceKind, EvidencePolicy, EvidenceUploadRequest,
+    PlatformDesktopEvidenceStore, RedactionAttestation, SelectorStrategy,
+};
 use trigix_platform::device_pairing::{CreatePairingSessionRequest, PlatformDevicePairingStore};
 use trigix_platform::execution::{ExecutionStore, PostgresExecutionStore, StartExecutionRequest};
 use trigix_platform::token_usage::{
@@ -474,6 +478,64 @@ async fn desktop_pairing_is_atomic_tenant_scoped_and_single_use() {
             "desktop.command.acknowledged",
             "desktop.command.succeeded"
         ]
+    );
+    let evidence_store = PlatformDesktopEvidenceStore::postgres(pool.clone());
+    let evidence = prepare_evidence(
+        &tenant_id,
+        &device_id,
+        EvidenceUploadRequest {
+            command_id: command.command_id.clone(),
+            execution_id: execution_id.clone(),
+            project_id: "project-1".to_owned(),
+            kind: EvidenceKind::AdapterAudit,
+            selector_strategy: SelectorStrategy::NotApplicable,
+            application_id: "system_information".to_owned(),
+            started_at_unix_ms: now,
+            completed_at_unix_ms: now,
+            outcome: CommandOutcome::Succeeded,
+            retention_days: 7,
+            capture_opt_in: false,
+            redaction: RedactionAttestation {
+                policy_version: "redaction-v1".to_owned(),
+                succeeded: true,
+                sensitive_regions: 0,
+                redacted_regions: 0,
+            },
+            content_type: None,
+            payload_base64: None,
+        },
+        &EvidencePolicy::default(),
+        now,
+    )
+    .expect("prepare desktop evidence");
+    let evidence_id = evidence.record.evidence_id.clone();
+    evidence_store
+        .create(evidence)
+        .await
+        .expect("persist desktop evidence");
+    assert_eq!(
+        evidence_store
+            .list(&tenant_id, &execution_id)
+            .await
+            .expect("list desktop evidence")
+            .len(),
+        1
+    );
+    assert!(evidence_store
+        .list("wrong-tenant", &execution_id)
+        .await
+        .expect("isolate desktop evidence")
+        .is_empty());
+    sqlx::query("UPDATE af_desktop_evidence SET expires_at = now() WHERE id = $1")
+        .bind(&evidence_id)
+        .execute(&pool)
+        .await
+        .expect("expire desktop evidence");
+    assert_eq!(
+        trigix_platform::retention::run_evidence_retention_pass(&pool)
+            .await
+            .expect("purge desktop evidence"),
+        1
     );
     store
         .connect_device(&device_id, &rotated.credential, "connection-before-suspend")

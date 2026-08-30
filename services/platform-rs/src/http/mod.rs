@@ -200,6 +200,8 @@ pub struct AppState {
     device_pairing_store: Arc<crate::device_pairing::PlatformDevicePairingStore>,
     device_connections: crate::device_connection::DeviceConnectionManager,
     desktop_command_store: Arc<crate::desktop_commands::PlatformDesktopCommandStore>,
+    desktop_evidence_store: Arc<crate::desktop_evidence::PlatformDesktopEvidenceStore>,
+    desktop_evidence_policy: crate::desktop_evidence::EvidencePolicy,
 }
 
 pub fn router() -> Router {
@@ -272,6 +274,10 @@ pub(crate) fn default_app_state() -> AppState {
         desktop_command_store: Arc::new(
             crate::desktop_commands::PlatformDesktopCommandStore::default(),
         ),
+        desktop_evidence_store: Arc::new(
+            crate::desktop_evidence::PlatformDesktopEvidenceStore::default(),
+        ),
+        desktop_evidence_policy: crate::desktop_evidence::EvidencePolicy::from_env(),
     }
 }
 
@@ -1121,6 +1127,10 @@ pub fn router_with_services(
         desktop_command_store: Arc::new(
             crate::desktop_commands::PlatformDesktopCommandStore::default(),
         ),
+        desktop_evidence_store: Arc::new(
+            crate::desktop_evidence::PlatformDesktopEvidenceStore::default(),
+        ),
+        desktop_evidence_policy: crate::desktop_evidence::EvidencePolicy::from_env(),
     };
 
     build_router(state)
@@ -1160,6 +1170,7 @@ pub fn router_with_all_stores(
     custom_node_store: crate::custom_nodes::PlatformCustomNodeStore,
     device_pairing_store: crate::device_pairing::PlatformDevicePairingStore,
     desktop_command_store: crate::desktop_commands::PlatformDesktopCommandStore,
+    desktop_evidence_store: crate::desktop_evidence::PlatformDesktopEvidenceStore,
 ) -> Router {
     let state = AppState {
         execution_service: Arc::new(execution_service),
@@ -1199,6 +1210,8 @@ pub fn router_with_all_stores(
         device_pairing_store: Arc::new(device_pairing_store),
         device_connections: crate::device_connection::DeviceConnectionManager::default(),
         desktop_command_store: Arc::new(desktop_command_store),
+        desktop_evidence_store: Arc::new(desktop_evidence_store),
+        desktop_evidence_policy: crate::desktop_evidence::EvidencePolicy::from_env(),
     };
     spawn_schedule_runner(state.clone());
     spawn_execution_timeout_guard(state.clone());

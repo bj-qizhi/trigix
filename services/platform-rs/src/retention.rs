@@ -50,6 +50,36 @@ pub fn spawn_data_retention(pool: PgPool, days: u64) {
     });
 }
 
+/// Enforce the per-record evidence deadline even when general data retention is disabled.
+pub fn spawn_evidence_retention(pool: PgPool) {
+    let sweep_secs = std::env::var("DATA_RETENTION_SWEEP_SECS")
+        .ok()
+        .and_then(|value| value.parse().ok())
+        .unwrap_or(DEFAULT_SWEEP_SECS);
+    tokio::spawn(async move {
+        tokio::time::sleep(Duration::from_secs(30)).await;
+        loop {
+            match run_evidence_retention_pass(&pool).await {
+                Ok(rows) if rows > 0 => {
+                    tracing::info!(rows, "desktop evidence retention pass complete")
+                }
+                Ok(_) => {}
+                Err(error) => tracing::error!(%error, "desktop evidence retention pass failed"),
+            }
+            tokio::time::sleep(Duration::from_secs(sweep_secs)).await;
+        }
+    });
+}
+
+pub async fn run_evidence_retention_pass(pool: &PgPool) -> Result<u64, sqlx::Error> {
+    delete(
+        pool,
+        "af_desktop_evidence",
+        sqlx::query("DELETE FROM af_desktop_evidence WHERE expires_at <= now()"),
+    )
+    .await
+}
+
 /// Delete rows older than `days` across the unbounded tables. Returns total rows removed.
 pub async fn run_retention_pass(pool: &PgPool, days: u64) -> Result<u64, sqlx::Error> {
     let now = std::time::SystemTime::now()
@@ -59,6 +89,10 @@ pub async fn run_retention_pass(pool: &PgPool, days: u64) -> Result<u64, sqlx::E
     let cutoff_unix = now.saturating_sub(days.saturating_mul(SECS_PER_DAY)) as i64;
     let interval = format!("{days} days");
     let mut total = 0u64;
+
+    // Evidence has its own per-record policy deadline, independent of the
+    // platform-wide retention window.
+    total += run_evidence_retention_pass(pool).await?;
 
     // Child rows first: af_node_executions has a FK to af_executions with no cascade.
     total += delete(
