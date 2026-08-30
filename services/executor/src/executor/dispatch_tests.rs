@@ -320,6 +320,22 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn standalone_executor_cannot_bypass_platform_for_desktop_actions() {
+        let executor = DispatchingNodeExecutor::new(None);
+        let node = Node {
+            id: "desktop".to_string(),
+            node_type: NodeType::Desktop,
+            config: Some(serde_json::json!({"action_kind":"click_element","device_id":"device-1"})),
+        };
+        let result = executor.execute(&node, &make_context("{}")).await;
+        assert_eq!(result.status, execution_core::NodeStatus::Failed);
+        assert!(result
+            .error
+            .as_deref()
+            .is_some_and(|message| message.contains("Platform command gateway")));
+    }
+
+    #[tokio::test]
     async fn failing_node_retried_and_still_fails() {
         let executor = DispatchingNodeExecutor::new(None);
         // Agent with max_retries:1 — will fail twice (no AI Runtime URL)

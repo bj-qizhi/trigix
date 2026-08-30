@@ -48,6 +48,7 @@ interface Props {
 
 
 const NODE_TYPE_LIST: { type: NodeType; label: string; color: string; desc: string; category: string }[] = [
+  { type: 'desktop', label: 'Desktop Action', color: '#2563eb', desc: 'Runs a typed, governed action on an eligible paired desktop Device.', category: 'Integration' },
   { type: 'trigger',      label: 'Trigger',      color: 'var(--node-trigger)',   desc: 'Starts the workflow. Passes input_json to downstream nodes. Supports manual, webhook, and scheduled runs.',  category: 'Control' },
   { type: 'condition',    label: 'Condition',     color: 'var(--node-condition)',   desc: 'Routes to true/false branches by comparing a field. Operators: equals, not_equals, contains, gt, lt, gte, lte, exists.', category: 'Control' },
   { type: 'approval',     label: 'Approval',      color: 'var(--node-approval)',  desc: 'Pauses execution until a human approves or rejects. Approve/Reject buttons appear in the execution panel.', category: 'Control' },
@@ -1465,6 +1466,8 @@ export function WorkflowEditor({ workflowId, onBack, initialInput }: Props) {
               onDuplicate={selectedNode ? handleDuplicateNode : undefined}
               upstreamNodes={upstreamNodes}
               upstreamResults={nodeStatuses}
+              workflowProjectId={workflow?.project_id}
+              activeExecution={execution}
               onSelectExecution={async (id) => {
                 try {
                   const rec = await api.getExecution(auth!.tenantId, id)

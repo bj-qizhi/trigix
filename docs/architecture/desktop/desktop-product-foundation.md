@@ -116,6 +116,18 @@ Risk is attached to the typed action, not inferred from display text. Tenant pol
 
 Approval grants are command-specific, actor-attributed, short-lived, and unusable for a different command. An action waiting for Approval has not completed and can be retried with a matching grant. A completed, rejected, or failed command identifier cannot be replayed.
 
+## Workflow authoring and selector inspection
+
+The workflow editor registers one `desktop` node whose `action_kind` selects a protocol-owned action schema. The editor bounds every field to the same limits enforced by `desktop.v1`: application identities use the restricted identifier alphabet, text is capped at 16,384 characters, and selectors contain only typed window and element fields. The saved graph contains a Device identifier, action kind, typed selector, and action-specific input; it never contains a Device Credential, pairing claim, raw control tree, or authorization grant.
+
+The Device picker reads Tenant-scoped registry metadata through the normal user bearer token. It displays only devices whose heartbeat is current, lifecycle state is eligible, Agent major version matches the Platform, and advertised capabilities cover the selected action. Editors may read this bounded metadata and dispatch low-risk inspection commands; medium- and high-risk test actions retain the command gateway's administrator requirement and command-specific Approval. Device management, pairing approval, Credential rotation, suspension, and revocation remain administrator-only.
+
+Selector inspection is a test command, not a browser-to-device callback. The author must have an active Workflow Execution in `running` or `waiting_approval`; the browser submits a fixed `inspect_targets` action to the Platform with that Execution, Project, and selected Device. The Platform revalidates ownership, role, Device freshness, compatibility, capability, lease, and action bounds before delivery. It validates the returned `DesktopInspectionResult` again before storing or returning it, rejecting protected elements that combine a redaction reason with a value.
+
+The editor renders only semantic selector fields, supported patterns, and redaction reasons. Selecting a unique window or element persists the inspection snapshot identifier inside the typed selector so execution can detect a changed target. Raw device errors are mapped to fixed author guidance for expired executions, offline or stale devices, incompatible versions or capabilities, missing, ambiguous, or stale targets, and insufficient authorization.
+
+For operator testing, pair and connect the Device, confirm that it advertises the selected capability, then start a Workflow Execution that remains active while inspection completes. A Wait or Approval step is suitable for an authoring session. Re-run inspection after a window structure change, Device reconnect, or `target_stale` response. Standalone Executor processes do not possess Device authority; a `desktop` node submitted directly to an Executor fails closed and desktop commands must pass through the Platform command gateway.
+
 ## Windows Automation Adapter
 
 Windows automation executes in the `desktop-automation-host` child process, not in the presentation shell or Device connection loop. Its stdin/stdout boundary accepts one newline-delimited, size-bounded typed request at a time. Requests carry a unique identifier and absolute deadline; malformed, oversized, expired, unknown, and unsupported operations fail closed. Health, execute, cancel, and shutdown are explicit operations, and every response has an explicit ready, succeeded, rejected, cancelled, failed, or shutting-down status.

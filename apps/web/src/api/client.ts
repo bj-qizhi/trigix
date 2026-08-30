@@ -22,6 +22,8 @@ import type {
   WorkflowComment,
   EventSubscription,
   EventType,
+  DesktopDevice,
+  DesktopCommandRecord,
 } from '../types'
 import { getStoredAuth } from '../auth'
 import { getAttribution } from './attribution'
@@ -395,6 +397,30 @@ export function startExecutionBatch(
 
 export function getExecution(tenantId: string, executionId: string): Promise<ExecutionRecord> {
   return request(`/v1/executions/${executionId}`, { params: { tenant_id: tenantId } })
+}
+
+// ── Desktop automation ──────────────────────────────────────────────────────
+
+export function listDesktopDevices(): Promise<{ items: DesktopDevice[]; next_offset?: number | null }> {
+  return request('/v1/desktop/devices')
+}
+
+export function dispatchDesktopCommand(requestBody: {
+  tenant_id: string
+  project_id: string
+  execution_id: string
+  device_id: string
+  action: Record<string, unknown>
+  lease_seconds?: number
+}): Promise<DesktopCommandRecord> {
+  return request('/v1/desktop/commands', {
+    method: 'POST',
+    body: JSON.stringify(requestBody),
+  })
+}
+
+export function getDesktopCommand(tenantId: string, commandId: string): Promise<DesktopCommandRecord> {
+  return request(`/v1/desktop/commands/${commandId}`, { params: { tenant_id: tenantId } })
 }
 
 export function listExecutions(

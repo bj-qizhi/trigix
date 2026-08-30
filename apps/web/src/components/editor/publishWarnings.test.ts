@@ -70,4 +70,13 @@ describe('collectPublishWarnings', () => {
     )
     expect(messages(w).some((m) => m.includes('has no URL'))).toBe(false)
   })
+
+  it('requires a governed Device and stable selector for Desktop element actions', () => {
+    const w = collectPublishWarnings(
+      [node('trigger', 'trigger'), node('desktop', 'desktop', { action_kind: 'click_element' })],
+      [edge('trigger', 'desktop')],
+    )
+    expect(messages(w)).toContain('Desktop Action node "desktop" has no Device')
+    expect(messages(w)).toContain('Desktop Action node "desktop" has no stable selector')
+  })
 })

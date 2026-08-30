@@ -2367,6 +2367,7 @@ fn node_type_to_str(node_type: &workflow_core::NodeType) -> &'static str {
         workflow_core::NodeType::Rag => "rag",
         workflow_core::NodeType::RagIngest => "rag_ingest",
         workflow_core::NodeType::Custom => "custom",
+        workflow_core::NodeType::Desktop => "desktop",
         workflow_core::NodeType::Condition => "condition",
         workflow_core::NodeType::Approval => "approval",
         workflow_core::NodeType::Map => "map",
