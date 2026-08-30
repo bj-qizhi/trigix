@@ -33,7 +33,17 @@ The Windows runtime loads or creates the Ed25519 Device identity in Windows Cred
 
 After pairing, a background runtime opens the authenticated outbound server-sent event connection with `x-device-id` and the Device authorization scheme. It validates the first `connected` event, posts typed `desktop.v1` heartbeats with the assigned session, and drives the shell through offline, connecting, online, and degraded states. Request redirects are disabled, transport is HTTPS-only, streamed input is UTF-8 checked and bounded to 64 KiB, and server payloads are never shown in the WebView.
 
-The shell advertises an empty capability set until the supervised command execution runtime is attached. Receiving a command or cancellation before that boundary exists fails closed and reconnects as degraded instead of acknowledging or silently discarding work. Reconnect delay grows exponentially to a 60-second base cap with 80–120% jitter. A successful connection resets the attempt count. Authentication rejection remains visibly degraded and retries no faster than once per minute; local unpair moves the shell offline.
+At startup the shell locates the packaged `desktop-automation-host.exe` beside its own executable, starts it through `AutomationHostSupervisor`, and requires a bounded successful health exchange before advertising any automation capability. A missing, incompatible, or unhealthy Host leaves the sanitized Automation Host state `unavailable` and the capability set empty; the shell never falls back to running automation inside the WebView or shell process.
+
+For a validated live command, the Device first posts the acknowledgement and only then passes the typed action to the isolated Host. Heartbeats continue while the action runs and report the active execution identifier. A matching server cancellation or a revision-checked local stop is propagated to the Host. The terminal result is posted to the Platform, and the local recovery entry is confirmed only after that post succeeds. A disconnect cancels active work; reconnect recovery may resend a pending terminal result but cannot re-execute an already terminal command. Receiving an invalid command or cancellation fails closed and reconnects as degraded instead of acknowledging or silently discarding work.
+
+Reconnect delay grows exponentially to a 60-second base cap with 80–120% jitter. A successful connection resets the attempt count. Authentication rejection remains visibly degraded and retries no faster than once per minute; local unpair moves the shell offline.
+
+## Packaging and upgrade boundary
+
+`apps/desktop/scripts/prepare-sidecar.ps1` builds the Host for the same explicit target triple and configuration as the shell, then places the target-suffixed binary under `src-tauri/binaries`. Tauri validates that sidecar at bundle time and installs it under the unsuffixed executable name expected by the runtime. Windows CI compiles the native fixture and creates an unsigned NSIS qualification bundle. Authenticode signing, publisher identity, timestamping, and installer reputation remain release gates; the qualification artifact must not be represented as a production-signed installer.
+
+The recovery journal lives in the application's per-user local data directory so normal Windows user ACLs protect it. It contains bounded protocol metadata needed for idempotency plus any pending, sanitized terminal result; it does not retain credentials or original command action arguments. Shell and Host must be packaged, upgraded, and rolled back as one compatible unit, while the recovery journal is preserved across an upgrade. Operators must not copy the journal between users or Devices.
 
 ## Failure behavior
 
@@ -46,6 +56,8 @@ The shell advertises an empty capability set until the supervised command execut
 - Invalid or mismatched Platform responses fail closed before secure persistence.
 - Credential Manager read, write, or delete failure makes pairing unavailable or degraded rather than falling back to plaintext storage.
 - Revocation, suspension, replacement by a newer session, malformed SSE, unsupported commands, and heartbeat rejection close the active connection and surface a sanitized degraded state.
+- A missing or unhealthy packaged Host keeps the connection available for lifecycle reporting but advertises zero automation capabilities and rejects execution. Restore the matching signed shell/Host package rather than copying an arbitrary executable into place.
+- A result-delivery interruption leaves bounded recovery state for reconnect. Preserve the local application-data journal during repair or upgrade, and delete it only as an explicit Device reset after confirming the Platform will not expect recovery.
 - Operators should first confirm trusted HTTPS ingress forwarding, Device lifecycle state, system proxy reachability, and Credential Manager availability. Local “forget” is not revocation; an administrator must revoke the server record when access must be terminated.
 
 The capability boundary complements command validation; it does not replace validation inside the Rust command implementation.

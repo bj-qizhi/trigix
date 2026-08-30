@@ -11,19 +11,50 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 #[derive(Debug, Clone, Default)]
 pub struct SupervisedActionExecutorHandle {
-    cancellations: Arc<Mutex<HashMap<String, AutomationCancellation>>>,
+    cancellations: Arc<Mutex<HashMap<String, CancellationSlot>>>,
 }
 
 impl SupervisedActionExecutorHandle {
+    pub fn reserve(&self, command_id: &str) -> bool {
+        let mut cancellations = self
+            .cancellations
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        if cancellations.contains_key(command_id) {
+            return false;
+        }
+        cancellations.insert(
+            command_id.to_owned(),
+            CancellationSlot::Reserved(AutomationCancellation::default()),
+        );
+        true
+    }
+
+    pub fn release_reservation(&self, command_id: &str) -> bool {
+        let mut cancellations = self
+            .cancellations
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        if matches!(
+            cancellations.get(command_id),
+            Some(CancellationSlot::Reserved(_))
+        ) {
+            cancellations.remove(command_id);
+            true
+        } else {
+            false
+        }
+    }
+
     pub fn cancel(&self, command_id: &str) -> bool {
         let cancellations = self
             .cancellations
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
-        let Some(cancellation) = cancellations.get(command_id) else {
+        let Some(slot) = cancellations.get(command_id) else {
             return false;
         };
-        cancellation.cancel();
+        slot.cancellation().cancel();
         true
     }
 
@@ -32,6 +63,20 @@ impl SupervisedActionExecutorHandle {
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
             .len()
+    }
+}
+
+#[derive(Debug, Clone)]
+enum CancellationSlot {
+    Reserved(AutomationCancellation),
+    Running(AutomationCancellation),
+}
+
+impl CancellationSlot {
+    fn cancellation(&self) -> &AutomationCancellation {
+        match self {
+            Self::Reserved(cancellation) | Self::Running(cancellation) => cancellation,
+        }
     }
 }
 
@@ -56,21 +101,32 @@ impl SupervisedActionExecutor {
 
 impl ActionExecutor for SupervisedActionExecutor {
     fn execute(&mut self, command: &DesktopCommand) -> Result<Value, CoreError> {
-        let cancellation = AutomationCancellation::default();
-        {
+        let cancellation = {
             let mut cancellations =
                 self.handle.cancellations.lock().map_err(|_| {
                     CoreError::Execution("cancellation state is poisoned".to_owned())
                 })?;
-            if cancellations
-                .insert(command.command_id.clone(), cancellation.clone())
-                .is_some()
-            {
-                return Err(CoreError::Execution(
-                    "command is already active in the automation host".to_owned(),
-                ));
+            match cancellations.get_mut(&command.command_id) {
+                Some(slot @ CancellationSlot::Reserved(_)) => {
+                    let cancellation = slot.cancellation().clone();
+                    *slot = CancellationSlot::Running(cancellation.clone());
+                    cancellation
+                }
+                Some(CancellationSlot::Running(_)) => {
+                    return Err(CoreError::Execution(
+                        "command is already active in the automation host".to_owned(),
+                    ));
+                }
+                None => {
+                    let cancellation = AutomationCancellation::default();
+                    cancellations.insert(
+                        command.command_id.clone(),
+                        CancellationSlot::Running(cancellation.clone()),
+                    );
+                    cancellation
+                }
             }
-        }
+        };
 
         let now = now_unix_ms();
         let response = self.supervisor.execute(

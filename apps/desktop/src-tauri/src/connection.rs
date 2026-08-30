@@ -1,3 +1,4 @@
+use desktop_protocol::{DesktopCommand, DesktopCommandCancellation, Envelope};
 use serde::Deserialize;
 use std::time::Duration;
 
@@ -88,6 +89,47 @@ pub(crate) fn reconnect_delay(attempt: u32, entropy: u64) -> Duration {
     Duration::from_millis(base.saturating_mul(1_000) * jitter_percent / 100)
 }
 
+pub(crate) fn parse_command_event(
+    data: &str,
+    now_unix_ms: u64,
+) -> Result<DesktopCommand, ConnectionError> {
+    let envelope: Envelope<DesktopCommand> =
+        serde_json::from_str(data).map_err(|_| ConnectionError::InvalidStream)?;
+    envelope
+        .validate()
+        .and_then(|_| envelope.payload.validate(now_unix_ms))
+        .map_err(|_| ConnectionError::InvalidStream)?;
+    Ok(envelope.payload)
+}
+
+pub(crate) fn parse_cancellation_event(
+    data: &str,
+    expected_command_id: &str,
+    expected_execution_id: &str,
+) -> Result<DesktopCommandCancellation, ConnectionError> {
+    let cancellation: DesktopCommandCancellation =
+        serde_json::from_str(data).map_err(|_| ConnectionError::InvalidStream)?;
+    if !is_wire_identifier(&cancellation.command_id)
+        || !is_wire_identifier(&cancellation.execution_id)
+        || cancellation.command_id != expected_command_id
+        || cancellation.execution_id != expected_execution_id
+        || cancellation.reason.is_empty()
+        || cancellation.reason.len() > 256
+        || cancellation.reason.chars().any(char::is_control)
+    {
+        return Err(ConnectionError::InvalidStream);
+    }
+    Ok(cancellation)
+}
+
+fn is_wire_identifier(value: &str) -> bool {
+    !value.is_empty()
+        && value.len() <= 128
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.'))
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ConnectionError {
     InvalidStream,
@@ -136,5 +178,56 @@ mod tests {
             assert!(delay >= Duration::from_millis(800));
             assert!(delay <= Duration::from_secs(72));
         }
+    }
+
+    #[test]
+    fn command_events_require_a_valid_current_envelope_and_live_lease() {
+        let command = serde_json::json!({
+            "protocol_version": "desktop.v1",
+            "protocol_revision": 2,
+            "message_id": "message-1",
+            "sent_at_unix_ms": 1_000,
+            "payload": {
+                "command_id": "command-1",
+                "execution_id": "execution-1",
+                "tenant_id": "tenant-1",
+                "project_id": "project-1",
+                "requested_by": "user-1",
+                "issued_at_unix_ms": 1_000,
+                "lease": {"lease_id": "lease-1", "expires_at_unix_ms": 2_000},
+                "action": {"kind": "read_system_information"}
+            }
+        });
+        assert_eq!(
+            parse_command_event(&command.to_string(), 1_100)
+                .unwrap()
+                .command_id,
+            "command-1"
+        );
+        assert_eq!(
+            parse_command_event(&command.to_string(), 2_000),
+            Err(ConnectionError::InvalidStream)
+        );
+        let mut unsupported = command;
+        unsupported["protocol_version"] = serde_json::json!("desktop.v2");
+        assert_eq!(
+            parse_command_event(&unsupported.to_string(), 1_100),
+            Err(ConnectionError::InvalidStream)
+        );
+    }
+
+    #[test]
+    fn cancellation_is_bound_to_both_active_identifiers() {
+        let cancellation = serde_json::json!({
+            "command_id": "command-1",
+            "execution_id": "execution-1",
+            "reason": "operator_requested"
+        })
+        .to_string();
+        assert!(parse_cancellation_event(&cancellation, "command-1", "execution-1").is_ok());
+        assert_eq!(
+            parse_cancellation_event(&cancellation, "command-1", "different-execution"),
+            Err(ConnectionError::InvalidStream)
+        );
     }
 }
