@@ -51,6 +51,8 @@ pub mod action {
     pub const DEVICE_CREDENTIAL_ROTATED: &str = "device.credential_rotated";
     pub const DEVICE_CONNECTED: &str = "device.connected";
     pub const DEVICE_DISCONNECTED: &str = "device.disconnected";
+    pub const DESKTOP_EVIDENCE_RECORDED: &str = "desktop.evidence.recorded";
+    pub const DESKTOP_EVIDENCE_DELETED: &str = "desktop.evidence.deleted";
 }
 
 fn unix_now() -> u64 {

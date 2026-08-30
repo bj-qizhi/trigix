@@ -175,6 +175,31 @@ pub fn spec() -> Value {
               "created_at_unix_ms": { "type": "integer", "format": "int64" }
             }
           },
+          "DesktopEvidenceRecord": {
+            "type": "object",
+            "required": ["evidence_id", "tenant_id", "project_id", "execution_id", "command_id", "device_id", "kind", "selector_strategy", "application_id", "started_at_unix_ms", "completed_at_unix_ms", "outcome", "policy_version", "redacted_regions", "byte_size", "expires_at_unix_ms", "created_at_unix_ms"],
+            "properties": {
+              "evidence_id": { "type": "string" },
+              "tenant_id": { "type": "string" },
+              "project_id": { "type": "string" },
+              "execution_id": { "type": "string" },
+              "command_id": { "type": "string" },
+              "device_id": { "type": "string" },
+              "kind": { "type": "string", "enum": ["adapter_audit", "screenshot"] },
+              "selector_strategy": { "type": "string", "enum": ["automation_id", "control_type_and_name", "name_and_sibling", "window_automation_id", "application_identity", "not_applicable"] },
+              "application_id": { "type": "string" },
+              "started_at_unix_ms": { "type": "integer", "format": "int64" },
+              "completed_at_unix_ms": { "type": "integer", "format": "int64" },
+              "outcome": { "type": "string", "enum": ["succeeded", "failed", "rejected", "cancelled", "timed_out"] },
+              "policy_version": { "type": "string" },
+              "redacted_regions": { "type": "integer" },
+              "content_type": { "type": "string", "nullable": true },
+              "content_sha256": { "type": "string", "nullable": true },
+              "byte_size": { "type": "integer" },
+              "expires_at_unix_ms": { "type": "integer", "format": "int64" },
+              "created_at_unix_ms": { "type": "integer", "format": "int64" }
+            }
+          },
           "ApiError": {
             "type": "object",
             "properties": {
@@ -326,6 +351,36 @@ pub fn spec() -> Value {
             "summary": "Persist a typed terminal command result idempotently",
             "security": [{ "deviceCredential": [] }],
             "responses": { "200": { "description": "Terminal Desktop Command" }, "409": { "description": "Conflicting or unacknowledged result" }, "426": { "description": "TLS required" } }
+          }
+        },
+        "/v1/desktop/device-evidence": {
+          "post": {
+            "tags": ["Desktop Devices"],
+            "summary": "Upload bounded redacted evidence for a terminal Desktop Command",
+            "security": [{ "deviceCredential": [] }],
+            "responses": { "201": { "description": "Evidence metadata", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/DesktopEvidenceRecord" } } } }, "400": { "description": "Invalid evidence, redaction, format, size, or retention" }, "403": { "description": "Screenshot policy disabled or encryption unavailable" }, "409": { "description": "Evidence does not match the terminal command" }, "426": { "description": "TLS required" } }
+          }
+        },
+        "/v1/desktop/evidence": {
+          "get": {
+            "tags": ["Desktop Devices"],
+            "summary": "List unexpired tenant and Execution-scoped evidence metadata",
+            "responses": { "200": { "description": "Evidence metadata", "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/DesktopEvidenceRecord" } } } } } }
+          }
+        },
+        "/v1/desktop/evidence/export": {
+          "get": {
+            "tags": ["Desktop Devices"],
+            "summary": "Export evidence metadata without encrypted screenshot content",
+            "responses": { "200": { "description": "Policy-safe evidence metadata export" }, "403": { "description": "Tenant administrator required" } }
+          }
+        },
+        "/v1/desktop/evidence/{evidence_id}": {
+          "delete": {
+            "tags": ["Desktop Devices"],
+            "summary": "Delete tenant-scoped evidence and its encrypted payload",
+            "parameters": [{ "name": "evidence_id", "in": "path", "required": true, "schema": { "type": "string" } }],
+            "responses": { "204": { "description": "Evidence deleted" }, "403": { "description": "Tenant administrator required" }, "404": { "description": "Evidence not found in Tenant" } }
           }
         },
         "/healthz": {

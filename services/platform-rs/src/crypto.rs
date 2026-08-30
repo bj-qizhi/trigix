@@ -38,15 +38,25 @@ fn master_key() -> Option<[u8; 32]> {
 }
 
 fn encrypt_with_key(key: &[u8; 32], plaintext: &str) -> Option<String> {
+    encrypt_bytes_with_key(key, plaintext.as_bytes())
+}
+
+fn encrypt_bytes_with_key(key: &[u8; 32], plaintext: &[u8]) -> Option<String> {
     let cipher = Aes256Gcm::new(Key::<Aes256Gcm>::from_slice(key));
     // 96-bit random nonce from a v4 UUID (122 bits of entropy).
     let uuid = uuid::Uuid::new_v4();
     let nonce_bytes = &uuid.as_bytes()[..12];
     let nonce = Nonce::from_slice(nonce_bytes);
-    let ct = cipher.encrypt(nonce, plaintext.as_bytes()).ok()?;
+    let ct = cipher.encrypt(nonce, plaintext).ok()?;
     let mut blob = nonce_bytes.to_vec();
     blob.extend_from_slice(&ct);
     Some(format!("{PREFIX}{}", B64.encode(blob)))
+}
+
+/// Encrypt binary evidence and fail closed when no master key is configured.
+pub fn encrypt_bytes_required(plaintext: &[u8]) -> Result<String, String> {
+    let key = master_key().ok_or_else(|| "encryption key is not configured".to_owned())?;
+    encrypt_bytes_with_key(&key, plaintext).ok_or_else(|| "evidence encryption failed".to_owned())
 }
 
 fn decrypt_with_key(key: &[u8; 32], stored: &str) -> String {
@@ -168,6 +178,15 @@ mod tests {
         assert_ne!(a, b, "ciphertexts must differ (random nonce)");
         assert_eq!(decrypt_with_key(&k, &a), "same");
         assert_eq!(decrypt_with_key(&k, &b), "same");
+    }
+
+    #[test]
+    fn binary_evidence_is_encrypted_without_plaintext_fallback() {
+        let key = test_key();
+        let payload = b"\x89PNG\r\n\x1a\nredacted-image";
+        let encrypted = encrypt_bytes_with_key(&key, payload).unwrap();
+        assert!(encrypted.starts_with(PREFIX));
+        assert!(!encrypted.contains("redacted-image"));
     }
 
     #[test]

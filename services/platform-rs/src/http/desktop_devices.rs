@@ -3,8 +3,12 @@
 
 use super::*;
 use crate::desktop_commands::DesktopCommandError;
+use crate::desktop_evidence::{
+    prepare_evidence, EvidenceError, EvidenceRecord, EvidenceUploadRequest, SelectorStrategy,
+};
 use crate::device_connection::DeviceEvent;
 use crate::device_pairing::{CreatePairingSessionRequest, PairingError};
+use axum::extract::DefaultBodyLimit;
 use desktop_protocol::{
     DesktopAction, DesktopCommand, DesktopCommandAcknowledgement, DesktopCommandCancellation,
     DesktopCommandResult, DeviceConnectionAccepted, Envelope, ExecutionLease, Heartbeat,
@@ -116,9 +120,9 @@ fn command_error(error: DesktopCommandError) -> ApiError {
 async fn authenticated_device_session(
     state: &AppState,
     headers: &axum::http::HeaderMap,
-) -> Result<(String, String), ApiError> {
+) -> Result<(crate::device_pairing::PairedDevice, String), ApiError> {
     let (device_id, credential) = device_auth(headers)?;
-    state
+    let device = state
         .device_pairing_store
         .authenticate_device(&device_id, &credential)
         .await
@@ -136,7 +140,52 @@ async fn authenticated_device_session(
     {
         return Err(rotation_claim_error(PairingError::InvalidClaim));
     }
-    Ok((device_id, session_id.to_string()))
+    Ok((device, session_id.to_string()))
+}
+
+fn evidence_error(error: EvidenceError) -> ApiError {
+    match error {
+        EvidenceError::Invalid(field) => {
+            ApiError::bad_request(&format!("Invalid desktop evidence: {field}"))
+        }
+        EvidenceError::Disabled | EvidenceError::EncryptionRequired => ApiError {
+            status: StatusCode::FORBIDDEN,
+            message: error.to_string(),
+        },
+        EvidenceError::NotFound => ApiError::not_found("Desktop evidence not found"),
+        EvidenceError::Conflict => ApiError {
+            status: StatusCode::CONFLICT,
+            message: error.to_string(),
+        },
+        EvidenceError::Store(_) => ApiError::internal("desktop_evidence_store"),
+    }
+}
+
+fn evidence_matches_action(request: &EvidenceUploadRequest, action: &DesktopAction) -> bool {
+    match action {
+        DesktopAction::ReadSystemInformation => {
+            request.selector_strategy == SelectorStrategy::NotApplicable
+                && request.application_id == "system_information"
+        }
+        DesktopAction::InspectTargets { .. } => matches!(
+            request.selector_strategy,
+            SelectorStrategy::NotApplicable | SelectorStrategy::WindowAutomationId
+        ),
+        DesktopAction::FocusWindow { .. } => matches!(
+            request.selector_strategy,
+            SelectorStrategy::WindowAutomationId | SelectorStrategy::ApplicationIdentity
+        ),
+        DesktopAction::ClickElement { .. } | DesktopAction::TypeText { .. } => matches!(
+            request.selector_strategy,
+            SelectorStrategy::AutomationId
+                | SelectorStrategy::ControlTypeAndName
+                | SelectorStrategy::NameAndSibling
+        ),
+        DesktopAction::LaunchApplication { application_id } => {
+            request.selector_strategy == SelectorStrategy::ApplicationIdentity
+                && request.application_id == application_id.0
+        }
+    }
 }
 
 fn pairing_error(error: PairingError) -> ApiError {
@@ -815,14 +864,14 @@ async fn acknowledge_desktop_command(
     headers: axum::http::HeaderMap,
     Json(envelope): Json<Envelope<DesktopCommandAcknowledgement>>,
 ) -> Result<Json<crate::desktop_commands::DesktopCommandRecord>, ApiError> {
-    let (device_id, _) = authenticated_device_session(&state, &headers).await?;
+    let (device, _) = authenticated_device_session(&state, &headers).await?;
     envelope
         .validate()
         .and_then(|_| envelope.payload.validate())
         .map_err(|error| ApiError::bad_request(&error.to_string()))?;
     state
         .desktop_command_store
-        .acknowledge(&device_id, &envelope.payload, unix_millis())
+        .acknowledge(&device.id, &envelope.payload, unix_millis())
         .await
         .map(Json)
         .map_err(command_error)
@@ -833,17 +882,148 @@ async fn complete_desktop_command(
     headers: axum::http::HeaderMap,
     Json(envelope): Json<Envelope<DesktopCommandResult>>,
 ) -> Result<Json<crate::desktop_commands::DesktopCommandRecord>, ApiError> {
-    let (device_id, _) = authenticated_device_session(&state, &headers).await?;
+    let (device, _) = authenticated_device_session(&state, &headers).await?;
     envelope
         .validate()
         .and_then(|_| envelope.payload.validate())
         .map_err(|error| ApiError::bad_request(&error.to_string()))?;
     state
         .desktop_command_store
-        .complete(&device_id, envelope.payload)
+        .complete(&device.id, envelope.payload)
         .await
         .map(Json)
         .map_err(command_error)
+}
+
+#[derive(serde::Deserialize)]
+struct EvidenceListQuery {
+    tenant_id: String,
+    execution_id: String,
+}
+
+#[derive(serde::Serialize)]
+struct EvidenceExport {
+    execution_id: String,
+    exported_at_unix_ms: u64,
+    records: Vec<EvidenceRecord>,
+}
+
+async fn upload_desktop_evidence(
+    State(state): State<AppState>,
+    headers: axum::http::HeaderMap,
+    Json(request): Json<EvidenceUploadRequest>,
+) -> Result<(StatusCode, Json<EvidenceRecord>), ApiError> {
+    let (device, _) = authenticated_device_session(&state, &headers).await?;
+    let command = state
+        .desktop_command_store
+        .get(&device.tenant_id, &request.command_id)
+        .await
+        .map_err(command_error)?;
+    let matching_result = command.result.as_ref().is_some_and(|result| {
+        result.execution_id == request.execution_id && result.outcome == request.outcome
+    });
+    if command.device_id != device.id
+        || command.command.execution_id != request.execution_id
+        || command.command.project_id != request.project_id
+        || !evidence_matches_action(&request, &command.command.action)
+        || !matching_result
+    {
+        return Err(ApiError {
+            status: StatusCode::CONFLICT,
+            message: "Desktop evidence does not match the terminal command".to_owned(),
+        });
+    }
+    let prepared = prepare_evidence(
+        &device.tenant_id,
+        &device.id,
+        request,
+        &state.desktop_evidence_policy,
+        unix_millis(),
+    )
+    .map_err(evidence_error)?;
+    let record = state
+        .desktop_evidence_store
+        .create(prepared)
+        .await
+        .map_err(evidence_error)?;
+    state.audit_store.record(
+        &record.tenant_id,
+        crate::audit::action::DESKTOP_EVIDENCE_RECORDED,
+        "desktop_evidence",
+        &record.evidence_id,
+        Some(serde_json::json!({
+            "execution_id": record.execution_id,
+            "command_id": record.command_id,
+            "device_id": record.device_id,
+            "kind": record.kind,
+            "selector_strategy": record.selector_strategy,
+            "application_id": record.application_id,
+            "started_at_unix_ms": record.started_at_unix_ms,
+            "completed_at_unix_ms": record.completed_at_unix_ms,
+            "outcome": record.outcome,
+            "redacted_regions": record.redacted_regions,
+        })),
+    );
+    Ok((StatusCode::CREATED, Json(record)))
+}
+
+async fn list_desktop_evidence(
+    State(state): State<AppState>,
+    Extension(claims): Extension<Option<Claims>>,
+    Query(query): Query<EvidenceListQuery>,
+) -> Result<Json<Vec<EvidenceRecord>>, ApiError> {
+    require_write(&claims)?;
+    let tenant_id = effective_tenant_id(&claims, &query.tenant_id);
+    state
+        .desktop_evidence_store
+        .list(&tenant_id, &query.execution_id)
+        .await
+        .map(Json)
+        .map_err(evidence_error)
+}
+
+async fn export_desktop_evidence(
+    State(state): State<AppState>,
+    Extension(claims): Extension<Option<Claims>>,
+    Query(query): Query<EvidenceListQuery>,
+) -> Result<Json<EvidenceExport>, ApiError> {
+    require_admin(claims.clone())?;
+    let tenant_id = effective_tenant_id(&claims, &query.tenant_id);
+    let records = state
+        .desktop_evidence_store
+        .list(&tenant_id, &query.execution_id)
+        .await
+        .map_err(evidence_error)?;
+    Ok(Json(EvidenceExport {
+        execution_id: query.execution_id,
+        exported_at_unix_ms: unix_millis(),
+        records,
+    }))
+}
+
+async fn delete_desktop_evidence(
+    State(state): State<AppState>,
+    Extension(claims): Extension<Option<Claims>>,
+    Path(evidence_id): Path<String>,
+    Query(query): Query<GetExecutionQuery>,
+) -> Result<StatusCode, ApiError> {
+    let claims = require_admin(claims)?;
+    let tenant_id = effective_tenant_id(&Some(claims.clone()), &query.tenant_id);
+    state
+        .desktop_evidence_store
+        .delete(&tenant_id, &evidence_id)
+        .await
+        .map_err(evidence_error)?;
+    state.audit_store.record(
+        &tenant_id,
+        crate::audit::action::DESKTOP_EVIDENCE_DELETED,
+        "desktop_evidence",
+        &evidence_id,
+        Some(serde_json::json!({
+            "deleted_by": claims.user_id.unwrap_or(claims.sub),
+        })),
+    );
+    Ok(StatusCode::NO_CONTENT)
 }
 
 fn unix_millis() -> u64 {
@@ -934,6 +1114,16 @@ pub(super) fn routes() -> Router<AppState> {
         .route(
             "/v1/desktop/device-command-results",
             post(complete_desktop_command),
+        )
+        .route(
+            "/v1/desktop/device-evidence",
+            post(upload_desktop_evidence).layer(DefaultBodyLimit::max(1_400_000)),
+        )
+        .route("/v1/desktop/evidence", get(list_desktop_evidence))
+        .route("/v1/desktop/evidence/export", get(export_desktop_evidence))
+        .route(
+            "/v1/desktop/evidence/:evidence_id",
+            delete(delete_desktop_evidence),
         )
 }
 
@@ -1238,6 +1428,8 @@ mod tests {
 
         let state = default_app_state();
         let command_store = state.desktop_command_store.clone();
+        let evidence_store = state.desktop_evidence_store.clone();
+        let audit_store = state.audit_store.clone();
         let app = build_router(state);
         let admin_token = crate::auth::sign_token(&Claims {
             sub: "admin-1".to_string(),
@@ -1521,6 +1713,85 @@ mod tests {
             assert_eq!(result.status(), expected);
             assert_eq!(response_json(result).await["status"], "succeeded");
         }
+
+        let evidence_body = serde_json::json!({
+            "command_id": command_id,
+            "execution_id": execution_id,
+            "project_id": "project-1",
+            "kind": "adapter_audit",
+            "selector_strategy": "not_applicable",
+            "application_id": "system_information",
+            "started_at_unix_ms": 1000,
+            "completed_at_unix_ms": 1100,
+            "outcome": "succeeded",
+            "retention_days": 7,
+            "capture_opt_in": false,
+            "redaction": {
+                "policy_version": "redaction-v1",
+                "succeeded": true,
+                "sensitive_regions": 0,
+                "redacted_regions": 0
+            }
+        });
+        let unauthenticated_evidence = app
+            .clone()
+            .oneshot(
+                Request::post("/v1/desktop/device-evidence")
+                    .header("content-type", "application/json")
+                    .body(Body::from(evidence_body.to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(
+            unauthenticated_evidence.status(),
+            StatusCode::UPGRADE_REQUIRED
+        );
+        let evidence = app
+            .clone()
+            .oneshot(
+                Request::post("/v1/desktop/device-evidence")
+                    .header("x-forwarded-proto", "https")
+                    .header("x-device-id", "device-connection-http")
+                    .header("x-device-session-id", &current_session)
+                    .header("authorization", format!("Device {credential}"))
+                    .header("content-type", "application/json")
+                    .body(Body::from(evidence_body.to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(evidence.status(), StatusCode::CREATED);
+        let evidence = response_json(evidence).await;
+        assert!(evidence.get("payload_ciphertext").is_none());
+        assert_eq!(
+            evidence_store
+                .list("tenant-1", &execution_id)
+                .await
+                .unwrap()
+                .len(),
+            1
+        );
+
+        let export = app
+            .clone()
+            .oneshot(
+                Request::get(format!(
+                    "/v1/desktop/evidence/export?tenant_id=tenant-1&execution_id={execution_id}"
+                ))
+                .header("authorization", format!("Bearer {admin_token}"))
+                .body(Body::empty())
+                .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(export.status(), StatusCode::OK);
+        let exported = response_json(export).await;
+        assert_eq!(exported["records"].as_array().unwrap().len(), 1);
+        assert!(exported["records"][0].get("payload_ciphertext").is_none());
+        let audit_json = serde_json::to_string(&audit_store.list("tenant-1", 20).await).unwrap();
+        assert!(audit_json.contains(crate::audit::action::DESKTOP_EVIDENCE_RECORDED));
+        assert!(!audit_json.contains("payload_base64"));
 
         let cancellable = command_store
             .create(

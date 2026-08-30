@@ -154,6 +154,12 @@ Windows automation will use this selector order:
 
 Selectors must be resolved immediately before execution. The adapter records which selector strategy was used, the target application identity, timing, and a redacted result. Screenshots are opt-in evidence with Tenant retention policy; they are not unconditional logs.
 
+Automation evidence has a separate policy and storage boundary from the command result. A Device may upload adapter-audit metadata only after the Platform has persisted a matching terminal command result. The authenticated Device session, Tenant, Project, Execution, command, Device, and outcome must all match. The schema accepts an enumerated selector strategy, bounded application identity, start and completion times, terminal outcome, redaction policy version, and retention deadline; it has no fields for typed text, credentials, window titles, UI trees, or arbitrary adapter detail.
+
+Screenshot capture is disabled by default. An operator must enable it, and every upload must carry an explicit capture opt-in plus a successful redaction attestation whose sensitive-region and redacted-region counts agree. Only signature-checked PNG or WebP content is accepted, request and decoded sizes are bounded to 1 MiB, and retention cannot exceed Tenant policy. Screenshot persistence requires an encryption key and AES-256-GCM ciphertext; missing encryption, failed redaction, invalid content, or failed durable insertion rejects the capture without a plaintext fallback. API responses, Audit Log records, lists, and exports contain metadata and digests only, never ciphertext or image bytes.
+
+PostgreSQL enforces referential links and tenant row-level security for evidence. Per-record expiry is swept independently of the general data-retention setting. Tenant administrators may export safe metadata or delete an evidence record; deletion removes the encrypted payload while recording only the evidence identifier and actor in the immutable Audit Log. Tenant-scoped lookup and deletion deliberately return no cross-Tenant distinction.
+
 The Windows adapter runs out of process from the presentation shell where practical. A crash or timeout terminates the action and returns a failure without granting the UI process broader authority.
 
 ## Voice and Avatar Boundaries
