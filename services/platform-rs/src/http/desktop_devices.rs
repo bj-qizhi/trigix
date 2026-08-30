@@ -181,6 +181,16 @@ fn evidence_matches_action(request: &EvidenceUploadRequest, action: &DesktopActi
                 | SelectorStrategy::ControlTypeAndName
                 | SelectorStrategy::NameAndSibling
         ),
+        DesktopAction::PressKey { .. } => matches!(
+            request.selector_strategy,
+            SelectorStrategy::WindowAutomationId | SelectorStrategy::ApplicationIdentity
+        ),
+        DesktopAction::PointerClick { .. } => matches!(
+            request.selector_strategy,
+            SelectorStrategy::AutomationId
+                | SelectorStrategy::ControlTypeAndName
+                | SelectorStrategy::NameAndSibling
+        ),
         DesktopAction::LaunchApplication { application_id } => {
             request.selector_strategy == SelectorStrategy::ApplicationIdentity
                 && request.application_id == application_id.0

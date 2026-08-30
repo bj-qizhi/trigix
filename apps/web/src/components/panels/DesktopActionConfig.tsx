@@ -19,6 +19,8 @@ export type DesktopActionKind =
   | 'focus_window'
   | 'click_element'
   | 'type_text'
+  | 'press_key'
+  | 'pointer_click'
   | 'launch_application'
 
 export const DESKTOP_ACTION_SCHEMA: Record<DesktopActionKind, {
@@ -31,6 +33,8 @@ export const DESKTOP_ACTION_SCHEMA: Record<DesktopActionKind, {
   focus_window: { capability: 'window_management', risk: 'medium', approval: true, selector: 'window' },
   click_element: { capability: 'ui_automation', risk: 'medium', approval: true, selector: 'element' },
   type_text: { capability: 'ui_automation', risk: 'high', approval: true, selector: 'element' },
+  press_key: { capability: 'keyboard_input', risk: 'high', approval: true, selector: 'window' },
+  pointer_click: { capability: 'pointer_input', risk: 'high', approval: true, selector: 'element' },
   launch_application: { capability: 'window_management', risk: 'high', approval: true, selector: 'none' },
 }
 
@@ -60,13 +64,27 @@ function compact<T extends Record<string, unknown>>(value: T): T {
   return Object.fromEntries(Object.entries(value).filter(([, item]) => item !== '' && item !== undefined)) as T
 }
 
-function buildAction(kind: DesktopActionKind, config: Record<string, unknown>): Record<string, unknown> | null {
+export function buildDesktopAction(kind: DesktopActionKind, config: Record<string, unknown>): Record<string, unknown> | null {
   const selector = config.selector as DesktopElementSelector | DesktopWindowSelector | undefined
+  const elementSelector = selector && 'window' in selector ? selector : undefined
+  const windowSelector = selector && !('window' in selector) ? selector : undefined
   switch (kind) {
     case 'read_system_information': return { kind }
-    case 'focus_window': return selector ? { kind, selector } : null
-    case 'click_element': return selector ? { kind, selector } : null
-    case 'type_text': return selector && typeof config.text === 'string' ? { kind, selector, text: config.text.slice(0, 16_384) } : null
+    case 'focus_window': return windowSelector ? { kind, selector: windowSelector } : null
+    case 'click_element': return elementSelector ? { kind, selector: elementSelector } : null
+    case 'type_text': return elementSelector && typeof config.text === 'string' ? { kind, selector: elementSelector, text: config.text.slice(0, 16_384) } : null
+    case 'press_key': {
+      const key = typeof config.key === 'string' ? config.key : 'enter'
+      const modifiers = Array.isArray(config.modifiers)
+        ? config.modifiers.filter((value): value is string => ['control', 'alt', 'shift', 'meta'].includes(String(value)))
+        : []
+      return windowSelector && key ? { kind, selector: windowSelector, key, modifiers: [...new Set(modifiers)] } : null
+    }
+    case 'pointer_click': {
+      const button = ['left', 'right', 'middle'].includes(String(config.pointer_button)) ? config.pointer_button : 'left'
+      const clickCount = Number(config.click_count) === 2 ? 2 : 1
+      return elementSelector ? { kind, selector: elementSelector, button, click_count: clickCount } : null
+    }
     case 'launch_application': {
       const applicationId = typeof config.application_id === 'string' ? config.application_id.trim() : ''
       return applicationId ? { kind, application_id: applicationId } : null
@@ -74,11 +92,28 @@ function buildAction(kind: DesktopActionKind, config: Record<string, unknown>): 
   }
 }
 
-async function waitForCommand(tenantId: string, initial: DesktopCommandRecord): Promise<DesktopCommandRecord> {
+export function desktopTargetLabel(kind: DesktopActionKind, config: Record<string, unknown>): string {
+  if (kind === 'read_system_information') return 'system_information'
+  if (kind === 'launch_application') return String(config.application_id || 'application')
+  const selector = config.selector as DesktopElementSelector | DesktopWindowSelector | undefined
+  if (!selector) return 'unselected'
+  if ('window' in selector) {
+    return selector.automation_id || [selector.control_type, selector.name].filter(Boolean).join(':') || 'selected_element'
+  }
+  return selector.automation_id || selector.executable || 'selected_window'
+}
+
+async function waitForCommand(
+  tenantId: string,
+  initial: DesktopCommandRecord,
+  onUpdate?: (record: DesktopCommandRecord) => void,
+): Promise<DesktopCommandRecord> {
   let record = initial
-  for (let attempt = 0; attempt < 40 && !TERMINAL_COMMAND_STATES.has(record.status); attempt += 1) {
+  onUpdate?.(record)
+  for (let attempt = 0; attempt < 80 && !TERMINAL_COMMAND_STATES.has(record.status); attempt += 1) {
     await new Promise((resolve) => window.setTimeout(resolve, 750))
     record = await api.getDesktopCommand(tenantId, record.command.command_id)
+    onUpdate?.(record)
   }
   if (!TERMINAL_COMMAND_STATES.has(record.status)) throw new Error('desktop command timed out')
   return record
@@ -101,11 +136,24 @@ export function DesktopActionConfig({ config, set, str, workflowProjectId, activ
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
   const [inspection, setInspection] = useState<DesktopInspectionResult | null>(null)
+  const [testCommand, setTestCommand] = useState<DesktopCommandRecord | null>(null)
+  const [stopping, setStopping] = useState(false)
   const kind = (str('action_kind', 'click_element') as DesktopActionKind)
   const schema = DESKTOP_ACTION_SCHEMA[kind] ?? DESKTOP_ACTION_SCHEMA.click_element
+  const targetLabel = desktopTargetLabel(kind, config)
   const executionId = activeExecution && ['running', 'waiting_approval'].includes(activeExecution.status)
     ? activeExecution.id
     : recentExecutions.find((item) => ['running', 'waiting_approval'].includes(item.status))?.id
+
+  useEffect(() => {
+    if (kind === 'press_key' && typeof config.key !== 'string') {
+      set('key', 'enter')
+    } else if (kind === 'pointer_click' && !['left', 'right', 'middle'].includes(String(config.pointer_button))) {
+      set('pointer_button', 'left')
+    } else if (kind === 'pointer_click' && ![1, 2].includes(Number(config.click_count))) {
+      set('click_count', 1)
+    }
+  }, [kind, config.key, config.pointer_button, config.click_count])
 
   useEffect(() => {
     mounted.current = true
@@ -122,7 +170,8 @@ export function DesktopActionConfig({ config, set, str, workflowProjectId, activ
     && device.compatible
     && ['online', 'busy', 'awaiting_approval'].includes(device.state)
     && device.capabilities.includes(schema.capability)
-  ), [devices, schema.capability])
+    && (schema.selector === 'none' || device.capabilities.includes('ui_automation'))
+  ), [devices, schema.capability, schema.selector])
   const selectedDevice = eligibleDevices.find((device) => device.id === str('device_id'))
   const inspectorEligible = selectedDevice?.capabilities.includes('ui_automation') ?? false
   const selectorCounts = useMemo(() => {
@@ -139,7 +188,7 @@ export function DesktopActionConfig({ config, set, str, workflowProjectId, activ
     return { windows, elements }
   }, [inspection])
 
-  const dispatch = async (action: Record<string, unknown>) => {
+  const dispatch = async (action: Record<string, unknown>, onUpdate?: (record: DesktopCommandRecord) => void) => {
     if (!auth || !executionId || !selectedDevice) throw new Error('Workflow Execution is not active')
     const initial = await api.dispatchDesktopCommand({
       tenant_id: auth.tenantId,
@@ -149,7 +198,7 @@ export function DesktopActionConfig({ config, set, str, workflowProjectId, activ
       action,
       lease_seconds: 60,
     })
-    return waitForCommand(auth.tenantId, initial)
+    return waitForCommand(auth.tenantId, initial, onUpdate)
   }
 
   const inspect = async () => {
@@ -180,14 +229,15 @@ export function DesktopActionConfig({ config, set, str, workflowProjectId, activ
   const testAction = async () => {
     setError('')
     setNotice('')
-    const action = buildAction(kind, config)
+    const action = buildDesktopAction(kind, config)
     if (!action) {
       setError(zh ? '请先完成此操作的必填字段。' : 'Complete the required fields for this action first.')
       return
     }
     setBusy('test')
+    setTestCommand(null)
     try {
-      const record = await dispatch(action)
+      const record = await dispatch(action, (next) => { if (mounted.current) setTestCommand(next) })
       if (record.status !== 'succeeded') throw new Error(record.result?.error_code || record.result?.error_message || record.status)
       if (mounted.current) setNotice(zh ? '测试操作已成功完成。' : 'Test action completed successfully.')
     } catch (cause) {
@@ -195,6 +245,35 @@ export function DesktopActionConfig({ config, set, str, workflowProjectId, activ
     } finally {
       if (mounted.current) setBusy(null)
     }
+  }
+
+  const stopTest = async () => {
+    if (!auth || !testCommand || TERMINAL_COMMAND_STATES.has(testCommand.status)) return
+    setStopping(true)
+    setError('')
+    try {
+      const cancelled = await api.cancelDesktopCommand(auth.tenantId, testCommand.command.command_id)
+      if (mounted.current) {
+        setTestCommand(cancelled)
+        setNotice(zh ? '停止请求已接受。' : 'Stop request accepted.')
+      }
+    } catch (cause) {
+      try {
+        const current = await api.getDesktopCommand(auth.tenantId, testCommand.command.command_id)
+        if (TERMINAL_COMMAND_STATES.has(current.status)) {
+          if (mounted.current) setTestCommand(current)
+          return
+        }
+      } catch { /* preserve the sanitized cancellation error */ }
+      if (mounted.current) setError(desktopErrorMessage(cause, zh))
+    } finally {
+      if (mounted.current) setStopping(false)
+    }
+  }
+
+  const toggleModifier = (modifier: string, enabled: boolean) => {
+    const current = Array.isArray(config.modifiers) ? config.modifiers.map(String) : []
+    set('modifiers', enabled ? [...new Set([...current, modifier])] : current.filter((value) => value !== modifier))
   }
 
   const saveWindow = (windowSelector: DesktopWindowSelector, snapshotId: string) => {
@@ -207,11 +286,13 @@ export function DesktopActionConfig({ config, set, str, workflowProjectId, activ
   return <>
     <div className="field">
       <label>{zh ? '操作类型' : 'Action type'}</label>
-      <select value={kind} onChange={(event) => { set('action_kind', event.target.value); setInspection(null) }}>
+      <select value={kind} onChange={(event) => { set('action_kind', event.target.value); setInspection(null); setTestCommand(null) }}>
         <option value="read_system_information">{zh ? '读取系统信息' : 'Read system information'}</option>
         <option value="focus_window">{zh ? '聚焦窗口' : 'Focus window'}</option>
         <option value="click_element">{zh ? '点击控件' : 'Click element'}</option>
         <option value="type_text">{zh ? '输入文本' : 'Type text'}</option>
+        <option value="press_key">{zh ? '按键或快捷键' : 'Press key or shortcut'}</option>
+        <option value="pointer_click">{zh ? '指针点击控件' : 'Pointer click element'}</option>
         <option value="launch_application">{zh ? '启动应用' : 'Launch application'}</option>
       </select>
     </div>
@@ -223,7 +304,7 @@ export function DesktopActionConfig({ config, set, str, workflowProjectId, activ
     </div>
     <div className="field">
       <label>{zh ? '设备' : 'Device'}</label>
-      <select value={str('device_id')} disabled={loadingDevices} onChange={(event) => { set('device_id', event.target.value); setInspection(null) }}>
+      <select value={str('device_id')} disabled={loadingDevices} onChange={(event) => { set('device_id', event.target.value); setInspection(null); setTestCommand(null) }}>
         <option value="">{loadingDevices ? (zh ? '加载设备…' : 'Loading Devices…') : (zh ? '选择符合条件的设备' : 'Select an eligible Device')}</option>
         {eligibleDevices.map((device) => <option key={device.id} value={device.id}>{device.display_name} · {device.operating_system} · {device.agent_version}</option>)}
       </select>
@@ -237,6 +318,36 @@ export function DesktopActionConfig({ config, set, str, workflowProjectId, activ
       <label>{zh ? '文本' : 'Text'}</label>
       <textarea value={str('text')} maxLength={16_384} rows={3} onChange={(event) => set('text', event.target.value)} />
       <small style={{ color: 'var(--muted)' }}>{str('text').length}/16384</small>
+    </div>}
+    {kind === 'press_key' && <>
+      <div className="field">
+        <label>{zh ? '按键' : 'Key'}</label>
+        <select value={str('key', 'enter')} onChange={(event) => set('key', event.target.value)}>
+          {['enter', 'escape', 'tab', 'backspace', 'delete', 'space', 'home', 'end', 'page_up', 'page_down', 'arrow_up', 'arrow_down', 'arrow_left', 'arrow_right', 'f1', 'f2', 'f3', 'f4', 'f5', 'f6', 'f7', 'f8', 'f9', 'f10', 'f11', 'f12', ...'abcdefghijklmnopqrstuvwxyz0123456789'].map((key) => <option key={key} value={key}>{key}</option>)}
+        </select>
+      </div>
+      <div className="field">
+        <label>{zh ? '修饰键' : 'Modifiers'}</label>
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+          {['control', 'alt', 'shift', 'meta'].map((modifier) => <label key={modifier} style={{ display: 'inline-flex', gap: 4, alignItems: 'center' }}>
+            <input type="checkbox" checked={Array.isArray(config.modifiers) && config.modifiers.includes(modifier)} onChange={(event) => toggleModifier(modifier, event.target.checked)} /> {modifier}
+          </label>)}
+        </div>
+      </div>
+    </>}
+    {kind === 'pointer_click' && <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+      <div className="field">
+        <label>{zh ? '指针按钮' : 'Pointer button'}</label>
+        <select value={str('pointer_button', 'left')} onChange={(event) => set('pointer_button', event.target.value)}>
+          <option value="left">{zh ? '左键' : 'Left'}</option><option value="right">{zh ? '右键' : 'Right'}</option><option value="middle">{zh ? '中键' : 'Middle'}</option>
+        </select>
+      </div>
+      <div className="field">
+        <label>{zh ? '点击次数' : 'Click count'}</label>
+        <select value={String(config.click_count ?? 1)} onChange={(event) => set('click_count', Number(event.target.value))}>
+          <option value="1">1</option><option value="2">2</option>
+        </select>
+      </div>
     </div>}
     {schema.selector !== 'none' && <div style={{ marginBottom: 8 }}>
       <button className="btn btn-sm" disabled={busy !== null || !executionId || !selectedDevice || !inspectorEligible} onClick={() => void inspect()}>
@@ -265,6 +376,13 @@ export function DesktopActionConfig({ config, set, str, workflowProjectId, activ
     <button className="btn btn-sm btn-primary" disabled={busy !== null || !executionId || !selectedDevice} onClick={() => void testAction()}>
       {busy === 'test' ? (zh ? '正在测试…' : 'Testing…') : (zh ? '测试操作' : 'Test action')}
     </button>
+    {testCommand && <div aria-live="polite" style={{ border: '1px solid var(--border)', borderRadius: 4, padding: 8, marginTop: 8, fontSize: 11 }}>
+      <div><strong>{zh ? '测试目标' : 'Test target'}:</strong> {selectedDevice?.display_name || testCommand.device_id} · {kind} · {targetLabel}</div>
+      <div style={{ color: 'var(--muted)', marginTop: 3 }}><strong>{zh ? '命令状态' : 'Command state'}:</strong> {testCommand.status}</div>
+      {!TERMINAL_COMMAND_STATES.has(testCommand.status) && <button className="btn btn-sm" style={{ marginTop: 6, color: 'var(--danger-text, #dc2626)' }} disabled={stopping} onClick={() => void stopTest()}>
+        {stopping ? (zh ? '正在停止…' : 'Stopping…') : (zh ? '立即停止测试' : 'Stop test now')}
+      </button>}
+    </div>}
     {notice && <div role="status" style={{ color: 'var(--success-text, #15803d)', fontSize: 11, marginTop: 6 }}>{notice}</div>}
     {error && <div role="alert" style={{ color: 'var(--danger-text, #dc2626)', fontSize: 11, marginTop: 6 }}>{error}</div>}
   </>

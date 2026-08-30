@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { DESKTOP_ACTION_SCHEMA, INSPECTION_BOUNDS, desktopErrorMessage } from './DesktopActionConfig'
+import { buildDesktopAction, desktopTargetLabel, DESKTOP_ACTION_SCHEMA, INSPECTION_BOUNDS, desktopErrorMessage } from './DesktopActionConfig'
 
 describe('Desktop action authoring contract', () => {
   it('keeps capabilities, risk, approval, and selector shape explicit', () => {
@@ -10,10 +10,29 @@ describe('Desktop action authoring contract', () => {
       capability: 'ui_automation', risk: 'medium', approval: true, selector: 'element',
     })
     expect(DESKTOP_ACTION_SCHEMA.type_text.risk).toBe('high')
+    expect(DESKTOP_ACTION_SCHEMA.press_key.capability).toBe('keyboard_input')
+    expect(DESKTOP_ACTION_SCHEMA.pointer_click).toEqual({
+      capability: 'pointer_input', risk: 'high', approval: true, selector: 'element',
+    })
     expect(DESKTOP_ACTION_SCHEMA.launch_application.capability).toBe('window_management')
     expect(INSPECTION_BOUNDS).toEqual({
       max_depth: 8, max_windows: 16, max_elements: 256, max_duration_ms: 5_000, max_payload_bytes: 49_152,
     })
+  })
+
+  it('builds bounded input actions without browser-supplied coordinates', () => {
+    const selector = { window: { automation_id: 'Fixture.Main' }, automation_id: '1002', control_type: 'button' }
+    expect(buildDesktopAction('press_key', {
+      selector: selector.window, key: 'a', modifiers: ['control', 'control', 'invalid'],
+    })).toEqual({ kind: 'press_key', selector: selector.window, key: 'a', modifiers: ['control'] })
+    const pointer = buildDesktopAction('pointer_click', {
+      selector, pointer_button: 'right', click_count: 2, x: 123, y: 456,
+    })
+    expect(pointer).toEqual({ kind: 'pointer_click', selector, button: 'right', click_count: 2 })
+    expect(JSON.stringify(pointer)).not.toMatch(/\"[xy]\"/)
+    expect(desktopTargetLabel('pointer_click', { selector })).toBe('1002')
+    expect(buildDesktopAction('press_key', { selector, key: 'enter' })).toBeNull()
+    expect(buildDesktopAction('pointer_click', { selector: selector.window })).toBeNull()
   })
 
   it('turns transport details into actionable, sanitized author messages', () => {

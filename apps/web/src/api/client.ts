@@ -423,6 +423,13 @@ export function getDesktopCommand(tenantId: string, commandId: string): Promise<
   return request(`/v1/desktop/commands/${commandId}`, { params: { tenant_id: tenantId } })
 }
 
+export function cancelDesktopCommand(tenantId: string, commandId: string): Promise<DesktopCommandRecord> {
+  return request(`/v1/desktop/commands/${commandId}`, {
+    method: 'DELETE',
+    params: { tenant_id: tenantId },
+  })
+}
+
 export function listExecutions(
   tenantId: string,
   workflowId?: string,
