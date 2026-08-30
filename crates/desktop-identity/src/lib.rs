@@ -5,6 +5,7 @@ use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use base64::Engine;
 use ed25519_dalek::{Signer, SigningKey};
 use rand_core::OsRng;
+use sha2::{Digest, Sha256};
 
 const SIGNING_KEY_BYTES: usize = 32;
 
@@ -32,6 +33,14 @@ impl std::error::Error for IdentityError {}
 pub trait DeviceSecretStore {
     fn load(&self) -> Result<Option<String>, IdentityError>;
     fn store(&self, encoded_secret: &str) -> Result<(), IdentityError>;
+}
+
+/// Secure persistence boundary for the paired Device credential. Credential
+/// values are write-only from pairing code and are never serializable.
+pub trait DeviceCredentialStore {
+    fn load(&self) -> Result<Option<String>, IdentityError>;
+    fn store(&self, credential: &str) -> Result<(), IdentityError>;
+    fn delete(&self) -> Result<(), IdentityError>;
 }
 
 /// A locally held Ed25519 identity. The signing key is deliberately private and
@@ -72,9 +81,27 @@ impl DeviceIdentity {
         URL_SAFE_NO_PAD.encode(self.signing_key.verifying_key().to_bytes())
     }
 
+    /// Stable, non-secret identifier derived from the public key. It avoids a
+    /// separate plaintext installation identifier while remaining unlinkable
+    /// to a private key value.
+    pub fn device_id(&self) -> String {
+        let digest = Sha256::digest(self.signing_key.verifying_key().as_bytes());
+        format!("desktop-{}", hex_prefix(&digest, 16))
+    }
+
     pub fn sign(&self, challenge: &[u8]) -> String {
         URL_SAFE_NO_PAD.encode(self.signing_key.sign(challenge).to_bytes())
     }
+}
+
+fn hex_prefix(bytes: &[u8], length: usize) -> String {
+    const HEX: &[u8; 16] = b"0123456789abcdef";
+    let mut encoded = String::with_capacity(length.saturating_mul(2));
+    for byte in bytes.iter().take(length) {
+        encoded.push(HEX[usize::from(byte >> 4)] as char);
+        encoded.push(HEX[usize::from(byte & 0x0f)] as char);
+    }
+    encoded
 }
 
 #[cfg(windows)]
@@ -115,6 +142,44 @@ impl DeviceSecretStore for WindowsCredentialStore {
     }
 }
 
+#[cfg(windows)]
+pub struct WindowsDeviceCredentialStore {
+    entry: keyring::Entry,
+}
+
+#[cfg(windows)]
+impl WindowsDeviceCredentialStore {
+    pub fn new(device_id: &str) -> Result<Self, IdentityError> {
+        let entry = keyring::Entry::new("com.trigix.desktop.device-credential", device_id)
+            .map_err(|error| IdentityError::Store(error.to_string()))?;
+        Ok(Self { entry })
+    }
+}
+
+#[cfg(windows)]
+impl DeviceCredentialStore for WindowsDeviceCredentialStore {
+    fn load(&self) -> Result<Option<String>, IdentityError> {
+        match self.entry.get_password() {
+            Ok(secret) => Ok(Some(secret)),
+            Err(keyring::Error::NoEntry) => Ok(None),
+            Err(error) => Err(IdentityError::Store(error.to_string())),
+        }
+    }
+
+    fn store(&self, credential: &str) -> Result<(), IdentityError> {
+        self.entry
+            .set_password(credential)
+            .map_err(|error| IdentityError::Store(error.to_string()))
+    }
+
+    fn delete(&self) -> Result<(), IdentityError> {
+        match self.entry.delete_credential() {
+            Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
+            Err(error) => Err(IdentityError::Store(error.to_string())),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -146,6 +211,9 @@ mod tests {
         let first = DeviceIdentity::load_or_create(&store).unwrap();
         let second = DeviceIdentity::load_or_create(&store).unwrap();
         assert_eq!(first.public_key(), second.public_key());
+        assert_eq!(first.device_id(), second.device_id());
+        assert!(first.device_id().starts_with("desktop-"));
+        assert_eq!(first.device_id().len(), 40);
         assert_eq!(first.sign(b"challenge"), second.sign(b"challenge"));
         let persisted = store.secret.lock().unwrap().clone().unwrap();
         assert!(!persisted.contains(&first.public_key()));

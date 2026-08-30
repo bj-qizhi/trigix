@@ -31,6 +31,46 @@
         </div>
       </section>
 
+      <section class="pairing-panel" aria-labelledby="pairing-title">
+        <div class="pairing-heading">
+          <div>
+            <p class="eyebrow">DEVICE TRUST</p>
+            <h2 id="pairing-title">Pair this computer</h2>
+          </div>
+          <span id="pairing-phase" class="phase">Checking</span>
+        </div>
+
+        <form id="pairing-form">
+          <label>
+            <span>Platform HTTPS origin</span>
+            <input id="platform-url" name="platform-url" type="url" required maxlength="2048" placeholder="https://trigix.example.com" autocomplete="url" />
+          </label>
+          <label>
+            <span>Device name</span>
+            <input id="device-name" name="device-name" type="text" required maxlength="128" value="My Windows PC" autocomplete="off" />
+          </label>
+          <button id="start-pairing" type="submit">Create pairing code</button>
+        </form>
+
+        <div id="pairing-waiting" class="pairing-result" hidden>
+          <div>
+            <span class="label">PAIRING CODE</span>
+            <strong id="pairing-code">—</strong>
+            <p id="pairing-expiry">Approve this code in your Tenant administration page.</p>
+          </div>
+          <button id="claim-pairing" type="button">I approved the code</button>
+        </div>
+
+        <div id="pairing-complete" class="pairing-result" hidden>
+          <div>
+            <span class="label">LOCAL DEVICE ID</span>
+            <strong id="paired-device">—</strong>
+            <p>The Device credential is protected by Windows Credential Manager.</p>
+          </div>
+          <button id="forget-pairing" class="secondary" type="button">Forget local pairing</button>
+        </div>
+      </section>
+
       <section class="control-panel" aria-labelledby="control-title">
         <div>
           <p class="eyebrow">SAFETY CONTROL</p>

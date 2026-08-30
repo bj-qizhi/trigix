@@ -9,6 +9,10 @@
   box-sizing: border-box;
 }
 
+[hidden] {
+  display: none !important;
+}
+
 body {
   margin: 0;
   min-width: 320px;
@@ -83,6 +87,97 @@ h1 {
   background: #171b20;
 }
 
+.pairing-panel {
+  margin-top: 72px;
+  padding: 32px;
+  border: 1px solid #343a43;
+}
+
+.pairing-heading,
+.pairing-result {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 32px;
+}
+
+.pairing-heading h2,
+.pairing-result strong {
+  margin: 0;
+}
+
+.pairing-heading h2 {
+  font-size: 32px;
+  font-weight: 540;
+}
+
+.phase {
+  padding: 7px 10px;
+  background: #272d35;
+  color: #c9d1da;
+  font-size: 13px;
+}
+
+#pairing-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 16px;
+  margin-top: 32px;
+}
+
+label {
+  display: grid;
+  gap: 9px;
+  color: #c9d1da;
+  font-size: 14px;
+}
+
+input {
+  width: 100%;
+  min-height: 48px;
+  padding: 10px 12px;
+  border: 1px solid #414852;
+  border-radius: 0;
+  outline: 0;
+  background: #11151a;
+  color: #f2f4f7;
+  font: inherit;
+}
+
+input:focus {
+  border-color: #8b8ef7;
+  box-shadow: 0 0 0 2px #8b8ef744;
+}
+
+.pairing-result {
+  margin-top: 32px;
+  padding-top: 28px;
+  border-top: 1px solid #343a43;
+}
+
+.pairing-result > div {
+  display: grid;
+  gap: 10px;
+}
+
+.pairing-result strong {
+  font-family: "Cascadia Mono", "SFMono-Regular", monospace;
+  font-size: 30px;
+  letter-spacing: 0.08em;
+}
+
+.pairing-result p {
+  margin: 0;
+  color: #aeb7c2;
+}
+
+button.secondary {
+  border-color: #5b6571;
+  background: transparent;
+  color: #d6dce3;
+}
+
 .control-panel h2 {
   margin-bottom: 12px;
   font-size: 32px;
@@ -139,6 +234,16 @@ button:disabled {
   }
 
   .control-panel {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  #pairing-form {
+    grid-template-columns: 1fr;
+  }
+
+  .pairing-heading,
+  .pairing-result {
     align-items: stretch;
     flex-direction: column;
   }
