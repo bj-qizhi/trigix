@@ -158,3 +158,44 @@ mod windows_fixture {
         value.encode_utf16().chain(std::iter::once(0)).collect()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn qualification_signing_is_ephemeral_non_exportable_and_blocking() {
+        let script = include_str!("../qualify-signature.ps1");
+        assert!(script.contains("CN=Trigix Automation Qualification Fixture"));
+        assert!(script.contains("-KeyExportPolicy NonExportable"));
+        assert!(script.contains("Set-AuthenticodeSignature"));
+        assert!(script.contains("Get-AuthenticodeSignature"));
+        assert!(script.contains("X509ChainTrustMode]::CustomRootTrust"));
+        assert!(script.contains("CustomTrustStore.Add($signature.SignerCertificate) | Out-Null"));
+        assert!(script.contains("isolated_chain_trusted = $true"));
+        assert!(script.contains("tamper_check_rejected = $true"));
+        assert!(script.contains("SignatureStatus]::UnknownError"));
+        assert!(script.contains("accepted a tampered executable"));
+        assert!(script.contains("signature_hash_algorithm = \"sha256\""));
+        assert!(script.contains("Remove-QualificationCertificate"));
+        assert!(
+            script.contains("StateDirectory must be a dedicated trigix-fixture-signing directory")
+        );
+        assert!(!script.contains("PFX_PASSWORD"));
+        assert!(!script.contains("TimestampServer"));
+        assert!(!script.contains("Open-CertificateStore \"Root\""));
+        assert!(!script.contains("TrustedPublisher"));
+
+        let workflow = include_str!("../../../.github/workflows/ci.yml");
+        let signing = workflow
+            .find("Sign and verify deterministic fixture")
+            .unwrap();
+        let qualification = workflow.find("Run native adapter qualification").unwrap();
+        let evidence = workflow.find("Upload fixture signature evidence").unwrap();
+        let cleanup = workflow.find("Remove fixture signing state").unwrap();
+        assert!(signing < qualification);
+        assert!(qualification < evidence);
+        assert!(evidence < cleanup);
+        assert!(workflow[qualification..evidence].contains("-Action Verify"));
+        assert!(workflow[evidence..cleanup].contains("if: always()"));
+        assert!(workflow[cleanup..].contains("if: always()"));
+    }
+}
