@@ -5,7 +5,8 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 use desktop_protocol::{
-    CommandOutcome, DesktopCommand, DesktopCommandAcknowledgement, DesktopCommandResult,
+    CommandOutcome, DesktopCommand, DesktopCommandAcknowledgement, DesktopCommandApproval,
+    DesktopCommandResult, RiskLevel,
 };
 use serde::{Deserialize, Serialize};
 use sqlx::{PgPool, Row};
@@ -58,12 +59,13 @@ impl MemoryDesktopCommandStore {
         if commands.contains_key(&command.command_id) {
             return Err(DesktopCommandError::Conflict);
         }
+        let status = initial_status(&command).to_string();
         let record = DesktopCommandRecord {
             created_at_unix_ms: command.issued_at_unix_ms,
             command,
             device_id,
             workflow_id,
-            status: "queued".to_string(),
+            status,
             result: None,
         };
         commands.insert(record.command.command_id.clone(), record.clone());
@@ -98,6 +100,87 @@ impl MemoryDesktopCommandStore {
             .collect::<Vec<_>>();
         records.sort_by_key(|record| record.created_at_unix_ms);
         records
+    }
+
+    pub async fn pending_approvals(
+        &self,
+        tenant_id: &str,
+        limit: usize,
+        offset: usize,
+    ) -> Vec<DesktopCommandRecord> {
+        let mut records = self
+            .commands
+            .lock()
+            .expect("desktop commands lock")
+            .values()
+            .filter(|record| {
+                record.command.tenant_id == tenant_id && record.status == "waiting_approval"
+            })
+            .cloned()
+            .collect::<Vec<_>>();
+        records.sort_by_key(|record| record.created_at_unix_ms);
+        records.into_iter().skip(offset).take(limit).collect()
+    }
+
+    pub async fn approve(
+        &self,
+        tenant_id: &str,
+        command_id: &str,
+        approved_by: &str,
+        now_unix_ms: u64,
+    ) -> Result<(DesktopCommandRecord, bool), DesktopCommandError> {
+        let mut commands = self.commands.lock().expect("desktop commands lock");
+        let record = commands
+            .get_mut(command_id)
+            .filter(|record| record.command.tenant_id == tenant_id)
+            .ok_or(DesktopCommandError::NotFound)?;
+        if record.status == "queued"
+            && record
+                .command
+                .approval
+                .as_ref()
+                .is_some_and(|approval| approval.approved_by == approved_by)
+        {
+            return Ok((record.clone(), false));
+        }
+        if record.status != "waiting_approval" {
+            return Err(DesktopCommandError::Conflict);
+        }
+        if record.command.lease.expires_at_unix_ms <= now_unix_ms {
+            record.status = "timed_out".to_string();
+            return Err(DesktopCommandError::Expired);
+        }
+        record.command.approval = Some(DesktopCommandApproval {
+            approved_by: approved_by.to_owned(),
+            expires_at_unix_ms: record.command.lease.expires_at_unix_ms,
+        });
+        record
+            .command
+            .validate(now_unix_ms)
+            .map_err(|error| DesktopCommandError::Store(error.to_string()))?;
+        record.status = "queued".to_string();
+        Ok((record.clone(), true))
+    }
+
+    pub async fn reject(
+        &self,
+        tenant_id: &str,
+        command_id: &str,
+        _rejected_by: &str,
+    ) -> Result<DesktopCommandRecord, DesktopCommandError> {
+        let mut commands = self.commands.lock().expect("desktop commands lock");
+        let record = commands
+            .get_mut(command_id)
+            .filter(|record| record.command.tenant_id == tenant_id)
+            .ok_or(DesktopCommandError::NotFound)?;
+        if record.status == "rejected" {
+            return Ok(record.clone());
+        }
+        if record.status != "waiting_approval" {
+            return Err(DesktopCommandError::Conflict);
+        }
+        record.status = "rejected".to_string();
+        Ok(record.clone())
     }
 
     pub async fn mark_delivered(
@@ -192,7 +275,7 @@ impl MemoryDesktopCommandStore {
             .ok_or(DesktopCommandError::NotFound)?;
         if matches!(
             record.status.as_str(),
-            "queued" | "delivered" | "acknowledged"
+            "waiting_approval" | "queued" | "delivered" | "acknowledged"
         ) {
             record.status = "cancelled".to_string();
             Ok(record.clone())
@@ -208,7 +291,7 @@ impl MemoryDesktopCommandStore {
             .filter(|record| {
                 matches!(
                     record.status.as_str(),
-                    "queued" | "delivered" | "acknowledged"
+                    "waiting_approval" | "queued" | "delivered" | "acknowledged"
                 ) && record.command.lease.expires_at_unix_ms <= now_unix_ms
             })
             .map(|record| {
@@ -239,9 +322,10 @@ impl PostgresDesktopCommandStore {
             .validate(command.issued_at_unix_ms)
             .map_err(|error| DesktopCommandError::Store(error.to_string()))?;
         let command_json = serde_json::to_value(&command).map_err(store_error)?;
+        let status = initial_status(&command);
         let mut transaction = self.pool.begin().await.map_err(store_error)?;
         let result = sqlx::query(
-            "INSERT INTO af_desktop_commands (id, tenant_id, project_id, workflow_id, execution_id, device_id, requested_by, lease_id, command_json, expires_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,to_timestamp($10::double precision / 1000.0))",
+            "INSERT INTO af_desktop_commands (id, tenant_id, project_id, workflow_id, execution_id, device_id, requested_by, lease_id, command_json, status, expires_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,to_timestamp($11::double precision / 1000.0))",
         )
         .bind(&command.command_id)
         .bind(&command.tenant_id)
@@ -252,6 +336,7 @@ impl PostgresDesktopCommandStore {
         .bind(&command.requested_by)
         .bind(&command.lease.lease_id)
         .bind(command_json)
+        .bind(status)
         .bind(command.lease.expires_at_unix_ms as i64)
         .execute(&mut *transaction)
         .await;
@@ -268,7 +353,7 @@ impl PostgresDesktopCommandStore {
         insert_audit(
             &mut transaction,
             &command.tenant_id,
-            "desktop.command.queued",
+            &format!("desktop.command.{status}"),
             &command.command_id,
             &command.execution_id,
             &device_id,
@@ -279,7 +364,7 @@ impl PostgresDesktopCommandStore {
             command,
             device_id,
             workflow_id,
-            status: "queued".to_string(),
+            status: status.to_string(),
             result: None,
             created_at_unix_ms: now_millis(),
         })
@@ -302,6 +387,112 @@ impl PostgresDesktopCommandStore {
         rows.iter()
             .filter_map(|row| row_to_record(row).ok())
             .collect()
+    }
+
+    pub async fn pending_approvals(
+        &self,
+        tenant_id: &str,
+        limit: usize,
+        offset: usize,
+    ) -> Vec<DesktopCommandRecord> {
+        let rows = sqlx::query("SELECT command_json, device_id, workflow_id, status, result_json, (EXTRACT(EPOCH FROM created_at) * 1000)::BIGINT created_at_ms FROM af_desktop_commands WHERE tenant_id=$1 AND status='waiting_approval' AND expires_at > now() ORDER BY created_at LIMIT $2 OFFSET $3")
+            .bind(tenant_id)
+            .bind(limit as i64)
+            .bind(offset as i64)
+            .fetch_all(&self.pool)
+            .await
+            .unwrap_or_default();
+        rows.iter()
+            .filter_map(|row| row_to_record(row).ok())
+            .collect()
+    }
+
+    pub async fn approve(
+        &self,
+        tenant_id: &str,
+        command_id: &str,
+        approved_by: &str,
+        now_unix_ms: u64,
+    ) -> Result<(DesktopCommandRecord, bool), DesktopCommandError> {
+        let mut transaction = self.pool.begin().await.map_err(store_error)?;
+        let row = sqlx::query("SELECT command_json, device_id, workflow_id, status, result_json, (EXTRACT(EPOCH FROM created_at) * 1000)::BIGINT created_at_ms FROM af_desktop_commands WHERE tenant_id=$1 AND id=$2 FOR UPDATE")
+            .bind(tenant_id).bind(command_id).fetch_optional(&mut *transaction).await.map_err(store_error)?
+            .ok_or(DesktopCommandError::NotFound)?;
+        let mut record = row_to_record(&row)?;
+        if record.status == "queued"
+            && record
+                .command
+                .approval
+                .as_ref()
+                .is_some_and(|approval| approval.approved_by == approved_by)
+        {
+            transaction.commit().await.map_err(store_error)?;
+            return Ok((record, false));
+        }
+        if record.status != "waiting_approval" {
+            return Err(DesktopCommandError::Conflict);
+        }
+        if record.command.lease.expires_at_unix_ms <= now_unix_ms {
+            sqlx::query("UPDATE af_desktop_commands SET status='timed_out', completed_at=now(), updated_at=now() WHERE tenant_id=$1 AND id=$2")
+                .bind(tenant_id).bind(command_id).execute(&mut *transaction).await.map_err(store_error)?;
+            transaction.commit().await.map_err(store_error)?;
+            return Err(DesktopCommandError::Expired);
+        }
+        record.command.approval = Some(DesktopCommandApproval {
+            approved_by: approved_by.to_owned(),
+            expires_at_unix_ms: record.command.lease.expires_at_unix_ms,
+        });
+        record.command.validate(now_unix_ms).map_err(store_error)?;
+        let command_json = serde_json::to_value(&record.command).map_err(store_error)?;
+        let row = sqlx::query("UPDATE af_desktop_commands SET command_json=$1, status='queued', updated_at=now() WHERE tenant_id=$2 AND id=$3 AND status='waiting_approval' RETURNING command_json, device_id, workflow_id, status, result_json, (EXTRACT(EPOCH FROM created_at) * 1000)::BIGINT created_at_ms")
+            .bind(command_json).bind(tenant_id).bind(command_id).fetch_one(&mut *transaction).await.map_err(store_error)?;
+        let record = row_to_record(&row)?;
+        insert_decision_audit(
+            &mut transaction,
+            tenant_id,
+            "desktop.command.approved",
+            command_id,
+            &record.command.execution_id,
+            &record.device_id,
+            approved_by,
+        )
+        .await?;
+        transaction.commit().await.map_err(store_error)?;
+        Ok((record, true))
+    }
+
+    pub async fn reject(
+        &self,
+        tenant_id: &str,
+        command_id: &str,
+        rejected_by: &str,
+    ) -> Result<DesktopCommandRecord, DesktopCommandError> {
+        let mut transaction = self.pool.begin().await.map_err(store_error)?;
+        let row = sqlx::query("UPDATE af_desktop_commands SET status='rejected', completed_at=now(), updated_at=now() WHERE tenant_id=$1 AND id=$2 AND status='waiting_approval' RETURNING command_json, device_id, workflow_id, status, result_json, (EXTRACT(EPOCH FROM created_at) * 1000)::BIGINT created_at_ms")
+            .bind(tenant_id).bind(command_id).fetch_optional(&mut *transaction).await.map_err(store_error)?
+            ;
+        let Some(row) = row else {
+            drop(transaction);
+            let existing = self.get(tenant_id, command_id).await?;
+            return if existing.status == "rejected" {
+                Ok(existing)
+            } else {
+                Err(DesktopCommandError::Conflict)
+            };
+        };
+        let record = row_to_record(&row)?;
+        insert_decision_audit(
+            &mut transaction,
+            tenant_id,
+            "desktop.command.rejected",
+            command_id,
+            &record.command.execution_id,
+            &record.device_id,
+            rejected_by,
+        )
+        .await?;
+        transaction.commit().await.map_err(store_error)?;
+        Ok(record)
     }
 
     pub async fn mark_delivered(
@@ -398,7 +589,7 @@ impl PostgresDesktopCommandStore {
         command_id: &str,
     ) -> Result<DesktopCommandRecord, DesktopCommandError> {
         let mut transaction = self.pool.begin().await.map_err(store_error)?;
-        let row = sqlx::query("UPDATE af_desktop_commands SET status='cancelled', completed_at=now(), updated_at=now() WHERE tenant_id=$1 AND id=$2 AND status IN ('queued','delivered','acknowledged') RETURNING command_json, device_id, workflow_id, status, result_json, (EXTRACT(EPOCH FROM created_at) * 1000)::BIGINT created_at_ms")
+        let row = sqlx::query("UPDATE af_desktop_commands SET status='cancelled', completed_at=now(), updated_at=now() WHERE tenant_id=$1 AND id=$2 AND status IN ('waiting_approval','queued','delivered','acknowledged') RETURNING command_json, device_id, workflow_id, status, result_json, (EXTRACT(EPOCH FROM created_at) * 1000)::BIGINT created_at_ms")
             .bind(tenant_id).bind(command_id).fetch_optional(&mut *transaction).await.map_err(store_error)?.ok_or(DesktopCommandError::Conflict)?;
         let record = row_to_record(&row)?;
         insert_audit(
@@ -418,7 +609,7 @@ impl PostgresDesktopCommandStore {
         let Ok(mut transaction) = self.pool.begin().await else {
             return Vec::new();
         };
-        let Ok(rows) = sqlx::query("UPDATE af_desktop_commands SET status='timed_out', completed_at=now(), updated_at=now() WHERE status IN ('queued','delivered','acknowledged') AND expires_at <= now() RETURNING command_json, device_id, workflow_id, status, result_json, (EXTRACT(EPOCH FROM created_at) * 1000)::BIGINT created_at_ms, tenant_id")
+        let Ok(rows) = sqlx::query("UPDATE af_desktop_commands SET status='timed_out', completed_at=now(), updated_at=now() WHERE status IN ('waiting_approval','queued','delivered','acknowledged') AND expires_at <= now() RETURNING command_json, device_id, workflow_id, status, result_json, (EXTRACT(EPOCH FROM created_at) * 1000)::BIGINT created_at_ms, tenant_id")
             .fetch_all(&mut *transaction).await else { return Vec::new() };
         let mut records = Vec::with_capacity(rows.len());
         for row in &rows {
@@ -487,6 +678,34 @@ impl PlatformDesktopCommandStore {
     pub async fn pending_for_device(&self, device_id: &str) -> Vec<DesktopCommandRecord> {
         delegate!(self, pending_for_device(device_id))
     }
+    pub async fn pending_approvals(
+        &self,
+        tenant_id: &str,
+        limit: usize,
+        offset: usize,
+    ) -> Vec<DesktopCommandRecord> {
+        delegate!(self, pending_approvals(tenant_id, limit, offset))
+    }
+    pub async fn approve(
+        &self,
+        tenant_id: &str,
+        command_id: &str,
+        approved_by: &str,
+        now_unix_ms: u64,
+    ) -> Result<(DesktopCommandRecord, bool), DesktopCommandError> {
+        delegate!(
+            self,
+            approve(tenant_id, command_id, approved_by, now_unix_ms)
+        )
+    }
+    pub async fn reject(
+        &self,
+        tenant_id: &str,
+        command_id: &str,
+        rejected_by: &str,
+    ) -> Result<DesktopCommandRecord, DesktopCommandError> {
+        delegate!(self, reject(tenant_id, command_id, rejected_by))
+    }
     pub async fn mark_delivered(
         &self,
         command_id: &str,
@@ -532,6 +751,14 @@ fn outcome_status(outcome: CommandOutcome) -> &'static str {
     }
 }
 
+fn initial_status(command: &DesktopCommand) -> &'static str {
+    if command.action.risk_level() > RiskLevel::Low && command.approval.is_none() {
+        "waiting_approval"
+    } else {
+        "queued"
+    }
+}
+
 fn row_to_record(row: &sqlx::postgres::PgRow) -> Result<DesktopCommandRecord, DesktopCommandError> {
     Ok(DesktopCommandRecord {
         command: serde_json::from_value(row.get("command_json")).map_err(store_error)?,
@@ -561,6 +788,31 @@ async fn insert_audit(
         .bind(format!("audit-desktop-command-{}", uuid::Uuid::new_v4())).bind(tenant_id).bind(action).bind(command_id)
         .bind(serde_json::json!({"execution_id": execution_id, "device_id": device_id}))
         .execute(&mut **transaction).await.map_err(store_error)?;
+    Ok(())
+}
+
+async fn insert_decision_audit(
+    transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    tenant_id: &str,
+    action: &str,
+    command_id: &str,
+    execution_id: &str,
+    device_id: &str,
+    actor_id: &str,
+) -> Result<(), DesktopCommandError> {
+    sqlx::query("INSERT INTO af_audit_log (id, tenant_id, action, resource_type, resource_id, detail_json) VALUES ($1,$2,$3,'desktop_command',$4,$5)")
+        .bind(format!("audit-desktop-command-{}", uuid::Uuid::new_v4()))
+        .bind(tenant_id)
+        .bind(action)
+        .bind(command_id)
+        .bind(serde_json::json!({
+            "execution_id": execution_id,
+            "device_id": device_id,
+            "actor_id": actor_id,
+        }))
+        .execute(&mut **transaction)
+        .await
+        .map_err(store_error)?;
     Ok(())
 }
 
@@ -594,6 +846,103 @@ mod tests {
             approval: None,
             action: DesktopAction::ReadSystemInformation,
         }
+    }
+
+    fn approval_command(id: &str, expires: u64) -> DesktopCommand {
+        let mut value = command(id, expires);
+        value.action = serde_json::from_value(serde_json::json!({
+            "kind": "focus_window",
+            "selector": { "executable": "fixture.exe" }
+        }))
+        .unwrap();
+        value
+    }
+
+    #[tokio::test]
+    async fn risky_commands_wait_for_one_tenant_scoped_approval() {
+        let store = MemoryDesktopCommandStore::default();
+        let created = store
+            .create(
+                approval_command("approval", 1_000),
+                "device-1".to_string(),
+                "workflow-1".to_string(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(created.status, "waiting_approval");
+        assert!(store.pending_for_device("device-1").await.is_empty());
+        assert!(store.pending_approvals("tenant-2", 10, 0).await.is_empty());
+        assert_eq!(store.pending_approvals("tenant-1", 10, 0).await.len(), 1);
+
+        let approved = store
+            .approve("tenant-1", "approval", "operator-1", 200)
+            .await
+            .unwrap()
+            .0;
+        assert_eq!(approved.status, "queued");
+        assert_eq!(approved.command.approval.unwrap().approved_by, "operator-1");
+        assert_eq!(store.pending_for_device("device-1").await.len(), 1);
+        assert_eq!(
+            store
+                .approve("tenant-1", "approval", "operator-1", 201)
+                .await
+                .unwrap()
+                .0
+                .status,
+            "queued"
+        );
+    }
+
+    #[tokio::test]
+    async fn approval_rejection_and_expiry_are_terminal() {
+        let store = MemoryDesktopCommandStore::default();
+        store
+            .create(
+                approval_command("reject-approval", 1_000),
+                "device-1".to_string(),
+                "workflow-1".to_string(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(
+            store
+                .reject("tenant-1", "reject-approval", "operator-1")
+                .await
+                .unwrap()
+                .status,
+            "rejected"
+        );
+        assert_eq!(
+            store
+                .reject("tenant-1", "reject-approval", "operator-1")
+                .await
+                .unwrap()
+                .status,
+            "rejected"
+        );
+
+        store
+            .create(
+                approval_command("expired-approval", 300),
+                "device-1".to_string(),
+                "workflow-1".to_string(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(
+            store
+                .approve("tenant-1", "expired-approval", "operator-1", 300)
+                .await,
+            Err(DesktopCommandError::Expired)
+        );
+        assert_eq!(
+            store
+                .get("tenant-1", "expired-approval")
+                .await
+                .unwrap()
+                .status,
+            "timed_out"
+        );
     }
 
     #[tokio::test]

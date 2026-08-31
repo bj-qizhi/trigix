@@ -171,9 +171,26 @@ pub fn spec() -> Value {
               "command": { "type": "object", "description": "Typed desktop.v1 command with execution identity and expiring lease" },
               "device_id": { "type": "string" },
               "workflow_id": { "type": "string" },
-              "status": { "type": "string", "enum": ["queued", "delivered", "acknowledged", "succeeded", "failed", "rejected", "cancelled", "timed_out"] },
+              "status": { "type": "string", "enum": ["waiting_approval", "queued", "delivered", "acknowledged", "succeeded", "failed", "rejected", "cancelled", "timed_out"] },
               "result": { "type": "object", "nullable": true },
               "created_at_unix_ms": { "type": "integer", "format": "int64" }
+            }
+          },
+          "DesktopApprovalSummary": {
+            "type": "object",
+            "description": "Sanitized command-specific Approval request without action inputs",
+            "required": ["command_id", "execution_id", "device_id", "workflow_id", "action_kind", "risk", "reason", "requested_by", "created_at_unix_ms", "expires_at_unix_ms"],
+            "properties": {
+              "command_id": { "type": "string" },
+              "execution_id": { "type": "string" },
+              "device_id": { "type": "string" },
+              "workflow_id": { "type": "string" },
+              "action_kind": { "type": "string" },
+              "risk": { "type": "string", "enum": ["low", "medium", "high", "critical"] },
+              "reason": { "type": "string" },
+              "requested_by": { "type": "string" },
+              "created_at_unix_ms": { "type": "integer", "format": "int64" },
+              "expires_at_unix_ms": { "type": "integer", "format": "int64" }
             }
           },
           "DesktopEvidenceRecord": {
@@ -336,6 +353,21 @@ pub fn spec() -> Value {
             "summary": "Cancel a non-terminal Desktop Command",
             "parameters": [{ "name": "command_id", "in": "path", "required": true, "schema": { "type": "string" } }],
             "responses": { "200": { "description": "Cancelled Desktop Command" }, "409": { "description": "Command is already terminal" } }
+          }
+        },
+        "/v1/desktop/approvals": {
+          "get": {
+            "tags": ["Desktop Devices"],
+            "summary": "List bounded tenant-scoped Desktop commands waiting for Approval",
+            "responses": { "200": { "description": "Sanitized pending Approvals", "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/DesktopApprovalSummary" } } } } }, "403": { "description": "Tenant administrator required" } }
+          }
+        },
+        "/v1/desktop/approvals/{command_id}": {
+          "post": {
+            "tags": ["Desktop Devices"],
+            "summary": "Approve or reject one waiting Desktop Command",
+            "parameters": [{ "name": "command_id", "in": "path", "required": true, "schema": { "type": "string" } }],
+            "responses": { "200": { "description": "Approved queued command or rejected terminal command" }, "403": { "description": "Tenant administrator required" }, "404": { "description": "Command not found in Tenant" }, "409": { "description": "Command is no longer waiting" }, "410": { "description": "Command lease expired" } }
           }
         },
         "/v1/desktop/device-command-acknowledgements": {
