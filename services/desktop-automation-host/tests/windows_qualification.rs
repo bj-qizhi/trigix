@@ -91,8 +91,8 @@ fn native_fixture_actions_meet_reliability_latency_and_resource_budgets() {
     assert_eq!(fallback_focus["selector_fallback_depth"], 1);
     assert_eq!(fallback_focus["selector_fallback_used"], true);
 
-    let input = element(&window, FIXTURE_INPUT_AUTOMATION_ID, "edit");
-    let submit = element(&window, FIXTURE_SUBMIT_AUTOMATION_ID, "button");
+    let mut input = element(&window, FIXTURE_INPUT_AUTOMATION_ID, "edit");
+    let mut submit = element(&window, FIXTURE_SUBMIT_AUTOMATION_ID, "button");
     let submit_name = inspected.windows[0]
         .elements
         .iter()
@@ -140,6 +140,12 @@ fn native_fixture_actions_meet_reliability_latency_and_resource_budgets() {
     assert_eq!(fallback_click["selector_fallback_depth"], 1);
     assert_eq!(fallback_click["selector_fallback_used"], true);
     assert!(fallback_click.get("coordinates").is_none());
+
+    // Inspection snapshots are intentionally single-state guards. The invocation above changes
+    // the fixture state, so the long-running qualification must exercise the persisted semantic
+    // selectors rather than replaying the now-stale authoring snapshot.
+    input.window.snapshot_id = None;
+    submit.window.snapshot_id = None;
 
     let handles_before = process_handle_count();
     let working_set_before = process_working_set();
