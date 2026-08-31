@@ -38,6 +38,10 @@ use trigix_platform::token_usage::{
     PlatformTokenUsageStore, PostgresTokenUsageStore, TokenUsageRecord, TokenUsageStore,
 };
 use trigix_platform::users::{PlatformUserStore, UserStore};
+use trigix_platform::voice_conversation::{
+    FinalVoiceTranscriptRequest, PlatformVoiceConversationStore, VoiceConversationError,
+    VoicePrivacyPolicy,
+};
 use workflow_core::{Node, NodeType, WorkflowGraph};
 
 /// Connects to `TEST_DATABASE_URL` and runs all migrations, or returns `None`
@@ -180,6 +184,140 @@ async fn execution_transitions_are_durable_and_terminal_state_wins() {
     assert!(transitions.iter().any(|(id, to, from)| {
         id == &failed.id && to == "failed" && from.as_deref() == Some("running")
     }));
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn voice_conversations_are_durable_idempotent_and_tenant_isolated() {
+    let Some(pool) = setup().await else { return };
+    let store = PlatformVoiceConversationStore::postgres(pool.clone());
+    let tenant_id = uniq("voice-tenant");
+    let session_id = uniq("voice-session");
+    let now = 1_800_000_000_000_u64;
+    let request = |transcript: &str| FinalVoiceTranscriptRequest {
+        tenant_id: tenant_id.clone(),
+        session_id: session_id.clone(),
+        sequence: 1,
+        occurred_at_unix_ms: now - 10,
+        transcript: transcript.to_owned(),
+    };
+
+    store
+        .set_policy(
+            &tenant_id,
+            VoicePrivacyPolicy {
+                retain_redacted_transcripts: true,
+                transcript_retention_days: 3,
+                ..VoicePrivacyPolicy::default()
+            },
+        )
+        .await
+        .expect("persist voice policy");
+    let created = store
+        .accept_final_transcript(
+            &tenant_id,
+            request("email person@example.com card 4111111111111111"),
+            now,
+        )
+        .await
+        .expect("persist voice conversation");
+    assert_eq!(
+        created.redacted_transcript.as_deref(),
+        Some("email [email] card [sensitive]")
+    );
+
+    let restarted = PlatformVoiceConversationStore::postgres(pool.clone());
+    let durable = restarted
+        .get(&tenant_id, &created.conversation_id, now + 1)
+        .await
+        .expect("read after store restart");
+    assert_eq!(durable, created);
+
+    sqlx::query(
+        r#"DO $$ BEGIN
+               CREATE ROLE trigix_voice_rls_test_role NOLOGIN;
+           EXCEPTION WHEN duplicate_object THEN NULL;
+           END $$"#,
+    )
+    .execute(&pool)
+    .await
+    .expect("create non-owner RLS test role");
+    sqlx::query("GRANT USAGE ON SCHEMA public TO trigix_voice_rls_test_role")
+        .execute(&pool)
+        .await
+        .expect("grant schema access");
+    sqlx::query(
+        "GRANT SELECT ON af_voice_conversations, af_voice_privacy_policies TO trigix_voice_rls_test_role",
+    )
+    .execute(&pool)
+    .await
+    .expect("grant voice table reads");
+    let mut rls = pool.begin().await.expect("begin RLS check");
+    sqlx::query("SET LOCAL ROLE trigix_voice_rls_test_role")
+        .execute(&mut *rls)
+        .await
+        .expect("assume non-owner role");
+    sqlx::query("SELECT set_config('app.tenant_id', $1, true)")
+        .bind("another-tenant")
+        .execute(&mut *rls)
+        .await
+        .expect("set cross-tenant context");
+    let hidden: i64 = sqlx::query_scalar("SELECT count(*) FROM af_voice_conversations WHERE id=$1")
+        .bind(&created.conversation_id)
+        .fetch_one(&mut *rls)
+        .await
+        .expect("query through tenant RLS");
+    assert_eq!(hidden, 0);
+    sqlx::query("SELECT set_config('app.tenant_id', $1, true)")
+        .bind(&tenant_id)
+        .execute(&mut *rls)
+        .await
+        .expect("set owning tenant context");
+    let visible: i64 =
+        sqlx::query_scalar("SELECT count(*) FROM af_voice_conversations WHERE id=$1")
+            .bind(&created.conversation_id)
+            .fetch_one(&mut *rls)
+            .await
+            .expect("query owning row through tenant RLS");
+    assert_eq!(visible, 1);
+    rls.rollback().await.expect("finish RLS check");
+
+    assert_eq!(
+        restarted
+            .get("another-tenant", &created.conversation_id, now + 1)
+            .await,
+        Err(VoiceConversationError::NotFound)
+    );
+
+    let replay = restarted
+        .accept_final_transcript(
+            &tenant_id,
+            request("email person@example.com card 4111111111111111"),
+            now,
+        )
+        .await
+        .expect("identical replay is idempotent");
+    assert_eq!(replay.conversation_id, created.conversation_id);
+    assert_eq!(
+        restarted
+            .accept_final_transcript(&tenant_id, request("different transcript"), now)
+            .await,
+        Err(VoiceConversationError::Duplicate)
+    );
+
+    assert_eq!(
+        restarted.sweep(created.expires_at_unix_ms).await.unwrap(),
+        1
+    );
+    assert_eq!(
+        restarted
+            .get(
+                &tenant_id,
+                &created.conversation_id,
+                created.expires_at_unix_ms
+            )
+            .await,
+        Err(VoiceConversationError::NotFound)
+    );
 }
 
 /// The original regression: `af_users.created_at` is `timestamptz`, and a signup

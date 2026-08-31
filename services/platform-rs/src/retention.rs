@@ -71,6 +71,29 @@ pub fn spawn_evidence_retention(pool: PgPool) {
     });
 }
 
+/// Enforce each voice conversation record's Tenant policy deadline.
+pub fn spawn_voice_conversation_retention(pool: PgPool) {
+    let sweep_secs = std::env::var("DATA_RETENTION_SWEEP_SECS")
+        .ok()
+        .and_then(|value| value.parse().ok())
+        .unwrap_or(DEFAULT_SWEEP_SECS);
+    tokio::spawn(async move {
+        tokio::time::sleep(Duration::from_secs(30)).await;
+        loop {
+            match run_voice_conversation_retention_pass(&pool).await {
+                Ok(rows) if rows > 0 => {
+                    tracing::info!(rows, "voice conversation retention pass complete")
+                }
+                Ok(_) => {}
+                Err(error) => {
+                    tracing::error!(%error, "voice conversation retention pass failed")
+                }
+            }
+            tokio::time::sleep(Duration::from_secs(sweep_secs)).await;
+        }
+    });
+}
+
 pub async fn run_evidence_retention_pass(pool: &PgPool) -> Result<u64, sqlx::Error> {
     delete(
         pool,
@@ -78,6 +101,22 @@ pub async fn run_evidence_retention_pass(pool: &PgPool) -> Result<u64, sqlx::Err
         sqlx::query("DELETE FROM af_desktop_evidence WHERE expires_at <= now()"),
     )
     .await
+}
+
+pub async fn run_voice_conversation_retention_pass(pool: &PgPool) -> Result<u64, sqlx::Error> {
+    let removed =
+        sqlx::query_scalar::<_, i64>("SELECT af_sweep_expired_voice_conversations(now())")
+            .fetch_one(pool)
+            .await?;
+    let removed = u64::try_from(removed).unwrap_or_default();
+    if removed > 0 {
+        tracing::info!(
+            table = "af_voice_conversations",
+            rows = removed,
+            "retention: deleted rows"
+        );
+    }
+    Ok(removed)
 }
 
 /// Delete rows older than `days` across the unbounded tables. Returns total rows removed.
@@ -93,6 +132,7 @@ pub async fn run_retention_pass(pool: &PgPool, days: u64) -> Result<u64, sqlx::E
     // Evidence has its own per-record policy deadline, independent of the
     // platform-wide retention window.
     total += run_evidence_retention_pass(pool).await?;
+    total += run_voice_conversation_retention_pass(pool).await?;
 
     // Child rows first: af_node_executions has a FK to af_executions with no cascade.
     total += delete(
