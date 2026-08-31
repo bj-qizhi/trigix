@@ -1,10 +1,10 @@
 // Copyright © 2026 北京祺智科技有限公司. All rights reserved.
 // https://www.qzso.com/ · managecode@gmail.com
 
-import { useEffect, useRef, useState } from 'react'
+import { Fragment, useEffect, useRef, useState } from 'react'
 import { useAuth } from '../AuthContext'
 import * as api from '../api/client'
-import type { ExecutionSummary } from '../types'
+import type { DesktopApprovalSummary, DesktopEvidenceRecord, ExecutionSummary } from '../types'
 import { useLocale } from '../useLocale'
 import { useToast } from '../toast'
 import { SkeletonRows } from './Skeleton'
@@ -41,19 +41,35 @@ export function ApprovalsPage({ onBack, onOpenExecution, onOpenWorkflow }: Props
   const zh = locale === 'zh'
 
   const [pending, setPending] = useState<ExecutionSummary[]>([])
+  const [desktopPending, setDesktopPending] = useState<DesktopApprovalSummary[]>([])
   const [wfNames, setWfNames] = useState<Record<string, string>>({})
   const [loading, setLoading] = useState(true)
   const [commentFor, setCommentFor] = useState<string | null>(null)
   const [commentText, setCommentText] = useState('')
   const [acting, setActing] = useState<string | null>(null)
+  const [desktopDecision, setDesktopDecision] = useState<{ commandId: string; decision: 'approve' | 'reject' } | null>(null)
+  const [loadError, setLoadError] = useState('')
+  const [evidenceExecutionId, setEvidenceExecutionId] = useState('')
+  const [evidence, setEvidence] = useState<DesktopEvidenceRecord[]>([])
+  const [evidenceLoading, setEvidenceLoading] = useState(false)
   const toast = useToast()
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   const load = async () => {
     try {
-      const result = await api.listExecutionsPage(auth!.tenantId, { status: 'waiting_approval', limit: 100 })
+      setLoadError('')
+      const [result, desktopApprovals] = await Promise.all([
+        api.listExecutionsPage(auth!.tenantId, { status: 'waiting_approval', limit: 100 }),
+        auth?.role === 'admin'
+          ? api.listDesktopApprovals(auth.tenantId).catch(() => {
+            setLoadError(zh ? '桌面审批暂时无法刷新。' : 'Desktop approvals could not be refreshed.')
+            return []
+          })
+          : Promise.resolve([]),
+      ])
       const execs = result.data
       setPending(execs)
+      setDesktopPending(desktopApprovals)
       // fetch workflow names we don't have yet
       const missingWfIds = [...new Set(execs.map((e) => e.workflow_id))].filter((id) => !wfNames[id])
       if (missingWfIds.length > 0) {
@@ -63,7 +79,7 @@ export function ApprovalsPage({ onBack, onOpenExecution, onOpenWorkflow }: Props
         setWfNames((prev) => ({ ...prev, ...nameMap }))
       }
     } catch {
-      // silently continue on refresh failure
+      setLoadError(zh ? '无法刷新审批队列，请检查连接并重试。' : 'Could not refresh approvals. Check the connection and retry.')
     } finally {
       setLoading(false)
     }
@@ -117,6 +133,53 @@ export function ApprovalsPage({ onBack, onOpenExecution, onOpenWorkflow }: Props
     }
   }
 
+  const handleDesktopDecision = async () => {
+    if (!desktopDecision) return
+    setActing(desktopDecision.commandId)
+    try {
+      await api.decideDesktopApproval(auth!.tenantId, desktopDecision.commandId, desktopDecision.decision)
+      toast.success(desktopDecision.decision === 'approve'
+        ? (zh ? '桌面命令已批准' : 'Desktop command approved')
+        : (zh ? '桌面命令已拒绝' : 'Desktop command rejected'))
+      setDesktopDecision(null)
+      await load()
+    } catch (error) {
+      toast.error(String(error))
+    } finally {
+      setActing(null)
+    }
+  }
+
+  const loadEvidence = async () => {
+    const executionId = evidenceExecutionId.trim()
+    if (!executionId) return
+    setEvidenceLoading(true)
+    try {
+      setEvidence(await api.listDesktopEvidence(auth!.tenantId, executionId))
+    } catch (error) {
+      toast.error(String(error))
+    } finally {
+      setEvidenceLoading(false)
+    }
+  }
+
+  const exportEvidence = async () => {
+    const executionId = evidenceExecutionId.trim()
+    if (!executionId) return
+    try {
+      const exported = await api.exportDesktopEvidence(auth!.tenantId, executionId)
+      const blob = new Blob([JSON.stringify(exported, null, 2)], { type: 'application/json' })
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = `desktop-evidence-${executionId}.json`
+      link.click()
+      URL.revokeObjectURL(url)
+    } catch (error) {
+      toast.error(String(error))
+    }
+  }
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: 'var(--bg)' }}>
       {/* Topbar */}
@@ -124,9 +187,9 @@ export function ApprovalsPage({ onBack, onOpenExecution, onOpenWorkflow }: Props
         <button className="btn btn-sm" onClick={onBack}>
           ← {zh ? '返回' : 'Back'}
         </button>
-        <span className="topbar-title" style={{ fontWeight: 600 }}>
-          {zh ? '审批队列' : 'Approval Queue'}
-        </span>
+        <h1 className="topbar-title" style={{ fontWeight: 600, fontSize: 14, margin: 0 }}>
+          {zh ? '审批与桌面证据' : 'Approvals & desktop evidence'}
+        </h1>
         {!loading && (
           <span style={{
             background: pending.length > 0 ? 'var(--approval-text)' : 'var(--muted)',
@@ -136,7 +199,7 @@ export function ApprovalsPage({ onBack, onOpenExecution, onOpenWorkflow }: Props
             fontSize: 12,
             fontWeight: 700,
           }}>
-            {pending.length} {zh ? '待审批' : 'pending'}
+            {pending.length + desktopPending.length} {zh ? '待审批' : 'pending'}
           </span>
         )}
         <span style={{ marginLeft: 'auto', fontSize: 11, color: 'var(--muted)' }}>
@@ -145,6 +208,57 @@ export function ApprovalsPage({ onBack, onOpenExecution, onOpenWorkflow }: Props
       </header>
 
       <div style={{ flex: 1, overflow: 'auto', padding: 24 }}>
+        <div role="status" aria-live="polite" style={{ minHeight: 20, color: loadError ? 'var(--danger-text)' : 'var(--muted)', fontSize: 12, marginBottom: 12 }}>
+          {loadError || (!loading ? (zh ? `桌面命令 ${desktopPending.length} 条，工作流 ${pending.length} 条待审批` : `${desktopPending.length} Desktop and ${pending.length} Workflow approvals pending`) : '')}
+        </div>
+        {!loading && <section aria-labelledby="desktop-approvals-heading" style={{ marginBottom: 28 }}>
+          <h2 id="desktop-approvals-heading" style={{ fontSize: 16, margin: '0 0 6px' }}>{zh ? '桌面命令审批' : 'Desktop command approvals'}</h2>
+          <p style={{ color: 'var(--muted)', fontSize: 12, margin: '0 0 12px' }}>
+            {zh ? '批准仅授权这一条命令和当前租约；界面不会显示输入文本、凭据或屏幕内容。' : 'Approval authorizes only this command and lease. Typed text, credentials, and screen content are never shown here.'}
+          </p>
+          {desktopPending.length === 0 ? <div style={{ border: '1px solid var(--border)', padding: 16, borderRadius: 6, color: 'var(--muted)' }}>{zh ? '没有待审批的桌面命令。' : 'No Desktop commands are waiting for approval.'}</div> : (
+            <div style={{ display: 'grid', gap: 10 }}>
+              {desktopPending.map((item) => <article key={item.command_id} style={{ border: '1px solid var(--border)', borderRadius: 6, padding: 14 }}>
+                <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start', flexWrap: 'wrap' }}>
+                  <div style={{ flex: 1, minWidth: 240 }}>
+                    <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                      <strong>{item.action_kind}</strong>
+                      <span className="badge" aria-label={`${item.risk} risk`} style={{ color: item.risk === 'high' || item.risk === 'critical' ? 'var(--danger-text)' : 'var(--approval-text)' }}>{item.risk.toUpperCase()}</span>
+                    </div>
+                    <div style={{ color: 'var(--muted)', fontSize: 12, marginTop: 5 }}>{item.reason}</div>
+                    <dl style={{ display: 'grid', gridTemplateColumns: 'max-content 1fr', gap: '3px 10px', fontSize: 11, margin: '10px 0 0' }}>
+                      <dt>{zh ? '设备' : 'Device'}</dt><dd style={{ margin: 0, fontFamily: 'monospace' }}>{item.device_id}</dd>
+                      <dt>{zh ? '执行' : 'Execution'}</dt><dd style={{ margin: 0, fontFamily: 'monospace' }}>{item.execution_id}</dd>
+                      <dt>{zh ? '到期' : 'Expires'}</dt><dd style={{ margin: 0 }}>{new Date(item.expires_at_unix_ms).toLocaleString()}</dd>
+                    </dl>
+                  </div>
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <button className="btn btn-sm btn-primary" disabled={acting === item.command_id} onClick={() => setDesktopDecision({ commandId: item.command_id, decision: 'approve' })}>{zh ? '审查并批准' : 'Review & approve'}</button>
+                    <button className="btn btn-sm btn-danger" disabled={acting === item.command_id} onClick={() => setDesktopDecision({ commandId: item.command_id, decision: 'reject' })}>{zh ? '审查并拒绝' : 'Review & reject'}</button>
+                  </div>
+                </div>
+                {desktopDecision?.commandId === item.command_id && <div role="alertdialog" aria-modal="false" aria-labelledby={`desktop-decision-${item.command_id}`} style={{ marginTop: 12, borderTop: '1px solid var(--border)', paddingTop: 12 }}>
+                  <strong id={`desktop-decision-${item.command_id}`}>{desktopDecision.decision === 'approve' ? (zh ? '确认批准此命令？' : 'Approve this command?') : (zh ? '确认拒绝此命令？' : 'Reject this command?')}</strong>
+                  <div style={{ color: 'var(--muted)', fontSize: 12, margin: '5px 0 10px' }}>{zh ? '决策会记录操作者，并且不能用于其他命令。' : 'The decision records the operator and cannot authorize another command.'}</div>
+                  <button autoFocus className={`btn btn-sm ${desktopDecision.decision === 'approve' ? 'btn-primary' : 'btn-danger'}`} onClick={() => void handleDesktopDecision()} disabled={acting === item.command_id}>{zh ? '确认' : 'Confirm'}</button>
+                  <button className="btn btn-sm" style={{ marginLeft: 6 }} onClick={() => setDesktopDecision(null)}>{zh ? '取消' : 'Cancel'}</button>
+                </div>}
+              </article>)}
+            </div>
+          )}
+        </section>}
+
+        {!loading && <section aria-labelledby="desktop-evidence-heading" style={{ marginBottom: 28 }}>
+          <h2 id="desktop-evidence-heading" style={{ fontSize: 16, margin: '0 0 6px' }}>{zh ? '执行证据与诊断' : 'Execution evidence & diagnostics'}</h2>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 10 }}>
+            <label style={{ flex: '1 1 300px', display: 'flex', alignItems: 'center', gap: 8 }}><span style={{ fontSize: 12, whiteSpace: 'nowrap' }}>{zh ? '执行 ID' : 'Execution ID'}</span><input style={{ width: '100%' }} value={evidenceExecutionId} onChange={(event) => setEvidenceExecutionId(event.target.value.slice(0, 128))} placeholder={zh ? '输入执行 ID' : 'Enter an Execution ID'} /></label>
+            <button className="btn btn-sm" disabled={evidenceLoading || !evidenceExecutionId.trim()} onClick={() => void loadEvidence()}>{evidenceLoading ? (zh ? '加载中…' : 'Loading…') : (zh ? '查看证据' : 'View evidence')}</button>
+            <button className="btn btn-sm" disabled={!evidenceExecutionId.trim()} onClick={() => void exportEvidence()}>{zh ? '导出安全元数据' : 'Export safe metadata'}</button>
+          </div>
+          {evidence.length > 0 && <div role="region" aria-label={zh ? '桌面证据结果' : 'Desktop evidence results'} style={{ overflowX: 'auto' }}><table className="data-table" style={{ width: '100%' }}><thead><tr><th>{zh ? '类型' : 'Kind'}</th><th>{zh ? '应用' : 'Application'}</th><th>{zh ? '选择器策略' : 'Selector strategy'}</th><th>{zh ? '结果' : 'Outcome'}</th><th>{zh ? '脱敏区域' : 'Redactions'}</th><th>{zh ? '保留至' : 'Retained until'}</th></tr></thead><tbody>{evidence.map((record) => <tr key={record.evidence_id}><td>{record.kind}</td><td>{record.application_id}</td><td>{record.selector_strategy}</td><td>{record.outcome}</td><td>{record.redacted_regions}</td><td>{new Date(record.expires_at_unix_ms).toLocaleString()}</td></tr>)}</tbody></table></div>}
+        </section>}
+
+        {!loading && <h2 style={{ fontSize: 16, margin: '0 0 12px' }}>{zh ? '工作流审批' : 'Workflow approvals'}</h2>}
         {loading ? (
           <SkeletonRows rows={5} />
         ) : pending.length === 0 ? (
@@ -178,8 +292,8 @@ export function ApprovalsPage({ onBack, onOpenExecution, onOpenWorkflow }: Props
               </thead>
               <tbody>
                 {pending.map((exec) => (
-                  <>
-                    <tr key={exec.id} style={{ verticalAlign: 'middle' }}>
+                  <Fragment key={exec.id}>
+                    <tr style={{ verticalAlign: 'middle' }}>
                       <td>
                         <span
                           style={{ color: 'var(--link)', cursor: onOpenWorkflow ? 'pointer' : 'default', fontWeight: 500 }}
@@ -291,7 +405,7 @@ export function ApprovalsPage({ onBack, onOpenExecution, onOpenWorkflow }: Props
                         </td>
                       </tr>
                     )}
-                  </>
+                  </Fragment>
                 ))}
               </tbody>
             </table>

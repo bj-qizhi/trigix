@@ -24,6 +24,8 @@ import type {
   EventType,
   DesktopDevice,
   DesktopCommandRecord,
+  DesktopApprovalSummary,
+  DesktopEvidenceRecord,
 } from '../types'
 import { getStoredAuth } from '../auth'
 import { getAttribution } from './attribution'
@@ -427,6 +429,42 @@ export function cancelDesktopCommand(tenantId: string, commandId: string): Promi
   return request(`/v1/desktop/commands/${commandId}`, {
     method: 'DELETE',
     params: { tenant_id: tenantId },
+  })
+}
+
+export function listDesktopApprovals(
+  tenantId: string,
+  limit = 100,
+  offset = 0,
+): Promise<DesktopApprovalSummary[]> {
+  return request('/v1/desktop/approvals', {
+    params: { tenant_id: tenantId, limit: String(limit), offset: String(offset) },
+  })
+}
+
+export function decideDesktopApproval(
+  tenantId: string,
+  commandId: string,
+  decision: 'approve' | 'reject',
+): Promise<{ command_id: string; status: string }> {
+  return request(`/v1/desktop/approvals/${commandId}`, {
+    method: 'POST',
+    body: JSON.stringify({ tenant_id: tenantId, decision }),
+  })
+}
+
+export function listDesktopEvidence(tenantId: string, executionId: string): Promise<DesktopEvidenceRecord[]> {
+  return request('/v1/desktop/evidence', {
+    params: { tenant_id: tenantId, execution_id: executionId },
+  })
+}
+
+export function exportDesktopEvidence(
+  tenantId: string,
+  executionId: string,
+): Promise<{ execution_id: string; exported_at_unix_ms: number; records: DesktopEvidenceRecord[] }> {
+  return request('/v1/desktop/evidence/export', {
+    params: { tenant_id: tenantId, execution_id: executionId },
   })
 }
 

@@ -410,6 +410,71 @@ async fn desktop_pairing_is_atomic_tenant_scoped_and_single_use() {
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap()
         .as_millis() as u64;
+    let approval_command = DesktopCommand {
+        command_id: uniq("desktop-command-approval"),
+        execution_id: execution_id.clone(),
+        tenant_id: tenant_id.clone(),
+        project_id: "project-1".to_string(),
+        requested_by: "requester-1".to_string(),
+        issued_at_unix_ms: now,
+        lease: ExecutionLease {
+            lease_id: uniq("desktop-lease-approval"),
+            expires_at_unix_ms: now + 60_000,
+        },
+        approval: None,
+        action: serde_json::from_value(serde_json::json!({
+            "kind": "focus_window",
+            "selector": { "executable": "fixture.exe" }
+        }))
+        .unwrap(),
+    };
+    assert_eq!(
+        command_store
+            .create(
+                approval_command.clone(),
+                device_id.clone(),
+                "workflow-1".to_string(),
+            )
+            .await
+            .expect("persist approval command")
+            .status,
+        "waiting_approval"
+    );
+    assert!(command_store
+        .pending_approvals("another-tenant", 10, 0)
+        .await
+        .is_empty());
+    assert_eq!(
+        command_store
+            .pending_approvals(&tenant_id, 10, 0)
+            .await
+            .len(),
+        1
+    );
+    let approved = command_store
+        .approve(&tenant_id, &approval_command.command_id, "operator-1", now)
+        .await
+        .expect("approve command")
+        .0;
+    assert_eq!(approved.status, "queued");
+    assert_eq!(approved.command.approval.unwrap().approved_by, "operator-1");
+    let approval_actor: String = sqlx::query_scalar(
+        "SELECT detail_json->>'actor_id' FROM af_audit_log WHERE tenant_id=$1 AND action='desktop.command.approved' AND resource_id=$2",
+    )
+    .bind(&tenant_id)
+    .bind(&approval_command.command_id)
+    .fetch_one(&pool)
+    .await
+    .expect("approval actor audit");
+    assert_eq!(approval_actor, "operator-1");
+    assert!(
+        !command_store
+            .approve(&tenant_id, &approval_command.command_id, "operator-1", now,)
+            .await
+            .expect("repeat approval idempotently")
+            .1
+    );
+
     let command = DesktopCommand {
         command_id: uniq("desktop-command"),
         execution_id: execution_id.clone(),

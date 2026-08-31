@@ -192,13 +192,48 @@ export interface DesktopCommandRecord {
   command: { command_id: string; execution_id: string }
   device_id: string
   workflow_id: string
-  status: 'queued' | 'delivered' | 'acknowledged' | 'succeeded' | 'failed' | 'rejected' | 'cancelled' | 'timed_out'
+  status: 'waiting_approval' | 'queued' | 'delivered' | 'acknowledged' | 'succeeded' | 'failed' | 'rejected' | 'cancelled' | 'timed_out'
   result?: {
     outcome: string
     output?: DesktopInspectionResult | Record<string, unknown> | null
     error_code?: string | null
     error_message?: string | null
   } | null
+}
+
+export interface DesktopApprovalSummary {
+  command_id: string
+  execution_id: string
+  device_id: string
+  workflow_id: string
+  action_kind: string
+  risk: 'low' | 'medium' | 'high' | 'critical'
+  reason: string
+  requested_by: string
+  created_at_unix_ms: number
+  expires_at_unix_ms: number
+}
+
+export interface DesktopEvidenceRecord {
+  evidence_id: string
+  tenant_id: string
+  project_id: string
+  execution_id: string
+  command_id: string
+  device_id: string
+  kind: 'adapter_audit' | 'screenshot'
+  selector_strategy: string
+  application_id: string
+  started_at_unix_ms: number
+  completed_at_unix_ms: number
+  outcome: 'succeeded' | 'failed' | 'rejected' | 'cancelled' | 'timed_out'
+  policy_version: string
+  redacted_regions: number
+  content_type?: string | null
+  content_sha256?: string | null
+  byte_size: number
+  expires_at_unix_ms: number
+  created_at_unix_ms: number
 }
 
 export interface WebhookInfo {

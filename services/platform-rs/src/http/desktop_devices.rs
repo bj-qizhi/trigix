@@ -12,7 +12,7 @@ use axum::extract::DefaultBodyLimit;
 use desktop_protocol::{
     DesktopAction, DesktopCommand, DesktopCommandAcknowledgement, DesktopCommandCancellation,
     DesktopCommandResult, DesktopInspectionResult, DeviceConnectionAccepted, Envelope,
-    ExecutionLease, Heartbeat, HeartbeatAccepted,
+    ExecutionLease, Heartbeat, HeartbeatAccepted, RiskLevel,
 };
 
 #[derive(serde::Deserialize)]
@@ -51,6 +51,90 @@ struct DispatchDesktopCommandRequest {
     action: DesktopAction,
     #[serde(default = "default_command_lease_seconds")]
     lease_seconds: u64,
+}
+
+#[derive(serde::Deserialize)]
+struct DesktopApprovalListQuery {
+    tenant_id: String,
+    limit: Option<u32>,
+    offset: Option<u32>,
+}
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum DesktopApprovalDecision {
+    Approve,
+    Reject,
+}
+
+#[derive(serde::Deserialize)]
+struct DesktopApprovalDecisionRequest {
+    tenant_id: String,
+    decision: DesktopApprovalDecision,
+}
+
+#[derive(serde::Serialize)]
+struct DesktopApprovalDecisionResponse {
+    command_id: String,
+    status: String,
+}
+
+#[derive(serde::Serialize)]
+struct DesktopApprovalSummary {
+    command_id: String,
+    execution_id: String,
+    device_id: String,
+    workflow_id: String,
+    action_kind: &'static str,
+    risk: &'static str,
+    reason: String,
+    requested_by: String,
+    created_at_unix_ms: u64,
+    expires_at_unix_ms: u64,
+}
+
+fn action_kind(action: &DesktopAction) -> &'static str {
+    match action {
+        DesktopAction::ReadSystemInformation => "read_system_information",
+        DesktopAction::InspectTargets { .. } => "inspect_targets",
+        DesktopAction::FocusWindow { .. } => "focus_window",
+        DesktopAction::ClickElement { .. } => "click_element",
+        DesktopAction::TypeText { .. } => "type_text",
+        DesktopAction::PressKey { .. } => "press_key",
+        DesktopAction::PointerClick { .. } => "pointer_click",
+        DesktopAction::LaunchApplication { .. } => "launch_application",
+    }
+}
+
+fn risk_name(risk: RiskLevel) -> &'static str {
+    match risk {
+        RiskLevel::Low => "low",
+        RiskLevel::Medium => "medium",
+        RiskLevel::High => "high",
+        RiskLevel::Critical => "critical",
+    }
+}
+
+fn approval_summary(
+    record: crate::desktop_commands::DesktopCommandRecord,
+) -> DesktopApprovalSummary {
+    let risk = record.command.action.risk_level();
+    let action_kind = action_kind(&record.command.action);
+    DesktopApprovalSummary {
+        command_id: record.command.command_id,
+        execution_id: record.command.execution_id,
+        device_id: record.device_id,
+        workflow_id: record.workflow_id,
+        action_kind,
+        risk: risk_name(risk),
+        reason: format!(
+            "{} risk desktop action requires command-specific Approval",
+            risk_name(risk)
+        ),
+        requested_by: record.command.requested_by,
+        created_at_unix_ms: record.created_at_unix_ms,
+        expires_at_unix_ms: record.command.lease.expires_at_unix_ms,
+    }
 }
 
 fn default_command_lease_seconds() -> u64 {
@@ -839,12 +923,6 @@ async fn dispatch_desktop_command(
     }
     let now = unix_millis();
     let actor_id = claims.user_id.clone().unwrap_or_else(|| claims.sub.clone());
-    let approval = (request.action.risk_level() > desktop_protocol::RiskLevel::Low).then(|| {
-        desktop_protocol::DesktopCommandApproval {
-            approved_by: actor_id.clone(),
-            expires_at_unix_ms: now + request.lease_seconds * 1000,
-        }
-    });
     let command = DesktopCommand {
         command_id: format!("desktop-command-{}", uuid::Uuid::new_v4()),
         execution_id: execution.id,
@@ -856,7 +934,7 @@ async fn dispatch_desktop_command(
             lease_id: format!("desktop-lease-{}", uuid::Uuid::new_v4()),
             expires_at_unix_ms: now + request.lease_seconds * 1000,
         },
-        approval,
+        approval: None,
         action: request.action,
     };
     command
@@ -867,10 +945,71 @@ async fn dispatch_desktop_command(
         .create(command.clone(), request.device_id.clone(), workflow.id)
         .await
         .map_err(command_error)?;
-    state
-        .device_connections
-        .send(&request.device_id, DeviceEvent::Command(Box::new(command)));
+    if record.status == "queued" {
+        state
+            .device_connections
+            .send(&request.device_id, DeviceEvent::Command(Box::new(command)));
+    }
     Ok((StatusCode::CREATED, Json(record)))
+}
+
+async fn list_desktop_approvals(
+    State(state): State<AppState>,
+    Extension(claims): Extension<Option<Claims>>,
+    Query(query): Query<DesktopApprovalListQuery>,
+) -> Result<Json<Vec<DesktopApprovalSummary>>, ApiError> {
+    require_admin(claims.clone())?;
+    let tenant_id = effective_tenant_id(&claims, &query.tenant_id);
+    let limit = query.limit.unwrap_or(50).clamp(1, 100) as usize;
+    let offset = query.offset.unwrap_or(0).min(10_000) as usize;
+    let records = state
+        .desktop_command_store
+        .pending_approvals(&tenant_id, limit, offset)
+        .await;
+    let now = unix_millis();
+    Ok(Json(
+        records
+            .into_iter()
+            .filter(|record| record.command.lease.expires_at_unix_ms > now)
+            .map(approval_summary)
+            .collect(),
+    ))
+}
+
+async fn decide_desktop_approval(
+    State(state): State<AppState>,
+    Extension(claims): Extension<Option<Claims>>,
+    Path(command_id): Path<String>,
+    Json(request): Json<DesktopApprovalDecisionRequest>,
+) -> Result<Json<DesktopApprovalDecisionResponse>, ApiError> {
+    let claims = require_admin(claims)?;
+    let tenant_id = effective_tenant_id(&Some(claims.clone()), &request.tenant_id);
+    let actor_id = actor_id(&claims)?;
+    let record = match request.decision {
+        DesktopApprovalDecision::Approve => {
+            let (record, transitioned) = state
+                .desktop_command_store
+                .approve(&tenant_id, &command_id, &actor_id, unix_millis())
+                .await
+                .map_err(command_error)?;
+            if transitioned {
+                state.device_connections.send(
+                    &record.device_id,
+                    DeviceEvent::Command(Box::new(record.command.clone())),
+                );
+            }
+            record
+        }
+        DesktopApprovalDecision::Reject => state
+            .desktop_command_store
+            .reject(&tenant_id, &command_id, &actor_id)
+            .await
+            .map_err(command_error)?,
+    };
+    Ok(Json(DesktopApprovalDecisionResponse {
+        command_id: record.command.command_id,
+        status: record.status,
+    }))
 }
 
 async fn get_desktop_command(
@@ -1163,6 +1302,11 @@ pub(super) fn routes() -> Router<AppState> {
         .route("/v1/desktop/device-connection", get(connect_device))
         .route("/v1/desktop/device-heartbeats", post(heartbeat_device))
         .route("/v1/desktop/commands", post(dispatch_desktop_command))
+        .route("/v1/desktop/approvals", get(list_desktop_approvals))
+        .route(
+            "/v1/desktop/approvals/:command_id",
+            post(decide_desktop_approval),
+        )
         .route(
             "/v1/desktop/commands/:command_id",
             get(get_desktop_command).delete(cancel_desktop_command),
@@ -1211,6 +1355,153 @@ mod tests {
     async fn response_json(response: Response) -> serde_json::Value {
         let bytes = to_bytes(response.into_body(), usize::MAX).await.unwrap();
         serde_json::from_slice(&bytes).unwrap()
+    }
+
+    #[tokio::test]
+    async fn desktop_approval_queue_is_admin_scoped_sanitized_and_command_specific() {
+        let state = default_app_state();
+        let now = unix_millis();
+        let action: DesktopAction = serde_json::from_value(serde_json::json!({
+            "kind": "type_text",
+            "selector": {
+                "window": { "executable": "fixture.exe" },
+                "automation_id": "normal-input"
+            },
+            "text": "must-not-appear-in-queue"
+        }))
+        .unwrap();
+        state
+            .desktop_command_store
+            .create(
+                DesktopCommand {
+                    command_id: "desktop-command-approval-http".to_string(),
+                    execution_id: "execution-approval-http".to_string(),
+                    tenant_id: "tenant-1".to_string(),
+                    project_id: "project-1".to_string(),
+                    requested_by: "requester-1".to_string(),
+                    issued_at_unix_ms: now,
+                    lease: ExecutionLease {
+                        lease_id: "desktop-lease-approval-http".to_string(),
+                        expires_at_unix_ms: now + 60_000,
+                    },
+                    approval: None,
+                    action,
+                },
+                "device-approval-http".to_string(),
+                "workflow-approval-http".to_string(),
+            )
+            .await
+            .unwrap();
+        let command_store = Arc::clone(&state.desktop_command_store);
+        let app = build_router(state);
+        let editor_token = crate::auth::sign_token(&Claims {
+            sub: "editor-1".to_string(),
+            tenant_id: "tenant-1".to_string(),
+            role: crate::auth::Role::Editor,
+            ..Default::default()
+        })
+        .unwrap();
+        let admin_token = crate::auth::sign_token(&Claims {
+            sub: "operator-1".to_string(),
+            tenant_id: "tenant-1".to_string(),
+            role: crate::auth::Role::Admin,
+            ..Default::default()
+        })
+        .unwrap();
+        let other_admin_token = crate::auth::sign_token(&Claims {
+            sub: "operator-2".to_string(),
+            tenant_id: "tenant-2".to_string(),
+            role: crate::auth::Role::Admin,
+            ..Default::default()
+        })
+        .unwrap();
+
+        let forbidden = app
+            .clone()
+            .oneshot(
+                Request::get("/v1/desktop/approvals?tenant_id=tenant-1")
+                    .header("authorization", format!("Bearer {editor_token}"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(forbidden.status(), StatusCode::FORBIDDEN);
+
+        let queue = app
+            .clone()
+            .oneshot(
+                Request::get("/v1/desktop/approvals?tenant_id=tenant-1")
+                    .header("authorization", format!("Bearer {admin_token}"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(queue.status(), StatusCode::OK);
+        let queue = response_json(queue).await;
+        assert_eq!(queue[0]["action_kind"], "type_text");
+        assert_eq!(queue[0]["risk"], "high");
+        assert!(queue[0].get("command").is_none());
+        assert!(!queue.to_string().contains("must-not-appear-in-queue"));
+
+        let cross_tenant = app
+            .clone()
+            .oneshot(
+                Request::post("/v1/desktop/approvals/desktop-command-approval-http")
+                    .header("authorization", format!("Bearer {other_admin_token}"))
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        r#"{"tenant_id":"tenant-1","decision":"approve"}"#,
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(cross_tenant.status(), StatusCode::NOT_FOUND);
+
+        let approved = app
+            .clone()
+            .oneshot(
+                Request::post("/v1/desktop/approvals/desktop-command-approval-http")
+                    .header("authorization", format!("Bearer {admin_token}"))
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        r#"{"tenant_id":"tenant-1","decision":"approve"}"#,
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(approved.status(), StatusCode::OK);
+        let approved = response_json(approved).await;
+        assert_eq!(approved["status"], "queued");
+        assert!(approved.get("command").is_none());
+        assert_eq!(
+            command_store
+                .get("tenant-1", "desktop-command-approval-http")
+                .await
+                .unwrap()
+                .command
+                .approval
+                .unwrap()
+                .approved_by,
+            "operator-1"
+        );
+
+        let repeated = app
+            .oneshot(
+                Request::post("/v1/desktop/approvals/desktop-command-approval-http")
+                    .header("authorization", format!("Bearer {admin_token}"))
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        r#"{"tenant_id":"tenant-1","decision":"approve"}"#,
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(repeated.status(), StatusCode::OK);
     }
 
     #[tokio::test]
