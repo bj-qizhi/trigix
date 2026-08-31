@@ -220,6 +220,45 @@ pub fn spec() -> Value {
               "created_at_unix_ms": { "type": "integer", "format": "int64" }
             }
           },
+          "FinalVoiceTranscriptRequest": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["tenant_id", "session_id", "sequence", "occurred_at_unix_ms", "transcript"],
+            "properties": {
+              "tenant_id": { "type": "string", "maxLength": 128 },
+              "session_id": { "type": "string", "maxLength": 128 },
+              "sequence": { "type": "integer", "minimum": 1 },
+              "occurred_at_unix_ms": { "type": "integer", "format": "int64", "minimum": 1 },
+              "transcript": { "type": "string", "maxLength": 4096 }
+            }
+          },
+          "VoicePrivacyPolicy": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["policy_version", "retain_redacted_transcripts", "transcript_retention_days", "metadata_retention_days"],
+            "properties": {
+              "policy_version": { "type": "string", "maxLength": 128 },
+              "retain_redacted_transcripts": { "type": "boolean" },
+              "transcript_retention_days": { "type": "integer", "minimum": 0, "maximum": 30 },
+              "metadata_retention_days": { "type": "integer", "minimum": 1, "maximum": 30 }
+            }
+          },
+          "VoiceConversationRecord": {
+            "type": "object",
+            "required": ["conversation_id", "tenant_id", "session_id", "sequence", "occurred_at_unix_ms", "accepted_at_unix_ms", "policy_version", "transcript_retained", "expires_at_unix_ms"],
+            "properties": {
+              "conversation_id": { "type": "string" },
+              "tenant_id": { "type": "string" },
+              "session_id": { "type": "string" },
+              "sequence": { "type": "integer" },
+              "occurred_at_unix_ms": { "type": "integer", "format": "int64" },
+              "accepted_at_unix_ms": { "type": "integer", "format": "int64" },
+              "policy_version": { "type": "string" },
+              "transcript_retained": { "type": "boolean" },
+              "redacted_transcript": { "type": "string", "nullable": true },
+              "expires_at_unix_ms": { "type": "integer", "format": "int64" }
+            }
+          },
           "ApiError": {
             "type": "object",
             "properties": {
@@ -230,6 +269,36 @@ pub fn spec() -> Value {
         }
       },
       "paths": {
+        "/v1/voice/conversations/final-transcripts": {
+          "post": {
+            "tags": ["Voice Conversation"],
+            "summary": "Accept one bounded final transcript through the Tenant privacy boundary",
+            "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/FinalVoiceTranscriptRequest" } } } },
+            "responses": { "202": { "description": "Metadata-only or redacted retained conversation record", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/VoiceConversationRecord" } } } }, "400": { "description": "Invalid transcript or timestamp" }, "403": { "description": "Editor access required" }, "409": { "description": "Session sequence already accepted" } }
+          }
+        },
+        "/v1/voice/conversations/{conversation_id}": {
+          "get": {
+            "tags": ["Voice Conversation"],
+            "summary": "Get an unexpired Tenant-scoped conversation record",
+            "parameters": [{ "name": "conversation_id", "in": "path", "required": true, "schema": { "type": "string" } }, { "name": "tenant_id", "in": "query", "required": true, "schema": { "type": "string" } }],
+            "responses": { "200": { "description": "Conversation record", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/VoiceConversationRecord" } } } }, "404": { "description": "Conversation not found in Tenant" } }
+          },
+          "delete": {
+            "tags": ["Voice Conversation"],
+            "summary": "Delete a Tenant-scoped conversation record",
+            "parameters": [{ "name": "conversation_id", "in": "path", "required": true, "schema": { "type": "string" } }, { "name": "tenant_id", "in": "query", "required": true, "schema": { "type": "string" } }],
+            "responses": { "204": { "description": "Conversation deleted" }, "403": { "description": "Tenant administrator required" }, "404": { "description": "Conversation not found in Tenant" } }
+          }
+        },
+        "/v1/voice/privacy-policy": {
+          "put": {
+            "tags": ["Voice Conversation"],
+            "summary": "Set bounded Tenant voice retention policy",
+            "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "additionalProperties": false, "required": ["tenant_id", "policy"], "properties": { "tenant_id": { "type": "string", "maxLength": 128 }, "policy": { "$ref": "#/components/schemas/VoicePrivacyPolicy" } } } } } },
+            "responses": { "200": { "description": "Validated privacy policy", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/VoicePrivacyPolicy" } } } }, "400": { "description": "Invalid retention policy" }, "403": { "description": "Tenant administrator required" } }
+          }
+        },
         "/v1/desktop/pairing-sessions": {
           "post": {
             "tags": ["Desktop Devices"],

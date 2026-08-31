@@ -16,6 +16,7 @@ mod orgs;
 mod rag;
 mod sso;
 mod system;
+mod voice_conversations;
 mod webhooks;
 mod workflow_ai;
 mod workflow_comments;
@@ -202,6 +203,7 @@ pub struct AppState {
     desktop_command_store: Arc<crate::desktop_commands::PlatformDesktopCommandStore>,
     desktop_evidence_store: Arc<crate::desktop_evidence::PlatformDesktopEvidenceStore>,
     desktop_evidence_policy: crate::desktop_evidence::EvidencePolicy,
+    voice_conversation_store: crate::voice_conversation::VoiceConversationStore,
 }
 
 pub fn router() -> Router {
@@ -278,6 +280,7 @@ pub(crate) fn default_app_state() -> AppState {
             crate::desktop_evidence::PlatformDesktopEvidenceStore::default(),
         ),
         desktop_evidence_policy: crate::desktop_evidence::EvidencePolicy::from_env(),
+        voice_conversation_store: crate::voice_conversation::VoiceConversationStore::default(),
     }
 }
 
@@ -1037,6 +1040,7 @@ pub(crate) fn build_router(state: AppState) -> Router {
         .merge(workflow_variables::routes())
         .merge(workflows::routes())
         .merge(workspaces::routes())
+        .merge(voice_conversations::routes())
         .layer(middleware::from_fn_with_state(
             state.clone(),
             auth_middleware,
@@ -1131,6 +1135,7 @@ pub fn router_with_services(
             crate::desktop_evidence::PlatformDesktopEvidenceStore::default(),
         ),
         desktop_evidence_policy: crate::desktop_evidence::EvidencePolicy::from_env(),
+        voice_conversation_store: crate::voice_conversation::VoiceConversationStore::default(),
     };
 
     build_router(state)
@@ -1212,6 +1217,7 @@ pub fn router_with_all_stores(
         desktop_command_store: Arc::new(desktop_command_store),
         desktop_evidence_store: Arc::new(desktop_evidence_store),
         desktop_evidence_policy: crate::desktop_evidence::EvidencePolicy::from_env(),
+        voice_conversation_store: crate::voice_conversation::VoiceConversationStore::default(),
     };
     spawn_schedule_runner(state.clone());
     spawn_execution_timeout_guard(state.clone());

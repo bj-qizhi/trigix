@@ -44,6 +44,7 @@ pub mod stripe_billing;
 pub mod token_usage;
 pub mod users;
 pub mod variables;
+pub mod voice_conversation;
 pub mod webhook;
 pub mod workflow;
 pub mod workspace;
