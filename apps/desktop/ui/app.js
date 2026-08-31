@@ -1,146 +1,426 @@
-const connection = document.querySelector("#connection");
-const automation = document.querySelector("#automation");
-const automationHost = document.querySelector("#automation-host");
-const revision = document.querySelector("#revision");
-const stopButton = document.querySelector("#stop");
-const notice = document.querySelector("#notice");
-const statusPanel = document.querySelector(".status-panel");
-const pairingForm = document.querySelector("#pairing-form");
-const pairingTitle = document.querySelector("#pairing-title");
-const platformUrl = document.querySelector("#platform-url");
-const deviceName = document.querySelector("#device-name");
-const pairingPhase = document.querySelector("#pairing-phase");
-const pairingWaiting = document.querySelector("#pairing-waiting");
-const pairingComplete = document.querySelector("#pairing-complete");
-const pairingCode = document.querySelector("#pairing-code");
-const pairingExpiry = document.querySelector("#pairing-expiry");
-const pairedDevice = document.querySelector("#paired-device");
-const claimPairing = document.querySelector("#claim-pairing");
-const forgetPairing = document.querySelector("#forget-pairing");
+const messages = {
+  en: {
+    skip_to_content: "Skip to main content",
+    language: "Language",
+    local_device_control: "LOCAL DEVICE CONTROL",
+    lede: "Governed automation stays visible and interruptible.",
+    runtime_status: "Runtime status",
+    connection: "Connection",
+    automation: "Automation",
+    automation_host: "Automation host",
+    state_revision: "State revision",
+    checking: "Checking",
+    device_trust: "DEVICE TRUST",
+    pair_this_computer: "Pair this computer",
+    approve_this_computer: "Approve this computer",
+    computer_is_paired: "This computer is paired",
+    pairing_unavailable: "Pairing unavailable",
+    device_pairing: "Device pairing",
+    pairing_help: "Enter the secure Platform origin and a recognizable Device name.",
+    platform_origin: "Platform HTTPS origin",
+    platform_origin_help: "HTTPS is required. Paths, queries, and fragments are not accepted.",
+    device_name: "Device name",
+    default_device_name: "My Windows PC",
+    create_pairing_code: "Create pairing code",
+    pairing_code: "PAIRING CODE",
+    approve_code_admin: "Approve this code in your Tenant administration page.",
+    approve_before: "Approve this code before {time}.",
+    approved_code: "I approved the code",
+    local_device_id: "LOCAL DEVICE ID",
+    credential_protected: "The Device credential is protected by Windows Credential Manager.",
+    forget_pairing: "Forget local pairing",
+    safety_control: "SAFETY CONTROL",
+    immediate_stop: "Immediate stop",
+    stop_description: "Requests cancellation through the local runtime. It cannot approve or start an action.",
+    stop_automation: "Stop automation",
+    retry: "Retry",
+    cancel: "Cancel",
+    forget_confirm_title: "Forget local pairing?",
+    forget_confirm_description: "This removes the Device credential from this computer. An administrator must revoke the server record separately.",
+    confirm_forget: "Forget pairing",
+    loading_runtime: "Loading local runtime state…",
+    action_active: "An automation action is active.",
+    no_action_active: "No interruptible automation action is active.",
+    secure_storage_unavailable: "Windows secure storage is unavailable; pairing is disabled.",
+    runtime_unavailable: "Local runtime state is unavailable.",
+    creating_pairing: "Creating a short-lived pairing code…",
+    pairing_created: "Pairing code created. Approval is required in the Tenant administration page.",
+    pairing_start_error: "Pairing could not start. Verify the HTTPS origin and Platform availability.",
+    claiming_credential: "Claiming the approved Device credential…",
+    pairing_completed: "Pairing completed. Establishing the authenticated Device connection.",
+    pairing_claim_error: "Approval is not available yet, or the pairing code expired.",
+    removing_credential: "Removing the local Device credential…",
+    pairing_removed: "Local pairing removed. An administrator must revoke stale server records separately.",
+    pairing_forget_error: "The local Device credential could not be removed securely.",
+    requesting_stop: "Requesting immediate stop…",
+    stop_requested: "Stop request accepted. Refreshing runtime state.",
+    stop_error: "Stop request was rejected. Check the active action and try again.",
+    state_offline: "Offline",
+    state_connecting: "Connecting",
+    state_online: "Online",
+    state_degraded: "Degraded",
+    state_idle: "Idle",
+    state_running: "Running",
+    state_awaiting_approval: "Awaiting approval",
+    state_stopping: "Stopping",
+    state_ready: "Ready",
+    state_unavailable: "Unavailable",
+    state_unpaired: "Unpaired",
+    state_waiting_for_approval: "Waiting for approval",
+    state_paired: "Paired",
+  },
+  zh: {
+    skip_to_content: "跳到主要内容",
+    language: "语言",
+    local_device_control: "本机设备控制",
+    lede: "受管控的自动化始终可见，并可随时中止。",
+    runtime_status: "运行时状态",
+    connection: "连接",
+    automation: "自动化",
+    automation_host: "自动化主机",
+    state_revision: "状态版本",
+    checking: "检查中",
+    device_trust: "设备信任",
+    pair_this_computer: "配对此电脑",
+    approve_this_computer: "批准此电脑",
+    computer_is_paired: "此电脑已配对",
+    pairing_unavailable: "配对不可用",
+    device_pairing: "设备配对",
+    pairing_help: "请输入安全的平台地址和易于识别的设备名称。",
+    platform_origin: "平台 HTTPS 地址",
+    platform_origin_help: "必须使用 HTTPS，且不能包含路径、查询参数或片段。",
+    device_name: "设备名称",
+    default_device_name: "我的 Windows 电脑",
+    create_pairing_code: "创建配对码",
+    pairing_code: "配对码",
+    approve_code_admin: "请在租户管理页面批准此配对码。",
+    approve_before: "请在 {time} 前批准此配对码。",
+    approved_code: "我已批准配对码",
+    local_device_id: "本机设备 ID",
+    credential_protected: "设备凭据由 Windows 凭据管理器保护。",
+    forget_pairing: "忘记本机配对",
+    safety_control: "安全控制",
+    immediate_stop: "立即停止",
+    stop_description: "通过本机运行时请求取消；此操作不能批准或启动自动化。",
+    stop_automation: "停止自动化",
+    retry: "重试",
+    cancel: "取消",
+    forget_confirm_title: "忘记本机配对？",
+    forget_confirm_description: "这会删除此电脑上的设备凭据。管理员仍需另行撤销服务端记录。",
+    confirm_forget: "忘记配对",
+    loading_runtime: "正在加载本机运行时状态…",
+    action_active: "当前有自动化操作正在运行。",
+    no_action_active: "当前没有可中止的自动化操作。",
+    secure_storage_unavailable: "Windows 安全存储不可用，设备配对已禁用。",
+    runtime_unavailable: "无法读取本机运行时状态。",
+    creating_pairing: "正在创建短期配对码…",
+    pairing_created: "配对码已创建，请在租户管理页面批准。",
+    pairing_start_error: "无法开始配对，请检查 HTTPS 地址和平台可用性。",
+    claiming_credential: "正在领取已批准的设备凭据…",
+    pairing_completed: "配对完成，正在建立已认证的设备连接。",
+    pairing_claim_error: "尚未获得批准，或配对码已过期。",
+    removing_credential: "正在删除本机设备凭据…",
+    pairing_removed: "本机配对已删除，管理员仍需撤销过期的服务端记录。",
+    pairing_forget_error: "无法安全删除本机设备凭据。",
+    requesting_stop: "正在请求立即停止…",
+    stop_requested: "停止请求已接受，正在刷新运行时状态。",
+    stop_error: "停止请求被拒绝，请检查活动操作后重试。",
+    state_offline: "离线",
+    state_connecting: "连接中",
+    state_online: "在线",
+    state_degraded: "异常",
+    state_idle: "空闲",
+    state_running: "运行中",
+    state_awaiting_approval: "等待批准",
+    state_stopping: "停止中",
+    state_ready: "就绪",
+    state_unavailable: "不可用",
+    state_unpaired: "未配对",
+    state_waiting_for_approval: "等待批准",
+    state_paired: "已配对",
+  },
+};
 
+const elements = {
+  connection: document.querySelector("#connection"),
+  automation: document.querySelector("#automation"),
+  automationHost: document.querySelector("#automation-host"),
+  revision: document.querySelector("#revision"),
+  stopButton: document.querySelector("#stop"),
+  notice: document.querySelector("#notice"),
+  statusPanel: document.querySelector(".status-panel"),
+  pairingPanel: document.querySelector(".pairing-panel"),
+  pairingForm: document.querySelector("#pairing-form"),
+  pairingTitle: document.querySelector("#pairing-title"),
+  platformUrl: document.querySelector("#platform-url"),
+  deviceName: document.querySelector("#device-name"),
+  startPairing: document.querySelector("#start-pairing"),
+  pairingPhase: document.querySelector("#pairing-phase"),
+  pairingWaiting: document.querySelector("#pairing-waiting"),
+  pairingComplete: document.querySelector("#pairing-complete"),
+  pairingCode: document.querySelector("#pairing-code"),
+  pairingExpiry: document.querySelector("#pairing-expiry"),
+  pairedDevice: document.querySelector("#paired-device"),
+  claimPairing: document.querySelector("#claim-pairing"),
+  forgetPairing: document.querySelector("#forget-pairing"),
+  errorRegion: document.querySelector("#error-region"),
+  errorMessage: document.querySelector("#error-message"),
+  retry: document.querySelector("#retry"),
+  forgetConfirm: document.querySelector("#forget-confirm"),
+  localeEn: document.querySelector("#locale-en"),
+  localeZh: document.querySelector("#locale-zh"),
+};
+
+const storedLocale = window.localStorage.getItem("trigix.desktop.locale");
+let locale = storedLocale === "en" || storedLocale === "zh"
+  ? storedLocale
+  : (navigator.language.toLowerCase().startsWith("zh") ? "zh" : "en");
 let currentRevision = 0;
+let shellSnapshot = null;
+let pairingSnapshot = null;
+let lastCanRequestStop = null;
+let activeOperation = null;
+let refreshing = false;
+let retryAction = null;
+let noticeState = { key: "loading_runtime", values: {} };
+let errorState = null;
 
-function readable(value) {
-  return value.replaceAll("_", " ").replace(/^./, (letter) => letter.toUpperCase());
+function translate(key, values = {}) {
+  const template = messages[locale][key] ?? messages.en[key] ?? key;
+  return Object.entries(values).reduce(
+    (value, [name, replacement]) => value.replaceAll(`{${name}}`, String(replacement)),
+    template,
+  );
 }
 
-function render(snapshot) {
+function stateLabel(value) {
+  return translate(`state_${value}`);
+}
+
+function setNotice(key, values = {}) {
+  noticeState = { key, values };
+  elements.notice.textContent = translate(key, values);
+}
+
+function clearError() {
+  errorState = null;
+  retryAction = null;
+  elements.errorRegion.hidden = true;
+  elements.errorMessage.textContent = "";
+}
+
+function showError(key, retry, focus = true) {
+  errorState = { key, retry };
+  retryAction = retry;
+  elements.errorMessage.textContent = translate(key);
+  elements.retry.hidden = typeof retry !== "function";
+  elements.errorRegion.hidden = false;
+  if (focus) {
+    window.requestAnimationFrame(() => {
+      if (!elements.retry.hidden) elements.retry.focus();
+      else {
+        elements.errorRegion.setAttribute("tabindex", "-1");
+        elements.errorRegion.focus();
+      }
+    });
+  }
+}
+
+function applyLocale(nextLocale, persist = true) {
+  const previousDefault = translate("default_device_name");
+  locale = nextLocale;
+  if (persist) window.localStorage.setItem("trigix.desktop.locale", locale);
+  document.documentElement.lang = locale === "zh" ? "zh-CN" : "en";
+  document.querySelectorAll("[data-i18n]").forEach((element) => {
+    element.textContent = translate(element.dataset.i18n);
+  });
+  document.querySelectorAll("[data-i18n-aria]").forEach((element) => {
+    element.setAttribute("aria-label", translate(element.dataset.i18nAria));
+  });
+  elements.localeEn.setAttribute("aria-pressed", String(locale === "en"));
+  elements.localeZh.setAttribute("aria-pressed", String(locale === "zh"));
+  if (!elements.deviceName.value || elements.deviceName.value === previousDefault) {
+    elements.deviceName.value = translate("default_device_name");
+  }
+  if (shellSnapshot) renderShell(shellSnapshot);
+  if (pairingSnapshot) renderPairing(pairingSnapshot, false);
+  setNotice(noticeState.key, noticeState.values);
+  if (errorState) showError(errorState.key, errorState.retry, false);
+}
+
+function renderShell(snapshot) {
+  shellSnapshot = snapshot;
   currentRevision = snapshot.revision;
-  connection.textContent = readable(snapshot.connection);
-  automation.textContent = readable(snapshot.automation);
-  automationHost.textContent = readable(snapshot.automation_host);
-  revision.textContent = String(snapshot.revision);
-  stopButton.disabled = !snapshot.can_request_stop;
-  statusPanel.setAttribute("aria-busy", "false");
-  notice.textContent = snapshot.can_request_stop
-    ? "An automation action is active."
-    : "No interruptible automation action is active.";
+  elements.connection.textContent = stateLabel(snapshot.connection);
+  elements.automation.textContent = stateLabel(snapshot.automation);
+  elements.automationHost.textContent = stateLabel(snapshot.automation_host);
+  elements.revision.textContent = String(snapshot.revision);
+  elements.stopButton.disabled = activeOperation === "stop" || !snapshot.can_request_stop;
+  elements.statusPanel.setAttribute("aria-busy", "false");
+  if (activeOperation === null && lastCanRequestStop !== snapshot.can_request_stop) {
+    setNotice(snapshot.can_request_stop ? "action_active" : "no_action_active");
+  }
+  lastCanRequestStop = snapshot.can_request_stop;
 }
 
-function renderPairing(snapshot) {
-  pairingPhase.textContent = readable(snapshot.phase);
-  pairingTitle.textContent = {
-    unpaired: "Pair this computer",
-    waiting_for_approval: "Approve this computer",
-    paired: "This computer is paired",
-    unavailable: "Pairing unavailable",
-  }[snapshot.phase] ?? "Device pairing";
-  pairingForm.hidden = snapshot.phase !== "unpaired";
-  pairingWaiting.hidden = snapshot.phase !== "waiting_for_approval";
-  pairingComplete.hidden = snapshot.phase !== "paired";
+function pairingTitleKey(phase) {
+  return {
+    unpaired: "pair_this_computer",
+    waiting_for_approval: "approve_this_computer",
+    paired: "computer_is_paired",
+    unavailable: "pairing_unavailable",
+  }[phase] ?? "device_pairing";
+}
+
+function renderPairing(snapshot, focusPhase) {
+  const phaseChanged = pairingSnapshot?.phase !== snapshot.phase;
+  pairingSnapshot = snapshot;
+  elements.pairingPhase.textContent = stateLabel(snapshot.phase);
+  elements.pairingTitle.textContent = translate(pairingTitleKey(snapshot.phase));
+  elements.pairingForm.hidden = snapshot.phase !== "unpaired";
+  elements.pairingWaiting.hidden = snapshot.phase !== "waiting_for_approval";
+  elements.pairingComplete.hidden = snapshot.phase !== "paired";
 
   if (snapshot.phase === "waiting_for_approval") {
-    pairingCode.textContent = snapshot.pairing_code;
+    elements.pairingCode.textContent = snapshot.pairing_code;
     const expiry = new Date(snapshot.expires_at_unix_seconds * 1000);
-    pairingExpiry.textContent = `Approve this code before ${expiry.toLocaleTimeString()}.`;
+    elements.pairingExpiry.textContent = translate("approve_before", {
+      time: expiry.toLocaleTimeString(locale === "zh" ? "zh-CN" : "en"),
+    });
   }
-  if (snapshot.phase === "paired") {
-    pairedDevice.textContent = snapshot.device_id;
-  }
+  if (snapshot.phase === "paired") elements.pairedDevice.textContent = snapshot.device_id;
   if (snapshot.phase === "unavailable") {
-    pairingForm.hidden = true;
-    pairingWaiting.hidden = true;
-    pairingComplete.hidden = true;
-    notice.textContent = "Windows secure storage is unavailable; pairing is disabled.";
+    elements.pairingForm.hidden = true;
+    elements.pairingWaiting.hidden = true;
+    elements.pairingComplete.hidden = true;
+    if (activeOperation === null) setNotice("secure_storage_unavailable");
+  }
+  if (focusPhase && phaseChanged) {
+    window.requestAnimationFrame(() => elements.pairingTitle.focus());
   }
 }
 
-async function refresh() {
+function setOperation(name, busy) {
+  activeOperation = busy ? name : null;
+  elements.pairingPanel.setAttribute("aria-busy", String(busy));
+  elements.startPairing.disabled = busy;
+  elements.claimPairing.disabled = busy;
+  elements.forgetPairing.disabled = busy;
+  elements.stopButton.disabled = busy || !shellSnapshot?.can_request_stop;
+}
+
+async function refresh(force = false) {
+  if (refreshing || document.hidden || (activeOperation && !force)) return;
+  refreshing = true;
   try {
     const [shell, pairing] = await Promise.all([
       window.__TAURI__.core.invoke("shell_status"),
       window.__TAURI__.core.invoke("pairing_status"),
     ]);
-    render(shell);
-    renderPairing(pairing);
+    renderShell(shell);
+    renderPairing(pairing, false);
+    if (retryAction === refresh) clearError();
   } catch (_error) {
-    stopButton.disabled = true;
-    statusPanel.setAttribute("aria-busy", "false");
-    notice.textContent = "Local runtime state is unavailable.";
+    elements.stopButton.disabled = true;
+    elements.statusPanel.setAttribute("aria-busy", "false");
+    showError("runtime_unavailable", refresh, errorState?.key !== "runtime_unavailable");
+  } finally {
+    refreshing = false;
   }
 }
 
-pairingForm.addEventListener("submit", async (event) => {
+elements.pairingForm.addEventListener("submit", async (event) => {
   event.preventDefault();
-  const submit = document.querySelector("#start-pairing");
-  submit.disabled = true;
-  notice.textContent = "Creating a short-lived pairing code…";
+  if (activeOperation) return;
+  clearError();
+  setOperation("pair", true);
+  setNotice("creating_pairing");
   try {
     const snapshot = await window.__TAURI__.core.invoke("start_device_pairing", {
       input: {
-        platform_url: platformUrl.value,
-        display_name: deviceName.value,
+        platform_url: elements.platformUrl.value,
+        display_name: elements.deviceName.value,
       },
     });
-    renderPairing(snapshot);
-    notice.textContent = "Pairing code created. Approval is required in the Tenant administration page.";
+    renderPairing(snapshot, true);
+    setNotice("pairing_created");
   } catch (_error) {
-    notice.textContent = "Pairing could not start. Verify the HTTPS origin and Platform availability.";
+    showError("pairing_start_error", () => elements.pairingForm.requestSubmit());
   } finally {
-    submit.disabled = false;
+    setOperation("pair", false);
   }
 });
 
-claimPairing.addEventListener("click", async () => {
-  claimPairing.disabled = true;
-  notice.textContent = "Claiming the approved Device credential…";
+elements.claimPairing.addEventListener("click", async () => {
+  if (activeOperation) return;
+  clearError();
+  setOperation("claim", true);
+  setNotice("claiming_credential");
   try {
-    renderPairing(await window.__TAURI__.core.invoke("complete_device_pairing"));
-    notice.textContent = "Pairing completed. Establishing the authenticated Device connection.";
+    const snapshot = await window.__TAURI__.core.invoke("complete_device_pairing");
+    renderPairing(snapshot, true);
+    setNotice("pairing_completed");
   } catch (_error) {
-    notice.textContent = "Approval is not available yet, or the pairing code expired.";
+    showError("pairing_claim_error", () => elements.claimPairing.click());
   } finally {
-    claimPairing.disabled = false;
+    setOperation("claim", false);
   }
 });
 
-forgetPairing.addEventListener("click", async () => {
-  forgetPairing.disabled = true;
-  notice.textContent = "Removing the local Device credential…";
+elements.forgetPairing.addEventListener("click", () => {
+  if (!activeOperation) elements.forgetConfirm.showModal();
+});
+
+elements.forgetConfirm.addEventListener("close", async () => {
+  if (elements.forgetConfirm.returnValue !== "confirm" || activeOperation) return;
+  clearError();
+  setOperation("forget", true);
+  setNotice("removing_credential");
   try {
-    renderPairing(await window.__TAURI__.core.invoke("forget_device_pairing"));
-    notice.textContent = "Local pairing removed. An administrator must revoke stale server records separately.";
+    const snapshot = await window.__TAURI__.core.invoke("forget_device_pairing");
+    renderPairing(snapshot, true);
+    setNotice("pairing_removed");
   } catch (_error) {
-    notice.textContent = "The local Device credential could not be removed securely.";
+    showError("pairing_forget_error", () => elements.forgetPairing.click());
   } finally {
-    forgetPairing.disabled = false;
+    setOperation("forget", false);
   }
 });
 
-stopButton.addEventListener("click", async () => {
-  stopButton.disabled = true;
-  notice.textContent = "Requesting immediate stop…";
+elements.stopButton.addEventListener("click", async () => {
+  if (activeOperation || !shellSnapshot?.can_request_stop) return;
+  clearError();
+  setOperation("stop", true);
+  setNotice("requesting_stop");
   const requestId = `stop-${crypto.randomUUID()}`;
   try {
     await window.__TAURI__.core.invoke("request_automation_stop", {
       request: { request_id: requestId, observed_revision: currentRevision },
     });
-    await refresh();
+    setNotice("stop_requested");
+    await refresh(true);
   } catch (_error) {
-    notice.textContent = "Stop request was rejected. Refreshing runtime state.";
-    await refresh();
+    showError("stop_error", refresh);
+  } finally {
+    setOperation("stop", false);
   }
 });
 
-refresh();
-window.setInterval(refresh, 2000);
+elements.retry.addEventListener("click", async () => {
+  const action = retryAction;
+  clearError();
+  if (action) await action();
+});
+
+elements.localeEn.addEventListener("click", () => applyLocale("en"));
+elements.localeZh.addEventListener("click", () => applyLocale("zh"));
+
+document.addEventListener("visibilitychange", () => {
+  if (!document.hidden) void refresh();
+});
+
+applyLocale(locale, false);
+void refresh();
+window.setInterval(() => {
+  if (!document.hidden) void refresh();
+}, 2000);
