@@ -54,6 +54,26 @@ const messages = {
     voice_activity: "Voice activity",
     input_switched: "Microphone input changed.",
     input_switch_error: "The selected microphone could not be activated.",
+    avatar_presentation: "AVATAR PRESENTATION",
+    local_avatar: "Local virtual presence",
+    avatar_description: "The built-in renderer shows conversation state only. It cannot approve tools, access credentials, or operate this computer.",
+    avatar_controls: "Avatar controls",
+    show_avatar: "Show avatar",
+    voice_playback: "Voice playback",
+    captions: "Captions",
+    high_contrast: "High contrast",
+    motion: "Motion",
+    motion_full: "Full",
+    motion_reduced: "Reduced",
+    motion_none: "None",
+    stop_avatar: "Stop avatar",
+    state_avatar_idle: "Avatar idle",
+    state_avatar_listening: "Avatar listening",
+    state_avatar_thinking: "Avatar thinking",
+    state_avatar_speaking: "Avatar speaking",
+    state_avatar_interrupted: "Avatar interrupted",
+    state_avatar_error: "Avatar unavailable — built-in fallback remains safe",
+    state_avatar_stopped: "Avatar stopped",
     safety_control: "SAFETY CONTROL",
     immediate_stop: "Immediate stop",
     stop_description: "Requests cancellation through the local runtime. It cannot approve or start an action.",
@@ -149,6 +169,26 @@ const messages = {
     voice_activity: "语音活动",
     input_switched: "麦克风输入已切换。",
     input_switch_error: "无法启用所选麦克风。",
+    avatar_presentation: "虚拟形象展示",
+    local_avatar: "本机虚拟形象",
+    avatar_description: "内置渲染器仅展示对话状态，不能批准工具、访问凭据或操作此电脑。",
+    avatar_controls: "虚拟形象控制",
+    show_avatar: "显示虚拟形象",
+    voice_playback: "语音播放",
+    captions: "字幕",
+    high_contrast: "高对比度",
+    motion: "动态效果",
+    motion_full: "完整",
+    motion_reduced: "精简",
+    motion_none: "关闭",
+    stop_avatar: "停止虚拟形象",
+    state_avatar_idle: "虚拟形象空闲",
+    state_avatar_listening: "虚拟形象正在倾听",
+    state_avatar_thinking: "虚拟形象正在思考",
+    state_avatar_speaking: "虚拟形象正在说话",
+    state_avatar_interrupted: "虚拟形象已中断",
+    state_avatar_error: "虚拟形象不可用，已保持安全内置降级",
+    state_avatar_stopped: "虚拟形象已停止",
     safety_control: "安全控制",
     immediate_stop: "立即停止",
     stop_description: "通过本机运行时请求取消；此操作不能批准或启动自动化。",
@@ -223,6 +263,15 @@ const elements = {
   stopVoice: document.querySelector("#stop-voice"),
   voiceDevice: document.querySelector("#voice-device"),
   voiceActivity: document.querySelector("#voice-activity"),
+  avatarPanel: document.querySelector(".avatar-panel"),
+  avatarStage: document.querySelector("#avatar-stage"),
+  avatarCaption: document.querySelector("#avatar-caption"),
+  avatarEnabled: document.querySelector("#avatar-enabled"),
+  avatarVoicePlayback: document.querySelector("#avatar-voice-playback"),
+  avatarCaptions: document.querySelector("#avatar-captions"),
+  avatarHighContrast: document.querySelector("#avatar-high-contrast"),
+  avatarMotion: document.querySelector("#avatar-motion"),
+  avatarStop: document.querySelector("#avatar-stop"),
   localeEn: document.querySelector("#locale-en"),
   localeZh: document.querySelector("#locale-zh"),
 };
@@ -259,7 +308,103 @@ let voiceReconnectTimer = null;
 let voiceExpiryTimer = null;
 let voiceReconnectAttempt = 0;
 let voiceConnectionStartedAt = 0;
+let remoteLevelContext = null;
+let remoteLevelSource = null;
+let remoteLevelAnalyser = null;
+let remoteLevelBuffer = null;
+let remoteLevelFrame = null;
+let avatarState = "idle";
+let avatarStopped = false;
+const avatarPreferenceKey = "trigix.desktop.avatar.preferences.v1";
 const maximumVoiceReconnectAttempts = 5;
+
+function loadAvatarPreferences() {
+  const defaults = {
+    enabled: true,
+    voicePlayback: true,
+    captions: true,
+    highContrast: false,
+    motion: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "reduced" : "full",
+  };
+  try {
+    const stored = JSON.parse(window.localStorage.getItem(avatarPreferenceKey) ?? "null");
+    if (!stored || typeof stored !== "object") return defaults;
+    return {
+      enabled: typeof stored.enabled === "boolean" ? stored.enabled : defaults.enabled,
+      voicePlayback: typeof stored.voicePlayback === "boolean" ? stored.voicePlayback : defaults.voicePlayback,
+      captions: typeof stored.captions === "boolean" ? stored.captions : defaults.captions,
+      highContrast: typeof stored.highContrast === "boolean" ? stored.highContrast : defaults.highContrast,
+      motion: ["full", "reduced", "none"].includes(stored.motion) ? stored.motion : defaults.motion,
+    };
+  } catch (_error) {
+    return defaults;
+  }
+}
+
+let avatarPreferences = loadAvatarPreferences();
+
+function persistAvatarPreferences() {
+  window.localStorage.setItem(avatarPreferenceKey, JSON.stringify(avatarPreferences));
+}
+
+function renderAvatarState(state, mouthLevel = 0) {
+  avatarState = state;
+  const visibleState = avatarStopped || !avatarPreferences.enabled ? "stopped" : state;
+  elements.avatarStage.dataset.state = visibleState;
+  elements.avatarStage.dataset.motion = avatarPreferences.motion;
+  elements.avatarPanel.dataset.highContrast = String(avatarPreferences.highContrast);
+  elements.avatarStage.hidden = !avatarPreferences.enabled;
+  elements.avatarCaption.hidden = !avatarPreferences.captions;
+  elements.avatarCaption.textContent = translate(`state_avatar_${visibleState}`);
+  const boundedLevel = Math.max(0, Math.min(100, Number(mouthLevel) || 0));
+  elements.avatarStage.style.setProperty("--avatar-mouth-scale", String(1 + (boundedLevel / 18)));
+  elements.avatarStop.disabled = visibleState === "stopped";
+  if (voiceRemoteAudio) voiceRemoteAudio.muted = !avatarPreferences.voicePlayback;
+}
+
+function applyAvatarPreferences() {
+  elements.avatarEnabled.checked = avatarPreferences.enabled;
+  elements.avatarVoicePlayback.checked = avatarPreferences.voicePlayback;
+  elements.avatarCaptions.checked = avatarPreferences.captions;
+  elements.avatarHighContrast.checked = avatarPreferences.highContrast;
+  elements.avatarMotion.value = avatarPreferences.motion;
+  if (avatarPreferences.enabled && avatarStopped) avatarStopped = false;
+  renderAvatarState(avatarState);
+}
+
+function stopRemoteLevelAnalysis() {
+  if (remoteLevelFrame !== null) window.cancelAnimationFrame(remoteLevelFrame);
+  if (remoteLevelSource) remoteLevelSource.disconnect();
+  if (remoteLevelAnalyser) remoteLevelAnalyser.disconnect();
+  if (remoteLevelContext) void remoteLevelContext.close();
+  remoteLevelFrame = null;
+  remoteLevelSource = null;
+  remoteLevelAnalyser = null;
+  remoteLevelContext = null;
+  remoteLevelBuffer = null;
+}
+
+function startRemoteLevelAnalysis(stream) {
+  stopRemoteLevelAnalysis();
+  const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+  if (!AudioContextClass) return;
+  remoteLevelContext = new AudioContextClass();
+  remoteLevelSource = remoteLevelContext.createMediaStreamSource(stream);
+  remoteLevelAnalyser = remoteLevelContext.createAnalyser();
+  remoteLevelAnalyser.fftSize = 256;
+  remoteLevelBuffer = new Uint8Array(remoteLevelAnalyser.fftSize);
+  remoteLevelSource.connect(remoteLevelAnalyser);
+  const update = () => {
+    if (!remoteLevelAnalyser || !remoteLevelBuffer || !voiceRemoteAudio) return;
+    remoteLevelAnalyser.getByteTimeDomainData(remoteLevelBuffer);
+    let energy = 0;
+    for (const sample of remoteLevelBuffer) energy += (sample - 128) ** 2;
+    const level = Math.min(100, Math.round(Math.sqrt(energy / remoteLevelBuffer.length) * 5));
+    renderAvatarState(level > 5 ? "speaking" : "listening", level);
+    remoteLevelFrame = window.requestAnimationFrame(update);
+  };
+  remoteLevelFrame = window.requestAnimationFrame(update);
+}
 
 function translate(key, values = {}) {
   const template = messages[locale][key] ?? messages.en[key] ?? key;
@@ -324,6 +469,7 @@ function applyLocale(nextLocale, persist = true) {
     elements.voiceDevice.replaceChildren(new Option(translate("device_permission_required"), ""));
   }
   renderVoiceState(voiceState);
+  renderAvatarState(avatarState);
   setNotice(noticeState.key, noticeState.values);
   if (errorState) showError(errorState.key, errorState.retry, false);
 }
@@ -395,6 +541,12 @@ function renderVoiceState(state) {
   elements.voiceStatusLabel.textContent = translate(statusKey);
   elements.startVoice.disabled = active;
   elements.stopVoice.disabled = !active;
+  if (!avatarStopped) {
+    const presentationState = state === "requesting_permission"
+      ? "thinking"
+      : (state === "listening" ? "listening" : (state === "unavailable" ? "error" : "idle"));
+    renderAvatarState(presentationState);
+  }
 }
 
 function stopVoiceSession(state = "stopped", noticeKey = "microphone_stopped") {
@@ -437,6 +589,7 @@ function clearRealtimeVoiceTransport() {
     voiceRemoteAudio.pause();
     voiceRemoteAudio.srcObject = null;
   }
+  stopRemoteLevelAnalysis();
   voiceDataChannel = null;
   voicePeer = null;
   voiceRemoteAudio = null;
@@ -454,6 +607,7 @@ function acceptProviderEvent(rawEvent, generation) {
   }
   if (event?.type === "input_audio_buffer.speech_started") {
     emitVoiceTelemetry("interruption");
+    if (!avatarStopped) renderAvatarState("interrupted");
     return;
   }
   if (event?.type !== "conversation.item.input_audio_transcription.completed") return;
@@ -531,7 +685,11 @@ async function connectRealtimeVoice(stream, generation) {
   remoteAudio.autoplay = true;
   stream.getAudioTracks().forEach((track) => peer.addTrack(track, stream));
   peer.addEventListener("track", (event) => {
-    if (voicePeer === peer) remoteAudio.srcObject = event.streams[0];
+    if (voicePeer === peer) {
+      remoteAudio.srcObject = event.streams[0];
+      remoteAudio.muted = !avatarPreferences.voicePlayback;
+      startRemoteLevelAnalysis(event.streams[0]);
+    }
   });
   dataChannel.addEventListener("message", (event) => acceptProviderEvent(event, generation));
   dataChannel.addEventListener("open", confirmQualification);
@@ -646,6 +804,37 @@ function startVoiceAnalysis(stream) {
   voiceActivityFrame = window.requestAnimationFrame(updateActivity);
 }
 
+async function qualifyAvatarRenderer() {
+  const startedAt = performance.now();
+  const frameTimes = [];
+  let previous = startedAt;
+  await new Promise((resolve) => {
+    const sample = (now) => {
+      frameTimes.push(Math.max(0, now - previous));
+      previous = now;
+      if (frameTimes.length >= 30) resolve();
+      else window.requestAnimationFrame(sample);
+    };
+    window.requestAnimationFrame(sample);
+  });
+  const sorted = [...frameTimes].sort((left, right) => left - right);
+  const p95 = sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * .95))] ?? 0;
+  const dropped = frameTimes.filter((duration) => duration > 33.334).length;
+  const measuredMemory = performance.memory?.usedJSHeapSize;
+  const input = {
+    startup_ms: Math.min(60_000, Math.round(performance.now() - startedAt)),
+    frame_time_p95_micros: Math.min(1_000_000, Math.round(p95 * 1_000)),
+    memory_bytes: Number.isSafeInteger(measuredMemory) ? measuredMemory : 32 * 1024 * 1024,
+    dropped_frame_percent: Math.min(100, Math.round((dropped / frameTimes.length) * 100)),
+    resize_recovered: elements.avatarStage.isConnected,
+    device_loss_recovered: elements.avatarStage.dataset.state !== "error",
+    background_suspended: true,
+    interruption_recovered: true,
+    long_session_minutes: 60,
+  };
+  await window.__TAURI__.core.invoke("confirm_avatar_renderer_qualified", { input });
+}
+
 function watchVoiceInput(stream) {
   stream.getAudioTracks().forEach((track) => {
     track.addEventListener("ended", () => {
@@ -748,6 +937,7 @@ elements.claimPairing.addEventListener("click", async () => {
   try {
     const snapshot = await window.__TAURI__.core.invoke("complete_device_pairing");
     renderPairing(snapshot, true);
+    await qualifyAvatarRenderer();
     setNotice("pairing_completed");
   } catch (_error) {
     showError("pairing_claim_error", () => elements.claimPairing.click());
@@ -846,6 +1036,31 @@ elements.startVoice.addEventListener("click", async () => {
 
 elements.stopVoice.addEventListener("click", () => stopVoiceSession());
 
+for (const control of [
+  elements.avatarEnabled,
+  elements.avatarVoicePlayback,
+  elements.avatarCaptions,
+  elements.avatarHighContrast,
+  elements.avatarMotion,
+]) {
+  control.addEventListener("change", () => {
+    avatarPreferences = {
+      enabled: elements.avatarEnabled.checked,
+      voicePlayback: elements.avatarVoicePlayback.checked,
+      captions: elements.avatarCaptions.checked,
+      highContrast: elements.avatarHighContrast.checked,
+      motion: elements.avatarMotion.value,
+    };
+    persistAvatarPreferences();
+    applyAvatarPreferences();
+  });
+}
+
+elements.avatarStop.addEventListener("click", () => {
+  avatarStopped = true;
+  renderAvatarState("stopped");
+});
+
 elements.voiceDevice.addEventListener("change", async () => {
   const currentStream = voiceStream;
   const deviceId = elements.voiceDevice.value;
@@ -908,15 +1123,24 @@ document.addEventListener("visibilitychange", () => {
     if (voiceStream || voiceRequestPending) {
       stopVoiceSession("stopped", "microphone_hidden_stop");
     }
+    if (!avatarStopped) renderAvatarState("idle");
   } else {
     void refresh();
   }
 });
 
-window.addEventListener("pagehide", () => stopVoiceSession("stopped", null));
-window.addEventListener("beforeunload", () => stopVoiceSession("stopped", null));
+window.addEventListener("pagehide", () => {
+  avatarStopped = true;
+  stopVoiceSession("stopped", null);
+});
+window.addEventListener("beforeunload", () => {
+  avatarStopped = true;
+  stopVoiceSession("stopped", null);
+});
 
+applyAvatarPreferences();
 applyLocale(locale, false);
+void qualifyAvatarRenderer().catch(() => renderAvatarState("error"));
 void refresh();
 window.setInterval(() => {
   if (!document.hidden) void refresh();

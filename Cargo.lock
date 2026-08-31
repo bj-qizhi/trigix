@@ -1172,6 +1172,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "desktop-avatar"
+version = "1.5.1"
+dependencies = [
+ "desktop-protocol",
+ "sha2",
+ "url",
+]
+
+[[package]]
 name = "desktop-device-simulator"
 version = "1.5.1"
 dependencies = [
@@ -6673,6 +6682,7 @@ name = "trigix-desktop-shell"
 version = "1.5.1"
 dependencies = [
  "desktop-agent-core",
+ "desktop-avatar",
  "desktop-identity",
  "desktop-protocol",
  "reqwest 0.12.28",
