@@ -105,6 +105,14 @@ jobs:
       - name: Build native fixture
         run: cargo build -p desktop-automation-fixture
 
+      - name: Sign and verify deterministic fixture
+        shell: pwsh
+        run: |
+          ./services/desktop-automation-fixture/qualify-signature.ps1 `
+            -Action Sign `
+            -FixturePath target/debug/desktop-automation-fixture.exe `
+            -StateDirectory "${{ runner.temp }}/trigix-fixture-signing"
+
       - name: Record qualification environment
         shell: pwsh
         run: |
@@ -116,6 +124,10 @@ jobs:
       - name: Run native adapter qualification
         shell: pwsh
         run: |
+          ./services/desktop-automation-fixture/qualify-signature.ps1 `
+            -Action Verify `
+            -FixturePath target/debug/desktop-automation-fixture.exe `
+            -StateDirectory "${{ runner.temp }}/trigix-fixture-signing"
           $env:TRIGIX_WINDOWS_FIXTURE_EXE = (Resolve-Path target/debug/desktop-automation-fixture.exe).Path
           cargo test -p desktop-automation-host --test windows_qualification -- --nocapture --test-threads=1
 
@@ -132,6 +144,24 @@ jobs:
         if: matrix.os == 'windows-2022'
         working-directory: apps/desktop
         run: npx --yes @tauri-apps/cli@2 build --debug --bundles nsis
+
+      - name: Upload fixture signature evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fixture-signature-${{ matrix.os }}
+          path: ${{ runner.temp }}/trigix-fixture-signing/qualification.json
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Remove fixture signing state
+        if: always()
+        shell: pwsh
+        run: |
+          ./services/desktop-automation-fixture/qualify-signature.ps1 `
+            -Action Cleanup `
+            -FixturePath target/debug/desktop-automation-fixture.exe `
+            -StateDirectory "${{ runner.temp }}/trigix-fixture-signing"
 
   web:
     name: Web (typecheck, build)

@@ -4,7 +4,11 @@
 
 This document is the qualification contract for the M2 Windows automation slice. “Supported” means the Device runs as a standard user in an active interactive desktop and automates native Win32 controls through semantic selectors. It does not imply privilege escalation, background automation of a locked desktop, remote control of another user session, coordinate replay, browser DOM automation, or support for every third-party accessibility provider.
 
-The blocking continuous-integration lanes run on the pinned x64 `windows-2022` and `windows-2025` GitHub-hosted images. Each lane builds the native fixture and isolated Host, discovers the real fixture window, validates password redaction, focuses it, enters text through the value path, invokes the button, and exercises the Host process tests. The runner matrix is pinned instead of using `windows-latest`, so image migrations cannot silently change the qualified operating system.
+The blocking continuous-integration lanes run on the pinned x64 `windows-2022` and `windows-2025` GitHub-hosted images. Each lane builds the native fixture and isolated Host, applies and verifies an ephemeral Authenticode qualification signature, discovers the real fixture window, validates password redaction, focuses it, enters text through the value path, invokes the button, and exercises the Host process tests. The runner matrix is pinned instead of using `windows-latest`, so image migrations cannot silently change the qualified operating system.
+
+Fixture signing uses a short-lived RSA code-signing identity created in the current runner user certificate store with a fixed qualification-only subject and a non-exportable private key. The certificate is trusted only for the duration of the ephemeral job. Before native automation starts, the lane requires a valid SHA-256 Authenticode signature, the exact qualification signer, and a fixture digest matching the generated evidence record. Each lane retains that bounded public record for 14 days, then an unconditional cleanup step removes the private-key container, trust entries, thumbprint state, and local evidence file. The workflow contains no certificate password, production publisher identity, timestamp-service credential, or exported key.
+
+This qualification signature proves that automation tests exercise a signed deterministic fixture and catches unsigned-binary regressions. It is not a production publisher signature, has no public timestamp or reputation, and cannot satisfy the signed Windows 11 release gate.
 
 ## Supported matrix
 
