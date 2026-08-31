@@ -962,13 +962,9 @@ mod windows_adapter {
             selector: &WindowSelector,
             guard: Option<&AutomationExecutionGuard<'_>>,
         ) -> Result<Value, AutomationHostError> {
-            if let Some(snapshot_id) = &selector.snapshot_id {
-                let mut request = DesktopInspectionRequest::bounded(None);
-                request.expected_snapshot_id = Some(snapshot_id.clone());
-                inspect_windows(&request)?;
-            }
             let resolved = resolve_window(selector)?;
             let window = resolved.target;
+            validate_window_snapshot(window, selector.snapshot_id.as_deref())?;
             let mut process_id = 0;
             if let Some(guard) = guard {
                 guard.ensure_active()?;
@@ -1017,12 +1013,8 @@ mod windows_adapter {
             &self,
             selector: &ElementSelector,
         ) -> Result<ResolvedTarget<ResolvedElement>, AutomationHostError> {
-            if let Some(snapshot_id) = &selector.window.snapshot_id {
-                let mut request = DesktopInspectionRequest::bounded(None);
-                request.expected_snapshot_id = Some(snapshot_id.clone());
-                inspect_windows(&request)?;
-            }
             let window = resolve_window(&selector.window)?;
+            validate_window_snapshot(window.target, selector.window.snapshot_id.as_deref())?;
             resolve_element_in_window(selector, window.target, window.telemetry.fallback_depth)
         }
 
@@ -1103,13 +1095,9 @@ mod windows_adapter {
             modifiers: &[KeyboardModifier],
             guard: Option<&AutomationExecutionGuard<'_>>,
         ) -> Result<Value, AutomationHostError> {
-            if let Some(snapshot_id) = &selector.snapshot_id {
-                let mut request = DesktopInspectionRequest::bounded(None);
-                request.expected_snapshot_id = Some(snapshot_id.clone());
-                inspect_windows(&request)?;
-            }
             let resolved = resolve_window(selector)?;
             let window = resolved.target;
+            validate_window_snapshot(window, selector.snapshot_id.as_deref())?;
             if let Some(guard) = guard {
                 guard.ensure_active()?;
             }
@@ -1613,19 +1601,36 @@ mod windows_adapter {
         select_unique_target(strategies)
     }
 
+    fn validate_window_snapshot(
+        window: HWND,
+        expected_snapshot_id: Option<&str>,
+    ) -> Result<(), AutomationHostError> {
+        let Some(expected_snapshot_id) = expected_snapshot_id else {
+            return Ok(());
+        };
+        let selector = unsafe { observed_window_selector(window) };
+        let mut request = DesktopInspectionRequest::bounded(Some(selector));
+        request.expected_snapshot_id = Some(expected_snapshot_id.to_owned());
+        inspect_windows(&request).map(|_| ())
+    }
+
+    unsafe fn observed_window_selector(window: HWND) -> WindowSelector {
+        let mut process_id = 0;
+        GetWindowThreadProcessId(window, &mut process_id);
+        WindowSelector {
+            executable: process_executable(process_id),
+            title: window_text(window).filter(|title| !is_credential_text(title)),
+            automation_id: Some(window_class(window)),
+            snapshot_id: None,
+        }
+    }
+
     unsafe extern "system" fn match_window(window: HWND, parameter: LPARAM) -> i32 {
         let context = &mut *(parameter as *mut MatchingWindows<'_>);
         if IsWindowVisible(window) == 0 {
             return 1;
         }
-        let mut process_id = 0;
-        GetWindowThreadProcessId(window, &mut process_id);
-        let selector = WindowSelector {
-            executable: process_executable(process_id),
-            title: window_text(window).filter(|title| !is_credential_text(title)),
-            automation_id: Some(window_class(window)),
-            snapshot_id: None,
-        };
+        let selector = observed_window_selector(window);
         if window_matches(&selector, context.selector) {
             context.windows.push(window);
         }

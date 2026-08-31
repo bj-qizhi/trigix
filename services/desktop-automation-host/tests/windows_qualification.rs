@@ -71,6 +71,8 @@ fn native_fixture_actions_meet_reliability_latency_and_resource_budgets() {
     assert!(password.value.is_none());
     assert!(password.redaction.is_some());
 
+    let window = inspected.windows[0].selector.clone();
+
     let focused = adapter
         .execute(&DesktopAction::FocusWindow {
             selector: window.clone(),
