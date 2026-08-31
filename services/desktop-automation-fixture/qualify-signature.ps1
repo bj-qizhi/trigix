@@ -55,24 +55,22 @@ function Open-CertificateStore([string]$name) {
 }
 
 function Remove-QualificationCertificate([string]$thumbprint) {
-    foreach ($storeName in @("My", "Root", "TrustedPublisher")) {
-        $store = Open-CertificateStore $storeName
-        try {
-            $matches = $store.Certificates.Find(
-                [System.Security.Cryptography.X509Certificates.X509FindType]::FindByThumbprint,
-                $thumbprint,
-                $false
-            )
-            foreach ($certificate in $matches) {
-                if ($certificate.Subject -ne $qualificationSubject) {
-                    throw "Refusing to remove a certificate with an unexpected subject."
-                }
-                $store.Remove($certificate)
+    $store = Open-CertificateStore "My"
+    try {
+        $matches = $store.Certificates.Find(
+            [System.Security.Cryptography.X509Certificates.X509FindType]::FindByThumbprint,
+            $thumbprint,
+            $false
+        )
+        foreach ($certificate in $matches) {
+            if ($certificate.Subject -ne $qualificationSubject) {
+                throw "Refusing to remove a certificate with an unexpected subject."
             }
+            $store.Remove($certificate)
         }
-        finally {
-            $store.Close()
-        }
+    }
+    finally {
+        $store.Close()
     }
 }
 
@@ -108,11 +106,28 @@ function Assert-PrivateKeyIsNonExportable(
 
 function Assert-ValidFixtureSignature([string]$path) {
     $signature = Get-AuthenticodeSignature -LiteralPath $path
-    if ($signature.Status -ne [System.Management.Automation.SignatureStatus]::Valid) {
-        throw "Fixture Authenticode signature is not valid: $($signature.Status)."
+    if ($signature.Status -notin @(
+        [System.Management.Automation.SignatureStatus]::Valid,
+        [System.Management.Automation.SignatureStatus]::NotTrusted
+    )) {
+        throw "Fixture Authenticode integrity check failed: $($signature.Status)."
     }
     if ($null -eq $signature.SignerCertificate -or $signature.SignerCertificate.Subject -ne $qualificationSubject) {
         throw "Fixture signer identity is invalid."
+    }
+    $chain = [System.Security.Cryptography.X509Certificates.X509Chain]::new()
+    try {
+        $chain.ChainPolicy.TrustMode = [System.Security.Cryptography.X509Certificates.X509ChainTrustMode]::CustomRootTrust
+        $chain.ChainPolicy.RevocationMode = [System.Security.Cryptography.X509Certificates.X509RevocationMode]::NoCheck
+        $chain.ChainPolicy.VerificationFlags = [System.Security.Cryptography.X509Certificates.X509VerificationFlags]::NoFlag
+        $chain.ChainPolicy.CustomTrustStore.Add($signature.SignerCertificate)
+        if (-not $chain.Build($signature.SignerCertificate)) {
+            $statuses = ($chain.ChainStatus | ForEach-Object { $_.Status.ToString() }) -join ","
+            throw "Fixture signer failed the isolated qualification trust chain: $statuses."
+        }
+    }
+    finally {
+        $chain.Dispose()
     }
     return $signature
 }
@@ -141,21 +156,14 @@ switch ($Action) {
         Set-Content -LiteralPath $thumbprintPath -Value $certificate.Thumbprint -Encoding ascii
         Assert-PrivateKeyIsNonExportable $certificate
 
-        foreach ($storeName in @("Root", "TrustedPublisher")) {
-            $store = Open-CertificateStore $storeName
-            try {
-                $store.Add($certificate)
-            }
-            finally {
-                $store.Close()
-            }
-        }
-
         $signature = Set-AuthenticodeSignature `
             -LiteralPath $fixture `
             -Certificate $certificate `
             -HashAlgorithm SHA256
-        if ($signature.Status -ne [System.Management.Automation.SignatureStatus]::Valid) {
+        if ($signature.Status -notin @(
+            [System.Management.Automation.SignatureStatus]::Valid,
+            [System.Management.Automation.SignatureStatus]::NotTrusted
+        )) {
             throw "Fixture signing failed: $($signature.Status)."
         }
         $verified = Assert-ValidFixtureSignature $fixture
@@ -166,6 +174,7 @@ switch ($Action) {
             signer_subject = $verified.SignerCertificate.Subject
             certificate_thumbprint = $verified.SignerCertificate.Thumbprint.ToUpperInvariant()
             signature_status = $verified.Status.ToString()
+            isolated_chain_trusted = $true
             signature_hash_algorithm = "sha256"
             fixture_sha256 = $digest
             operating_system = [System.Environment]::OSVersion.VersionString
@@ -190,7 +199,8 @@ switch ($Action) {
             $evidence.purpose -ne "windows_fixture_qualification" -or
             $evidence.signer_subject -ne $qualificationSubject -or
             $evidence.certificate_thumbprint -ne $thumbprint -or
-            $evidence.signature_status -ne "Valid" -or
+            $evidence.signature_status -ne $signature.Status.ToString() -or
+            $evidence.isolated_chain_trusted -ne $true -or
             $evidence.signature_hash_algorithm -ne "sha256") {
             throw "Qualification evidence is invalid."
         }

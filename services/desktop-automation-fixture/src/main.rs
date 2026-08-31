@@ -168,6 +168,8 @@ mod tests {
         assert!(script.contains("-KeyExportPolicy NonExportable"));
         assert!(script.contains("Set-AuthenticodeSignature"));
         assert!(script.contains("Get-AuthenticodeSignature"));
+        assert!(script.contains("X509ChainTrustMode]::CustomRootTrust"));
+        assert!(script.contains("isolated_chain_trusted = $true"));
         assert!(script.contains("signature_hash_algorithm = \"sha256\""));
         assert!(script.contains("Remove-QualificationCertificate"));
         assert!(
@@ -175,6 +177,8 @@ mod tests {
         );
         assert!(!script.contains("PFX_PASSWORD"));
         assert!(!script.contains("TimestampServer"));
+        assert!(!script.contains("Open-CertificateStore \"Root\""));
+        assert!(!script.contains("TrustedPublisher"));
 
         let workflow = include_str!("../../../.github/workflows/ci.yml");
         let signing = workflow
