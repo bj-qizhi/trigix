@@ -203,6 +203,8 @@ After permission, the shell may enumerate local audio inputs and show a transien
 
 Final transcripts cross a separate authenticated Platform ingress with a closed request schema. JWT identity determines the Tenant, and the default policy stores metadata only. Transcript retention requires an explicit Tenant policy, applies redaction before record creation, and is bounded to 30 days. Database mode persists policy and conversation metadata behind Tenant-context row-level security, encrypts the internal replay fingerprint, and sweeps each record at its policy deadline. Identical replay is idempotent, conflicting sequence reuse is rejected, and reads and deletion remain Tenant-scoped. This boundary cannot encode Tool approval or Desktop execution authority. See [ADR 0009](../../adr/0009-tenant-voice-privacy-boundary.md).
 
+Voice intent can create only a short-lived review-only typed Tool proposal bound to the authenticated actor and accepted conversation sequence. The initial allow-list is published Workflow execution with bounded object input. Creation performs no execution; explicit Tenant-administrator confirmation takes a single dispatch claim and enters the existing quota, input-schema, credential-resolution, Workflow Approval, Execution, and audit path. The contract has no Desktop action or Device field. See [ADR 0010](../../adr/0010-voice-tool-proposal-confirmation.md).
+
 Avatar rendering consumes bounded presentation events such as speaking state, phoneme timing, expression, and interruption. It cannot authorize or execute desktop actions. Licensed models, voices, and customer media remain outside the public source repository.
 
 ## First Vertical Slice

@@ -172,66 +172,13 @@ async fn mcp_execute_tool(
                 .and_then(|v| v.get("workflow_id"))
                 .and_then(|v| v.as_str())
                 .ok_or_else(|| ApiError::bad_request("input.workflow_id is required"))?;
-            let input_json = input
+            let workflow_input = input
                 .and_then(|v| v.get("input"))
-                .map(|v| v.to_string())
-                .unwrap_or_else(|| "{}".to_string());
-            state
-                .billing_store
-                .check_execution_quota(&tenant_id)
-                .map_err(|e| ApiError {
-                    status: StatusCode::PAYMENT_REQUIRED,
-                    message: e,
-                })?;
-            let workflow = state
-                .workflow_service
-                .get_workflow(&tenant_id, workflow_id)
-                .await
-                .map_err(|_| ApiError::not_found(&format!("workflow not found: {workflow_id}")))?;
-            let version_id = workflow
-                .latest_version_id
-                .ok_or(WorkflowError::NoPublishedVersion)?;
-            let version = state
-                .workflow_service
-                .get_version(&tenant_id, &version_id)
-                .await?;
-            let graph = resolve_graph_credentials(
-                version.graph,
-                &state.credential_store,
-                &state.env_store,
-                &tenant_id,
-                DEFAULT_SET,
-            )
-            .await;
-            let record = state
-                .execution_service
-                .start(StartExecutionRequest {
-                    tenant_id: tenant_id.clone(),
-                    workflow_id: workflow.id,
-                    workflow_version_id: version_id,
-                    graph,
-                    input_json,
-                    label: Some("mcp".to_string()),
-                    callback_url: None,
-                    trigger_type: Some("mcp".to_string()),
-                    dry_run: false,
-                    retried_from: None,
-                })
-                .await?;
-            let prev_used = state
-                .billing_store
-                .billing_status(&tenant_id)
-                .usage
-                .executions_used;
-            state.billing_store.increment_execution(&tenant_id);
-            spawn_quota_alert(&state, &tenant_id, prev_used);
-            state.audit_store.record(
-                &tenant_id,
-                "execution.started.mcp",
-                "execution",
-                &record.id,
-                None,
-            );
+                .cloned()
+                .unwrap_or_else(|| serde_json::json!({}));
+            let record =
+                execute_workflow_tool(&state, &tenant_id, workflow_id, &workflow_input, "mcp")
+                    .await?;
             Ok(Json(serde_json::json!({
                 "execution_id": record.id,
                 "status": format!("{:?}", record.status).to_lowercase(),
@@ -242,6 +189,75 @@ async fn mcp_execute_tool(
             "Unknown tool: {other}. Available: list_workflows, execute_workflow"
         ))),
     }
+}
+
+pub(super) async fn execute_workflow_tool(
+    state: &AppState,
+    tenant_id: &str,
+    workflow_id: &str,
+    input: &serde_json::Value,
+    source: &str,
+) -> Result<crate::execution::ExecutionRecord, ApiError> {
+    if !input.is_object() || !matches!(source, "mcp" | "voice") {
+        return Err(ApiError::bad_request("Tool input must be an object"));
+    }
+    state
+        .billing_store
+        .check_execution_quota(tenant_id)
+        .map_err(|error| ApiError {
+            status: StatusCode::PAYMENT_REQUIRED,
+            message: error,
+        })?;
+    let workflow = state
+        .workflow_service
+        .get_workflow(tenant_id, workflow_id)
+        .await
+        .map_err(|_| ApiError::not_found(&format!("workflow not found: {workflow_id}")))?;
+    let version_id = workflow
+        .latest_version_id
+        .ok_or(WorkflowError::NoPublishedVersion)?;
+    let version = state
+        .workflow_service
+        .get_version(tenant_id, &version_id)
+        .await?;
+    let graph = resolve_graph_credentials(
+        version.graph,
+        &state.credential_store,
+        &state.env_store,
+        tenant_id,
+        DEFAULT_SET,
+    )
+    .await;
+    let record = state
+        .execution_service
+        .start(StartExecutionRequest {
+            tenant_id: tenant_id.to_owned(),
+            workflow_id: workflow.id,
+            workflow_version_id: version_id,
+            graph,
+            input_json: input.to_string(),
+            label: Some(source.to_owned()),
+            callback_url: None,
+            trigger_type: Some(source.to_owned()),
+            dry_run: false,
+            retried_from: None,
+        })
+        .await?;
+    let previous_usage = state
+        .billing_store
+        .billing_status(tenant_id)
+        .usage
+        .executions_used;
+    state.billing_store.increment_execution(tenant_id);
+    spawn_quota_alert(state, tenant_id, previous_usage);
+    state.audit_store.record(
+        tenant_id,
+        &format!("execution.started.{source}"),
+        "execution",
+        &record.id,
+        None,
+    );
+    Ok(record)
 }
 
 // ── Global search ─────────────────────────────────────────────────────────────
