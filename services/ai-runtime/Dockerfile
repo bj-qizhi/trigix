@@ -4,9 +4,10 @@ FROM python:3.12-slim
 WORKDIR /app
 
 # Install dependencies first so the layer caches across app-code changes.
-COPY pyproject.toml ./
+COPY pyproject.toml requirements.lock ./
+RUN pip install --no-cache-dir --require-hashes -r requirements.lock
+
 COPY app/ ./app/
-RUN pip install --no-cache-dir ".[openai]"
 
 EXPOSE 8000
 

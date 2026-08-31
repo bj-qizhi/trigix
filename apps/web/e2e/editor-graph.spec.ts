@@ -436,7 +436,7 @@ test('desktop pointer test shows its target and stops through the governed cance
   await expect(page.getByText(/cancelled/)).toBeVisible()
   expect(cancelled).toBe(true)
   expect(actions.at(-1)).toEqual(expect.objectContaining({ kind: 'pointer_click', button: 'left', click_count: 1 }))
-  expect(JSON.stringify(actions.at(-1))).not.toMatch(/\"[xy]\"/)
+  expect(JSON.stringify(actions.at(-1))).not.toMatch(/"[xy]"/)
   expect(errors, errors.join('\n')).toHaveLength(0)
 })
 

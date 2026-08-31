@@ -34,7 +34,7 @@ spec:
       serviceAccountName: {{ include "trigix.serviceAccountName" . }}
       containers:
         - name: executor
-          image: "{{ .Values.executor.image.repository }}:{{ .Values.executor.image.tag }}"
+          image: "{{ .Values.executor.image.repository }}:{{ default .Chart.AppVersion .Values.executor.image.tag }}"
           imagePullPolicy: {{ .Values.executor.image.pullPolicy }}
           ports:
             - name: http

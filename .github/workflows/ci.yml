@@ -164,7 +164,7 @@ jobs:
             -StateDirectory "${{ runner.temp }}/trigix-fixture-signing"
 
   web:
-    name: Web (typecheck, build)
+    name: Web (lint, typecheck, coverage)
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -182,11 +182,24 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Lint
+        run: npm run lint
+
       - name: Build (tsc + vite)
         run: npm run build
 
-      - name: Unit tests (vitest)
-        run: npm run test:unit
+      - name: Unit tests with coverage gate
+        run: npm run test:coverage
+
+      - name: Upload Web coverage evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-coverage
+          path: |
+            apps/web/coverage/coverage-summary.json
+            apps/web/coverage/lcov.info
+          if-no-files-found: error
+          retention-days: 30
 
       - name: Node SDK tests
         working-directory: sdk/typescript
@@ -249,7 +262,7 @@ jobs:
           python-version: "3.12"
 
       - name: Install dependencies
-        run: pip install -e ".[test]"
+        run: pip install --require-hashes -r requirements-test.lock
 
       - name: Test (unit + pgvector integration)
         env:
@@ -259,8 +272,59 @@ jobs:
       - name: Node SDK tests
         working-directory: sdk/python
         run: |
-          pip install -e ".[test]"
+          pip install --require-hashes -r requirements.lock
+          pip install -e . --no-deps
           python -m pytest -q
+
+  security:
+    name: Security (dependency audit, release inputs)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Install pinned audit tools
+        run: |
+          cargo install cargo-audit --locked --version 0.22.2
+          python -m pip install pip-audit==2.10.1
+
+      - name: Prepare evidence directory
+        run: mkdir -p evidence
+
+      - name: Verify deterministic release inputs
+        run: python scripts/release/verify_release_inputs.py --output evidence/release-inputs.json
+
+      - name: Audit Rust dependencies
+        # RUSTSEC-2023-0071 is the single documented no-fix exception in ADR
+        # 0016. All other vulnerability advisories remain hard failures.
+        run: cargo audit --ignore RUSTSEC-2023-0071 --json > evidence/cargo-audit.json
+
+      - name: Audit Node dependencies
+        working-directory: apps/web
+        run: npm audit --audit-level=high --json > ../../evidence/npm-audit.json
+
+      - name: Audit AI Runtime dependencies
+        run: pip-audit -r services/ai-runtime/requirements.lock --format json --output evidence/ai-runtime-pip-audit.json
+
+      - name: Audit AI Runtime test dependencies
+        run: pip-audit -r services/ai-runtime/requirements-test.lock --format json --output evidence/ai-runtime-test-pip-audit.json
+
+      - name: Audit Python SDK dependencies
+        run: pip-audit -r sdk/python/requirements.lock --format json --output evidence/python-sdk-pip-audit.json
+
+      - name: Upload dependency and release-input evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-quality-evidence
+          path: evidence/
+          if-no-files-found: warn
+          retention-days: 30
 
   docker:
     name: Docker (image build smoke)
