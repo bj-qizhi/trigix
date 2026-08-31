@@ -219,7 +219,7 @@ export function SftpConfig({ set, str }: ConfigProps) {
       {sshKeyFields(str, set)}
       {fileOpFields(operation, str, set)}
       <p style={{ fontSize: 11, color: 'var(--muted)', margin: '8px 0 0' }}>
-        {fl("SFTP over SSH (password or private key). Returns file listings / base64 content.")}
+        {fl("SFTP over SSH with a verified SHA-256 host-key fingerprint. Returns file listings / base64 content.")}
       </p>
     </>
   )
@@ -235,7 +235,7 @@ export function SshConfig({ set, str }: ConfigProps) {
         <textarea rows={2} placeholder="uname -a && df -h" value={str('command', '')} onChange={(e) => set('command', e.target.value)} style={{ fontFamily: 'monospace', fontSize: 12 }} />
       </div>
       <p style={{ fontSize: 11, color: 'var(--muted)', margin: '8px 0 0' }}>
-        {fl("Runs a command over SSH (password or private key). Returns")} <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>{'{ stdout, stderr, exit_status }'}</code>
+        {fl("Runs a command over SSH with a verified SHA-256 host-key fingerprint. Returns")} <code style={{ background: 'var(--panel)', padding: '1px 4px', borderRadius: 3 }}>{'{ stdout, stderr, exit_status }'}</code>
       </p>
     </>
   )

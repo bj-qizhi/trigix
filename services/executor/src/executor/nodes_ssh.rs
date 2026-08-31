@@ -9,22 +9,46 @@ use super::*;
 use crate::runtime::{ExecutionContext, NodeExecutionResult};
 use base64::Engine as _;
 use russh::client;
+use russh::keys::ssh_key::Fingerprint;
 use std::sync::Arc;
 use workflow_core::Node;
 
-// Accept any host key (workflow nodes connect to user-configured hosts; a known-
-// hosts policy would be a future enhancement).
-struct AcceptAll;
+struct PinnedHostKey {
+    expected: Fingerprint,
+}
 
-impl client::Handler for AcceptAll {
+impl client::Handler for PinnedHostKey {
     type Error = russh::Error;
 
     async fn check_server_key(
         &mut self,
-        _server_public_key: &russh::keys::PublicKeyOrCertificate,
+        server_public_key: &russh::keys::PublicKeyOrCertificate,
     ) -> Result<bool, Self::Error> {
-        Ok(true)
+        let observed = match server_public_key {
+            russh::keys::PublicKeyOrCertificate::PublicKey { key, .. } => {
+                key.fingerprint(russh::keys::HashAlg::Sha256)
+            }
+            russh::keys::PublicKeyOrCertificate::Certificate(certificate) => {
+                Fingerprint::new(russh::keys::HashAlg::Sha256, certificate.public_key())
+            }
+        };
+        Ok(fingerprints_match(&self.expected, &observed))
     }
+}
+
+fn parse_host_key_fingerprint(value: &str) -> Result<Fingerprint, String> {
+    let fingerprint = value
+        .trim()
+        .parse::<Fingerprint>()
+        .map_err(|_| "host_key_fingerprint must be an OpenSSH SHA-256 fingerprint".to_string())?;
+    if !matches!(fingerprint, Fingerprint::Sha256(_)) {
+        return Err("host_key_fingerprint must use SHA-256".to_string());
+    }
+    Ok(fingerprint)
+}
+
+fn fingerprints_match(expected: &Fingerprint, observed: &Fingerprint) -> bool {
+    expected == observed
 }
 
 struct Conn {
@@ -34,6 +58,7 @@ struct Conn {
     pass: String,
     private_key: Option<String>,
     passphrase: Option<String>,
+    host_key_fingerprint: Fingerprint,
 }
 
 fn read_conn(cfg: &serde_json::Value, node: &str) -> Result<Conn, NodeExecutionResult> {
@@ -59,9 +84,34 @@ fn read_conn(cfg: &serde_json::Value, node: &str) -> Result<Conn, NodeExecutionR
             .filter(|s| !s.is_empty())
             .map(|s| s.to_string())
     };
+    let port = match cfg.get("port") {
+        None | Some(serde_json::Value::Null) => 22,
+        Some(value) => match value.as_u64() {
+            Some(port) if (1..=u16::MAX as u64).contains(&port) => port,
+            _ => {
+                return Err(NodeExecutionResult::failed(format!(
+                    "{node} 'port' must be an integer between 1 and 65535"
+                )))
+            }
+        },
+    };
+    let host_key_fingerprint = match cfg
+        .get("host_key_fingerprint")
+        .and_then(|value| value.as_str())
+    {
+        Some(value) if !value.trim().is_empty() => match parse_host_key_fingerprint(value) {
+            Ok(fingerprint) => fingerprint,
+            Err(error) => return Err(NodeExecutionResult::failed(format!("{node} {error}"))),
+        },
+        _ => {
+            return Err(NodeExecutionResult::failed(format!(
+                "{node} requires 'host_key_fingerprint'"
+            )))
+        }
+    };
     Ok(Conn {
         host,
-        port: cfg.get("port").and_then(|v| v.as_u64()).unwrap_or(22) as u16,
+        port: port as u16,
         user,
         pass: cfg
             .get("password")
@@ -70,10 +120,11 @@ fn read_conn(cfg: &serde_json::Value, node: &str) -> Result<Conn, NodeExecutionR
             .to_string(),
         private_key: opt("private_key"),
         passphrase: opt("passphrase"),
+        host_key_fingerprint,
     })
 }
 
-async fn connect(conn: &Conn) -> Result<client::Handle<AcceptAll>, String> {
+async fn connect(conn: &Conn) -> Result<client::Handle<PinnedHostKey>, String> {
     // Decode the key (if any) up front so a malformed key fails before any socket.
     let keypair = match &conn.private_key {
         Some(pem) => Some(
@@ -84,9 +135,12 @@ async fn connect(conn: &Conn) -> Result<client::Handle<AcceptAll>, String> {
     };
 
     let config = Arc::new(client::Config::default());
-    let mut handle = client::connect(config, (conn.host.as_str(), conn.port), AcceptAll)
+    let handler = PinnedHostKey {
+        expected: conn.host_key_fingerprint,
+    };
+    let mut handle = client::connect(config, (conn.host.as_str(), conn.port), handler)
         .await
-        .map_err(|e| format!("connect error: {e}"))?;
+        .map_err(|e| format!("connect or host-key verification error: {e}"))?;
 
     let authed = match keypair {
         // Public-key auth when a private key is supplied, else password.
@@ -270,6 +324,8 @@ mod tests {
     use super::*;
     use workflow_core::{Node, NodeType};
 
+    const HOST_FP: &str = "SHA256:JQ6FV0rf7qqJHZqIj4zNH8eV0oB8KLKh9Pph3FTD98g";
+
     fn ctx() -> ExecutionContext {
         ExecutionContext {
             execution_id: "e1".into(),
@@ -296,7 +352,9 @@ mod tests {
         let n = Node {
             id: "s2".into(),
             node_type: NodeType::Ssh,
-            config: Some(serde_json::json!({"host":"h","username":"u"})),
+            config: Some(serde_json::json!({
+                "host":"h","username":"u","host_key_fingerprint":HOST_FP
+            })),
         };
         let r = execute_ssh(&n, &ctx()).await;
         assert!(r.error.as_deref().unwrap_or("").contains("command"));
@@ -310,6 +368,7 @@ mod tests {
             node_type: NodeType::Ssh,
             config: Some(serde_json::json!({
                 "host":"192.0.2.1","username":"u","command":"ls",
+                "host_key_fingerprint":HOST_FP,
                 "private_key":"not-a-real-key"
             })),
         };
@@ -326,5 +385,64 @@ mod tests {
         };
         let r = execute_sftp(&n, &ctx()).await;
         assert!(r.error.as_deref().unwrap_or("").contains("username"));
+    }
+
+    #[tokio::test]
+    async fn ssh_requires_host_key_fingerprint_before_connecting() {
+        let n = Node {
+            id: "s4".into(),
+            node_type: NodeType::Ssh,
+            config: Some(serde_json::json!({
+                "host":"192.0.2.1","username":"u","command":"ls"
+            })),
+        };
+        let r = execute_ssh(&n, &ctx()).await;
+        assert!(r
+            .error
+            .as_deref()
+            .unwrap_or("")
+            .contains("host_key_fingerprint"));
+    }
+
+    #[test]
+    fn host_key_fingerprint_requires_sha256() {
+        let sha512 = format!("SHA512:{}", "A".repeat(86));
+        assert!(parse_host_key_fingerprint(&sha512)
+            .unwrap_err()
+            .contains("SHA-256"));
+        assert!(parse_host_key_fingerprint("not-a-fingerprint").is_err());
+    }
+
+    #[test]
+    fn host_key_fingerprint_matches_only_exact_digest() {
+        let expected = parse_host_key_fingerprint(HOST_FP).unwrap();
+        let same = parse_host_key_fingerprint(HOST_FP).unwrap();
+        let different =
+            parse_host_key_fingerprint("SHA256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
+                .unwrap();
+        assert!(fingerprints_match(&expected, &same));
+        assert!(!fingerprints_match(&expected, &different));
+    }
+
+    #[test]
+    fn ssh_rejects_out_of_range_port() {
+        for port in [
+            serde_json::json!(0),
+            serde_json::json!(65536),
+            serde_json::json!(-1),
+            serde_json::json!("22"),
+        ] {
+            let result = read_conn(
+                &serde_json::json!({
+                    "host":"h","username":"u","port":port,
+                    "host_key_fingerprint":HOST_FP
+                }),
+                "SSH",
+            );
+            match result {
+                Err(error) => assert!(error.error.as_deref().unwrap_or("").contains("65535")),
+                Ok(_) => panic!("invalid port was accepted"),
+            }
+        }
     }
 }

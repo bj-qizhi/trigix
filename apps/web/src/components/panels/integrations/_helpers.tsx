@@ -96,6 +96,18 @@ export function sshKeyFields(str: ConfigProps['str'], set: ConfigProps['set']) {
   return (
     <>
       <div className="field">
+        <label>{fl("Server Host-Key Fingerprint")} <span style={{ color: 'var(--danger)' }}>*</span></label>
+        <input
+          placeholder="SHA256:JQ6FV0rf7qqJHZqIj4zNH8eV0oB8KLKh9Pph3FTD98g"
+          value={str('host_key_fingerprint', '')}
+          onChange={(e) => set('host_key_fingerprint', e.target.value)}
+          style={{ fontFamily: 'monospace', fontSize: 11 }}
+        />
+        <p style={{ fontSize: 11, color: 'var(--muted)', margin: '4px 0 0' }}>
+          {fl("Verify this SHA-256 fingerprint through a trusted channel before connecting.")}
+        </p>
+      </div>
+      <div className="field">
         <label>{fl("Private Key")} <span style={{ color: 'var(--muted)' }}>{fl("(PEM — overrides password)")}</span></label>
         <textarea rows={3} placeholder="-----BEGIN OPENSSH PRIVATE KEY-----…" value={str('private_key', '')} onChange={(e) => set('private_key', e.target.value)} style={{ fontFamily: 'monospace', fontSize: 11 }} />
       </div>

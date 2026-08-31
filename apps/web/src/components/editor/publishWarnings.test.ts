@@ -71,6 +71,19 @@ describe('collectPublishWarnings', () => {
     expect(messages(w).some((m) => m.includes('has no URL'))).toBe(false)
   })
 
+  it('requires a pinned server identity for SSH and SFTP nodes', () => {
+    const w = collectPublishWarnings(
+      [
+        node('trigger', 'trigger'),
+        node('ssh', 'ssh', { host: 'server', command: 'uptime' }),
+        node('sftp', 'sftp', { host: 'server' }),
+      ],
+      [edge('trigger', 'ssh'), edge('ssh', 'sftp')],
+    )
+    expect(messages(w)).toContain('SSH node "ssh" has no server host-key fingerprint')
+    expect(messages(w)).toContain('SFTP node "sftp" has no server host-key fingerprint')
+  })
+
   it('requires a governed Device and stable selector for Desktop element actions', () => {
     const w = collectPublishWarnings(
       [node('trigger', 'trigger'), node('desktop', 'desktop', { action_kind: 'click_element' })],
