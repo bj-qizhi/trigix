@@ -210,6 +210,9 @@ const LABEL_ZH: Record<string, string> = {
   Secret: '密钥',
   'Private Key': '私钥',
   'Key Passphrase': '私钥口令',
+  'Server Host-Key Fingerprint': '服务器主机密钥指纹',
+  'Verify this SHA-256 fingerprint through a trusted channel before connecting.':
+    '连接前请通过可信渠道核验此 SHA-256 指纹。',
 
   // Workflow control
   Items: '数组项',
@@ -577,10 +580,11 @@ const LABEL_ZH: Record<string, string> = {
     'RTDB 在 URL 中内嵌鉴权；Firestore/Storage 使用 Bearer 头。返回',
   'Requires OAuth2 access token with Drive scope. Returns': '需要带 Drive 权限的 OAuth2 访问令牌。返回',
   'Run web scrapers and automation actors. Returns': '运行网页爬虫和自动化 actor。返回',
-  'Runs a command over SSH (password or private key). Returns': '通过 SSH 执行命令（密码或私钥）。返回',
+  'Runs a command over SSH with a verified SHA-256 host-key fingerprint. Returns':
+    '通过已验证 SHA-256 主机密钥指纹的 SSH 执行命令。返回',
   'Runs open-source LLMs. Returns': '运行开源 LLM。返回',
-  'SFTP over SSH (password or private key). Returns file listings / base64 content.':
-    'SFTP over SSH（密码或私钥）。返回文件列表 / base64 内容。',
+  'SFTP over SSH with a verified SHA-256 host-key fingerprint. Returns file listings / base64 content.':
+    '通过已验证 SHA-256 主机密钥指纹的 SFTP。返回文件列表 / base64 内容。',
   'SMS posts to rest.nexmo.com. Voice/Verify use Basic auth to api.nexmo.com. Returns':
     '短信发送到 rest.nexmo.com；Voice/Verify 用 Basic auth 访问 api.nexmo.com。返回',
   'Sends via Meta Graph API. Returns': '通过 Meta Graph API 发送。返回',

@@ -134,8 +134,8 @@ const NODE_REQUIRED_FIELDS: Record<string, NodeFieldSpec> = {
   sqs: { name: 'SQS', fields: [['access_key_id', 'access key ID'], ['secret_access_key', 'secret access key'], ['queue_url', 'queue URL']] },
   sns: { name: 'SNS', fields: [['access_key_id', 'access key ID'], ['secret_access_key', 'secret access key']] },
   ftp: { name: 'FTP', fields: [['host', 'host']] },
-  sftp: { name: 'SFTP', fields: [['host', 'host']] },
-  ssh: { name: 'SSH', fields: [['host', 'host'], ['command', 'command']] },
+  sftp: { name: 'SFTP', fields: [['host', 'host'], ['host_key_fingerprint', 'server host-key fingerprint']] },
+  ssh: { name: 'SSH', fields: [['host', 'host'], ['host_key_fingerprint', 'server host-key fingerprint'], ['command', 'command']] },
   imap: { name: 'IMAP', fields: [['host', 'host'], ['username', 'username']] },
   dingtalk: { name: 'DingTalk', fields: [['access_token', 'robot access token']] },
 }
