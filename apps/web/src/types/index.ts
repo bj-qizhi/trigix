@@ -170,6 +170,23 @@ export interface DesktopElementSelector {
   control_type?: string
 }
 
+export type DesktopSemanticSelectorStrategy =
+  | 'window_automation_id'
+  | 'executable_and_title'
+  | 'executable'
+  | 'title'
+  | 'automation_id'
+  | 'control_type_and_name'
+  | 'control_type'
+
+export interface DesktopVisualSelectorSuggestion {
+  selector: DesktopElementSelector
+  snapshot_id: string
+  confidence_basis_points: number
+  candidate_count: number
+  observed_at_unix_ms: number
+}
+
 export interface DesktopInspectedElement {
   selector: DesktopElementSelector
   depth: number
@@ -186,6 +203,11 @@ export interface DesktopInspectionResult {
     elements: DesktopInspectedElement[]
   }>
   truncated: boolean
+  selector_resolution?: {
+    strategy: DesktopSemanticSelectorStrategy
+    fallback_depth: number
+    fallback_used: boolean
+  }
 }
 
 export interface DesktopCommandRecord {
@@ -223,6 +245,8 @@ export interface DesktopEvidenceRecord {
   device_id: string
   kind: 'adapter_audit' | 'screenshot'
   selector_strategy: string
+  selector_fallback_depth: number
+  selector_fallback_used: boolean
   application_id: string
   started_at_unix_ms: number
   completed_at_unix_ms: number

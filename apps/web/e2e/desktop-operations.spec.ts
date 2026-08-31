@@ -33,7 +33,8 @@ test('operator approves a sanitized Desktop command and exports evidence metadat
   await page.route(/\/v1\/desktop\/evidence(\?|$)/, (route) => route.fulfill({ json: [{
     evidence_id: 'evidence-1', tenant_id: 't', project_id: 'p', execution_id: 'execution-1',
     command_id: 'desktop-command-1', device_id: 'device-1', kind: 'adapter_audit',
-    selector_strategy: 'automation_id', application_id: 'fixture', started_at_unix_ms: 1,
+    selector_strategy: 'control_type_and_name', selector_fallback_depth: 1,
+    selector_fallback_used: true, application_id: 'fixture', started_at_unix_ms: 1,
     completed_at_unix_ms: 2, outcome: 'succeeded', policy_version: 'v1', redacted_regions: 1,
     byte_size: 0, expires_at_unix_ms: Date.now() + 86_400_000, created_at_unix_ms: Date.now(),
   }] }))
@@ -54,7 +55,8 @@ test('operator approves a sanitized Desktop command and exports evidence metadat
 
   await page.getByPlaceholder(/输入执行 ID|Enter an Execution ID/).fill('execution-1')
   await page.getByRole('button', { name: /查看证据|View evidence/ }).click()
-  await expect(page.getByRole('region', { name: /桌面证据结果|Desktop evidence results/ })).toContainText('automation_id')
+  await expect(page.getByRole('region', { name: /桌面证据结果|Desktop evidence results/ })).toContainText('control_type_and_name')
+  await expect(page.getByRole('region', { name: /桌面证据结果|Desktop evidence results/ })).toContainText(/yes · 1|是 · 1/)
 
   const download = page.waitForEvent('download')
   await page.getByRole('button', { name: /导出安全元数据|Export safe metadata/ }).click()

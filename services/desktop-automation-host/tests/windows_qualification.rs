@@ -76,7 +76,18 @@ fn native_fixture_actions_meet_reliability_latency_and_resource_budgets() {
             selector: window.clone(),
         })
         .expect("focus native fixture");
-    assert_eq!(focused["selector_strategy"], "automation_id");
+    assert_eq!(focused["selector_strategy"], "window_automation_id");
+
+    let mut fallback_window = inspected.windows[0].selector.clone();
+    fallback_window.automation_id = Some("missing-window-id".to_owned());
+    let fallback_focus = adapter
+        .execute(&DesktopAction::FocusWindow {
+            selector: fallback_window,
+        })
+        .expect("focus native fixture through semantic fallback");
+    assert_eq!(fallback_focus["selector_strategy"], "executable_and_title");
+    assert_eq!(fallback_focus["selector_fallback_depth"], 1);
+    assert_eq!(fallback_focus["selector_fallback_used"], true);
 
     let input = element(&window, FIXTURE_INPUT_AUTOMATION_ID, "edit");
     let submit = element(&window, FIXTURE_SUBMIT_AUTOMATION_ID, "button");
@@ -106,6 +117,19 @@ fn native_fixture_actions_meet_reliability_latency_and_resource_budgets() {
         })
         .expect("send selector-targeted pointer input to native fixture");
     assert_eq!(pointer["targeting"], "selector_center");
+
+    let mut fallback_submit = submit.clone();
+    fallback_submit.automation_id = Some("missing-submit-id".to_owned());
+    fallback_submit.name = Some("提交".to_owned());
+    let fallback_click = adapter
+        .execute(&DesktopAction::ClickElement {
+            selector: fallback_submit,
+        })
+        .expect("invoke native fixture through semantic fallback");
+    assert_eq!(fallback_click["selector_strategy"], "control_type_and_name");
+    assert_eq!(fallback_click["selector_fallback_depth"], 1);
+    assert_eq!(fallback_click["selector_fallback_used"], true);
+    assert!(fallback_click.get("coordinates").is_none());
 
     let handles_before = process_handle_count();
     let working_set_before = process_working_set();

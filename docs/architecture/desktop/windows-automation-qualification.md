@@ -41,6 +41,10 @@ Windows 10 consumer editions, Windows 11 ARM64, Windows Sandbox, Windows contain
 
 The adapter never falls back from a semantic selector to coordinates. A stale inspection returns `target_stale`; multiple matches return `target_ambiguous`; password controls return `protected_control`; focus changes return `focus_changed`; partial text verification returns `partial_entry`. These codes are safe diagnostics and must not include typed text, unrestricted titles, control trees, or credentials.
 
+A missing primary semantic identifier may fall back through the ordered semantic strategies defined in ADR 0006. Both Windows lanes prove that the real fixture can be focused by executable and exact title after an identifier miss and that a control can be invoked by accessible name and control type after an identifier miss. The action result and durable evidence expose only strategy, fallback depth, and fallback-used state. Ambiguity and stale snapshots remain terminal.
+
+Visual matching is not a runtime qualification path. The bounded inspection action accepts an authoring suggestion only when confidence, candidate count, age, and snapshot checks pass, then re-resolves one current semantic element. Coordinates and bounds are outside the protocol and Web authoring contract and cannot be substituted for a failed selector.
+
 ## Enforced budgets
 
 The native qualification test performs 50 value-entry and invoke cycles after a real fixture inspection and focus. It fails the release lane when any of these budgets is exceeded:

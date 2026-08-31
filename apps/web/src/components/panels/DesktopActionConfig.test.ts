@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildDesktopAction, desktopTargetLabel, DESKTOP_ACTION_SCHEMA, INSPECTION_BOUNDS, desktopErrorMessage } from './DesktopActionConfig'
+import { buildDesktopAction, buildVisualConfirmationAction, desktopTargetLabel, DESKTOP_ACTION_SCHEMA, INSPECTION_BOUNDS, desktopErrorMessage, VISUAL_SUGGESTION_POLICY } from './DesktopActionConfig'
 
 describe('Desktop action authoring contract', () => {
   it('keeps capabilities, risk, approval, and selector shape explicit', () => {
@@ -40,5 +40,37 @@ describe('Desktop action authoring contract', () => {
     expect(desktopErrorMessage(source, false)).toBe('The Workflow Execution ended. Start or select an active execution.')
     expect(desktopErrorMessage(new Error('target_ambiguous: private window title'), false)).not.toContain('private window title')
     expect(desktopErrorMessage(new Error('403 forbidden: jwt claims'), true)).toBe('当前角色无权使用此设备或操作。')
+  })
+
+  it('confirms only fresh unique high-confidence visual suggestions as semantic selectors', () => {
+    const now = 100_000
+    const suggestion = {
+      selector: {
+        window: { executable: 'fixture.exe', automation_id: 'Fixture.Main', snapshot_id: 'snapshot-1' },
+        automation_id: 'missing-primary', name: 'Submit', control_type: 'button',
+      },
+      snapshot_id: 'snapshot-1',
+      confidence_basis_points: VISUAL_SUGGESTION_POLICY.minimum_confidence_basis_points,
+      candidate_count: 1,
+      observed_at_unix_ms: now - 1,
+    }
+    const action = buildVisualConfirmationAction(suggestion, now)
+    expect(action).toEqual({
+      kind: 'inspect_targets',
+      request: {
+        ...INSPECTION_BOUNDS,
+        expected_snapshot_id: 'snapshot-1',
+        visual_suggestion: suggestion,
+      },
+    })
+    expect(JSON.stringify(action)).not.toMatch(/coordinates|"x"|"y"/)
+    expect(buildVisualConfirmationAction({ ...suggestion, candidate_count: 2 }, now)).toBeNull()
+    expect(buildVisualConfirmationAction({ ...suggestion, confidence_basis_points: 8_999 }, now)).toBeNull()
+    expect(buildVisualConfirmationAction({ ...suggestion, observed_at_unix_ms: now - 30_001 }, now)).toBeNull()
+    expect(buildVisualConfirmationAction({ ...suggestion, x: 1, y: 2 }, now)).toBeNull()
+    expect(buildVisualConfirmationAction({
+      ...suggestion,
+      selector: { ...suggestion.selector, coordinates: { x: 1, y: 2 } },
+    }, now)).toBeNull()
   })
 })

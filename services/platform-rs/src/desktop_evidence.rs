@@ -36,17 +36,25 @@ pub enum SelectorStrategy {
     ControlTypeAndName,
     NameAndSibling,
     WindowAutomationId,
+    ExecutableAndTitle,
+    Executable,
+    Title,
+    ControlType,
     ApplicationIdentity,
     NotApplicable,
 }
 
 impl SelectorStrategy {
-    fn as_str(self) -> &'static str {
+    pub(crate) fn as_str(self) -> &'static str {
         match self {
             Self::AutomationId => "automation_id",
             Self::ControlTypeAndName => "control_type_and_name",
             Self::NameAndSibling => "name_and_sibling",
             Self::WindowAutomationId => "window_automation_id",
+            Self::ExecutableAndTitle => "executable_and_title",
+            Self::Executable => "executable",
+            Self::Title => "title",
+            Self::ControlType => "control_type",
             Self::ApplicationIdentity => "application_identity",
             Self::NotApplicable => "not_applicable",
         }
@@ -68,6 +76,10 @@ pub struct EvidenceUploadRequest {
     pub project_id: String,
     pub kind: EvidenceKind,
     pub selector_strategy: SelectorStrategy,
+    #[serde(default)]
+    pub selector_fallback_depth: u8,
+    #[serde(default)]
+    pub selector_fallback_used: bool,
     pub application_id: String,
     pub started_at_unix_ms: u64,
     pub completed_at_unix_ms: u64,
@@ -92,6 +104,8 @@ pub struct EvidenceRecord {
     pub device_id: String,
     pub kind: EvidenceKind,
     pub selector_strategy: SelectorStrategy,
+    pub selector_fallback_depth: u8,
+    pub selector_fallback_used: bool,
     pub application_id: String,
     pub started_at_unix_ms: u64,
     pub completed_at_unix_ms: u64,
@@ -192,6 +206,13 @@ pub fn prepare_evidence(
     policy: &EvidencePolicy,
     now_unix_ms: u64,
 ) -> Result<PreparedEvidence, EvidenceError> {
+    if request.selector_fallback_depth > 4
+        || request.selector_fallback_used != (request.selector_fallback_depth > 0)
+        || (request.selector_strategy == SelectorStrategy::NotApplicable
+            && request.selector_fallback_used)
+    {
+        return Err(EvidenceError::Invalid("selector_fallback"));
+    }
     for (value, field) in [
         (tenant_id, "tenant_id"),
         (device_id, "device_id"),
@@ -291,6 +312,8 @@ pub fn prepare_evidence(
             device_id: device_id.to_owned(),
             kind: request.kind,
             selector_strategy: request.selector_strategy,
+            selector_fallback_depth: request.selector_fallback_depth,
+            selector_fallback_used: request.selector_fallback_used,
             application_id: request.application_id,
             started_at_unix_ms: request.started_at_unix_ms,
             completed_at_unix_ms: request.completed_at_unix_ms,
@@ -412,11 +435,12 @@ impl PostgresDesktopEvidenceStore {
         sqlx::query(
             r#"INSERT INTO af_desktop_evidence
                (id, tenant_id, project_id, execution_id, command_id, device_id, kind,
-                selector_strategy, application_id, started_at_unix_ms, completed_at_unix_ms,
+                selector_strategy, selector_fallback_depth, selector_fallback_used,
+                application_id, started_at_unix_ms, completed_at_unix_ms,
                 outcome, policy_version, redacted_regions, content_type, content_sha256,
                 byte_size, payload_ciphertext, expires_at)
-               VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,
-                       to_timestamp($19::double precision / 1000.0))"#,
+               VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,
+                       to_timestamp($21::double precision / 1000.0))"#,
         )
         .bind(&record.evidence_id)
         .bind(&record.tenant_id)
@@ -426,6 +450,8 @@ impl PostgresDesktopEvidenceStore {
         .bind(&record.device_id)
         .bind(record.kind.as_str())
         .bind(record.selector_strategy.as_str())
+        .bind(i16::from(record.selector_fallback_depth))
+        .bind(record.selector_fallback_used)
         .bind(&record.application_id)
         .bind(record.started_at_unix_ms as i64)
         .bind(record.completed_at_unix_ms as i64)
@@ -461,7 +487,8 @@ impl PostgresDesktopEvidenceStore {
     ) -> Result<Vec<EvidenceRecord>, EvidenceError> {
         let rows = sqlx::query(
             r#"SELECT id, tenant_id, project_id, execution_id, command_id, device_id, kind,
-                      selector_strategy, application_id, started_at_unix_ms,
+                      selector_strategy, selector_fallback_depth, selector_fallback_used,
+                      application_id, started_at_unix_ms,
                       completed_at_unix_ms, outcome, policy_version, redacted_regions,
                       content_type, content_sha256, byte_size,
                       (EXTRACT(EPOCH FROM expires_at) * 1000)::bigint AS expires_at_unix_ms,
@@ -522,6 +549,10 @@ fn row_to_record(row: &sqlx::postgres::PgRow) -> Result<EvidenceRecord, Evidence
                 .map_err(store_error)?
                 .as_str(),
         )?,
+        selector_fallback_depth: row
+            .try_get::<i16, _>("selector_fallback_depth")
+            .map_err(store_error)? as u8,
+        selector_fallback_used: row.try_get("selector_fallback_used").map_err(store_error)?,
         application_id: row.try_get("application_id").map_err(store_error)?,
         started_at_unix_ms: row
             .try_get::<i64, _>("started_at_unix_ms")
@@ -566,6 +597,10 @@ fn parse_selector(value: &str) -> Result<SelectorStrategy, EvidenceError> {
         "control_type_and_name" => Ok(SelectorStrategy::ControlTypeAndName),
         "name_and_sibling" => Ok(SelectorStrategy::NameAndSibling),
         "window_automation_id" => Ok(SelectorStrategy::WindowAutomationId),
+        "executable_and_title" => Ok(SelectorStrategy::ExecutableAndTitle),
+        "executable" => Ok(SelectorStrategy::Executable),
+        "title" => Ok(SelectorStrategy::Title),
+        "control_type" => Ok(SelectorStrategy::ControlType),
         "application_identity" => Ok(SelectorStrategy::ApplicationIdentity),
         "not_applicable" => Ok(SelectorStrategy::NotApplicable),
         _ => Err(EvidenceError::Store(
@@ -673,6 +708,8 @@ mod tests {
             project_id: "project-1".to_owned(),
             kind: EvidenceKind::AdapterAudit,
             selector_strategy: SelectorStrategy::AutomationId,
+            selector_fallback_depth: 0,
+            selector_fallback_used: false,
             application_id: "fixture".to_owned(),
             started_at_unix_ms: 1_000,
             completed_at_unix_ms: 1_100,
@@ -713,6 +750,25 @@ mod tests {
             .await
             .unwrap()
             .is_empty());
+    }
+
+    #[test]
+    fn selector_fallback_telemetry_is_bounded_and_consistent() {
+        let policy = EvidencePolicy::default();
+        let mut request = audit_request();
+        request.selector_strategy = SelectorStrategy::ControlTypeAndName;
+        request.selector_fallback_depth = 1;
+        request.selector_fallback_used = true;
+        let prepared =
+            prepare_evidence("tenant-1", "device-1", request.clone(), &policy, 2_000).unwrap();
+        assert_eq!(prepared.record.selector_fallback_depth, 1);
+        assert!(prepared.record.selector_fallback_used);
+
+        request.selector_fallback_used = false;
+        assert_eq!(
+            prepare_evidence("tenant-1", "device-1", request, &policy, 2_000).unwrap_err(),
+            EvidenceError::Invalid("selector_fallback")
+        );
     }
 
     #[test]
