@@ -18,6 +18,7 @@ crates/desktop-agent-core/       policy, Approval, replay protection, execution,
 crates/desktop-identity/         Ed25519 identity and operating-system Credential boundary
 crates/desktop-host/             tested presentation/host IPC boundary
 crates/desktop-automation/       isolated IPC plus Windows target inspection adapter
+crates/desktop-voice/            provider-neutral VAD, interruption, and reconnect coordinator
 apps/desktop/                    Tauri application shell and local presentation assets
 services/desktop-automation-host/ isolated automation child process
 services/desktop-automation-fixture/ deterministic native Windows fixture
@@ -195,6 +196,10 @@ Voice input produces conversation events; it does not directly produce operating
 The first voice foundation is consent-gated and local. Only the Desktop shell's explicit Start action may request browser microphone permission. While permission is pending or a track is live, the shell exposes a persistent accessible status and Stop control. Stop, hidden-window transitions, ended input tracks, and page teardown release every local media track; denial or missing capture support fails closed. This foundation neither records nor transmits audio and does not advertise the `voice_conversation` Device capability.
 
 Voice events have a separate versioned, provider-neutral contract for permission, listening, speech boundaries, bounded transcripts, processing, speaking, interruption, reconnect, stop, and fixed failure categories. Its latency telemetry contains only state and bounded duration values, never audio or transcript content. A future final transcript may enter the authenticated Agent conversation ingress, but no voice event can contain a Desktop action or grant execution authority. See [ADR 0007](../../adr/0007-consent-gated-voice-session-boundary.md).
+
+Realtime coordination is isolated in `desktop-voice`. Recognition and synthesis providers expose separate bounded interfaces, and provider failures collapse to fixed categories before reaching the event stream. VAD uses bounded PCM frames, RMS onset, and silence hangover; detected speech cancels active synthesis before returning to listening. Reconnect attempts use bounded exponential delays and cannot resume after local Stop.
+
+After permission, the shell may enumerate local audio inputs and show a transient activity meter. Device identifiers remain local and unpersisted. A switch activates a live replacement before releasing the prior stream, while a failed switch preserves the current input. Web Audio analysis uses transient time-domain buffers only and never records an audio blob. See [ADR 0008](../../adr/0008-realtime-voice-coordination.md).
 
 Avatar rendering consumes bounded presentation events such as speaking state, phoneme timing, expression, and interruption. It cannot authorize or execute desktop actions. Licensed models, voices, and customer media remain outside the public source repository.
 

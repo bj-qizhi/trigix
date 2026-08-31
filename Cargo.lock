@@ -1203,6 +1203,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "desktop-voice"
+version = "1.5.1"
+dependencies = [
+ "desktop-protocol",
+]
+
+[[package]]
 name = "digest"
 version = "0.10.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"

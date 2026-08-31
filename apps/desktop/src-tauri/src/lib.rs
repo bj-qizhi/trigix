@@ -1045,7 +1045,7 @@ mod tests {
             script
                 .matches("navigator.mediaDevices.getUserMedia")
                 .count(),
-            1
+            2
         );
         assert!(script.contains("stream.getTracks().forEach((track) => track.stop())"));
         assert!(script.contains("if (voiceStream || voiceRequestPending)"));
@@ -1055,6 +1055,13 @@ mod tests {
         assert!(script.contains("echoCancellation: true"));
         assert!(script.contains("noiseSuppression: true"));
         assert!(script.contains("video: false"));
+        assert!(script.contains("navigator.mediaDevices.enumerateDevices()"));
+        assert!(script.contains("deviceId: { exact: deviceId }"));
+        assert!(script.contains("await activateVoiceStream(replacement)"));
+        assert!(script.contains("currentStream.getTracks().forEach((track) => track.stop())"));
+        assert!(script.contains("getByteTimeDomainData"));
+        assert!(script.contains("window.cancelAnimationFrame"));
+        assert!(!script.contains("trigix.desktop.voice"));
         assert!(!script.contains("MediaRecorder"));
         assert!(!script.contains("audio_base64"));
 
@@ -1111,6 +1118,8 @@ mod tests {
             "microphone_hidden_stop",
             "microphone_permission_denied",
             "microphone_unavailable",
+            "input_switched",
+            "input_switch_error",
             "state_offline",
             "state_connecting",
             "state_online",
