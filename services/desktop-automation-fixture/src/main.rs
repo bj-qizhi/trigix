@@ -169,6 +169,7 @@ mod tests {
         assert!(script.contains("Set-AuthenticodeSignature"));
         assert!(script.contains("Get-AuthenticodeSignature"));
         assert!(script.contains("X509ChainTrustMode]::CustomRootTrust"));
+        assert!(script.contains("CustomTrustStore.Add($signature.SignerCertificate) | Out-Null"));
         assert!(script.contains("isolated_chain_trusted = $true"));
         assert!(script.contains("tamper_check_rejected = $true"));
         assert!(script.contains("SignatureStatus]::UnknownError"));

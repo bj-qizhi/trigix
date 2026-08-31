@@ -121,7 +121,7 @@ function Assert-ValidFixtureSignature([string]$path) {
         $chain.ChainPolicy.TrustMode = [System.Security.Cryptography.X509Certificates.X509ChainTrustMode]::CustomRootTrust
         $chain.ChainPolicy.RevocationMode = [System.Security.Cryptography.X509Certificates.X509RevocationMode]::NoCheck
         $chain.ChainPolicy.VerificationFlags = [System.Security.Cryptography.X509Certificates.X509VerificationFlags]::NoFlag
-        $chain.ChainPolicy.CustomTrustStore.Add($signature.SignerCertificate)
+        $chain.ChainPolicy.CustomTrustStore.Add($signature.SignerCertificate) | Out-Null
         if (-not $chain.Build($signature.SignerCertificate)) {
             $statuses = ($chain.ChainStatus | ForEach-Object { $_.Status.ToString() }) -join ","
             throw "Fixture signer failed the isolated qualification trust chain: $statuses."
