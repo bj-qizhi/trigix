@@ -203,7 +203,7 @@ pub struct AppState {
     desktop_command_store: Arc<crate::desktop_commands::PlatformDesktopCommandStore>,
     desktop_evidence_store: Arc<crate::desktop_evidence::PlatformDesktopEvidenceStore>,
     desktop_evidence_policy: crate::desktop_evidence::EvidencePolicy,
-    voice_conversation_store: crate::voice_conversation::VoiceConversationStore,
+    voice_conversation_store: crate::voice_conversation::PlatformVoiceConversationStore,
 }
 
 pub fn router() -> Router {
@@ -280,7 +280,8 @@ pub(crate) fn default_app_state() -> AppState {
             crate::desktop_evidence::PlatformDesktopEvidenceStore::default(),
         ),
         desktop_evidence_policy: crate::desktop_evidence::EvidencePolicy::from_env(),
-        voice_conversation_store: crate::voice_conversation::VoiceConversationStore::default(),
+        voice_conversation_store:
+            crate::voice_conversation::PlatformVoiceConversationStore::default(),
     }
 }
 
@@ -1135,7 +1136,8 @@ pub fn router_with_services(
             crate::desktop_evidence::PlatformDesktopEvidenceStore::default(),
         ),
         desktop_evidence_policy: crate::desktop_evidence::EvidencePolicy::from_env(),
-        voice_conversation_store: crate::voice_conversation::VoiceConversationStore::default(),
+        voice_conversation_store:
+            crate::voice_conversation::PlatformVoiceConversationStore::default(),
     };
 
     build_router(state)
@@ -1176,6 +1178,7 @@ pub fn router_with_all_stores(
     device_pairing_store: crate::device_pairing::PlatformDevicePairingStore,
     desktop_command_store: crate::desktop_commands::PlatformDesktopCommandStore,
     desktop_evidence_store: crate::desktop_evidence::PlatformDesktopEvidenceStore,
+    voice_conversation_store: crate::voice_conversation::PlatformVoiceConversationStore,
 ) -> Router {
     let state = AppState {
         execution_service: Arc::new(execution_service),
@@ -1217,7 +1220,7 @@ pub fn router_with_all_stores(
         desktop_command_store: Arc::new(desktop_command_store),
         desktop_evidence_store: Arc::new(desktop_evidence_store),
         desktop_evidence_policy: crate::desktop_evidence::EvidencePolicy::from_env(),
-        voice_conversation_store: crate::voice_conversation::VoiceConversationStore::default(),
+        voice_conversation_store,
     };
     spawn_schedule_runner(state.clone());
     spawn_execution_timeout_guard(state.clone());

@@ -26,6 +26,7 @@ async fn accept_final_transcript(
     let record = state
         .voice_conversation_store
         .accept_final_transcript(&tenant_id, request, now_unix_ms())
+        .await
         .map_err(map_voice_error)?;
     Ok((
         StatusCode::ACCEPTED,
@@ -43,6 +44,7 @@ async fn get_conversation(
     let record = state
         .voice_conversation_store
         .get(&tenant_id, &conversation_id, now_unix_ms())
+        .await
         .map_err(map_voice_error)?;
     Ok(Json(serde_json::to_value(record).unwrap_or_default()))
 }
@@ -58,6 +60,7 @@ async fn delete_conversation(
     state
         .voice_conversation_store
         .delete(&tenant_id, &conversation_id)
+        .await
         .map_err(map_voice_error)?;
     Ok(StatusCode::NO_CONTENT)
 }
@@ -72,6 +75,7 @@ async fn set_voice_policy(
     state
         .voice_conversation_store
         .set_policy(&tenant_id, request.policy)
+        .await
         .map(Json)
         .map_err(map_voice_error)
 }

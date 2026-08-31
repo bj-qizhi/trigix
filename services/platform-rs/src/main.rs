@@ -165,11 +165,16 @@ async fn main() {
                 trigix_platform::desktop_evidence::PlatformDesktopEvidenceStore::postgres(
                     pool.clone(),
                 );
+            let voice_conversation_store =
+                trigix_platform::voice_conversation::PlatformVoiceConversationStore::postgres(
+                    pool.clone(),
+                );
             let email_client = trigix_platform::email::EmailClient::from_env();
 
             // Background data-retention sweeper (opt-in via DATA_RETENTION_DAYS).
             let retention_days = trigix_platform::retention::retention_days_from_env();
             trigix_platform::retention::spawn_evidence_retention(pool.clone());
+            trigix_platform::retention::spawn_voice_conversation_retention(pool.clone());
             trigix_platform::retention::spawn_data_retention(pool, retention_days);
             trigix_platform::http::router_with_all_stores(
                 execution_service,
@@ -204,6 +209,7 @@ async fn main() {
                 device_pairing_store,
                 desktop_command_store,
                 desktop_evidence_store,
+                voice_conversation_store,
             )
         }
         Err(_) => {
