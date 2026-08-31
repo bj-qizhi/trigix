@@ -9,6 +9,7 @@ mod billing;
 mod credentials;
 mod custom_nodes;
 mod desktop_devices;
+mod desktop_updates;
 mod event_subscriptions;
 mod executions;
 mod forms;
@@ -203,6 +204,8 @@ pub struct AppState {
     desktop_command_store: Arc<crate::desktop_commands::PlatformDesktopCommandStore>,
     desktop_evidence_store: Arc<crate::desktop_evidence::PlatformDesktopEvidenceStore>,
     desktop_evidence_policy: crate::desktop_evidence::EvidencePolicy,
+    desktop_update_policy_store:
+        Arc<crate::desktop_update_policy::PlatformDesktopUpdatePolicyStore>,
     voice_conversation_store: crate::voice_conversation::PlatformVoiceConversationStore,
     voice_tool_proposal_store: crate::voice_tool_proposal::VoiceToolProposalStore,
     realtime_voice_sessions: crate::realtime_voice::RealtimeVoiceSessionStore,
@@ -282,6 +285,9 @@ pub(crate) fn default_app_state() -> AppState {
             crate::desktop_evidence::PlatformDesktopEvidenceStore::default(),
         ),
         desktop_evidence_policy: crate::desktop_evidence::EvidencePolicy::from_env(),
+        desktop_update_policy_store: Arc::new(
+            crate::desktop_update_policy::PlatformDesktopUpdatePolicyStore::default(),
+        ),
         voice_conversation_store:
             crate::voice_conversation::PlatformVoiceConversationStore::default(),
         voice_tool_proposal_store: crate::voice_tool_proposal::VoiceToolProposalStore::default(),
@@ -1030,6 +1036,7 @@ pub(crate) fn build_router(state: AppState) -> Router {
         .merge(credentials::routes())
         .merge(custom_nodes::routes())
         .merge(desktop_devices::routes())
+        .merge(desktop_updates::routes())
         .merge(event_subscriptions::routes())
         .merge(executions::routes())
         .merge(forms::routes())
@@ -1140,6 +1147,9 @@ pub fn router_with_services(
             crate::desktop_evidence::PlatformDesktopEvidenceStore::default(),
         ),
         desktop_evidence_policy: crate::desktop_evidence::EvidencePolicy::from_env(),
+        desktop_update_policy_store: Arc::new(
+            crate::desktop_update_policy::PlatformDesktopUpdatePolicyStore::default(),
+        ),
         voice_conversation_store:
             crate::voice_conversation::PlatformVoiceConversationStore::default(),
         voice_tool_proposal_store: crate::voice_tool_proposal::VoiceToolProposalStore::default(),
@@ -1184,6 +1194,7 @@ pub fn router_with_all_stores(
     device_pairing_store: crate::device_pairing::PlatformDevicePairingStore,
     desktop_command_store: crate::desktop_commands::PlatformDesktopCommandStore,
     desktop_evidence_store: crate::desktop_evidence::PlatformDesktopEvidenceStore,
+    desktop_update_policy_store: crate::desktop_update_policy::PlatformDesktopUpdatePolicyStore,
     voice_conversation_store: crate::voice_conversation::PlatformVoiceConversationStore,
 ) -> Router {
     let state = AppState {
@@ -1226,6 +1237,7 @@ pub fn router_with_all_stores(
         desktop_command_store: Arc::new(desktop_command_store),
         desktop_evidence_store: Arc::new(desktop_evidence_store),
         desktop_evidence_policy: crate::desktop_evidence::EvidencePolicy::from_env(),
+        desktop_update_policy_store: Arc::new(desktop_update_policy_store),
         voice_conversation_store,
         voice_tool_proposal_store: crate::voice_tool_proposal::VoiceToolProposalStore::default(),
         realtime_voice_sessions: crate::realtime_voice::RealtimeVoiceSessionStore::default(),

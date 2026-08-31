@@ -672,7 +672,7 @@ fn validate_command_output(
     Ok(())
 }
 
-fn pairing_error(error: PairingError) -> ApiError {
+pub(super) fn pairing_error(error: PairingError) -> ApiError {
     match error {
         PairingError::InvalidRequest(message) => ApiError::bad_request(&message),
         PairingError::NotFound | PairingError::InvalidClaim => ApiError {

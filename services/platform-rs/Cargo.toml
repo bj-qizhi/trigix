@@ -26,6 +26,8 @@ tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 uuid = { version = "1", features = ["v4"] }
 workflow-core = { path = "../../crates/workflow-core" }
 desktop-protocol = { path = "../../crates/desktop-protocol" }
+desktop-release = { path = "../../crates/desktop-release" }
+semver = "1"
 redis = { version = "0.26", features = ["tokio-comp", "connection-manager"] }
 bcrypt = "0.15"
 rhai = { version = "1", features = ["serde"] }

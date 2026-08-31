@@ -165,6 +165,10 @@ async fn main() {
                 trigix_platform::desktop_evidence::PlatformDesktopEvidenceStore::postgres(
                     pool.clone(),
                 );
+            let desktop_update_policy_store =
+                trigix_platform::desktop_update_policy::PlatformDesktopUpdatePolicyStore::postgres(
+                    pool.clone(),
+                );
             let voice_conversation_store =
                 trigix_platform::voice_conversation::PlatformVoiceConversationStore::postgres(
                     pool.clone(),
@@ -209,6 +213,7 @@ async fn main() {
                 device_pairing_store,
                 desktop_command_store,
                 desktop_evidence_store,
+                desktop_update_policy_store,
                 voice_conversation_store,
             )
         }

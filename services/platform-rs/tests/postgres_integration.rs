@@ -32,6 +32,10 @@ use trigix_platform::desktop_evidence::{
     prepare_evidence, EvidenceKind, EvidencePolicy, EvidenceUploadRequest,
     PlatformDesktopEvidenceStore, RedactionAttestation, SelectorStrategy,
 };
+use trigix_platform::desktop_update_policy::{
+    DesktopReleaseChannel, DesktopUpdateMode, DesktopUpdatePolicyError,
+    PlatformDesktopUpdatePolicyStore, UpdateDesktopPolicyRequest,
+};
 use trigix_platform::device_pairing::{CreatePairingSessionRequest, PlatformDevicePairingStore};
 use trigix_platform::execution::{ExecutionStore, PostgresExecutionStore, StartExecutionRequest};
 use trigix_platform::token_usage::{
@@ -65,6 +69,41 @@ async fn setup() -> Option<sqlx::PgPool> {
         .await
         .expect("run migrations");
     Some(pool)
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn desktop_update_policy_persists_with_tenant_isolation_and_cas() {
+    let Some(pool) = setup().await else { return };
+    let store = PlatformDesktopUpdatePolicyStore::postgres(pool);
+    let tenant_a = uniq("desktop-policy-a");
+    let tenant_b = uniq("desktop-policy-b");
+    let request = UpdateDesktopPolicyRequest {
+        observed_revision: 0,
+        mode: DesktopUpdateMode::Manual,
+        channel: DesktopReleaseChannel::Stable,
+        required_version: "1.5.1".to_owned(),
+        pinned_version: None,
+        maintenance_window: None,
+        allow_offline_import: true,
+        allow_emergency_rollback: false,
+    };
+    let saved = store
+        .update(&tenant_a, "admin-1", request.clone())
+        .await
+        .unwrap();
+    assert_eq!(saved.revision, 1);
+    assert_eq!(
+        store.get(&tenant_a).await.unwrap().mode,
+        DesktopUpdateMode::Manual
+    );
+    assert_eq!(store.get(&tenant_b).await.unwrap().revision, 0);
+    assert_eq!(
+        store
+            .update(&tenant_a, "admin-2", request)
+            .await
+            .unwrap_err(),
+        DesktopUpdatePolicyError::Conflict
+    );
 }
 
 fn uniq(prefix: &str) -> String {

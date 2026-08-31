@@ -53,6 +53,7 @@ pub mod action {
     pub const DEVICE_DISCONNECTED: &str = "device.disconnected";
     pub const DESKTOP_EVIDENCE_RECORDED: &str = "desktop.evidence.recorded";
     pub const DESKTOP_EVIDENCE_DELETED: &str = "desktop.evidence.deleted";
+    pub const DESKTOP_UPDATE_POLICY_CHANGED: &str = "desktop.update_policy_changed";
 }
 
 fn unix_now() -> u64 {
