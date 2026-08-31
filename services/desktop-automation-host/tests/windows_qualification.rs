@@ -93,6 +93,14 @@ fn native_fixture_actions_meet_reliability_latency_and_resource_budgets() {
 
     let input = element(&window, FIXTURE_INPUT_AUTOMATION_ID, "edit");
     let submit = element(&window, FIXTURE_SUBMIT_AUTOMATION_ID, "button");
+    let submit_name = inspected.windows[0]
+        .elements
+        .iter()
+        .find(|element| {
+            element.selector.automation_id.as_deref() == Some(FIXTURE_SUBMIT_AUTOMATION_ID)
+        })
+        .and_then(|element| element.selector.name.clone())
+        .expect("fixture submit control exposes an accessible name");
     let password = element(&window, FIXTURE_PASSWORD_AUTOMATION_ID, "edit");
     assert_eq!(
         adapter.execute(&DesktopAction::TypeText {
@@ -122,7 +130,7 @@ fn native_fixture_actions_meet_reliability_latency_and_resource_budgets() {
 
     let mut fallback_submit = submit.clone();
     fallback_submit.automation_id = Some("missing-submit-id".to_owned());
-    fallback_submit.name = Some("提交".to_owned());
+    fallback_submit.name = Some(submit_name);
     let fallback_click = adapter
         .execute(&DesktopAction::ClickElement {
             selector: fallback_submit,
