@@ -10,5 +10,24 @@ export default defineConfig({
   test: {
     include: ['src/**/*.test.ts'],
     environment: 'node',
+    coverage: {
+      provider: 'v8',
+      reporter: ['text', 'json-summary', 'lcov'],
+      reportsDirectory: 'coverage',
+      include: [
+        'src/components/editor/publishWarnings.ts',
+        'src/components/nodePreview.ts',
+        'src/components/runsFilter.ts',
+        'src/components/workflowListFilter.ts',
+        'src/errorMessage.ts',
+        'src/routing.ts',
+      ],
+      thresholds: {
+        branches: 75,
+        functions: 10,
+        lines: 80,
+        statements: 80,
+      },
+    },
   },
 })

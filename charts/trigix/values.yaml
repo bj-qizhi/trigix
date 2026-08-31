@@ -2,7 +2,9 @@ replicaCount: 2
 
 image:
   repository: trigix/platform
-  tag: "latest"
+  # Empty uses Chart.appVersion. Production deployments should override with
+  # the same immutable version or an image digest reviewed for the release.
+  tag: ""
   pullPolicy: IfNotPresent
 
 service:
@@ -81,7 +83,7 @@ aiRuntime:
   replicaCount: 1
   image:
     repository: trigix/ai-runtime
-    tag: "latest"
+    tag: ""
     pullPolicy: IfNotPresent
   resources:
     requests:
@@ -99,7 +101,7 @@ executor:
   replicaCount: 3
   image:
     repository: trigix/executor
-    tag: "latest"
+    tag: ""
     pullPolicy: IfNotPresent
   resources:
     requests:

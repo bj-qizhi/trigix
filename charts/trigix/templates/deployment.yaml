@@ -30,7 +30,7 @@ spec:
       serviceAccountName: {{ include "trigix.serviceAccountName" . }}
       containers:
         - name: platform
-          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          image: "{{ .Values.image.repository }}:{{ default .Chart.AppVersion .Values.image.tag }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           ports:
             - name: http

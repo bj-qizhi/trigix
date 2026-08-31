@@ -16,13 +16,12 @@ use workflow_core::Node;
 // hosts policy would be a future enhancement).
 struct AcceptAll;
 
-#[async_trait::async_trait]
 impl client::Handler for AcceptAll {
     type Error = russh::Error;
 
     async fn check_server_key(
         &mut self,
-        _server_public_key: &russh::keys::key::PublicKey,
+        _server_public_key: &russh::keys::PublicKeyOrCertificate,
     ) -> Result<bool, Self::Error> {
         Ok(true)
     }
@@ -91,16 +90,26 @@ async fn connect(conn: &Conn) -> Result<client::Handle<AcceptAll>, String> {
 
     let authed = match keypair {
         // Public-key auth when a private key is supplied, else password.
-        Some(key) => handle
-            .authenticate_publickey(conn.user.clone(), Arc::new(key))
-            .await
-            .map_err(|e| format!("auth error: {e}"))?,
+        Some(key) => {
+            let hash_algorithm = handle
+                .best_supported_rsa_hash()
+                .await
+                .map_err(|e| format!("RSA negotiation error: {e}"))?
+                .flatten();
+            handle
+                .authenticate_publickey(
+                    conn.user.clone(),
+                    russh::keys::PrivateKeyWithHashAlg::new(Arc::new(key), hash_algorithm),
+                )
+                .await
+                .map_err(|e| format!("auth error: {e}"))?
+        }
         None => handle
             .authenticate_password(conn.user.clone(), conn.pass.clone())
             .await
             .map_err(|e| format!("auth error: {e}"))?,
     };
-    if !authed {
+    if !authed.success() {
         return Err(format!(
             "authentication failed ({})",
             if conn.private_key.is_some() {

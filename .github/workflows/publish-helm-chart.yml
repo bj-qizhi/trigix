@@ -64,9 +64,10 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           version="${GITHUB_REF_NAME#chart-v}"
+          app_version="$(awk '/^appVersion:/ {gsub(/[\"'\'' ]/, "", $2); print $2}' charts/trigix/Chart.yaml)"
           owner="${{ github.repository_owner }}"
-          printf 'Helm chart `trigix` **%s** (deploys app 1.1.0).\n\nInstall:\n```bash\nhelm install trigix oci://ghcr.io/%s/charts/trigix --version %s --namespace trigix --create-namespace\n```\n' \
-            "$version" "$owner" "$version" > /tmp/notes.md
+          printf 'Helm chart `trigix` **%s** (deploys app %s).\n\nInstall:\n```bash\nhelm install trigix oci://ghcr.io/%s/charts/trigix --version %s --namespace trigix --create-namespace\n```\n' \
+            "$version" "$app_version" "$owner" "$version" > /tmp/notes.md
           gh release create "$GITHUB_REF_NAME" dist/trigix-*.tgz \
             --title "Helm chart v${version}" --notes-file /tmp/notes.md \
             || gh release upload "$GITHUB_REF_NAME" dist/trigix-*.tgz --clobber

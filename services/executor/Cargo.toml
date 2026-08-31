@@ -18,7 +18,7 @@ tokio = { version = "1", features = ["macros", "rt-multi-thread", "net", "time"]
 tokio-stream = "0.1"
 tracing = "0.1"
 futures = "0.3"
-quick-xml = { version = "0.36", features = ["serialize"] }
+quick-xml = { version = "0.42", features = ["serialize"] }
 serde_yaml = "0.9"
 sha2 = "0.10"
 hmac = "0.12"
@@ -26,22 +26,21 @@ hex = "0.4"
 chrono = { version = "0.4", features = ["serde"] }
 redis = { version = "0.26", features = ["tokio-comp"] }
 handlebars = "6"
-lru = "0.12"
+lru = "0.18"
 scraper = "0.21"
 regex = "1"
 csv = "1"
-feed-rs = "2"
-suppaftp = { version = "6", features = ["native-tls"] }
+feed-rs = "2.4"
+suppaftp = { version = "11", features = ["native-tls"] }
 imap = "3.0.0-alpha.15"
 native-tls = "0.2"
-russh = "0.45"
-russh-sftp = "2"
-async-trait = "0.1"
+russh = "0.63"
+russh-sftp = "2.4"
 tiberius = { version = "0.12", default-features = false, features = ["tds73", "native-tls", "chrono"] }
 tokio-util = { version = "0.7", features = ["compat"] }
 zip = { version = "2", default-features = false, features = ["deflate"] }
 image = { version = "0.25", default-features = false, features = ["png", "jpeg", "gif", "bmp", "webp"] }
-pdf-extract = "0.7"
+pdf-extract = "0.12"
 workflow-core = { path = "../../crates/workflow-core" }
 
 [dev-dependencies]

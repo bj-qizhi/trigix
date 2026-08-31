@@ -25,7 +25,7 @@ spec:
       serviceAccountName: {{ include "trigix.serviceAccountName" . }}
       containers:
         - name: ai-runtime
-          image: "{{ .Values.aiRuntime.image.repository }}:{{ .Values.aiRuntime.image.tag }}"
+          image: "{{ .Values.aiRuntime.image.repository }}:{{ default .Chart.AppVersion .Values.aiRuntime.image.tag }}"
           imagePullPolicy: {{ .Values.aiRuntime.image.pullPolicy }}
           ports:
             - name: http

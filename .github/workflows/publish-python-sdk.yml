@@ -28,7 +28,8 @@ jobs:
       - name: Test
         working-directory: sdk/python
         run: |
-          pip install -e ".[test]"
+          pip install --require-hashes -r requirements.lock
+          pip install -e . --no-deps
           python -m pytest -q
 
       - name: Build

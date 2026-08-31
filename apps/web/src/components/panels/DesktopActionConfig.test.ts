@@ -29,7 +29,7 @@ describe('Desktop action authoring contract', () => {
       selector, pointer_button: 'right', click_count: 2, x: 123, y: 456,
     })
     expect(pointer).toEqual({ kind: 'pointer_click', selector, button: 'right', click_count: 2 })
-    expect(JSON.stringify(pointer)).not.toMatch(/\"[xy]\"/)
+    expect(JSON.stringify(pointer)).not.toMatch(/"[xy]"/)
     expect(desktopTargetLabel('pointer_click', { selector })).toBe('1002')
     expect(buildDesktopAction('press_key', { selector, key: 'enter' })).toBeNull()
     expect(buildDesktopAction('pointer_click', { selector: selector.window })).toBeNull()
