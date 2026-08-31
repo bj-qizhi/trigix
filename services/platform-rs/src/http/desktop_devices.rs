@@ -8,6 +8,8 @@ use crate::desktop_evidence::{
 };
 use crate::device_connection::DeviceEvent;
 use crate::device_pairing::{CreatePairingSessionRequest, PairingError};
+use crate::realtime_voice::{OpenAiRealtimeProvider, RealtimeVoiceError, RealtimeVoiceGrant};
+use crate::voice_conversation::{FinalVoiceTranscriptRequest, VoiceConversationError};
 use axum::extract::DefaultBodyLimit;
 use desktop_protocol::{
     DesktopAction, DesktopCommand, DesktopCommandAcknowledgement, DesktopCommandCancellation,
@@ -40,6 +42,60 @@ struct UpdateDeviceRequest {
 #[derive(serde::Deserialize)]
 struct ClaimRotationRequest {
     current_credential: String,
+}
+
+#[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct DeviceFinalVoiceTranscriptRequest {
+    session_id: String,
+    sequence: u32,
+    occurred_at_unix_ms: u64,
+    transcript: String,
+}
+
+#[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct DeviceVoiceTelemetryRequest {
+    session_id: String,
+    event: String,
+    duration_ms: Option<u32>,
+    attempt: Option<u8>,
+    failure_category: Option<String>,
+}
+
+impl DeviceVoiceTelemetryRequest {
+    fn validate(&self) -> Result<(), ApiError> {
+        let valid_event = matches!(
+            self.event.as_str(),
+            "session_connected" | "reconnect_scheduled" | "interruption" | "failure" | "stopped"
+        );
+        let valid_failure = self.failure_category.as_deref().is_none_or(|category| {
+            matches!(
+                category,
+                "network_unavailable"
+                    | "provider_timeout"
+                    | "session_expired"
+                    | "device_revoked"
+                    | "transcript_rejected"
+            )
+        });
+        if !valid_event
+            || self.session_id.is_empty()
+            || self.session_id.len() > 128
+            || self
+                .duration_ms
+                .is_some_and(|duration| duration > 3_600_000)
+            || self
+                .attempt
+                .is_some_and(|attempt| !(1..=5).contains(&attempt))
+            || !valid_failure
+            || (self.event == "reconnect_scheduled") != self.attempt.is_some()
+            || (self.event == "failure") != self.failure_category.is_some()
+        {
+            return Err(ApiError::bad_request("Invalid voice telemetry"));
+        }
+        Ok(())
+    }
 }
 
 #[derive(serde::Deserialize)]
@@ -199,6 +255,193 @@ fn command_error(error: DesktopCommandError) -> ApiError {
         },
         DesktopCommandError::Store(_) => ApiError::internal("desktop_command_store"),
     }
+}
+
+fn realtime_voice_error(error: RealtimeVoiceError) -> ApiError {
+    match error {
+        RealtimeVoiceError::NotConfigured => ApiError {
+            status: StatusCode::SERVICE_UNAVAILABLE,
+            message: "Realtime voice is not configured".to_owned(),
+        },
+        RealtimeVoiceError::Unauthorized => ApiError {
+            status: StatusCode::GONE,
+            message: "Realtime voice session is unavailable".to_owned(),
+        },
+        RealtimeVoiceError::ProviderUnavailable
+        | RealtimeVoiceError::InvalidProviderResponse
+        | RealtimeVoiceError::Unavailable => ApiError::internal("realtime_voice_provider"),
+    }
+}
+
+fn device_voice_error(error: VoiceConversationError) -> ApiError {
+    match error {
+        VoiceConversationError::InvalidPolicy | VoiceConversationError::InvalidRequest => {
+            ApiError::bad_request("Invalid final voice transcript")
+        }
+        VoiceConversationError::Duplicate => ApiError {
+            status: StatusCode::CONFLICT,
+            message: "Voice transcript sequence conflict".to_owned(),
+        },
+        VoiceConversationError::NotFound => ApiError::not_found("voice conversation"),
+        VoiceConversationError::StoreUnavailable => ApiError::internal("voice_conversation_store"),
+    }
+}
+
+async fn authenticate_device(
+    state: &AppState,
+    headers: &axum::http::HeaderMap,
+) -> Result<crate::device_pairing::PairedDevice, ApiError> {
+    let (device_id, credential) = device_auth(headers)?;
+    state
+        .device_pairing_store
+        .authenticate_device(&device_id, &credential)
+        .await
+        .map_err(rotation_claim_error)
+}
+
+async fn bootstrap_realtime_voice(
+    State(state): State<AppState>,
+    headers: axum::http::HeaderMap,
+) -> Result<
+    (
+        StatusCode,
+        Json<crate::realtime_voice::RealtimeVoiceBootstrap>,
+    ),
+    ApiError,
+> {
+    let device = authenticate_device(&state, &headers).await?;
+    let policy = state
+        .voice_conversation_store
+        .policy(&device.tenant_id)
+        .await
+        .map_err(device_voice_error)?;
+    let now = unix_millis() / 1_000;
+    let bootstrap = OpenAiRealtimeProvider::from_env()
+        .map_err(realtime_voice_error)?
+        .create_bootstrap(
+            &device.tenant_id,
+            &device.id,
+            &device.paired_by,
+            &policy.policy_version,
+            now,
+        )
+        .await
+        .map_err(realtime_voice_error)?;
+    state
+        .realtime_voice_sessions
+        .insert(
+            bootstrap.session_id.clone(),
+            RealtimeVoiceGrant {
+                tenant_id: device.tenant_id.clone(),
+                device_id: device.id.clone(),
+                actor_id: device.paired_by,
+                policy_version: policy.policy_version,
+                expires_at_unix_seconds: bootstrap.session_expires_at_unix_seconds,
+            },
+        )
+        .map_err(realtime_voice_error)?;
+    state.audit_store.record(
+        &device.tenant_id,
+        "voice.realtime_session.created",
+        "device",
+        &device.id,
+        Some(serde_json::json!({
+            "provider": bootstrap.provider,
+            "model": bootstrap.model,
+            "session_expires_at_unix_seconds": bootstrap.session_expires_at_unix_seconds,
+            "policy_version": bootstrap.policy_version,
+        })),
+    );
+    Ok((StatusCode::CREATED, Json(bootstrap)))
+}
+
+async fn accept_device_final_voice_transcript(
+    State(state): State<AppState>,
+    headers: axum::http::HeaderMap,
+    Json(request): Json<DeviceFinalVoiceTranscriptRequest>,
+) -> Result<(StatusCode, Json<serde_json::Value>), ApiError> {
+    let device = authenticate_device(&state, &headers).await?;
+    let now = unix_millis();
+    let grant = state
+        .realtime_voice_sessions
+        .authorize(
+            &request.session_id,
+            &device.tenant_id,
+            &device.id,
+            now / 1_000,
+        )
+        .map_err(realtime_voice_error)?;
+    let current_policy = state
+        .voice_conversation_store
+        .policy(&device.tenant_id)
+        .await
+        .map_err(device_voice_error)?;
+    if current_policy.policy_version != grant.policy_version {
+        return Err(realtime_voice_error(RealtimeVoiceError::Unauthorized));
+    }
+    let record = state
+        .voice_conversation_store
+        .accept_final_transcript(
+            &device.tenant_id,
+            FinalVoiceTranscriptRequest {
+                tenant_id: device.tenant_id.clone(),
+                session_id: request.session_id,
+                sequence: request.sequence,
+                occurred_at_unix_ms: request.occurred_at_unix_ms,
+                transcript: request.transcript,
+            },
+            now,
+        )
+        .await
+        .map_err(device_voice_error)?;
+    state.audit_store.record(
+        &device.tenant_id,
+        "voice.final_transcript.accepted",
+        "voice_conversation",
+        &record.conversation_id,
+        Some(serde_json::json!({
+            "device_id": device.id,
+            "actor_id": grant.actor_id,
+            "sequence": record.sequence,
+            "policy_version": grant.policy_version,
+            "transcript_retained": record.transcript_retained,
+        })),
+    );
+    Ok((
+        StatusCode::ACCEPTED,
+        Json(serde_json::to_value(record).unwrap_or_default()),
+    ))
+}
+
+async fn accept_device_voice_telemetry(
+    State(state): State<AppState>,
+    headers: axum::http::HeaderMap,
+    Json(request): Json<DeviceVoiceTelemetryRequest>,
+) -> Result<StatusCode, ApiError> {
+    request.validate()?;
+    let device = authenticate_device(&state, &headers).await?;
+    state
+        .realtime_voice_sessions
+        .authorize(
+            &request.session_id,
+            &device.tenant_id,
+            &device.id,
+            unix_millis() / 1_000,
+        )
+        .map_err(realtime_voice_error)?;
+    state.audit_store.record(
+        &device.tenant_id,
+        "voice.realtime_telemetry.recorded",
+        "device",
+        &device.id,
+        Some(serde_json::json!({
+            "event": request.event,
+            "duration_ms": request.duration_ms,
+            "attempt": request.attempt,
+            "failure_category": request.failure_category,
+        })),
+    );
+    Ok(StatusCode::NO_CONTENT)
 }
 
 async fn authenticated_device_session(
@@ -705,6 +948,7 @@ async fn transition_device(
     state
         .device_connections
         .disconnect(&device_id, &format!("device_{target_state}"));
+    state.realtime_voice_sessions.revoke_device(&device_id);
     Ok(Json(serde_json::to_value(device).unwrap_or_default()))
 }
 
@@ -1429,6 +1673,18 @@ pub(super) fn routes() -> Router<AppState> {
         )
         .route("/v1/desktop/device-connection", get(connect_device))
         .route("/v1/desktop/device-heartbeats", post(heartbeat_device))
+        .route(
+            "/v1/desktop/voice/realtime-sessions",
+            post(bootstrap_realtime_voice),
+        )
+        .route(
+            "/v1/desktop/voice/final-transcripts",
+            post(accept_device_final_voice_transcript),
+        )
+        .route(
+            "/v1/desktop/voice/telemetry",
+            post(accept_device_voice_telemetry),
+        )
         .route("/v1/desktop/commands", post(dispatch_desktop_command))
         .route("/v1/desktop/approvals", get(list_desktop_approvals))
         .route(
@@ -1485,6 +1741,110 @@ mod tests {
         serde_json::from_slice(&bytes).unwrap()
     }
 
+    async fn paired_device_credential(
+        state: &AppState,
+        device_id: &str,
+        tenant_id: &str,
+    ) -> crate::device_pairing::DeviceCredential {
+        let created = state
+            .device_pairing_store
+            .create_session(CreatePairingSessionRequest {
+                device: DeviceDescriptor {
+                    device_id: device_id.to_owned(),
+                    display_name: "Voice Fixture".to_owned(),
+                    operating_system: "windows".to_owned(),
+                    agent_version: "1.0.0".to_owned(),
+                    capabilities: Vec::new(),
+                },
+                device_public_key: "A".repeat(64),
+            })
+            .await
+            .unwrap();
+        state
+            .device_pairing_store
+            .approve(&created.pairing_code, tenant_id, "voice-actor")
+            .await
+            .unwrap();
+        state
+            .device_pairing_store
+            .claim(&created.session_id, &created.claim_secret)
+            .await
+            .unwrap()
+    }
+
+    #[tokio::test]
+    async fn device_final_transcript_is_session_bound_idempotent_and_content_free_in_audit() {
+        let state = default_app_state();
+        let credential = paired_device_credential(&state, "voice-device-a", "voice-tenant-a").await;
+        let now = unix_millis();
+        state
+            .realtime_voice_sessions
+            .insert(
+                "voice-session-a".to_owned(),
+                RealtimeVoiceGrant {
+                    tenant_id: "voice-tenant-a".to_owned(),
+                    device_id: "voice-device-a".to_owned(),
+                    actor_id: "voice-actor".to_owned(),
+                    policy_version: "voice-privacy-v1".to_owned(),
+                    expires_at_unix_seconds: now / 1_000 + 60,
+                },
+            )
+            .unwrap();
+        let audit_store = Arc::clone(&state.audit_store);
+        let app = build_router(state);
+        let body = serde_json::json!({
+            "session_id": "voice-session-a",
+            "sequence": 1,
+            "occurred_at_unix_ms": now,
+            "transcript": "private fixture transcript"
+        })
+        .to_string();
+        let request = || {
+            Request::post("/v1/desktop/voice/final-transcripts")
+                .header("x-forwarded-proto", "https")
+                .header("x-device-id", "voice-device-a")
+                .header("authorization", format!("Device {}", credential.credential))
+                .header("content-type", "application/json")
+                .body(Body::from(body.clone()))
+                .unwrap()
+        };
+        let first = app.clone().oneshot(request()).await.unwrap();
+        assert_eq!(first.status(), StatusCode::ACCEPTED);
+        let first = response_json(first).await;
+        assert_eq!(first["tenant_id"], "voice-tenant-a");
+        assert_eq!(first["transcript_retained"], false);
+        assert!(first.get("redacted_transcript").is_none());
+
+        let replay = app.clone().oneshot(request()).await.unwrap();
+        assert_eq!(replay.status(), StatusCode::ACCEPTED);
+
+        let conflict = app
+            .oneshot(
+                Request::post("/v1/desktop/voice/final-transcripts")
+                    .header("x-forwarded-proto", "https")
+                    .header("x-device-id", "voice-device-a")
+                    .header("authorization", format!("Device {}", credential.credential))
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        serde_json::json!({
+                            "session_id": "voice-session-a",
+                            "sequence": 1,
+                            "occurred_at_unix_ms": now,
+                            "transcript": "conflicting content"
+                        })
+                        .to_string(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(conflict.status(), StatusCode::CONFLICT);
+        let audit = serde_json::to_string(&audit_store.list("voice-tenant-a", 20).await).unwrap();
+        assert!(!audit.contains("private fixture transcript"));
+        assert!(!audit.contains("conflicting content"));
+        assert!(!audit.contains(&credential.credential));
+    }
+
     #[test]
     fn selector_telemetry_is_consistent_bounded_and_coordinate_free() {
         let action = DesktopAction::FocusWindow {
@@ -1519,6 +1879,37 @@ mod tests {
 
         result.output = Some(serde_json::json!({ "focused": true }));
         assert!(validate_command_output(&action, &mut result).is_ok());
+    }
+
+    #[test]
+    fn voice_telemetry_contract_rejects_content_and_unbounded_values() {
+        let valid: DeviceVoiceTelemetryRequest = serde_json::from_value(serde_json::json!({
+            "session_id": "voice-session-a",
+            "event": "reconnect_scheduled",
+            "duration_ms": null,
+            "attempt": 3,
+            "failure_category": null
+        }))
+        .unwrap();
+        assert!(valid.validate().is_ok());
+        assert!(
+            serde_json::from_value::<DeviceVoiceTelemetryRequest>(serde_json::json!({
+                "session_id": "voice-session-a",
+                "event": "failure",
+                "failure_category": "provider_timeout",
+                "transcript": "must not be accepted"
+            }))
+            .is_err()
+        );
+        let invalid: DeviceVoiceTelemetryRequest = serde_json::from_value(serde_json::json!({
+            "session_id": "voice-session-a",
+            "event": "failure",
+            "duration_ms": 3600001,
+            "attempt": null,
+            "failure_category": "raw provider error"
+        }))
+        .unwrap();
+        assert!(invalid.validate().is_err());
     }
 
     #[tokio::test]

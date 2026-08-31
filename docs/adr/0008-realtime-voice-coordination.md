@@ -26,4 +26,4 @@ The shell derives a transient activity level through Web Audio time-domain sampl
 - Noise, interruption, degradation, and long-session behavior are deterministic in Linux CI.
 - Input switching preserves continuity without persisting hardware identifiers.
 - The local activity meter is presentation state, not transcript or audit evidence.
-- Production capability advertisement remains disabled until authenticated streaming, Tenant policy, and end-to-end provider qualification are implemented.
+- Production capability advertisement is enabled only after the authenticated streaming and Tenant-policy gates in [ADR 0011](0011-authenticated-realtime-voice-transport.md) succeed on that running Device.

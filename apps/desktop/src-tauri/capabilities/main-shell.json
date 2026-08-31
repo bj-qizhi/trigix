@@ -10,6 +10,10 @@
     "allow-pairing-status",
     "allow-start-device-pairing",
     "allow-complete-device-pairing",
-    "allow-forget-device-pairing"
+    "allow-forget-device-pairing",
+    "allow-bootstrap-realtime-voice",
+    "allow-accept-final-voice-transcript",
+    "allow-record-voice-telemetry",
+    "allow-confirm-realtime-voice-connected"
   ]
 }
