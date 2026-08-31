@@ -164,7 +164,8 @@ jobs:
             -StateDirectory "${{ runner.temp }}/trigix-fixture-signing"
 
   web:
-    name: Web (lint, typecheck, coverage)
+    # Keep this stable: the protected branch requires this check name.
+    name: Web (typecheck, build)
     runs-on: ubuntu-latest
     defaults:
       run:
