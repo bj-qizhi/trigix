@@ -1,12 +1,14 @@
 use desktop_protocol::{
     AutomationPattern, DesktopAction, DesktopInspectionRequest, DesktopInspectionResult,
     ElementSelector, InspectedElement, InspectedWindow, KeyboardModifier, PointerButton,
-    ProtocolError, RedactionReason, WindowSelector, WindowTitlePolicy,
+    ProtocolError, RedactionReason, SelectorResolutionTelemetry, SemanticSelectorStrategy,
+    VisualSelectorSuggestion, WindowSelector, WindowTitlePolicy,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::fmt;
 use std::io::{self, BufRead, Write};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 mod agent_executor;
 mod supervisor;
@@ -89,6 +91,60 @@ impl From<io::Error> for AutomationHostError {
     fn from(value: io::Error) -> Self {
         Self::Io(value.to_string())
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct ResolutionTelemetry {
+    strategy: SemanticSelectorStrategy,
+    fallback_depth: u8,
+}
+
+impl ResolutionTelemetry {
+    fn fallback_used(self) -> bool {
+        self.fallback_depth > 0
+    }
+
+    fn into_public(self) -> SelectorResolutionTelemetry {
+        SelectorResolutionTelemetry {
+            strategy: self.strategy,
+            fallback_depth: self.fallback_depth,
+            fallback_used: self.fallback_used(),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+struct ResolvedTarget<T> {
+    target: T,
+    telemetry: ResolutionTelemetry,
+}
+
+fn select_unique_target<T>(
+    strategies: impl IntoIterator<Item = (SemanticSelectorStrategy, Vec<T>)>,
+) -> Result<ResolvedTarget<T>, AutomationHostError> {
+    for (depth, (strategy, mut matches)) in strategies.into_iter().enumerate() {
+        match matches.len() {
+            0 => continue,
+            1 => {
+                return Ok(ResolvedTarget {
+                    target: matches.remove(0),
+                    telemetry: ResolutionTelemetry {
+                        strategy,
+                        fallback_depth: depth as u8,
+                    },
+                });
+            }
+            _ => return Err(AutomationHostError::TargetAmbiguous),
+        }
+    }
+    Err(AutomationHostError::TargetNotFound)
+}
+
+fn current_unix_ms() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as u64
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -312,32 +368,30 @@ impl FixtureAutomationAdapter {
         {
             return Err(AutomationHostError::TargetStale);
         }
-        let matches = fixture_windows()
+        let candidates = fixture_windows()
             .into_iter()
-            .filter(|window| window_matches(&window.selector, selector))
+            .map(|window| (window.selector.clone(), window))
             .collect::<Vec<_>>();
-        match matches.as_slice() {
-            [] => Err(AutomationHostError::TargetNotFound),
-            [window] => {
-                self.focused_window_id = window
-                    .selector
-                    .automation_id
-                    .clone()
-                    .ok_or(AutomationHostError::TargetNotFound)?;
-                Ok(json!({
-                    "focused": true,
-                    "process_id": window.process_id,
-                    "selector_strategy": "automation_id",
-                }))
-            }
-            _ => Err(AutomationHostError::TargetAmbiguous),
-        }
+        let resolved = resolve_window_from_candidates(selector, &candidates)?;
+        self.focused_window_id = resolved
+            .target
+            .selector
+            .automation_id
+            .clone()
+            .ok_or(AutomationHostError::TargetNotFound)?;
+        Ok(json!({
+            "focused": true,
+            "process_id": resolved.target.process_id,
+            "selector_strategy": resolved.telemetry.strategy,
+            "selector_fallback_depth": resolved.telemetry.fallback_depth,
+            "selector_fallback_used": resolved.telemetry.fallback_used(),
+        }))
     }
 
     fn resolve_element(
         &self,
         selector: &ElementSelector,
-    ) -> Result<InspectedElement, AutomationHostError> {
+    ) -> Result<ResolvedTarget<InspectedElement>, AutomationHostError> {
         if selector
             .window
             .snapshot_id
@@ -346,25 +400,34 @@ impl FixtureAutomationAdapter {
         {
             return Err(AutomationHostError::TargetStale);
         }
-        if selector.window.automation_id.as_deref() != Some(&self.focused_window_id) {
+        let windows = fixture_windows();
+        let window_candidates = windows
+            .iter()
+            .enumerate()
+            .map(|(index, window)| (window.selector.clone(), index))
+            .collect::<Vec<_>>();
+        let resolved_window = resolve_window_from_candidates(&selector.window, &window_candidates)?;
+        let window = &windows[resolved_window.target];
+        if window.selector.automation_id.as_deref() != Some(&self.focused_window_id) {
             return Err(AutomationHostError::FocusChanged);
         }
-        let matches = fixture_windows()
-            .into_iter()
-            .filter(|window| window_matches(&window.selector, &selector.window))
-            .flat_map(|window| window.elements)
-            .filter(|element| element_matches(&element.selector, selector))
+        let element_candidates = window
+            .elements
+            .iter()
+            .cloned()
+            .map(|element| (element.selector.clone(), element))
             .collect::<Vec<_>>();
-        match matches.as_slice() {
-            [] => Err(AutomationHostError::TargetNotFound),
-            [element] => Ok(element.clone()),
-            _ => Err(AutomationHostError::TargetAmbiguous),
-        }
+        resolve_element_from_candidates(
+            selector,
+            &element_candidates,
+            resolved_window.telemetry.fallback_depth,
+        )
     }
 
     fn click(&self, selector: &ElementSelector) -> Result<Value, AutomationHostError> {
-        let element = self.resolve_element(selector)?;
-        if !element
+        let resolved = self.resolve_element(selector)?;
+        if !resolved
+            .target
             .supported_patterns
             .contains(&AutomationPattern::Invoke)
         {
@@ -373,6 +436,9 @@ impl FixtureAutomationAdapter {
         Ok(json!({
             "clicked": true,
             "semantic_pattern": "invoke",
+            "selector_strategy": resolved.telemetry.strategy,
+            "selector_fallback_depth": resolved.telemetry.fallback_depth,
+            "selector_fallback_used": resolved.telemetry.fallback_used(),
         }))
     }
 
@@ -381,11 +447,12 @@ impl FixtureAutomationAdapter {
         selector: &ElementSelector,
         text: &str,
     ) -> Result<Value, AutomationHostError> {
-        let element = self.resolve_element(selector)?;
-        if element.redaction == Some(RedactionReason::Password) {
+        let resolved = self.resolve_element(selector)?;
+        if resolved.target.redaction == Some(RedactionReason::Password) {
             return Err(AutomationHostError::ProtectedControl);
         }
-        if !element
+        if !resolved
+            .target
             .supported_patterns
             .contains(&AutomationPattern::Value)
         {
@@ -395,6 +462,9 @@ impl FixtureAutomationAdapter {
             "entered": true,
             "characters_entered": text.chars().count(),
             "semantic_pattern": "value",
+            "selector_strategy": resolved.telemetry.strategy,
+            "selector_fallback_depth": resolved.telemetry.fallback_depth,
+            "selector_fallback_used": resolved.telemetry.fallback_used(),
         }))
     }
 
@@ -411,24 +481,21 @@ impl FixtureAutomationAdapter {
         {
             return Err(AutomationHostError::TargetStale);
         }
-        let matches = fixture_windows()
+        let candidates = fixture_windows()
             .into_iter()
-            .filter(|window| window_matches(&window.selector, selector))
+            .map(|window| (window.selector.clone(), window))
             .collect::<Vec<_>>();
-        if matches.len() != 1 {
-            return if matches.is_empty() {
-                Err(AutomationHostError::TargetNotFound)
-            } else {
-                Err(AutomationHostError::TargetAmbiguous)
-            };
-        }
-        if matches[0].selector.automation_id.as_deref() != Some(&self.focused_window_id) {
+        let resolved = resolve_window_from_candidates(selector, &candidates)?;
+        if resolved.target.selector.automation_id.as_deref() != Some(&self.focused_window_id) {
             return Err(AutomationHostError::FocusChanged);
         }
         Ok(json!({
             "pressed": true,
             "key": key,
             "modifier_count": modifiers.len(),
+            "selector_strategy": resolved.telemetry.strategy,
+            "selector_fallback_depth": resolved.telemetry.fallback_depth,
+            "selector_fallback_used": resolved.telemetry.fallback_used(),
         }))
     }
 
@@ -438,12 +505,15 @@ impl FixtureAutomationAdapter {
         button: PointerButton,
         click_count: u8,
     ) -> Result<Value, AutomationHostError> {
-        self.resolve_element(selector)?;
+        let resolved = self.resolve_element(selector)?;
         Ok(json!({
             "clicked": true,
             "pointer_button": button,
             "click_count": click_count,
             "targeting": "selector_center",
+            "selector_strategy": resolved.telemetry.strategy,
+            "selector_fallback_depth": resolved.telemetry.fallback_depth,
+            "selector_fallback_used": resolved.telemetry.fallback_used(),
         }))
     }
 
@@ -465,12 +535,25 @@ impl FixtureAutomationAdapter {
         if windows.is_empty() {
             return Err(AutomationHostError::TargetNotFound);
         }
+        let selector_resolution = request
+            .visual_suggestion
+            .as_ref()
+            .map(|suggestion| {
+                confirm_visual_suggestion(
+                    &mut windows,
+                    suggestion,
+                    &self.snapshot_id,
+                    current_unix_ms(),
+                )
+            })
+            .transpose()?;
         attach_snapshot(&mut windows, &self.snapshot_id);
         bound_result(
             DesktopInspectionResult {
                 snapshot_id: self.snapshot_id.clone(),
                 windows,
                 truncated: false,
+                selector_resolution,
             },
             request,
         )
@@ -569,6 +652,7 @@ fn window_matches(candidate: &WindowSelector, query: &WindowSelector) -> bool {
             .is_none_or(|value| candidate.automation_id.as_ref() == Some(value))
 }
 
+#[cfg_attr(not(windows), allow(dead_code))]
 fn element_matches(candidate: &ElementSelector, query: &ElementSelector) -> bool {
     window_matches(&candidate.window, &query.window)
         && query
@@ -585,6 +669,174 @@ fn element_matches(candidate: &ElementSelector, query: &ElementSelector) -> bool
                 .as_ref()
                 .is_some_and(|actual| actual.eq_ignore_ascii_case(value))
         })
+}
+
+fn resolve_window_from_candidates<T: Clone>(
+    selector: &WindowSelector,
+    candidates: &[(WindowSelector, T)],
+) -> Result<ResolvedTarget<T>, AutomationHostError> {
+    let mut strategies = Vec::new();
+    if let Some(automation_id) = selector.automation_id.as_deref() {
+        strategies.push((
+            SemanticSelectorStrategy::WindowAutomationId,
+            candidates
+                .iter()
+                .filter(|(candidate, _)| {
+                    candidate.automation_id.as_deref() == Some(automation_id)
+                        && selector.executable.as_ref().is_none_or(|executable| {
+                            candidate
+                                .executable
+                                .as_ref()
+                                .is_some_and(|actual| actual.eq_ignore_ascii_case(executable))
+                        })
+                })
+                .map(|(_, target)| target.clone())
+                .collect(),
+        ));
+    }
+    if let (Some(executable), Some(title)) = (&selector.executable, &selector.title) {
+        strategies.push((
+            SemanticSelectorStrategy::ExecutableAndTitle,
+            candidates
+                .iter()
+                .filter(|(candidate, _)| {
+                    candidate
+                        .executable
+                        .as_ref()
+                        .is_some_and(|actual| actual.eq_ignore_ascii_case(executable))
+                        && candidate.title.as_ref() == Some(title)
+                })
+                .map(|(_, target)| target.clone())
+                .collect(),
+        ));
+    }
+    if let Some(executable) = &selector.executable {
+        strategies.push((
+            SemanticSelectorStrategy::Executable,
+            candidates
+                .iter()
+                .filter(|(candidate, _)| {
+                    candidate
+                        .executable
+                        .as_ref()
+                        .is_some_and(|actual| actual.eq_ignore_ascii_case(executable))
+                })
+                .map(|(_, target)| target.clone())
+                .collect(),
+        ));
+    }
+    if let Some(title) = &selector.title {
+        strategies.push((
+            SemanticSelectorStrategy::Title,
+            candidates
+                .iter()
+                .filter(|(candidate, _)| candidate.title.as_ref() == Some(title))
+                .map(|(_, target)| target.clone())
+                .collect(),
+        ));
+    }
+    select_unique_target(strategies)
+}
+
+fn resolve_element_from_candidates<T: Clone>(
+    selector: &ElementSelector,
+    candidates: &[(ElementSelector, T)],
+    base_fallback_depth: u8,
+) -> Result<ResolvedTarget<T>, AutomationHostError> {
+    let mut strategies = Vec::new();
+    if let Some(automation_id) = selector.automation_id.as_deref() {
+        strategies.push((
+            SemanticSelectorStrategy::AutomationId,
+            candidates
+                .iter()
+                .filter(|(candidate, _)| {
+                    candidate.automation_id.as_deref() == Some(automation_id)
+                        && selector.control_type.as_ref().is_none_or(|control_type| {
+                            candidate
+                                .control_type
+                                .as_ref()
+                                .is_some_and(|actual| actual.eq_ignore_ascii_case(control_type))
+                        })
+                })
+                .map(|(_, target)| target.clone())
+                .collect(),
+        ));
+    }
+    if let Some(name) = &selector.name {
+        strategies.push((
+            SemanticSelectorStrategy::ControlTypeAndName,
+            candidates
+                .iter()
+                .filter(|(candidate, _)| {
+                    candidate.name.as_ref() == Some(name)
+                        && selector.control_type.as_ref().is_none_or(|control_type| {
+                            candidate
+                                .control_type
+                                .as_ref()
+                                .is_some_and(|actual| actual.eq_ignore_ascii_case(control_type))
+                        })
+                })
+                .map(|(_, target)| target.clone())
+                .collect(),
+        ));
+    }
+    if selector.automation_id.is_none() && selector.name.is_none() {
+        if let Some(control_type) = &selector.control_type {
+            strategies.push((
+                SemanticSelectorStrategy::ControlType,
+                candidates
+                    .iter()
+                    .filter(|(candidate, _)| {
+                        candidate
+                            .control_type
+                            .as_ref()
+                            .is_some_and(|actual| actual.eq_ignore_ascii_case(control_type))
+                    })
+                    .map(|(_, target)| target.clone())
+                    .collect(),
+            ));
+        }
+    }
+    let mut resolved = select_unique_target(strategies)?;
+    resolved.telemetry.fallback_depth = resolved
+        .telemetry
+        .fallback_depth
+        .saturating_add(base_fallback_depth);
+    Ok(resolved)
+}
+
+fn confirm_visual_suggestion(
+    windows: &mut Vec<InspectedWindow>,
+    suggestion: &VisualSelectorSuggestion,
+    snapshot_id: &str,
+    now_unix_ms: u64,
+) -> Result<SelectorResolutionTelemetry, AutomationHostError> {
+    suggestion.validate_at(now_unix_ms)?;
+    if suggestion.snapshot_id != snapshot_id {
+        return Err(AutomationHostError::TargetStale);
+    }
+    let window_candidates = windows
+        .iter()
+        .enumerate()
+        .map(|(index, window)| (window.selector.clone(), index))
+        .collect::<Vec<_>>();
+    let resolved_window =
+        resolve_window_from_candidates(&suggestion.selector.window, &window_candidates)?;
+    let mut selected_window = windows[resolved_window.target].clone();
+    let element_candidates = selected_window
+        .elements
+        .iter()
+        .cloned()
+        .map(|element| (element.selector.clone(), element))
+        .collect::<Vec<_>>();
+    let resolved_element = resolve_element_from_candidates(
+        &suggestion.selector,
+        &element_candidates,
+        resolved_window.telemetry.fallback_depth,
+    )?;
+    selected_window.elements = vec![resolved_element.target];
+    *windows = vec![selected_window];
+    Ok(resolved_element.telemetry.into_public())
 }
 
 fn bound_result(
@@ -710,36 +962,28 @@ mod windows_adapter {
             selector: &WindowSelector,
             guard: Option<&AutomationExecutionGuard<'_>>,
         ) -> Result<Value, AutomationHostError> {
-            if let Some(snapshot_id) = &selector.snapshot_id {
-                let mut request = DesktopInspectionRequest::bounded(None);
-                request.expected_snapshot_id = Some(snapshot_id.clone());
-                inspect_windows(&request)?;
-            }
-            let matches = matching_windows(selector);
-            let [window] = matches.as_slice() else {
-                return if matches.is_empty() {
-                    Err(AutomationHostError::TargetNotFound)
-                } else {
-                    Err(AutomationHostError::TargetAmbiguous)
-                };
-            };
+            let resolved = resolve_window(selector)?;
+            let window = resolved.target;
+            validate_window_snapshot(window, selector.snapshot_id.as_deref())?;
             let mut process_id = 0;
             if let Some(guard) = guard {
                 guard.ensure_active()?;
             }
             unsafe {
-                GetWindowThreadProcessId(*window, &mut process_id);
-                if IsIconic(*window) != 0 {
-                    ShowWindow(*window, SW_RESTORE);
+                GetWindowThreadProcessId(window, &mut process_id);
+                if IsIconic(window) != 0 {
+                    ShowWindow(window, SW_RESTORE);
                 }
-                if SetForegroundWindow(*window) == 0 {
+                if SetForegroundWindow(window) == 0 {
                     return Err(AutomationHostError::AccessDenied);
                 }
             }
             Ok(json!({
                 "focused": true,
                 "process_id": process_id,
-                "selector_strategy": selector_strategy(selector),
+                "selector_strategy": resolved.telemetry.strategy,
+                "selector_fallback_depth": resolved.telemetry.fallback_depth,
+                "selector_fallback_used": resolved.telemetry.fallback_used(),
             }))
         }
 
@@ -768,18 +1012,10 @@ mod windows_adapter {
         fn resolve_element(
             &self,
             selector: &ElementSelector,
-        ) -> Result<ResolvedElement, AutomationHostError> {
-            if let Some(snapshot_id) = &selector.window.snapshot_id {
-                let mut request = DesktopInspectionRequest::bounded(None);
-                request.expected_snapshot_id = Some(snapshot_id.clone());
-                inspect_windows(&request)?;
-            }
-            let matches = matching_elements(selector);
-            match matches.as_slice() {
-                [] => Err(AutomationHostError::TargetNotFound),
-                [element] => Ok(*element),
-                _ => Err(AutomationHostError::TargetAmbiguous),
-            }
+        ) -> Result<ResolvedTarget<ResolvedElement>, AutomationHostError> {
+            let window = resolve_window(&selector.window)?;
+            validate_window_snapshot(window.target, selector.window.snapshot_id.as_deref())?;
+            resolve_element_in_window(selector, window.target, window.telemetry.fallback_depth)
         }
 
         fn click(
@@ -787,7 +1023,8 @@ mod windows_adapter {
             selector: &ElementSelector,
             guard: Option<&AutomationExecutionGuard<'_>>,
         ) -> Result<Value, AutomationHostError> {
-            let element = self.resolve_element(selector)?;
+            let resolved = self.resolve_element(selector)?;
+            let element = resolved.target;
             if let Some(guard) = guard {
                 guard.ensure_active()?;
             }
@@ -803,6 +1040,9 @@ mod windows_adapter {
             Ok(json!({
                 "clicked": true,
                 "semantic_pattern": "invoke",
+                "selector_strategy": resolved.telemetry.strategy,
+                "selector_fallback_depth": resolved.telemetry.fallback_depth,
+                "selector_fallback_used": resolved.telemetry.fallback_used(),
             }))
         }
 
@@ -812,7 +1052,8 @@ mod windows_adapter {
             text: &str,
             guard: Option<&AutomationExecutionGuard<'_>>,
         ) -> Result<Value, AutomationHostError> {
-            let element = self.resolve_element(selector)?;
+            let resolved = self.resolve_element(selector)?;
+            let element = resolved.target;
             if element.password {
                 return Err(AutomationHostError::ProtectedControl);
             }
@@ -841,6 +1082,9 @@ mod windows_adapter {
                 "entered": true,
                 "characters_entered": text.chars().count(),
                 "semantic_pattern": "value",
+                "selector_strategy": resolved.telemetry.strategy,
+                "selector_fallback_depth": resolved.telemetry.fallback_depth,
+                "selector_fallback_used": resolved.telemetry.fallback_used(),
             }))
         }
 
@@ -851,24 +1095,14 @@ mod windows_adapter {
             modifiers: &[KeyboardModifier],
             guard: Option<&AutomationExecutionGuard<'_>>,
         ) -> Result<Value, AutomationHostError> {
-            if let Some(snapshot_id) = &selector.snapshot_id {
-                let mut request = DesktopInspectionRequest::bounded(None);
-                request.expected_snapshot_id = Some(snapshot_id.clone());
-                inspect_windows(&request)?;
-            }
-            let matches = matching_windows(selector);
-            let [window] = matches.as_slice() else {
-                return if matches.is_empty() {
-                    Err(AutomationHostError::TargetNotFound)
-                } else {
-                    Err(AutomationHostError::TargetAmbiguous)
-                };
-            };
+            let resolved = resolve_window(selector)?;
+            let window = resolved.target;
+            validate_window_snapshot(window, selector.snapshot_id.as_deref())?;
             if let Some(guard) = guard {
                 guard.ensure_active()?;
             }
             unsafe {
-                if GetForegroundWindow() != *window {
+                if GetForegroundWindow() != window {
                     return Err(AutomationHostError::FocusChanged);
                 }
             }
@@ -917,6 +1151,9 @@ mod windows_adapter {
                 "pressed": true,
                 "key": key,
                 "modifier_count": modifiers.len(),
+                "selector_strategy": resolved.telemetry.strategy,
+                "selector_fallback_depth": resolved.telemetry.fallback_depth,
+                "selector_fallback_used": resolved.telemetry.fallback_used(),
             }))
         }
 
@@ -927,7 +1164,8 @@ mod windows_adapter {
             click_count: u8,
             guard: Option<&AutomationExecutionGuard<'_>>,
         ) -> Result<Value, AutomationHostError> {
-            let element = self.resolve_element(selector)?;
+            let resolved = self.resolve_element(selector)?;
+            let element = resolved.target;
             if let Some(guard) = guard {
                 guard.ensure_active()?;
             }
@@ -970,6 +1208,9 @@ mod windows_adapter {
                 "pointer_button": button,
                 "click_count": click_count,
                 "targeting": "selector_center",
+                "selector_strategy": resolved.telemetry.strategy,
+                "selector_fallback_depth": resolved.telemetry.fallback_depth,
+                "selector_fallback_used": resolved.telemetry.fallback_used(),
             }))
         }
     }
@@ -1146,12 +1387,25 @@ mod windows_adapter {
         {
             return Err(AutomationHostError::TargetStale);
         }
+        let selector_resolution = request
+            .visual_suggestion
+            .as_ref()
+            .map(|suggestion| {
+                confirm_visual_suggestion(
+                    &mut context.windows,
+                    suggestion,
+                    &snapshot_id,
+                    current_unix_ms(),
+                )
+            })
+            .transpose()?;
         attach_snapshot(&mut context.windows, &snapshot_id);
         bound_result(
             DesktopInspectionResult {
                 snapshot_id,
                 windows: context.windows,
                 truncated: context.truncated,
+                selector_resolution,
             },
             request,
         )
@@ -1309,19 +1563,74 @@ mod windows_adapter {
         context.windows
     }
 
+    fn resolve_window(
+        selector: &WindowSelector,
+    ) -> Result<ResolvedTarget<HWND>, AutomationHostError> {
+        let mut strategies = Vec::new();
+        if selector.automation_id.is_some() {
+            let mut query = selector.clone();
+            query.title = None;
+            strategies.push((
+                SemanticSelectorStrategy::WindowAutomationId,
+                matching_windows(&query),
+            ));
+        }
+        if selector.executable.is_some() && selector.title.is_some() {
+            let mut query = selector.clone();
+            query.automation_id = None;
+            strategies.push((
+                SemanticSelectorStrategy::ExecutableAndTitle,
+                matching_windows(&query),
+            ));
+        }
+        if selector.executable.is_some() {
+            let mut query = selector.clone();
+            query.automation_id = None;
+            query.title = None;
+            strategies.push((
+                SemanticSelectorStrategy::Executable,
+                matching_windows(&query),
+            ));
+        }
+        if selector.title.is_some() {
+            let mut query = selector.clone();
+            query.automation_id = None;
+            query.executable = None;
+            strategies.push((SemanticSelectorStrategy::Title, matching_windows(&query)));
+        }
+        select_unique_target(strategies)
+    }
+
+    fn validate_window_snapshot(
+        window: HWND,
+        expected_snapshot_id: Option<&str>,
+    ) -> Result<(), AutomationHostError> {
+        let Some(expected_snapshot_id) = expected_snapshot_id else {
+            return Ok(());
+        };
+        let selector = unsafe { observed_window_selector(window) };
+        let mut request = DesktopInspectionRequest::bounded(Some(selector));
+        request.expected_snapshot_id = Some(expected_snapshot_id.to_owned());
+        inspect_windows(&request).map(|_| ())
+    }
+
+    unsafe fn observed_window_selector(window: HWND) -> WindowSelector {
+        let mut process_id = 0;
+        GetWindowThreadProcessId(window, &mut process_id);
+        WindowSelector {
+            executable: process_executable(process_id),
+            title: window_text(window).filter(|title| !is_credential_text(title)),
+            automation_id: Some(window_class(window)),
+            snapshot_id: None,
+        }
+    }
+
     unsafe extern "system" fn match_window(window: HWND, parameter: LPARAM) -> i32 {
         let context = &mut *(parameter as *mut MatchingWindows<'_>);
         if IsWindowVisible(window) == 0 {
             return 1;
         }
-        let mut process_id = 0;
-        GetWindowThreadProcessId(window, &mut process_id);
-        let selector = WindowSelector {
-            executable: process_executable(process_id),
-            title: window_text(window).filter(|title| !is_credential_text(title)),
-            automation_id: Some(window_class(window)),
-            snapshot_id: None,
-        };
+        let selector = observed_window_selector(window);
         if window_matches(&selector, context.selector) {
             context.windows.push(window);
         }
@@ -1342,24 +1651,59 @@ mod windows_adapter {
         elements: Vec<ResolvedElement>,
     }
 
-    fn matching_elements(selector: &ElementSelector) -> Vec<ResolvedElement> {
-        let mut matches = Vec::new();
-        for root in matching_windows(&selector.window) {
-            let mut context = MatchingElements {
+    fn matching_elements_in_window(root: HWND, selector: &ElementSelector) -> Vec<ResolvedElement> {
+        let mut context = MatchingElements {
+            root,
+            selector,
+            elements: Vec::new(),
+        };
+        unsafe {
+            EnumChildWindows(
                 root,
-                selector,
-                elements: Vec::new(),
-            };
-            unsafe {
-                EnumChildWindows(
-                    root,
-                    Some(match_element),
-                    (&mut context as *mut MatchingElements<'_>) as LPARAM,
-                );
-            }
-            matches.extend(context.elements);
+                Some(match_element),
+                (&mut context as *mut MatchingElements<'_>) as LPARAM,
+            );
         }
-        matches
+        context.elements
+    }
+
+    fn resolve_element_in_window(
+        selector: &ElementSelector,
+        root: HWND,
+        base_fallback_depth: u8,
+    ) -> Result<ResolvedTarget<ResolvedElement>, AutomationHostError> {
+        let mut strategies = Vec::new();
+        if selector.automation_id.is_some() {
+            let mut query = selector.clone();
+            query.name = None;
+            strategies.push((
+                SemanticSelectorStrategy::AutomationId,
+                matching_elements_in_window(root, &query),
+            ));
+        }
+        if selector.name.is_some() {
+            let mut query = selector.clone();
+            query.automation_id = None;
+            strategies.push((
+                SemanticSelectorStrategy::ControlTypeAndName,
+                matching_elements_in_window(root, &query),
+            ));
+        }
+        if selector.automation_id.is_none()
+            && selector.name.is_none()
+            && selector.control_type.is_some()
+        {
+            strategies.push((
+                SemanticSelectorStrategy::ControlType,
+                matching_elements_in_window(root, selector),
+            ));
+        }
+        let mut resolved = select_unique_target(strategies)?;
+        resolved.telemetry.fallback_depth = resolved
+            .telemetry
+            .fallback_depth
+            .saturating_add(base_fallback_depth);
+        Ok(resolved)
     }
 
     unsafe extern "system" fn match_element(window: HWND, parameter: LPARAM) -> i32 {
@@ -1392,18 +1736,6 @@ mod windows_adapter {
             });
         }
         1
-    }
-
-    fn selector_strategy(selector: &WindowSelector) -> &'static str {
-        if selector.automation_id.is_some() {
-            "automation_id"
-        } else if selector.executable.is_some() && selector.title.is_some() {
-            "executable_and_title"
-        } else if selector.executable.is_some() {
-            "executable"
-        } else {
-            "title"
-        }
     }
 
     unsafe fn window_text(window: HWND) -> Option<String> {
@@ -1942,6 +2274,80 @@ mod tests {
     }
 
     #[test]
+    fn visual_authoring_confirms_one_fresh_semantic_fallback_without_coordinates() {
+        let now = current_unix_ms();
+        let mut request = DesktopInspectionRequest::bounded(None);
+        request.expected_snapshot_id = Some("fixture-snapshot-1".to_owned());
+        request.visual_suggestion = Some(VisualSelectorSuggestion {
+            selector: ElementSelector {
+                window: WindowSelector {
+                    executable: Some("desktop-automation-fixture.exe".to_owned()),
+                    title: Some("Trigix 自动化测试".to_owned()),
+                    automation_id: Some(FIXTURE_WINDOW_AUTOMATION_ID.to_owned()),
+                    snapshot_id: Some("fixture-snapshot-1".to_owned()),
+                },
+                automation_id: Some("missing-submit-id".to_owned()),
+                name: Some("提交".to_owned()),
+                control_type: Some("button".to_owned()),
+            },
+            snapshot_id: "fixture-snapshot-1".to_owned(),
+            confidence_basis_points: 9_500,
+            candidate_count: 1,
+            observed_at_unix_ms: now,
+        });
+        let output = FixtureAutomationAdapter::default()
+            .execute(&DesktopAction::InspectTargets {
+                request: Box::new(request.clone()),
+            })
+            .unwrap();
+        let result: DesktopInspectionResult = serde_json::from_value(output.clone()).unwrap();
+        assert_eq!(result.windows.len(), 1);
+        assert_eq!(result.windows[0].elements.len(), 1);
+        let resolution = result.selector_resolution.unwrap();
+        assert_eq!(
+            resolution.strategy,
+            SemanticSelectorStrategy::ControlTypeAndName
+        );
+        assert_eq!(resolution.fallback_depth, 1);
+        assert!(resolution.fallback_used);
+        assert!(!output.to_string().contains("confidence_basis_points"));
+        assert!(!output.to_string().contains("coordinate"));
+
+        request
+            .visual_suggestion
+            .as_mut()
+            .unwrap()
+            .selector
+            .automation_id = None;
+        request.visual_suggestion.as_mut().unwrap().selector.name = None;
+        request
+            .visual_suggestion
+            .as_mut()
+            .unwrap()
+            .selector
+            .control_type = Some("edit".to_owned());
+        let ambiguous =
+            FixtureAutomationAdapter::default().execute(&DesktopAction::InspectTargets {
+                request: Box::new(request.clone()),
+            });
+        assert_eq!(ambiguous, Err(AutomationHostError::TargetAmbiguous));
+
+        request.visual_suggestion.as_mut().unwrap().snapshot_id = "stale-snapshot".to_owned();
+        request
+            .visual_suggestion
+            .as_mut()
+            .unwrap()
+            .selector
+            .window
+            .snapshot_id = Some("stale-snapshot".to_owned());
+        request.expected_snapshot_id = Some("stale-snapshot".to_owned());
+        let stale = FixtureAutomationAdapter::default().execute(&DesktopAction::InspectTargets {
+            request: Box::new(request),
+        });
+        assert_eq!(stale, Err(AutomationHostError::TargetStale));
+    }
+
+    #[test]
     fn fixture_focus_requires_a_unique_fresh_selector() {
         let adapter = &mut FixtureAutomationAdapter::default();
         let focused = adapter
@@ -1955,7 +2361,23 @@ mod tests {
             })
             .unwrap();
         assert_eq!(focused["focused"], true);
-        assert_eq!(focused["selector_strategy"], "automation_id");
+        assert_eq!(focused["selector_strategy"], "window_automation_id");
+        assert_eq!(focused["selector_fallback_depth"], 0);
+        assert_eq!(focused["selector_fallback_used"], false);
+
+        let fallback = adapter
+            .execute(&DesktopAction::FocusWindow {
+                selector: WindowSelector {
+                    executable: Some("desktop-automation-fixture.exe".to_owned()),
+                    title: Some("Trigix 自动化测试".to_owned()),
+                    automation_id: Some("missing-window-id".to_owned()),
+                    snapshot_id: Some("fixture-snapshot-1".to_owned()),
+                },
+            })
+            .unwrap();
+        assert_eq!(fallback["selector_strategy"], "executable_and_title");
+        assert_eq!(fallback["selector_fallback_depth"], 1);
+        assert_eq!(fallback["selector_fallback_used"], true);
 
         let ambiguous = adapter.execute(&DesktopAction::FocusWindow {
             selector: WindowSelector {
@@ -2032,6 +2454,19 @@ mod tests {
             })
             .unwrap();
         assert_eq!(clicked["semantic_pattern"], "invoke");
+        assert_eq!(clicked["selector_strategy"], "automation_id");
+        assert_eq!(clicked["selector_fallback_used"], false);
+
+        let mut fallback = fixture_element("missing-submit-id", "button");
+        fallback.name = Some("提交".to_owned());
+        let fallback = adapter
+            .execute(&DesktopAction::ClickElement { selector: fallback })
+            .unwrap();
+        assert_eq!(fallback["selector_strategy"], "control_type_and_name");
+        assert_eq!(fallback["selector_fallback_depth"], 1);
+        assert_eq!(fallback["selector_fallback_used"], true);
+        assert!(fallback.get("name").is_none());
+        assert!(fallback.get("coordinates").is_none());
 
         let unsupported = adapter.execute(&DesktopAction::ClickElement {
             selector: fixture_element(FIXTURE_INPUT_AUTOMATION_ID, "edit"),

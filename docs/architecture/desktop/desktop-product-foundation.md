@@ -172,15 +172,11 @@ The parent polls an explicit cancellation token and the absolute request deadlin
 
 Before adapter dispatch, the Host validates the lease again. Production Windows adapters also recheck an execution guard after target resolution and immediately before every focus, launch, invoke, or value side effect. A lease or request deadline that expires during resolution therefore prevents the operating-system call. The command processor persists in-flight state before the supervisor starts: parent crashes retry only read-only idempotent work, while an uncertain write becomes a terminal recovery failure. Cancelled, timed-out, crashed, and successful results are persisted through the same replay boundary, so reconnect cannot repeat their side effects.
 
-Windows automation will use this selector order:
+Windows automation uses an explicit semantic selector chain: window automation identifier, executable plus exact title, executable, or exact title; then element automation identifier plus control type or accessible name plus control type. Only zero matches advance to the next available strategy. Multiple matches fail as `target_ambiguous`, and a changed inspection snapshot fails as `target_stale`. An application-specific adapter may add another typed semantic strategy, but generic execution never advances to pixels or coordinates.
 
-1. UI Automation identifier and control type
-2. accessible name within a stable window selector
-3. application-specific semantic adapter
-4. image recognition with confidence threshold and Approval policy
-5. coordinates only for an explicitly calibrated and bounded target
+Visual matching is limited to authoring. A suggestion must be at least 90% confident, contain exactly one candidate, be no more than 30 seconds old, and reference the same bounded inspection snapshot as its semantic selector. The Device re-inspects and resolves exactly one fresh semantic target before the editor saves it. Protocol and Web validation reject coordinate or bounds fields, so visual output cannot become coordinate replay.
 
-Selectors must be resolved immediately before execution. The adapter records which selector strategy was used, the target application identity, timing, and a redacted result. Screenshots are opt-in evidence with Tenant retention policy; they are not unconditional logs.
+Selectors are resolved immediately before execution. Every successful selector-targeted action reports an enumerated strategy, fallback depth, and fallback-used flag. Adapter evidence persists only those bounded fields with application identity, timing, and a redacted result; it never includes titles, accessible names, typed values, control trees, pixels, or coordinates. Screenshots remain opt-in evidence with Tenant retention policy and are not selector telemetry or unconditional logs.
 
 Automation evidence has a separate policy and storage boundary from the command result. A Device may upload adapter-audit metadata only after the Platform has persisted a matching terminal command result. The authenticated Device session, Tenant, Project, Execution, command, Device, and outcome must all match. The schema accepts an enumerated selector strategy, bounded application identity, start and completion times, terminal outcome, redaction policy version, and retention deadline; it has no fields for typed text, credentials, window titles, UI trees, or arbitrary adapter detail.
 

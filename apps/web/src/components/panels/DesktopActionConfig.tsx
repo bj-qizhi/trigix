@@ -6,6 +6,7 @@ import type {
   DesktopDevice,
   DesktopElementSelector,
   DesktopInspectionResult,
+  DesktopVisualSelectorSuggestion,
   DesktopWindowSelector,
   ExecutionRecord,
   ExecutionSummary,
@@ -46,6 +47,66 @@ export const INSPECTION_BOUNDS = {
   max_duration_ms: 5_000,
   max_payload_bytes: 49_152,
 } as const
+export const VISUAL_SUGGESTION_POLICY = {
+  minimum_confidence_basis_points: 9_000,
+  maximum_age_ms: 30_000,
+  candidate_count: 1,
+} as const
+
+export function buildVisualConfirmationAction(
+  value: unknown,
+  nowUnixMs: number,
+): Record<string, unknown> | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null
+  const suggestion = value as Partial<DesktopVisualSelectorSuggestion> & Record<string, unknown>
+  const selector = suggestion.selector
+  if (!selector || typeof selector !== 'object' || Array.isArray(selector)) return null
+  const windowSelector = selector.window
+  if (!windowSelector || typeof windowSelector !== 'object' || Array.isArray(windowSelector)) return null
+  const forbidden = /^(x|y|left|top|right|bottom|width|height|bounds|coordinates)$/i
+  if ([suggestion, selector as unknown as Record<string, unknown>, windowSelector as Record<string, unknown>]
+    .some((item) => Object.keys(item).some((key) => forbidden.test(key)))) return null
+  if (typeof suggestion.snapshot_id !== 'string'
+    || !suggestion.snapshot_id
+    || windowSelector.snapshot_id !== suggestion.snapshot_id
+    || !Number.isInteger(suggestion.confidence_basis_points)
+    || Number(suggestion.confidence_basis_points) < VISUAL_SUGGESTION_POLICY.minimum_confidence_basis_points
+    || Number(suggestion.confidence_basis_points) > 10_000
+    || suggestion.candidate_count !== VISUAL_SUGGESTION_POLICY.candidate_count
+    || !Number.isInteger(suggestion.observed_at_unix_ms)
+    || Number(suggestion.observed_at_unix_ms) > nowUnixMs
+    || nowUnixMs - Number(suggestion.observed_at_unix_ms) > VISUAL_SUGGESTION_POLICY.maximum_age_ms
+  ) return null
+  const semanticSelector: DesktopElementSelector = {
+    window: compact({
+      executable: windowSelector.executable,
+      title: windowSelector.title,
+      automation_id: windowSelector.automation_id,
+      snapshot_id: windowSelector.snapshot_id,
+    }),
+    ...compact({
+      automation_id: selector.automation_id,
+      name: selector.name,
+      control_type: selector.control_type,
+    }),
+  }
+  if (!semanticSelector.window.executable && !semanticSelector.window.title && !semanticSelector.window.automation_id) return null
+  if (!semanticSelector.automation_id && !semanticSelector.name && !semanticSelector.control_type) return null
+  return {
+    kind: 'inspect_targets',
+    request: {
+      ...INSPECTION_BOUNDS,
+      expected_snapshot_id: suggestion.snapshot_id,
+      visual_suggestion: {
+        selector: semanticSelector,
+        snapshot_id: suggestion.snapshot_id,
+        confidence_basis_points: suggestion.confidence_basis_points,
+        candidate_count: suggestion.candidate_count,
+        observed_at_unix_ms: suggestion.observed_at_unix_ms,
+      },
+    },
+  }
+}
 
 export function desktopErrorMessage(error: unknown, zh: boolean): string {
   const raw = error instanceof Error ? error.message : String(error)
@@ -132,7 +193,7 @@ export function DesktopActionConfig({ config, set, str, workflowProjectId, activ
   const mounted = useRef(true)
   const [devices, setDevices] = useState<DesktopDevice[]>([])
   const [loadingDevices, setLoadingDevices] = useState(true)
-  const [busy, setBusy] = useState<'inspect' | 'test' | null>(null)
+  const [busy, setBusy] = useState<'inspect' | 'visual' | 'test' | null>(null)
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
   const [inspection, setInspection] = useState<DesktopInspectionResult | null>(null)
@@ -283,6 +344,39 @@ export function DesktopActionConfig({ config, set, str, workflowProjectId, activ
     set('selector', { ...selector, window: compact({ ...selector.window, snapshot_id: snapshotId }) })
   }
 
+  const confirmVisualSuggestion = async () => {
+    setError('')
+    setNotice('')
+    const action = buildVisualConfirmationAction(config.visual_suggestion, Date.now())
+    if (!action) {
+      setError(zh ? '视觉建议已过期、不唯一、置信度不足或包含坐标。' : 'The visual suggestion is stale, ambiguous, below confidence, or contains coordinates.')
+      return
+    }
+    setBusy('visual')
+    try {
+      const record = await dispatch(action)
+      const output = record.result?.output as DesktopInspectionResult | undefined
+      const target = output?.windows[0]?.elements[0]
+      if (record.status !== 'succeeded'
+        || !output?.selector_resolution
+        || output.windows.length !== 1
+        || output.windows[0].elements.length !== 1
+        || !target
+      ) throw new Error(record.result?.error_code || record.result?.error_message || 'visual suggestion was not uniquely resolved')
+      if (mounted.current) {
+        setInspection(output)
+        saveElement(target.selector, output.snapshot_id)
+        setNotice(zh
+          ? `视觉建议已确认并保存为语义选择器（${output.selector_resolution.strategy}）。`
+          : `Visual suggestion confirmed and saved as a semantic selector (${output.selector_resolution.strategy}).`)
+      }
+    } catch (cause) {
+      if (mounted.current) setError(desktopErrorMessage(cause, zh))
+    } finally {
+      if (mounted.current) setBusy(null)
+    }
+  }
+
   return <>
     <div className="field">
       <label>{zh ? '操作类型' : 'Action type'}</label>
@@ -355,6 +449,12 @@ export function DesktopActionConfig({ config, set, str, workflowProjectId, activ
       </button>
       {!executionId && <div style={{ color: 'var(--warning, #b45309)', fontSize: 11, marginTop: 4 }}>{zh ? '先启动或选择一个活动工作流执行。' : 'Start or select an active Workflow Execution first.'}</div>}
       {selectedDevice && !inspectorEligible && <div style={{ color: 'var(--warning, #b45309)', fontSize: 11, marginTop: 4 }}>{zh ? '所选设备不支持 UI Automation 检查。' : 'The selected Device cannot inspect UI Automation targets.'}</div>}
+      {schema.selector === 'element' && Boolean(config.visual_suggestion) && <div style={{ marginTop: 6 }}>
+        <button className="btn btn-sm" disabled={busy !== null || !executionId || !selectedDevice || !inspectorEligible} onClick={() => void confirmVisualSuggestion()}>
+          {busy === 'visual' ? (zh ? '正在确认视觉建议…' : 'Confirming visual suggestion…') : (zh ? '确认视觉建议为语义目标' : 'Confirm visual suggestion as semantic target')}
+        </button>
+        <div style={{ color: 'var(--muted)', fontSize: 11, marginTop: 4 }}>{zh ? '仅确认唯一、最新的语义控件；不会保存或执行屏幕坐标。' : 'Only one fresh semantic control can be confirmed; screen coordinates are never saved or executed.'}</div>
+      </div>}
     </div>}
     {inspection && <div style={{ borderTop: '1px solid var(--border)', paddingTop: 8, marginBottom: 8 }}>
       <div style={{ fontSize: 11, marginBottom: 6 }}><strong>{zh ? '稳定目标' : 'Stable targets'}</strong>{inspection.truncated ? ` · ${zh ? '结果已截断' : 'truncated'}` : ''}</div>

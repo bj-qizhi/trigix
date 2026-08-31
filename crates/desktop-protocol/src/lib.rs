@@ -10,6 +10,8 @@ pub const MAX_INSPECTION_WINDOWS: u16 = 64;
 pub const MAX_INSPECTION_ELEMENTS: u16 = 256;
 pub const MAX_INSPECTION_DURATION_MS: u32 = 5_000;
 pub const MAX_INSPECTION_PAYLOAD_BYTES: u32 = 60 * 1024;
+pub const MIN_VISUAL_SUGGESTION_CONFIDENCE_BPS: u16 = 9_000;
+pub const MAX_VISUAL_SUGGESTION_AGE_MS: u64 = 30_000;
 
 fn previous_protocol_revision() -> u16 {
     PREVIOUS_PROTOCOL_REVISION
@@ -442,6 +444,67 @@ pub struct ElementSelector {
     pub control_type: Option<String>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SemanticSelectorStrategy {
+    WindowAutomationId,
+    ExecutableAndTitle,
+    Executable,
+    Title,
+    AutomationId,
+    ControlTypeAndName,
+    ControlType,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SelectorResolutionTelemetry {
+    pub strategy: SemanticSelectorStrategy,
+    pub fallback_depth: u8,
+    pub fallback_used: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct VisualSelectorSuggestion {
+    pub selector: ElementSelector,
+    pub snapshot_id: String,
+    pub confidence_basis_points: u16,
+    pub candidate_count: u8,
+    pub observed_at_unix_ms: u64,
+}
+
+impl VisualSelectorSuggestion {
+    pub fn validate_at(&self, now_unix_ms: u64) -> Result<(), ProtocolError> {
+        self.selector.validate()?;
+        validate_identifier("action.visual_suggestion.snapshot_id", &self.snapshot_id)?;
+        if self.selector.window.snapshot_id.as_deref() != Some(&self.snapshot_id) {
+            return Err(ProtocolError::InvalidField(
+                "action.visual_suggestion.snapshot_id",
+            ));
+        }
+        if !(MIN_VISUAL_SUGGESTION_CONFIDENCE_BPS..=10_000).contains(&self.confidence_basis_points)
+        {
+            return Err(ProtocolError::InvalidField(
+                "action.visual_suggestion.confidence_basis_points",
+            ));
+        }
+        if self.candidate_count != 1 {
+            return Err(ProtocolError::InvalidField(
+                "action.visual_suggestion.candidate_count",
+            ));
+        }
+        if self.observed_at_unix_ms > now_unix_ms
+            || now_unix_ms.saturating_sub(self.observed_at_unix_ms) > MAX_VISUAL_SUGGESTION_AGE_MS
+        {
+            return Err(ProtocolError::InvalidField(
+                "action.visual_suggestion.observed_at_unix_ms",
+            ));
+        }
+        Ok(())
+    }
+}
+
 impl ElementSelector {
     pub fn validate(&self) -> Result<(), ProtocolError> {
         self.window.validate()?;
@@ -469,6 +532,8 @@ pub struct DesktopInspectionRequest {
     pub window: Option<WindowSelector>,
     #[serde(default)]
     pub expected_snapshot_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub visual_suggestion: Option<VisualSelectorSuggestion>,
     pub max_depth: u8,
     pub max_windows: u16,
     pub max_elements: u16,
@@ -481,6 +546,7 @@ impl DesktopInspectionRequest {
         Self {
             window,
             expected_snapshot_id: None,
+            visual_suggestion: None,
             max_depth: MAX_INSPECTION_DEPTH,
             max_windows: MAX_INSPECTION_WINDOWS,
             max_elements: MAX_INSPECTION_ELEMENTS,
@@ -498,6 +564,25 @@ impl DesktopInspectionRequest {
             self.expected_snapshot_id.as_deref(),
             128,
         )?;
+        if let Some(suggestion) = &self.visual_suggestion {
+            suggestion.selector.validate()?;
+            validate_identifier(
+                "action.visual_suggestion.snapshot_id",
+                &suggestion.snapshot_id,
+            )?;
+            if suggestion.selector.window.snapshot_id.as_deref() != Some(&suggestion.snapshot_id)
+                || self.window.is_some()
+                || self
+                    .expected_snapshot_id
+                    .as_ref()
+                    .is_some_and(|expected| expected != &suggestion.snapshot_id)
+                || !(MIN_VISUAL_SUGGESTION_CONFIDENCE_BPS..=10_000)
+                    .contains(&suggestion.confidence_basis_points)
+                || suggestion.candidate_count != 1
+            {
+                return Err(ProtocolError::InvalidField("action.visual_suggestion"));
+            }
+        }
         if self.max_depth == 0 || self.max_depth > MAX_INSPECTION_DEPTH {
             return Err(ProtocolError::InvalidField("action.inspection.max_depth"));
         }
@@ -576,12 +661,71 @@ pub struct DesktopInspectionResult {
     pub snapshot_id: String,
     pub windows: Vec<InspectedWindow>,
     pub truncated: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub selector_resolution: Option<SelectorResolutionTelemetry>,
 }
 
 impl DesktopInspectionResult {
     pub fn validate(&self, request: &DesktopInspectionRequest) -> Result<(), ProtocolError> {
         request.validate()?;
         validate_identifier("inspection.snapshot_id", &self.snapshot_id)?;
+        if self
+            .selector_resolution
+            .as_ref()
+            .is_some_and(|resolution| resolution.fallback_used != (resolution.fallback_depth > 0))
+        {
+            return Err(ProtocolError::InvalidField(
+                "inspection.selector_resolution",
+            ));
+        }
+        match (&request.visual_suggestion, &self.selector_resolution) {
+            (None, None) => {}
+            (Some(suggestion), Some(resolution)) => {
+                if self.snapshot_id != suggestion.snapshot_id
+                    || self.windows.len() != 1
+                    || self.windows[0].elements.len() != 1
+                {
+                    return Err(ProtocolError::InvalidField("inspection.visual_suggestion"));
+                }
+                let window = &self.windows[0].selector;
+                let element = &self.windows[0].elements[0].selector;
+                let matches_strategy = match resolution.strategy {
+                    SemanticSelectorStrategy::WindowAutomationId => {
+                        window.automation_id == suggestion.selector.window.automation_id
+                    }
+                    SemanticSelectorStrategy::ExecutableAndTitle => {
+                        window.executable == suggestion.selector.window.executable
+                            && window.title == suggestion.selector.window.title
+                    }
+                    SemanticSelectorStrategy::Executable => {
+                        window.executable == suggestion.selector.window.executable
+                    }
+                    SemanticSelectorStrategy::Title => {
+                        window.title == suggestion.selector.window.title
+                    }
+                    SemanticSelectorStrategy::AutomationId => {
+                        element.automation_id == suggestion.selector.automation_id
+                    }
+                    SemanticSelectorStrategy::ControlTypeAndName => {
+                        element.control_type == suggestion.selector.control_type
+                            && element.name == suggestion.selector.name
+                    }
+                    SemanticSelectorStrategy::ControlType => {
+                        element.control_type == suggestion.selector.control_type
+                    }
+                };
+                if !matches_strategy {
+                    return Err(ProtocolError::InvalidField(
+                        "inspection.selector_resolution",
+                    ));
+                }
+            }
+            _ => {
+                return Err(ProtocolError::InvalidField(
+                    "inspection.selector_resolution",
+                ));
+            }
+        }
         if self.windows.len() > request.max_windows as usize {
             return Err(ProtocolError::InvalidField("inspection.windows"));
         }
@@ -1079,6 +1223,49 @@ mod tests {
             command.validate(1_500),
             Err(ProtocolError::MissingField("action.window_selector"))
         );
+    }
+
+    #[test]
+    fn visual_suggestions_are_fresh_unique_semantic_references() {
+        let suggestion = VisualSelectorSuggestion {
+            selector: ElementSelector {
+                window: WindowSelector {
+                    executable: Some("fixture.exe".to_owned()),
+                    title: Some("Fixture".to_owned()),
+                    automation_id: Some("Fixture.Main".to_owned()),
+                    snapshot_id: Some("snapshot-1".to_owned()),
+                },
+                automation_id: Some("missing-primary".to_owned()),
+                name: Some("Submit".to_owned()),
+                control_type: Some("button".to_owned()),
+            },
+            snapshot_id: "snapshot-1".to_owned(),
+            confidence_basis_points: MIN_VISUAL_SUGGESTION_CONFIDENCE_BPS,
+            candidate_count: 1,
+            observed_at_unix_ms: 1_000,
+        };
+        assert!(suggestion.validate_at(1_001).is_ok());
+
+        let mut invalid = suggestion.clone();
+        invalid.candidate_count = 2;
+        assert_eq!(
+            invalid.validate_at(1_001),
+            Err(ProtocolError::InvalidField(
+                "action.visual_suggestion.candidate_count"
+            ))
+        );
+
+        assert_eq!(
+            suggestion.validate_at(1_000 + MAX_VISUAL_SUGGESTION_AGE_MS + 1),
+            Err(ProtocolError::InvalidField(
+                "action.visual_suggestion.observed_at_unix_ms"
+            ))
+        );
+
+        let mut encoded = serde_json::to_value(&suggestion).unwrap();
+        encoded["x"] = serde_json::json!(100);
+        encoded["y"] = serde_json::json!(200);
+        assert!(serde_json::from_value::<VisualSelectorSuggestion>(encoded).is_err());
     }
 
     #[test]

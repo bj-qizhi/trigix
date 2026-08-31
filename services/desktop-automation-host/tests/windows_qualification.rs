@@ -71,15 +71,36 @@ fn native_fixture_actions_meet_reliability_latency_and_resource_budgets() {
     assert!(password.value.is_none());
     assert!(password.redaction.is_some());
 
+    let window = inspected.windows[0].selector.clone();
+
     let focused = adapter
         .execute(&DesktopAction::FocusWindow {
             selector: window.clone(),
         })
         .expect("focus native fixture");
-    assert_eq!(focused["selector_strategy"], "automation_id");
+    assert_eq!(focused["selector_strategy"], "window_automation_id");
 
-    let input = element(&window, FIXTURE_INPUT_AUTOMATION_ID, "edit");
-    let submit = element(&window, FIXTURE_SUBMIT_AUTOMATION_ID, "button");
+    let mut fallback_window = inspected.windows[0].selector.clone();
+    fallback_window.automation_id = Some("missing-window-id".to_owned());
+    let fallback_focus = adapter
+        .execute(&DesktopAction::FocusWindow {
+            selector: fallback_window,
+        })
+        .expect("focus native fixture through semantic fallback");
+    assert_eq!(fallback_focus["selector_strategy"], "executable_and_title");
+    assert_eq!(fallback_focus["selector_fallback_depth"], 1);
+    assert_eq!(fallback_focus["selector_fallback_used"], true);
+
+    let mut input = element(&window, FIXTURE_INPUT_AUTOMATION_ID, "edit");
+    let mut submit = element(&window, FIXTURE_SUBMIT_AUTOMATION_ID, "button");
+    let submit_name = inspected.windows[0]
+        .elements
+        .iter()
+        .find(|element| {
+            element.selector.automation_id.as_deref() == Some(FIXTURE_SUBMIT_AUTOMATION_ID)
+        })
+        .and_then(|element| element.selector.name.clone())
+        .expect("fixture submit control exposes an accessible name");
     let password = element(&window, FIXTURE_PASSWORD_AUTOMATION_ID, "edit");
     assert_eq!(
         adapter.execute(&DesktopAction::TypeText {
@@ -106,6 +127,25 @@ fn native_fixture_actions_meet_reliability_latency_and_resource_budgets() {
         })
         .expect("send selector-targeted pointer input to native fixture");
     assert_eq!(pointer["targeting"], "selector_center");
+
+    let mut fallback_submit = submit.clone();
+    fallback_submit.automation_id = Some("missing-submit-id".to_owned());
+    fallback_submit.name = Some(submit_name);
+    let fallback_click = adapter
+        .execute(&DesktopAction::ClickElement {
+            selector: fallback_submit,
+        })
+        .expect("invoke native fixture through semantic fallback");
+    assert_eq!(fallback_click["selector_strategy"], "control_type_and_name");
+    assert_eq!(fallback_click["selector_fallback_depth"], 1);
+    assert_eq!(fallback_click["selector_fallback_used"], true);
+    assert!(fallback_click.get("coordinates").is_none());
+
+    // Inspection snapshots are intentionally single-state guards. The invocation above changes
+    // the fixture state, so the long-running qualification must exercise the persisted semantic
+    // selectors rather than replaying the now-stale authoring snapshot.
+    input.window.snapshot_id = None;
+    submit.window.snapshot_id = None;
 
     let handles_before = process_handle_count();
     let working_set_before = process_working_set();

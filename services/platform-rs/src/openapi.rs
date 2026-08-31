@@ -195,7 +195,7 @@ pub fn spec() -> Value {
           },
           "DesktopEvidenceRecord": {
             "type": "object",
-            "required": ["evidence_id", "tenant_id", "project_id", "execution_id", "command_id", "device_id", "kind", "selector_strategy", "application_id", "started_at_unix_ms", "completed_at_unix_ms", "outcome", "policy_version", "redacted_regions", "byte_size", "expires_at_unix_ms", "created_at_unix_ms"],
+            "required": ["evidence_id", "tenant_id", "project_id", "execution_id", "command_id", "device_id", "kind", "selector_strategy", "selector_fallback_depth", "selector_fallback_used", "application_id", "started_at_unix_ms", "completed_at_unix_ms", "outcome", "policy_version", "redacted_regions", "byte_size", "expires_at_unix_ms", "created_at_unix_ms"],
             "properties": {
               "evidence_id": { "type": "string" },
               "tenant_id": { "type": "string" },
@@ -204,7 +204,9 @@ pub fn spec() -> Value {
               "command_id": { "type": "string" },
               "device_id": { "type": "string" },
               "kind": { "type": "string", "enum": ["adapter_audit", "screenshot"] },
-              "selector_strategy": { "type": "string", "enum": ["automation_id", "control_type_and_name", "name_and_sibling", "window_automation_id", "application_identity", "not_applicable"] },
+              "selector_strategy": { "type": "string", "enum": ["automation_id", "control_type_and_name", "name_and_sibling", "window_automation_id", "executable_and_title", "executable", "title", "control_type", "application_identity", "not_applicable"] },
+              "selector_fallback_depth": { "type": "integer", "minimum": 0, "maximum": 4 },
+              "selector_fallback_used": { "type": "boolean" },
               "application_id": { "type": "string" },
               "started_at_unix_ms": { "type": "integer", "format": "int64" },
               "completed_at_unix_ms": { "type": "integer", "format": "int64" },

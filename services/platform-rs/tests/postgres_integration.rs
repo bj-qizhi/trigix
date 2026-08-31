@@ -554,6 +554,8 @@ async fn desktop_pairing_is_atomic_tenant_scoped_and_single_use() {
             project_id: "project-1".to_owned(),
             kind: EvidenceKind::AdapterAudit,
             selector_strategy: SelectorStrategy::NotApplicable,
+            selector_fallback_depth: 0,
+            selector_fallback_used: false,
             application_id: "system_information".to_owned(),
             started_at_unix_ms: now,
             completed_at_unix_ms: now,

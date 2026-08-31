@@ -253,33 +253,96 @@ fn evidence_matches_action(request: &EvidenceUploadRequest, action: &DesktopActi
         }
         DesktopAction::InspectTargets { .. } => matches!(
             request.selector_strategy,
-            SelectorStrategy::NotApplicable | SelectorStrategy::WindowAutomationId
+            SelectorStrategy::NotApplicable
+                | SelectorStrategy::WindowAutomationId
+                | SelectorStrategy::ExecutableAndTitle
+                | SelectorStrategy::Executable
+                | SelectorStrategy::Title
+                | SelectorStrategy::AutomationId
+                | SelectorStrategy::ControlTypeAndName
+                | SelectorStrategy::ControlType
         ),
         DesktopAction::FocusWindow { .. } => matches!(
             request.selector_strategy,
-            SelectorStrategy::WindowAutomationId | SelectorStrategy::ApplicationIdentity
+            SelectorStrategy::WindowAutomationId
+                | SelectorStrategy::ExecutableAndTitle
+                | SelectorStrategy::Executable
+                | SelectorStrategy::Title
+                | SelectorStrategy::ApplicationIdentity
         ),
         DesktopAction::ClickElement { .. } | DesktopAction::TypeText { .. } => matches!(
             request.selector_strategy,
             SelectorStrategy::AutomationId
                 | SelectorStrategy::ControlTypeAndName
                 | SelectorStrategy::NameAndSibling
+                | SelectorStrategy::ControlType
         ),
         DesktopAction::PressKey { .. } => matches!(
             request.selector_strategy,
-            SelectorStrategy::WindowAutomationId | SelectorStrategy::ApplicationIdentity
+            SelectorStrategy::WindowAutomationId
+                | SelectorStrategy::ExecutableAndTitle
+                | SelectorStrategy::Executable
+                | SelectorStrategy::Title
+                | SelectorStrategy::ApplicationIdentity
         ),
         DesktopAction::PointerClick { .. } => matches!(
             request.selector_strategy,
             SelectorStrategy::AutomationId
                 | SelectorStrategy::ControlTypeAndName
                 | SelectorStrategy::NameAndSibling
+                | SelectorStrategy::ControlType
         ),
         DesktopAction::LaunchApplication { application_id } => {
             request.selector_strategy == SelectorStrategy::ApplicationIdentity
                 && request.application_id == application_id.0
         }
     }
+}
+
+fn selector_strategy_matches_action(strategy: SelectorStrategy, action: &DesktopAction) -> bool {
+    match action {
+        DesktopAction::FocusWindow { .. } | DesktopAction::PressKey { .. } => matches!(
+            strategy,
+            SelectorStrategy::WindowAutomationId
+                | SelectorStrategy::ExecutableAndTitle
+                | SelectorStrategy::Executable
+                | SelectorStrategy::Title
+        ),
+        DesktopAction::ClickElement { .. }
+        | DesktopAction::TypeText { .. }
+        | DesktopAction::PointerClick { .. } => matches!(
+            strategy,
+            SelectorStrategy::AutomationId
+                | SelectorStrategy::ControlTypeAndName
+                | SelectorStrategy::NameAndSibling
+                | SelectorStrategy::ControlType
+        ),
+        _ => false,
+    }
+}
+
+fn evidence_matches_result(
+    request: &EvidenceUploadRequest,
+    result: &desktop_protocol::DesktopCommandResult,
+) -> bool {
+    let Some(output) = result.output.as_ref() else {
+        return request.selector_fallback_depth == 0 && !request.selector_fallback_used;
+    };
+    let Some(strategy) = output
+        .get("selector_strategy")
+        .and_then(serde_json::Value::as_str)
+    else {
+        return request.selector_fallback_depth == 0 && !request.selector_fallback_used;
+    };
+    strategy == request.selector_strategy.as_str()
+        && output
+            .get("selector_fallback_depth")
+            .and_then(serde_json::Value::as_u64)
+            == Some(u64::from(request.selector_fallback_depth))
+        && output
+            .get("selector_fallback_used")
+            .and_then(serde_json::Value::as_bool)
+            == Some(request.selector_fallback_used)
 }
 
 fn validate_command_output(
@@ -300,6 +363,67 @@ fn validate_command_output(
             result.output = serde_json::to_value(inspection).ok();
         } else {
             result.output = None;
+        }
+    } else if matches!(result.outcome, desktop_protocol::CommandOutcome::Succeeded)
+        && matches!(
+            action,
+            DesktopAction::FocusWindow { .. }
+                | DesktopAction::ClickElement { .. }
+                | DesktopAction::TypeText { .. }
+                | DesktopAction::PressKey { .. }
+                | DesktopAction::PointerClick { .. }
+        )
+    {
+        let Some(output) = result
+            .output
+            .as_ref()
+            .and_then(serde_json::Value::as_object)
+        else {
+            return Ok(());
+        };
+        if output.keys().any(|key| {
+            matches!(
+                key.as_str(),
+                "x" | "y"
+                    | "left"
+                    | "top"
+                    | "right"
+                    | "bottom"
+                    | "width"
+                    | "height"
+                    | "bounds"
+                    | "coordinates"
+            )
+        }) {
+            return Err(ApiError::bad_request(
+                "Selector telemetry contains coordinates",
+            ));
+        }
+        if !output.contains_key("selector_strategy")
+            && !output.contains_key("selector_fallback_depth")
+            && !output.contains_key("selector_fallback_used")
+        {
+            return Ok(());
+        }
+        let strategy = output
+            .get("selector_strategy")
+            .cloned()
+            .and_then(|value| serde_json::from_value::<SelectorStrategy>(value).ok())
+            .filter(|strategy| selector_strategy_matches_action(*strategy, action))
+            .ok_or_else(|| ApiError::bad_request("Selector strategy is invalid"))?;
+        let depth = output
+            .get("selector_fallback_depth")
+            .and_then(serde_json::Value::as_u64)
+            .filter(|depth| *depth <= 4)
+            .ok_or_else(|| ApiError::bad_request("Selector fallback depth is invalid"))?;
+        let used = output
+            .get("selector_fallback_used")
+            .and_then(serde_json::Value::as_bool)
+            .ok_or_else(|| ApiError::bad_request("Selector fallback state is invalid"))?;
+        if used != (depth > 0) || strategy == SelectorStrategy::NotApplicable {
+            return Err(ApiError::bad_request(
+                "Selector fallback state is inconsistent",
+            ));
         }
     }
     Ok(())
@@ -1119,7 +1243,9 @@ async fn upload_desktop_evidence(
         .await
         .map_err(command_error)?;
     let matching_result = command.result.as_ref().is_some_and(|result| {
-        result.execution_id == request.execution_id && result.outcome == request.outcome
+        result.execution_id == request.execution_id
+            && result.outcome == request.outcome
+            && evidence_matches_result(&request, result)
     });
     if command.device_id != device.id
         || command.command.execution_id != request.execution_id
@@ -1156,6 +1282,8 @@ async fn upload_desktop_evidence(
             "device_id": record.device_id,
             "kind": record.kind,
             "selector_strategy": record.selector_strategy,
+            "selector_fallback_depth": record.selector_fallback_depth,
+            "selector_fallback_used": record.selector_fallback_used,
             "application_id": record.application_id,
             "started_at_unix_ms": record.started_at_unix_ms,
             "completed_at_unix_ms": record.completed_at_unix_ms,
@@ -1355,6 +1483,42 @@ mod tests {
     async fn response_json(response: Response) -> serde_json::Value {
         let bytes = to_bytes(response.into_body(), usize::MAX).await.unwrap();
         serde_json::from_slice(&bytes).unwrap()
+    }
+
+    #[test]
+    fn selector_telemetry_is_consistent_bounded_and_coordinate_free() {
+        let action = DesktopAction::FocusWindow {
+            selector: desktop_protocol::WindowSelector {
+                executable: Some("fixture.exe".to_owned()),
+                title: Some("Fixture".to_owned()),
+                automation_id: Some("Fixture.Main".to_owned()),
+                snapshot_id: None,
+            },
+        };
+        let mut result = DesktopCommandResult {
+            command_id: "command-1".to_owned(),
+            execution_id: "execution-1".to_owned(),
+            outcome: desktop_protocol::CommandOutcome::Succeeded,
+            completed_at_unix_ms: 1,
+            output: Some(serde_json::json!({
+                "focused": true,
+                "selector_strategy": "executable_and_title",
+                "selector_fallback_depth": 1,
+                "selector_fallback_used": true,
+            })),
+            error_code: None,
+            error_message: None,
+        };
+        assert!(validate_command_output(&action, &mut result).is_ok());
+
+        result.output.as_mut().unwrap()["selector_fallback_used"] = serde_json::json!(false);
+        assert!(validate_command_output(&action, &mut result).is_err());
+        result.output.as_mut().unwrap()["selector_fallback_used"] = serde_json::json!(true);
+        result.output.as_mut().unwrap()["coordinates"] = serde_json::json!([10, 20]);
+        assert!(validate_command_output(&action, &mut result).is_err());
+
+        result.output = Some(serde_json::json!({ "focused": true }));
+        assert!(validate_command_output(&action, &mut result).is_ok());
     }
 
     #[tokio::test]
