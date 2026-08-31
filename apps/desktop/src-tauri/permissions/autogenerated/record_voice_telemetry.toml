@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-record-voice-telemetry"
+description = "Enables the record_voice_telemetry command without any pre-configured scope."
+commands.allow = ["record_voice_telemetry"]
+
+[[permission]]
+identifier = "deny-record-voice-telemetry"
+description = "Denies the record_voice_telemetry command without any pre-configured scope."
+commands.deny = ["record_voice_telemetry"]

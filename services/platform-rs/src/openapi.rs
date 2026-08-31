@@ -480,6 +480,33 @@ pub fn spec() -> Value {
             "responses": { "200": { "description": "Heartbeat accepted with authoritative server time" }, "400": { "description": "Invalid protocol message" }, "404": { "description": "Invalid or replaced session" }, "426": { "description": "TLS required" } }
           }
         },
+        "/v1/desktop/voice/realtime-sessions": {
+          "post": {
+            "tags": ["Desktop Devices", "Voice Conversation"],
+            "summary": "Create a Device-bound short-lived realtime voice bootstrap",
+            "security": [{ "deviceCredential": [] }],
+            "parameters": [{ "name": "X-Device-Id", "in": "header", "required": true, "schema": { "type": "string" } }],
+            "responses": { "201": { "description": "Transient provider client secret and bounded session metadata" }, "404": { "description": "Invalid or inactive Device Credential" }, "426": { "description": "TLS required" }, "503": { "description": "Realtime voice provider is not configured or unavailable" } }
+          }
+        },
+        "/v1/desktop/voice/final-transcripts": {
+          "post": {
+            "tags": ["Desktop Devices", "Voice Conversation"],
+            "summary": "Accept a bounded final transcript from an authenticated realtime Device session",
+            "security": [{ "deviceCredential": [] }],
+            "parameters": [{ "name": "X-Device-Id", "in": "header", "required": true, "schema": { "type": "string" } }],
+            "responses": { "202": { "description": "Tenant privacy boundary accepted the final transcript" }, "400": { "description": "Invalid final transcript" }, "409": { "description": "Conflicting session sequence replay" }, "410": { "description": "Realtime session expired, revoked, or does not belong to the Device" }, "426": { "description": "TLS required" } }
+          }
+        },
+        "/v1/desktop/voice/telemetry": {
+          "post": {
+            "tags": ["Desktop Devices", "Voice Conversation"],
+            "summary": "Record content-free fixed-category realtime voice telemetry",
+            "security": [{ "deviceCredential": [] }],
+            "parameters": [{ "name": "X-Device-Id", "in": "header", "required": true, "schema": { "type": "string" } }],
+            "responses": { "204": { "description": "Bounded telemetry accepted" }, "400": { "description": "Unknown event, category, or unbounded value" }, "410": { "description": "Realtime session unavailable" } }
+          }
+        },
         "/v1/desktop/commands": {
           "post": {
             "tags": ["Desktop Devices"],

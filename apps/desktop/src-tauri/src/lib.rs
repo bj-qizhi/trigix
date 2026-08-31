@@ -77,6 +77,56 @@ pub enum ShellIpcError {
     StateUnavailable,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RealtimeVoiceBootstrap {
+    pub schema_version: String,
+    pub session_id: String,
+    pub provider: String,
+    pub model: String,
+    pub client_secret: String,
+    pub client_secret_expires_at_unix_seconds: u64,
+    pub session_expires_at_unix_seconds: u64,
+    pub calls_url: String,
+    pub policy_version: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct FinalVoiceTranscriptInput {
+    pub session_id: String,
+    pub sequence: u32,
+    pub occurred_at_unix_ms: u64,
+    pub transcript: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct VoiceTelemetryInput {
+    pub session_id: String,
+    pub event: String,
+    pub duration_ms: Option<u32>,
+    pub attempt: Option<u8>,
+    pub failure_category: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ConfirmRealtimeVoiceInput {
+    pub session_id: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(tag = "code", rename_all = "snake_case")]
+pub enum VoiceIpcError {
+    NotPaired,
+    TransportUnavailable,
+    CredentialRejected,
+    ServiceUnavailable,
+    InvalidPlatformResponse,
+    InvalidRequest,
+}
+
 struct ShellState {
     revision: u64,
     connection: ConnectionState,
@@ -250,9 +300,10 @@ mod native {
     };
     use super::pairing::ClaimedDeviceCredential;
     use super::{
-        AutomationHostState, AutomationState, ConnectionState, PairingController, PairingIpcError,
-        PairingSessionCreated, PairingSnapshot, ShellController, ShellIpcError, ShellSnapshot,
-        StartPairingInput, StopAccepted, StopRequest,
+        AutomationHostState, AutomationState, ConfirmRealtimeVoiceInput, ConnectionState,
+        FinalVoiceTranscriptInput, PairingController, PairingIpcError, PairingSessionCreated,
+        PairingSnapshot, RealtimeVoiceBootstrap, ShellController, ShellIpcError, ShellSnapshot,
+        StartPairingInput, StopAccepted, StopRequest, VoiceIpcError, VoiceTelemetryInput,
     };
     use desktop_identity::{DeviceIdentity, WindowsCredentialStore, WindowsDeviceCredentialStore};
     use desktop_protocol::{
@@ -260,12 +311,26 @@ mod native {
         DeviceState, Envelope, Heartbeat,
     };
     use std::path::PathBuf;
-    use std::sync::atomic::{AtomicU64, Ordering};
-    use std::sync::Arc;
+    use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+    use std::sync::{Arc, Mutex};
     use std::time::{Duration, SystemTime, UNIX_EPOCH};
     use tauri::{Manager, State};
 
     static HEARTBEAT_SEQUENCE: AtomicU64 = AtomicU64::new(1);
+    static VOICE_QUALIFIED: AtomicBool = AtomicBool::new(false);
+    static PENDING_VOICE_BOOTSTRAP: Mutex<Option<(String, u64)>> = Mutex::new(None);
+
+    fn qualified_capabilities(command: Option<&CommandRuntime>) -> Vec<DeviceCapability> {
+        let mut capabilities = command
+            .map(CommandRuntime::capabilities)
+            .unwrap_or_default();
+        if VOICE_QUALIFIED.load(Ordering::Acquire)
+            && !capabilities.contains(&DeviceCapability::VoiceConversation)
+        {
+            capabilities.push(DeviceCapability::VoiceConversation);
+        }
+        capabilities
+    }
 
     struct NativeRuntimeState {
         command: Option<Arc<CommandRuntime>>,
@@ -273,10 +338,7 @@ mod native {
 
     impl NativeRuntimeState {
         fn capabilities(&self) -> Vec<DeviceCapability> {
-            self.command
-                .as_deref()
-                .map(CommandRuntime::capabilities)
-                .unwrap_or_default()
+            qualified_capabilities(self.command.as_deref())
         }
     }
 
@@ -314,6 +376,10 @@ mod native {
         input: StartPairingInput,
     ) -> Result<PairingSnapshot, PairingIpcError> {
         let input = input.validate()?;
+        VOICE_QUALIFIED.store(false, Ordering::Release);
+        if let Ok(mut pending) = PENDING_VOICE_BOOTSTRAP.lock() {
+            *pending = None;
+        }
         let identity_store = WindowsCredentialStore::new("primary-device");
         let identity = DeviceIdentity::load_or_create(&identity_store)?;
         let device_id = identity.device_id();
@@ -380,7 +446,12 @@ mod native {
             .device_id
             .ok_or(PairingIpcError::InvalidState)?;
         let store = WindowsDeviceCredentialStore::new(&device_id)?;
-        controller.forget(&store)
+        let snapshot = controller.forget(&store)?;
+        VOICE_QUALIFIED.store(false, Ordering::Release);
+        if let Ok(mut pending) = PENDING_VOICE_BOOTSTRAP.lock() {
+            *pending = None;
+        }
+        Ok(snapshot)
     }
 
     fn pairing_client() -> Result<reqwest::Client, PairingIpcError> {
@@ -414,6 +485,188 @@ mod native {
             .https_only(true)
             .build()
             .map_err(|_| ConnectionError::Transport)
+    }
+
+    fn voice_client() -> Result<reqwest::Client, VoiceIpcError> {
+        reqwest::Client::builder()
+            .connect_timeout(Duration::from_secs(5))
+            .timeout(Duration::from_secs(15))
+            .redirect(reqwest::redirect::Policy::none())
+            .https_only(true)
+            .build()
+            .map_err(|_| VoiceIpcError::TransportUnavailable)
+    }
+
+    fn voice_secret(
+        pairing: &PairingController,
+    ) -> Result<super::pairing::ConnectionSecret, VoiceIpcError> {
+        let snapshot = pairing.snapshot().map_err(|_| VoiceIpcError::NotPaired)?;
+        let device_id = snapshot.device_id.ok_or(VoiceIpcError::NotPaired)?;
+        let store =
+            WindowsDeviceCredentialStore::new(&device_id).map_err(|_| VoiceIpcError::NotPaired)?;
+        pairing
+            .connection_secret(&store)
+            .map_err(|_| VoiceIpcError::NotPaired)?
+            .ok_or(VoiceIpcError::NotPaired)
+    }
+
+    fn map_voice_status(status: reqwest::StatusCode) -> VoiceIpcError {
+        match status.as_u16() {
+            401 | 403 | 410 => VoiceIpcError::CredentialRejected,
+            400 | 409 | 422 => VoiceIpcError::InvalidRequest,
+            503 => VoiceIpcError::ServiceUnavailable,
+            _ => VoiceIpcError::TransportUnavailable,
+        }
+    }
+
+    #[tauri::command(async)]
+    async fn bootstrap_realtime_voice(
+        pairing: State<'_, Arc<PairingController>>,
+    ) -> Result<RealtimeVoiceBootstrap, VoiceIpcError> {
+        let secret = voice_secret(&pairing)?;
+        let response = voice_client()?
+            .post(format!(
+                "{}/v1/desktop/voice/realtime-sessions",
+                secret.platform_url
+            ))
+            .header("x-device-id", &secret.device_id)
+            .header("authorization", format!("Device {}", secret.credential))
+            .send()
+            .await
+            .map_err(|_| VoiceIpcError::TransportUnavailable)?;
+        if !response.status().is_success() {
+            return Err(map_voice_status(response.status()));
+        }
+        let bootstrap = response
+            .json::<RealtimeVoiceBootstrap>()
+            .await
+            .map_err(|_| VoiceIpcError::InvalidPlatformResponse)?;
+        if bootstrap.schema_version != "realtime-voice-bootstrap-v1"
+            || bootstrap.provider != "openai"
+            || !bootstrap.client_secret.starts_with("ek_")
+            || bootstrap.client_secret.len() > 2_048
+            || bootstrap.client_secret_expires_at_unix_seconds <= unix_seconds() as u64
+            || bootstrap.session_expires_at_unix_seconds
+                <= bootstrap.client_secret_expires_at_unix_seconds
+            || bootstrap.session_expires_at_unix_seconds > unix_seconds() as u64 + 3_600
+            || bootstrap.calls_url != "https://api.openai.com/v1/realtime/calls"
+        {
+            return Err(VoiceIpcError::InvalidPlatformResponse);
+        }
+        let mut pending = PENDING_VOICE_BOOTSTRAP
+            .lock()
+            .map_err(|_| VoiceIpcError::InvalidPlatformResponse)?;
+        *pending = Some((
+            bootstrap.session_id.clone(),
+            bootstrap.session_expires_at_unix_seconds,
+        ));
+        Ok(bootstrap)
+    }
+
+    #[tauri::command]
+    fn confirm_realtime_voice_connected(
+        input: ConfirmRealtimeVoiceInput,
+    ) -> Result<(), VoiceIpcError> {
+        let pending = PENDING_VOICE_BOOTSTRAP
+            .lock()
+            .map_err(|_| VoiceIpcError::InvalidPlatformResponse)?;
+        let valid = pending.as_ref().is_some_and(|(session_id, expires_at)| {
+            session_id == &input.session_id && *expires_at > unix_seconds() as u64
+        });
+        if !valid {
+            return Err(VoiceIpcError::InvalidRequest);
+        }
+        VOICE_QUALIFIED.store(true, Ordering::Release);
+        Ok(())
+    }
+
+    #[tauri::command(async)]
+    async fn accept_final_voice_transcript(
+        pairing: State<'_, Arc<PairingController>>,
+        input: FinalVoiceTranscriptInput,
+    ) -> Result<(), VoiceIpcError> {
+        if input.sequence == 0
+            || input.session_id.is_empty()
+            || input.session_id.len() > 128
+            || input.transcript.trim().is_empty()
+            || input.transcript.len() > 16_384
+            || input.transcript.chars().any(|character| character == '\0')
+        {
+            return Err(VoiceIpcError::InvalidRequest);
+        }
+        let secret = voice_secret(&pairing)?;
+        let response = voice_client()?
+            .post(format!(
+                "{}/v1/desktop/voice/final-transcripts",
+                secret.platform_url
+            ))
+            .header("x-device-id", &secret.device_id)
+            .header("authorization", format!("Device {}", secret.credential))
+            .json(&serde_json::json!({
+                "session_id": input.session_id,
+                "sequence": input.sequence,
+                "occurred_at_unix_ms": input.occurred_at_unix_ms,
+                "transcript": input.transcript,
+            }))
+            .send()
+            .await
+            .map_err(|_| VoiceIpcError::TransportUnavailable)?;
+        if !response.status().is_success() {
+            return Err(map_voice_status(response.status()));
+        }
+        Ok(())
+    }
+
+    #[tauri::command(async)]
+    async fn record_voice_telemetry(
+        pairing: State<'_, Arc<PairingController>>,
+        input: VoiceTelemetryInput,
+    ) -> Result<(), VoiceIpcError> {
+        let valid_event = matches!(
+            input.event.as_str(),
+            "session_connected" | "reconnect_scheduled" | "interruption" | "failure" | "stopped"
+        );
+        let valid_failure = input.failure_category.as_deref().is_none_or(|category| {
+            matches!(
+                category,
+                "network_unavailable"
+                    | "provider_timeout"
+                    | "session_expired"
+                    | "device_revoked"
+                    | "transcript_rejected"
+            )
+        });
+        if !valid_event
+            || input.session_id.is_empty()
+            || input.session_id.len() > 128
+            || input
+                .duration_ms
+                .is_some_and(|duration| duration > 3_600_000)
+            || input
+                .attempt
+                .is_some_and(|attempt| !(1..=5).contains(&attempt))
+            || !valid_failure
+            || (input.event == "reconnect_scheduled") != input.attempt.is_some()
+            || (input.event == "failure") != input.failure_category.is_some()
+        {
+            return Err(VoiceIpcError::InvalidRequest);
+        }
+        let secret = voice_secret(&pairing)?;
+        let response = voice_client()?
+            .post(format!(
+                "{}/v1/desktop/voice/telemetry",
+                secret.platform_url
+            ))
+            .header("x-device-id", &secret.device_id)
+            .header("authorization", format!("Device {}", secret.credential))
+            .json(&input)
+            .send()
+            .await
+            .map_err(|_| VoiceIpcError::TransportUnavailable)?;
+        if !response.status().is_success() {
+            return Err(map_voice_status(response.status()));
+        }
+        Ok(())
     }
 
     fn load_connection_secret(
@@ -771,9 +1024,7 @@ mod native {
                 },
                 active_execution_id,
                 agent_version: env!("CARGO_PKG_VERSION").to_owned(),
-                capabilities: command
-                    .map(CommandRuntime::capabilities)
-                    .unwrap_or_default(),
+                capabilities: qualified_capabilities(command),
                 health_detail: None,
             },
         );
@@ -882,7 +1133,11 @@ mod native {
                 pairing_status,
                 start_device_pairing,
                 complete_device_pairing,
-                forget_device_pairing
+                forget_device_pairing,
+                bootstrap_realtime_voice,
+                accept_final_voice_transcript,
+                record_voice_telemetry,
+                confirm_realtime_voice_connected
             ])
             .run(tauri::generate_context!())
             .expect("Trigix Desktop runtime failed");
@@ -985,7 +1240,11 @@ mod tests {
                 "allow-pairing-status",
                 "allow-start-device-pairing",
                 "allow-complete-device-pairing",
-                "allow-forget-device-pairing"
+                "allow-forget-device-pairing",
+                "allow-bootstrap-realtime-voice",
+                "allow-accept-final-voice-transcript",
+                "allow-record-voice-telemetry",
+                "allow-confirm-realtime-voice-connected"
             ])
         );
         assert!(capability.get("remote").is_none());
@@ -1004,7 +1263,8 @@ mod tests {
         assert!(csp.contains("object-src 'none'"));
         assert!(!csp.contains("unsafe-inline"));
         assert!(!csp.contains("unsafe-eval"));
-        assert!(!csp.contains("https:"));
+        assert!(csp.contains("connect-src ipc: http://ipc.localhost https://api.openai.com"));
+        assert!(!csp.contains("https://*"));
 
         let bundle = &config["bundle"];
         assert_eq!(bundle["active"], true);
@@ -1064,6 +1324,22 @@ mod tests {
         assert!(!script.contains("trigix.desktop.voice"));
         assert!(!script.contains("MediaRecorder"));
         assert!(!script.contains("audio_base64"));
+        assert!(script.contains("new RTCPeerConnection()"));
+        assert!(script.contains("createDataChannel(\"oai-events\")"));
+        assert!(script.contains("conversation.item.input_audio_transcription.completed"));
+        assert!(script.contains("accept_final_voice_transcript"));
+        assert!(script.contains("maximumVoiceReconnectAttempts = 5"));
+        assert!(script.contains("new AbortController()"));
+        assert!(script.contains("abortController.abort()"));
+        assert!(script.contains("peer.connectionState === \"disconnected\""));
+        assert!(!script.contains("sender.replaceTrack"));
+        assert!(script.contains("voiceDataChannel.close()"));
+        assert!(script.contains("voicePeer.close()"));
+        assert!(script.contains("window.clearTimeout(voiceReconnectTimer)"));
+        assert!(!script.contains("console.log"));
+        assert!(!script.contains("localStorage.setItem(\"voice"));
+        assert!(script.contains("shell.connection !== \"online\""));
+        assert!(script.contains("confirm_realtime_voice_connected"));
 
         let styles = include_str!("../../ui/styles.css");
         assert!(styles.contains(".voice-status[data-state=\"listening\"]"));

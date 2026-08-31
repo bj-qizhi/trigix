@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-accept-final-voice-transcript"
+description = "Enables the accept_final_voice_transcript command without any pre-configured scope."
+commands.allow = ["accept_final_voice_transcript"]
+
+[[permission]]
+identifier = "deny-accept-final-voice-transcript"
+description = "Denies the accept_final_voice_transcript command without any pre-configured scope."
+commands.deny = ["accept_final_voice_transcript"]

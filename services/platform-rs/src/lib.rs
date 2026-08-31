@@ -36,6 +36,7 @@ pub mod notifications;
 pub mod orgs;
 pub mod password_reset;
 pub mod posthog;
+pub mod realtime_voice;
 pub mod retention;
 pub mod scheduler;
 pub mod sso;

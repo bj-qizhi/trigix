@@ -31,7 +31,7 @@ const messages = {
     forget_pairing: "Forget local pairing",
     voice_conversation: "VOICE CONVERSATION",
     local_microphone: "Local microphone",
-    voice_description: "Microphone access starts only after you choose Start. Audio remains local in this foundation and cannot authorize automation.",
+    voice_description: "Start creates a short-lived authenticated voice session. Audio goes directly to the approved provider and cannot authorize automation.",
     start_voice: "Start microphone",
     stop_voice: "Stop microphone",
     state_microphone_off: "Microphone off",
@@ -41,7 +41,10 @@ const messages = {
     state_permission_denied: "Permission denied",
     state_microphone_unavailable: "Microphone unavailable",
     requesting_microphone: "Requesting microphone permission…",
-    microphone_active: "Microphone is active. Choose Stop at any time.",
+    microphone_active: "Realtime voice is connected. Choose Stop at any time.",
+    voice_connecting: "Creating an authenticated realtime voice session…",
+    voice_connection_failed: "Realtime voice is unavailable or the Device is not paired.",
+    voice_session_expired: "The short-lived voice session expired and all media was released.",
     microphone_stopped: "Microphone access stopped and local tracks were released.",
     microphone_hidden_stop: "Microphone access stopped because the window was hidden.",
     microphone_permission_denied: "Microphone permission was denied. Use Start to request access again.",
@@ -123,7 +126,7 @@ const messages = {
     forget_pairing: "忘记本机配对",
     voice_conversation: "语音对话",
     local_microphone: "本机麦克风",
-    voice_description: "仅在你选择“启动”后申请麦克风权限。此基础版本的音频保留在本机，且不能授权自动化。",
+    voice_description: "启动后创建短期认证语音会话。音频直达获准的服务商，且不能授权自动化。",
     start_voice: "启动麦克风",
     stop_voice: "停止麦克风",
     state_microphone_off: "麦克风已关闭",
@@ -133,7 +136,10 @@ const messages = {
     state_permission_denied: "权限被拒绝",
     state_microphone_unavailable: "麦克风不可用",
     requesting_microphone: "正在请求麦克风权限…",
-    microphone_active: "麦克风正在使用中，可随时选择“停止”。",
+    microphone_active: "实时语音已连接，可随时选择“停止”。",
+    voice_connecting: "正在创建认证实时语音会话…",
+    voice_connection_failed: "实时语音不可用，或此设备尚未完成配对。",
+    voice_session_expired: "短期语音会话已过期，所有媒体资源均已释放。",
     microphone_stopped: "麦克风访问已停止，本机媒体轨道已释放。",
     microphone_hidden_stop: "窗口已隐藏，麦克风访问已停止。",
     microphone_permission_denied: "麦克风权限被拒绝，可再次选择“启动”重新申请。",
@@ -243,6 +249,17 @@ let voiceSource = null;
 let voiceAnalyser = null;
 let voiceActivityFrame = null;
 let voiceActivityBuffer = null;
+let voicePeer = null;
+let voiceDataChannel = null;
+let voiceRemoteAudio = null;
+let voiceSessionId = null;
+let voiceTranscriptSequence = 0;
+let voiceTranscriptQueue = Promise.resolve();
+let voiceReconnectTimer = null;
+let voiceExpiryTimer = null;
+let voiceReconnectAttempt = 0;
+let voiceConnectionStartedAt = 0;
+const maximumVoiceReconnectAttempts = 5;
 
 function translate(key, values = {}) {
   const template = messages[locale][key] ?? messages.en[key] ?? key;
@@ -384,13 +401,207 @@ function stopVoiceSession(state = "stopped", noticeKey = "microphone_stopped") {
   voiceRequestGeneration += 1;
   voiceRequestPending = false;
   const stream = voiceStream;
+  emitVoiceTelemetry("stopped", {
+    duration_ms: Math.min(3_600_000, Math.max(0, Date.now() - voiceConnectionStartedAt)),
+  });
   voiceStream = null;
+  clearRealtimeVoiceTransport();
   stopVoiceAnalysis();
   if (stream) stream.getTracks().forEach((track) => track.stop());
   elements.voiceDevice.disabled = true;
   elements.voiceDevice.replaceChildren(new Option(translate("device_permission_required"), ""));
   renderVoiceState(state);
   if (noticeKey) setNotice(noticeKey);
+}
+
+function emitVoiceTelemetry(event, values = {}) {
+  if (!voiceSessionId) return;
+  const input = {
+    session_id: voiceSessionId,
+    event,
+    duration_ms: values.duration_ms ?? null,
+    attempt: values.attempt ?? null,
+    failure_category: values.failure_category ?? null,
+  };
+  void window.__TAURI__.core.invoke("record_voice_telemetry", { input }).catch(() => {});
+}
+
+function clearRealtimeVoiceTransport() {
+  if (voiceReconnectTimer !== null) window.clearTimeout(voiceReconnectTimer);
+  if (voiceExpiryTimer !== null) window.clearTimeout(voiceExpiryTimer);
+  voiceReconnectTimer = null;
+  voiceExpiryTimer = null;
+  if (voiceDataChannel) voiceDataChannel.close();
+  if (voicePeer) voicePeer.close();
+  if (voiceRemoteAudio) {
+    voiceRemoteAudio.pause();
+    voiceRemoteAudio.srcObject = null;
+  }
+  voiceDataChannel = null;
+  voicePeer = null;
+  voiceRemoteAudio = null;
+  voiceSessionId = null;
+  voiceTranscriptSequence = 0;
+}
+
+function acceptProviderEvent(rawEvent, generation) {
+  if (generation !== voiceRequestGeneration || !voiceSessionId) return;
+  let event;
+  try {
+    event = JSON.parse(rawEvent.data);
+  } catch (_error) {
+    return;
+  }
+  if (event?.type === "input_audio_buffer.speech_started") {
+    emitVoiceTelemetry("interruption");
+    return;
+  }
+  if (event?.type !== "conversation.item.input_audio_transcription.completed") return;
+  const transcript = typeof event.transcript === "string" ? event.transcript.trim() : "";
+  if (!transcript || new TextEncoder().encode(transcript).byteLength > 16_384) return;
+  voiceTranscriptSequence += 1;
+  const input = {
+    session_id: voiceSessionId,
+    sequence: voiceTranscriptSequence,
+    occurred_at_unix_ms: Date.now(),
+    transcript,
+  };
+  voiceTranscriptQueue = voiceTranscriptQueue
+    .then(() => window.__TAURI__.core.invoke("accept_final_voice_transcript", { input }))
+    .catch(() => {
+      if (generation === voiceRequestGeneration) {
+        emitVoiceTelemetry("failure", { failure_category: "transcript_rejected" });
+        stopVoiceSession("unavailable", "voice_connection_failed");
+      }
+    });
+}
+
+function scheduleVoiceReconnect(stream, generation) {
+  if (generation !== voiceRequestGeneration || document.hidden || voiceStream !== stream) return;
+  if (voiceReconnectAttempt >= maximumVoiceReconnectAttempts) {
+    emitVoiceTelemetry("failure", { failure_category: "network_unavailable" });
+    stopVoiceSession("unavailable", "voice_connection_failed");
+    return;
+  }
+  voiceReconnectAttempt += 1;
+  emitVoiceTelemetry("reconnect_scheduled", { attempt: voiceReconnectAttempt });
+  if (voiceDataChannel) voiceDataChannel.close();
+  if (voicePeer) voicePeer.close();
+  if (voiceExpiryTimer !== null) window.clearTimeout(voiceExpiryTimer);
+  if (voiceRemoteAudio) {
+    voiceRemoteAudio.pause();
+    voiceRemoteAudio.srcObject = null;
+  }
+  voiceDataChannel = null;
+  voicePeer = null;
+  voiceRemoteAudio = null;
+  voiceExpiryTimer = null;
+  voiceSessionId = null;
+  voiceTranscriptSequence = 0;
+  const delay = Math.min(8_000, 250 * (2 ** (voiceReconnectAttempt - 1)));
+  voiceReconnectTimer = window.setTimeout(() => {
+    voiceReconnectTimer = null;
+    void connectRealtimeVoice(stream, generation).catch(() => scheduleVoiceReconnect(stream, generation));
+  }, delay);
+}
+
+async function connectRealtimeVoice(stream, generation) {
+  voiceConnectionStartedAt = Date.now();
+  setNotice("voice_connecting");
+  const bootstrap = await window.__TAURI__.core.invoke("bootstrap_realtime_voice");
+  if (generation !== voiceRequestGeneration || document.hidden || voiceStream !== stream) return;
+  const authorization = `Bearer ${bootstrap.client_secret}`;
+  bootstrap.client_secret = "";
+  const peer = new RTCPeerConnection();
+  const dataChannel = peer.createDataChannel("oai-events");
+  const remoteAudio = new Audio();
+  let qualificationConfirmed = false;
+  const confirmQualification = () => {
+    if (
+      qualificationConfirmed
+      || peer.connectionState !== "connected"
+      || dataChannel.readyState !== "open"
+      || voiceSessionId !== bootstrap.session_id
+    ) return;
+    qualificationConfirmed = true;
+    void window.__TAURI__.core.invoke("confirm_realtime_voice_connected", {
+      input: { session_id: voiceSessionId },
+    }).catch(() => stopVoiceSession("unavailable", "voice_connection_failed"));
+  };
+  remoteAudio.autoplay = true;
+  stream.getAudioTracks().forEach((track) => peer.addTrack(track, stream));
+  peer.addEventListener("track", (event) => {
+    if (voicePeer === peer) remoteAudio.srcObject = event.streams[0];
+  });
+  dataChannel.addEventListener("message", (event) => acceptProviderEvent(event, generation));
+  dataChannel.addEventListener("open", confirmQualification);
+  peer.addEventListener("connectionstatechange", () => {
+    if (voicePeer !== peer || generation !== voiceRequestGeneration) return;
+    if (peer.connectionState === "connected") {
+      if (voiceReconnectTimer !== null) window.clearTimeout(voiceReconnectTimer);
+      voiceReconnectTimer = null;
+      voiceReconnectAttempt = 0;
+      emitVoiceTelemetry("session_connected", {
+        duration_ms: Math.min(120_000, Math.max(0, Date.now() - voiceConnectionStartedAt)),
+      });
+      confirmQualification();
+      renderVoiceState("listening");
+      setNotice("microphone_active");
+    } else if (peer.connectionState === "failed") {
+      scheduleVoiceReconnect(stream, generation);
+    } else if (peer.connectionState === "disconnected" && voiceReconnectTimer === null) {
+      voiceReconnectTimer = window.setTimeout(() => {
+        voiceReconnectTimer = null;
+        if (peer.connectionState === "disconnected") {
+          scheduleVoiceReconnect(stream, generation);
+        }
+      }, 2_000);
+    }
+  });
+  const offer = await peer.createOffer();
+  await peer.setLocalDescription(offer);
+  const abortController = new AbortController();
+  const providerTimeout = window.setTimeout(() => abortController.abort(), 10_000);
+  let answerResponse;
+  try {
+    answerResponse = await fetch(bootstrap.calls_url, {
+      method: "POST",
+      headers: { Authorization: authorization, "Content-Type": "application/sdp" },
+      body: offer.sdp,
+      signal: abortController.signal,
+    });
+  } catch (error) {
+    peer.close();
+    remoteAudio.pause();
+    remoteAudio.srcObject = null;
+    throw error;
+  } finally {
+    window.clearTimeout(providerTimeout);
+  }
+  if (!answerResponse.ok) {
+    peer.close();
+    throw new Error("realtime unavailable");
+  }
+  const answerSdp = await answerResponse.text();
+  if (generation !== voiceRequestGeneration || document.hidden || voiceStream !== stream) {
+    peer.close();
+    return;
+  }
+  clearRealtimeVoiceTransport();
+  voicePeer = peer;
+  voiceDataChannel = dataChannel;
+  voiceRemoteAudio = remoteAudio;
+  voiceSessionId = bootstrap.session_id;
+  voiceTranscriptSequence = 0;
+  const expiresIn = Math.max(0, (bootstrap.session_expires_at_unix_seconds * 1_000) - Date.now());
+  voiceExpiryTimer = window.setTimeout(
+    () => {
+      emitVoiceTelemetry("failure", { failure_category: "session_expired" });
+      stopVoiceSession("stopped", "voice_session_expired");
+    },
+    expiresIn,
+  );
+  await peer.setRemoteDescription({ type: "answer", sdp: answerSdp });
 }
 
 function stopVoiceAnalysis() {
@@ -494,6 +705,9 @@ async function refresh(force = false) {
     ]);
     renderShell(shell);
     renderPairing(pairing, false);
+    if (voiceStream && (shell.connection !== "online" || pairing.phase !== "paired")) {
+      stopVoiceSession("unavailable", "voice_connection_failed");
+    }
     if (retryAction === refresh) clearError();
   } catch (_error) {
     elements.stopButton.disabled = true;
@@ -584,6 +798,7 @@ elements.stopButton.addEventListener("click", async () => {
 elements.startVoice.addEventListener("click", async () => {
   if (voiceStream || voiceRequestPending) return;
   clearError();
+  voiceReconnectAttempt = 0;
   voiceRequestGeneration += 1;
   const requestGeneration = voiceRequestGeneration;
   voiceRequestPending = true;
@@ -611,13 +826,21 @@ elements.startVoice.addEventListener("click", async () => {
       throw new Error("microphone unavailable");
     }
     await activateVoiceStream(stream);
-    setNotice("microphone_active");
+    renderVoiceState("requesting_permission");
+    await connectRealtimeVoice(stream, requestGeneration);
   } catch (error) {
     if (requestGeneration !== voiceRequestGeneration) return;
-    voiceRequestPending = false;
     const denied = error?.name === "NotAllowedError" || error?.name === "SecurityError";
+    if (voiceStream) {
+      stopVoiceSession(
+        denied ? "permission_denied" : "unavailable",
+        denied ? "microphone_permission_denied" : "voice_connection_failed",
+      );
+      return;
+    }
+    voiceRequestPending = false;
     renderVoiceState(denied ? "permission_denied" : "unavailable");
-    setNotice(denied ? "microphone_permission_denied" : "microphone_unavailable");
+    setNotice(denied ? "microphone_permission_denied" : "voice_connection_failed");
   }
 });
 
@@ -647,6 +870,15 @@ elements.voiceDevice.addEventListener("change", async () => {
       throw new Error("microphone unavailable");
     }
     await activateVoiceStream(replacement);
+    renderVoiceState("requesting_permission");
+    try {
+      await connectRealtimeVoice(replacement, voiceRequestGeneration);
+    } catch (_error) {
+      replacement.getTracks().forEach((track) => track.stop());
+      await activateVoiceStream(currentStream);
+      setNotice("input_switch_error");
+      return;
+    }
     currentStream.getTracks().forEach((track) => track.stop());
     setNotice("input_switched");
   } catch (_error) {
