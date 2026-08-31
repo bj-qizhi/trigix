@@ -13,6 +13,8 @@ Trigix Desktop uses separate internal, closed-beta, and stable release channels.
 
 Stable rollout is phased and can be halted. The updater verifies signature, channel, version monotonicity, and protocol compatibility before installation. Enterprise administrators can pin an approved version within the supported security window.
 
+The executable governance contract and operational boundary are defined in [ADR 0013](0013-enterprise-desktop-update-governance.md). It produces an eligibility decision without downloading or executing an artifact.
+
 ## Consequences
 
 - Release automation requires protected environments and human Approval.

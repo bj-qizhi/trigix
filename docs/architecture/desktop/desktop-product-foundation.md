@@ -20,6 +20,7 @@ crates/desktop-host/             tested presentation/host IPC boundary
 crates/desktop-automation/       isolated IPC plus Windows target inspection adapter
 crates/desktop-voice/            provider-neutral VAD, interruption, and reconnect coordinator
 crates/desktop-avatar/           presentation-only avatar state, package policy, qualification
+crates/desktop-release/          signed release manifest and enterprise update policy decisions
 apps/desktop/                    Tauri application shell and local presentation assets
 services/desktop-automation-host/ isolated automation child process
 services/desktop-automation-fixture/ deterministic native Windows fixture
@@ -28,6 +29,8 @@ services/platform-rs/            device pairing service; registry and command ga
 ```
 
 The protocol and policy crates are independent of Tauri and Windows APIs. This makes security rules testable on Linux CI and prevents presentation code from becoming an execution authority.
+
+`desktop-release` is likewise independent of the installer and network client. It verifies release metadata and produces a policy decision, but it cannot download or execute an artifact. Production signing and installation remain protected release operations. See [Enterprise Desktop Release Operations](../../operations/desktop-enterprise-release.md) and [ADR 0013](../../adr/0013-enterprise-desktop-update-governance.md).
 
 The initial Tauri shell and its least-privilege IPC boundary are defined in [Secure Desktop Shell](secure-desktop-shell.md). Its WebView can read sanitized runtime state and request cancellation only; it cannot submit actions or bypass the Device command path.
 

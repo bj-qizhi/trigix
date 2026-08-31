@@ -45,6 +45,8 @@ Reconnect delay grows exponentially to a 60-second base cap with 80–120% jitte
 
 The recovery journal lives in the application's per-user local data directory so normal Windows user ACLs protect it. It contains bounded protocol metadata needed for idempotency plus any pending, sanitized terminal result; it does not retain credentials or original command action arguments. Shell and Host must be packaged, upgraded, and rolled back as one compatible unit, while the recovery journal is preserved across an upgrade. Operators must not copy the journal between users or Devices.
 
+Enterprise release eligibility is evaluated by the installer-independent `desktop-release` boundary. It validates signed, expiring, replay-protected metadata, controlled online origins or explicitly enabled offline bundles, channel and version policy, protocol compatibility, rollout, maintenance window, SBOM, provenance, and artifact digest before returning a fixed decision. It has no download or process API. A protected installer component must independently revalidate the decision, manifest, Authenticode chain, artifact, and current policy immediately before mutation. Operational requirements are in [Enterprise Desktop Release Operations](../../operations/desktop-enterprise-release.md).
+
 ## Failure behavior
 
 - Poisoned or unavailable state returns a typed error and disables the UI stop control.

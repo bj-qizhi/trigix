@@ -1212,6 +1212,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "desktop-release"
+version = "1.5.1"
+dependencies = [
+ "semver",
+ "serde",
+ "serde_json",
+ "sha2",
+ "url",
+]
+
+[[package]]
 name = "desktop-voice"
 version = "1.5.1"
 dependencies = [
