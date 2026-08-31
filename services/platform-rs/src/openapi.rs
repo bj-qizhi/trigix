@@ -259,6 +259,56 @@ pub fn spec() -> Value {
               "expires_at_unix_ms": { "type": "integer", "format": "int64" }
             }
           },
+          "VoiceToolRequest": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["name", "arguments"],
+            "properties": {
+              "name": { "type": "string", "enum": ["execute_workflow"] },
+              "arguments": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["workflow_id", "input"],
+                "properties": {
+                  "workflow_id": { "type": "string", "maxLength": 128 },
+                  "input": { "type": "object", "description": "Bounded to 16384 serialized bytes" }
+                }
+              }
+            }
+          },
+          "CreateVoiceToolProposalRequest": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["contract_version", "tenant_id", "conversation_id", "proposal_key", "tool"],
+            "properties": {
+              "contract_version": { "type": "string", "enum": ["voice-tool-proposal-v1"] },
+              "tenant_id": { "type": "string", "maxLength": 128 },
+              "conversation_id": { "type": "string", "maxLength": 128 },
+              "proposal_key": { "type": "string", "maxLength": 128 },
+              "tool": { "$ref": "#/components/schemas/VoiceToolRequest" },
+              "expires_in_seconds": { "type": "integer", "minimum": 1, "maximum": 300, "default": 120 }
+            }
+          },
+          "VoiceToolProposalRecord": {
+            "type": "object",
+            "required": ["contract_version", "proposal_id", "tenant_id", "actor_id", "conversation_id", "session_id", "sequence", "policy_version", "proposal_key", "tool", "status", "created_at_unix_ms", "expires_at_unix_ms"],
+            "properties": {
+              "contract_version": { "type": "string", "enum": ["voice-tool-proposal-v1"] },
+              "proposal_id": { "type": "string" },
+              "tenant_id": { "type": "string" },
+              "actor_id": { "type": "string" },
+              "conversation_id": { "type": "string" },
+              "session_id": { "type": "string" },
+              "sequence": { "type": "integer", "minimum": 1 },
+              "policy_version": { "type": "string" },
+              "proposal_key": { "type": "string" },
+              "tool": { "$ref": "#/components/schemas/VoiceToolRequest" },
+              "status": { "type": "string", "enum": ["pending_confirmation", "dispatching", "confirmed", "rejected", "expired"] },
+              "created_at_unix_ms": { "type": "integer", "format": "int64" },
+              "expires_at_unix_ms": { "type": "integer", "format": "int64" },
+              "execution_id": { "type": "string", "nullable": true }
+            }
+          },
           "ApiError": {
             "type": "object",
             "properties": {
@@ -297,6 +347,31 @@ pub fn spec() -> Value {
             "summary": "Set bounded Tenant voice retention policy",
             "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "additionalProperties": false, "required": ["tenant_id", "policy"], "properties": { "tenant_id": { "type": "string", "maxLength": 128 }, "policy": { "$ref": "#/components/schemas/VoicePrivacyPolicy" } } } } } },
             "responses": { "200": { "description": "Validated privacy policy", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/VoicePrivacyPolicy" } } } }, "400": { "description": "Invalid retention policy" }, "403": { "description": "Tenant administrator required" } }
+          }
+        },
+        "/v1/voice/tool-proposals": {
+          "post": {
+            "tags": ["Voice Conversation"],
+            "summary": "Create a bounded review-only Tool proposal from a Tenant voice turn",
+            "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CreateVoiceToolProposalRequest" } } } },
+            "responses": { "201": { "description": "Pending Tool proposal; no execution has started", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/VoiceToolProposalRecord" } } } }, "400": { "description": "Unknown Tool or invalid typed arguments" }, "403": { "description": "Editor access required" }, "404": { "description": "Conversation or published Workflow not found" }, "409": { "description": "Conflicting proposal replay" } }
+          }
+        },
+        "/v1/voice/tool-proposals/{proposal_id}": {
+          "get": {
+            "tags": ["Voice Conversation"],
+            "summary": "Review a Tenant-scoped voice Tool proposal",
+            "parameters": [{ "name": "proposal_id", "in": "path", "required": true, "schema": { "type": "string" } }, { "name": "tenant_id", "in": "query", "required": true, "schema": { "type": "string" } }],
+            "responses": { "200": { "description": "Tool proposal", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/VoiceToolProposalRecord" } } } }, "404": { "description": "Proposal not found in Tenant" } }
+          }
+        },
+        "/v1/voice/tool-proposals/{proposal_id}/decision": {
+          "post": {
+            "tags": ["Voice Conversation"],
+            "summary": "Explicitly confirm or reject a voice Tool proposal",
+            "parameters": [{ "name": "proposal_id", "in": "path", "required": true, "schema": { "type": "string" } }],
+            "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "additionalProperties": false, "required": ["tenant_id", "decision"], "properties": { "tenant_id": { "type": "string" }, "decision": { "type": "string", "enum": ["confirm", "reject"] } } } } } },
+            "responses": { "200": { "description": "Confirmed proposal with Execution ID, or rejected proposal", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/VoiceToolProposalRecord" } } } }, "403": { "description": "Tenant administrator required" }, "404": { "description": "Proposal not found in Tenant" }, "409": { "description": "Proposal expired or is already transitioning" } }
           }
         },
         "/v1/desktop/pairing-sessions": {

@@ -18,10 +18,12 @@ Conversation identifiers are Tenant-scoped for reads and deletion. A cross-Tenan
 
 This ingress creates conversation input only. It cannot construct a Tool call, grant Approval, dispatch a Desktop command, or invoke an operating-system primitive. Any later intent-to-Tool adapter must use the existing typed Tool, policy, Approval, lease, and audit path.
 
+The first intent adapter is implemented as a separate review-only typed Tool proposal. It can propose only an allow-listed published Workflow execution, expires within five minutes, and starts no work until an authenticated Tenant administrator confirms it. See [ADR 0010](0010-voice-tool-proposal-confirmation.md).
+
 ## Consequences
 
 - Content retention is opt-in and bounded; metadata-only is the safe default.
 - Tenant isolation and deletion semantics are deterministic and testable without a provider SDK.
 - Raw audio remains outside Platform storage and telemetry.
 - The per-record PostgreSQL expiry sweeper is independent of the general data-retention window.
-- The authenticated streaming integration, end-to-end qualification, and intent-to-Tool adapter remain prerequisites before advertising production voice conversation capability.
+- The authenticated streaming integration and end-to-end qualification remain prerequisites before advertising production voice conversation capability.

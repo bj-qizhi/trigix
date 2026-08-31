@@ -204,6 +204,7 @@ pub struct AppState {
     desktop_evidence_store: Arc<crate::desktop_evidence::PlatformDesktopEvidenceStore>,
     desktop_evidence_policy: crate::desktop_evidence::EvidencePolicy,
     voice_conversation_store: crate::voice_conversation::PlatformVoiceConversationStore,
+    voice_tool_proposal_store: crate::voice_tool_proposal::VoiceToolProposalStore,
 }
 
 pub fn router() -> Router {
@@ -282,6 +283,7 @@ pub(crate) fn default_app_state() -> AppState {
         desktop_evidence_policy: crate::desktop_evidence::EvidencePolicy::from_env(),
         voice_conversation_store:
             crate::voice_conversation::PlatformVoiceConversationStore::default(),
+        voice_tool_proposal_store: crate::voice_tool_proposal::VoiceToolProposalStore::default(),
     }
 }
 
@@ -1138,6 +1140,7 @@ pub fn router_with_services(
         desktop_evidence_policy: crate::desktop_evidence::EvidencePolicy::from_env(),
         voice_conversation_store:
             crate::voice_conversation::PlatformVoiceConversationStore::default(),
+        voice_tool_proposal_store: crate::voice_tool_proposal::VoiceToolProposalStore::default(),
     };
 
     build_router(state)
@@ -1221,6 +1224,7 @@ pub fn router_with_all_stores(
         desktop_evidence_store: Arc::new(desktop_evidence_store),
         desktop_evidence_policy: crate::desktop_evidence::EvidencePolicy::from_env(),
         voice_conversation_store,
+        voice_tool_proposal_store: crate::voice_tool_proposal::VoiceToolProposalStore::default(),
     };
     spawn_schedule_runner(state.clone());
     spawn_execution_timeout_guard(state.clone());
