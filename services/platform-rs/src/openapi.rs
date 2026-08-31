@@ -164,6 +164,33 @@ pub fn spec() -> Value {
               "credential": { "type": "string", "writeOnly": true }
             }
           },
+          "DesktopUpdatePolicy": {
+            "type": "object",
+            "required": ["tenant_id", "revision", "mode", "channel", "required_version", "allow_offline_import", "allow_emergency_rollback", "updated_by", "updated_at_unix_seconds"],
+            "properties": {
+              "tenant_id": { "type": "string" },
+              "revision": { "type": "integer", "format": "int64", "minimum": 0 },
+              "mode": { "type": "string", "enum": ["disabled", "manual", "automatic"] },
+              "channel": { "type": "string", "enum": ["internal", "closed_beta", "stable"] },
+              "required_version": { "type": "string" },
+              "pinned_version": { "type": "string", "nullable": true },
+              "maintenance_window": { "type": "object", "nullable": true, "additionalProperties": false, "properties": { "start_minute_utc": { "type": "integer", "minimum": 0, "maximum": 1439 }, "duration_minutes": { "type": "integer", "minimum": 1, "maximum": 1440 } } },
+              "allow_offline_import": { "type": "boolean" },
+              "allow_emergency_rollback": { "type": "boolean" },
+              "updated_by": { "type": "string" },
+              "updated_at_unix_seconds": { "type": "integer", "format": "int64" }
+            }
+          },
+          "DesktopFleetCompliance": {
+            "type": "object",
+            "required": ["policy_revision", "required_version", "items"],
+            "properties": {
+              "policy_revision": { "type": "integer", "format": "int64" },
+              "required_version": { "type": "string" },
+              "items": { "type": "array", "items": { "type": "object", "required": ["device_id", "agent_version", "lifecycle", "compliance", "remediation"], "properties": { "device_id": { "type": "string" }, "agent_version": { "type": "string" }, "lifecycle": { "type": "string" }, "last_seen_at_unix_seconds": { "type": "integer", "format": "int64", "nullable": true }, "compliance": { "type": "string", "enum": ["compliant", "update_required", "ahead_of_policy", "stale", "suspended", "revoked", "invalid_inventory"] }, "remediation": { "type": "string", "enum": ["none", "schedule_update", "review_channel_assignment", "restore_device_health", "review_suspension", "replace_or_repair_device", "repair_inventory"] } } } },
+              "next_offset": { "type": "integer", "nullable": true }
+            }
+          },
           "DesktopCommandRecord": {
             "type": "object",
             "required": ["command", "device_id", "workflow_id", "status", "created_at_unix_ms"],
@@ -455,6 +482,32 @@ pub fn spec() -> Value {
             "security": [],
             "parameters": [{ "name": "device_id", "in": "path", "required": true, "schema": { "type": "string" } }],
             "responses": { "200": { "description": "Replacement Credential", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/DesktopDeviceCredential" } } } }, "404": { "description": "Invalid current Credential" }, "429": { "description": "Rate limited" } }
+          }
+        },
+        "/v1/desktop/update-policy": {
+          "get": {
+            "tags": ["Desktop Devices"],
+            "summary": "Read the Tenant Desktop update policy",
+            "responses": { "200": { "description": "Revisioned policy or safe default", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/DesktopUpdatePolicy" } } } }, "403": { "description": "Tenant administrator required" } }
+          },
+          "patch": {
+            "tags": ["Desktop Devices"],
+            "summary": "Replace the Tenant Desktop update policy using revision compare-and-swap",
+            "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "additionalProperties": false, "required": ["observed_revision", "mode", "channel", "required_version", "allow_offline_import", "allow_emergency_rollback"], "properties": { "observed_revision": { "type": "integer", "format": "int64", "minimum": 0 }, "mode": { "type": "string", "enum": ["disabled", "manual", "automatic"] }, "channel": { "type": "string", "enum": ["internal", "closed_beta", "stable"] }, "required_version": { "type": "string" }, "pinned_version": { "type": "string", "nullable": true }, "maintenance_window": { "type": "object", "nullable": true, "additionalProperties": false, "required": ["start_minute_utc", "duration_minutes"], "properties": { "start_minute_utc": { "type": "integer", "minimum": 0, "maximum": 1439 }, "duration_minutes": { "type": "integer", "minimum": 1, "maximum": 1440 } } }, "allow_offline_import": { "type": "boolean" }, "allow_emergency_rollback": { "type": "boolean" } } } } } },
+            "responses": { "200": { "description": "Updated policy", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/DesktopUpdatePolicy" } } } }, "400": { "description": "Invalid or unknown policy field" }, "403": { "description": "Tenant administrator required" }, "409": { "description": "Observed revision is stale" } }
+          }
+        },
+        "/v1/desktop/fleet-compliance": {
+          "get": {
+            "tags": ["Desktop Devices"],
+            "summary": "List bounded Tenant Device release compliance",
+            "parameters": [
+              { "name": "state", "in": "query", "schema": { "type": "string" } },
+              { "name": "compliance", "in": "query", "schema": { "type": "string", "enum": ["compliant", "update_required", "ahead_of_policy", "stale", "suspended", "revoked", "invalid_inventory"] } },
+              { "name": "limit", "in": "query", "schema": { "type": "integer", "minimum": 1, "maximum": 100, "default": 50 } },
+              { "name": "offset", "in": "query", "schema": { "type": "integer", "minimum": 0, "default": 0 } }
+            ],
+            "responses": { "200": { "description": "Policy-bound fleet compliance", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/DesktopFleetCompliance" } } } }, "400": { "description": "Invalid filter or inventory exceeds the bounded scan" }, "403": { "description": "Tenant administrator required" } }
           }
         },
         "/v1/desktop/device-connection": {

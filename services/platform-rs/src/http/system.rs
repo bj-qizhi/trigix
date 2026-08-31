@@ -475,6 +475,8 @@ mod tests {
         let spec: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
         assert_eq!(spec["openapi"], "3.0.3");
         assert!(spec["paths"].as_object().unwrap().len() > 20);
+        assert!(spec["paths"]["/v1/desktop/update-policy"]["patch"].is_object());
+        assert!(spec["paths"]["/v1/desktop/fleet-compliance"]["get"].is_object());
         assert_eq!(
             spec["paths"]["/v1/desktop/device-connection"]["get"]["security"][0]
                 ["deviceCredential"],

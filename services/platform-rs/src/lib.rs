@@ -14,6 +14,7 @@ pub mod crypto;
 pub mod custom_nodes;
 pub mod desktop_commands;
 pub mod desktop_evidence;
+pub mod desktop_update_policy;
 pub mod device_connection;
 pub mod device_pairing;
 pub mod env_vars;
