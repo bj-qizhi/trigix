@@ -9,28 +9,36 @@
     <script src="./app.js" defer></script>
   </head>
   <body>
-    <main class="shell" aria-labelledby="product-title">
+    <a class="skip-link" href="#main-content" data-i18n="skip_to_content">Skip to main content</a>
+    <main id="main-content" class="shell" aria-labelledby="product-title" tabindex="-1">
       <header>
-        <p class="eyebrow">LOCAL DEVICE CONTROL</p>
+        <div class="header-row">
+          <p class="eyebrow" data-i18n="local_device_control">LOCAL DEVICE CONTROL</p>
+          <div class="locale-switcher" role="group" aria-label="Language" data-i18n-aria="language">
+            <button id="locale-en" class="locale-button" type="button" aria-pressed="true">EN</button>
+            <button id="locale-zh" class="locale-button" type="button" aria-pressed="false">中文</button>
+          </div>
+        </div>
         <h1 id="product-title">Trigix Desktop</h1>
-        <p class="lede">Governed automation stays visible and interruptible.</p>
+        <p class="lede" data-i18n="lede">Governed automation stays visible and interruptible.</p>
       </header>
 
-      <section class="status-panel" aria-live="polite" aria-busy="true">
+      <section class="status-panel" aria-labelledby="runtime-title" aria-live="polite" aria-atomic="true" aria-busy="true">
+        <h2 id="runtime-title" class="visually-hidden" data-i18n="runtime_status">Runtime status</h2>
         <div>
-          <span class="label">Connection</span>
-          <strong id="connection">Checking</strong>
+          <span class="label" data-i18n="connection">Connection</span>
+          <strong id="connection" data-i18n="checking">Checking</strong>
         </div>
         <div>
-          <span class="label">Automation</span>
-          <strong id="automation">Checking</strong>
+          <span class="label" data-i18n="automation">Automation</span>
+          <strong id="automation" data-i18n="checking">Checking</strong>
         </div>
         <div>
-          <span class="label">Automation host</span>
-          <strong id="automation-host">Checking</strong>
+          <span class="label" data-i18n="automation_host">Automation host</span>
+          <strong id="automation-host" data-i18n="checking">Checking</strong>
         </div>
         <div>
-          <span class="label">State revision</span>
+          <span class="label" data-i18n="state_revision">State revision</span>
           <strong id="revision">—</strong>
         </div>
       </section>
@@ -38,53 +46,70 @@
       <section class="pairing-panel" aria-labelledby="pairing-title">
         <div class="pairing-heading">
           <div>
-            <p class="eyebrow">DEVICE TRUST</p>
-            <h2 id="pairing-title">Pair this computer</h2>
+            <p class="eyebrow" data-i18n="device_trust">DEVICE TRUST</p>
+            <h2 id="pairing-title" tabindex="-1" data-i18n="pair_this_computer">Pair this computer</h2>
           </div>
-          <span id="pairing-phase" class="phase">Checking</span>
+          <span id="pairing-phase" class="phase" data-i18n="checking">Checking</span>
         </div>
 
-        <form id="pairing-form">
+        <form id="pairing-form" aria-describedby="pairing-help">
+          <p id="pairing-help" class="visually-hidden" data-i18n="pairing_help">Enter the secure Platform origin and a recognizable Device name.</p>
           <label>
-            <span>Platform HTTPS origin</span>
-            <input id="platform-url" name="platform-url" type="url" required maxlength="2048" placeholder="https://trigix.example.com" autocomplete="url" />
+            <span data-i18n="platform_origin">Platform HTTPS origin</span>
+            <input id="platform-url" name="platform-url" type="url" required maxlength="2048" placeholder="https://trigix.example.com" autocomplete="url" aria-describedby="platform-url-help" />
+            <span id="platform-url-help" class="field-help" data-i18n="platform_origin_help">HTTPS is required. Paths, queries, and fragments are not accepted.</span>
           </label>
           <label>
-            <span>Device name</span>
+            <span data-i18n="device_name">Device name</span>
             <input id="device-name" name="device-name" type="text" required maxlength="128" value="My Windows PC" autocomplete="off" />
           </label>
-          <button id="start-pairing" type="submit">Create pairing code</button>
+          <button id="start-pairing" type="submit" data-i18n="create_pairing_code">Create pairing code</button>
         </form>
 
         <div id="pairing-waiting" class="pairing-result" hidden>
           <div>
-            <span class="label">PAIRING CODE</span>
+            <span class="label" data-i18n="pairing_code">PAIRING CODE</span>
             <strong id="pairing-code">—</strong>
-            <p id="pairing-expiry">Approve this code in your Tenant administration page.</p>
+            <p id="pairing-expiry" data-i18n="approve_code_admin">Approve this code in your Tenant administration page.</p>
           </div>
-          <button id="claim-pairing" type="button">I approved the code</button>
+          <button id="claim-pairing" type="button" data-i18n="approved_code">I approved the code</button>
         </div>
 
         <div id="pairing-complete" class="pairing-result" hidden>
           <div>
-            <span class="label">LOCAL DEVICE ID</span>
+            <span class="label" data-i18n="local_device_id">LOCAL DEVICE ID</span>
             <strong id="paired-device">—</strong>
-            <p>The Device credential is protected by Windows Credential Manager.</p>
+            <p data-i18n="credential_protected">The Device credential is protected by Windows Credential Manager.</p>
           </div>
-          <button id="forget-pairing" class="secondary" type="button">Forget local pairing</button>
+          <button id="forget-pairing" class="secondary" type="button" data-i18n="forget_pairing">Forget local pairing</button>
         </div>
       </section>
 
       <section class="control-panel" aria-labelledby="control-title">
         <div>
-          <p class="eyebrow">SAFETY CONTROL</p>
-          <h2 id="control-title">Immediate stop</h2>
-          <p>Requests cancellation through the local runtime. It cannot approve or start an action.</p>
+          <p class="eyebrow" data-i18n="safety_control">SAFETY CONTROL</p>
+          <h2 id="control-title" data-i18n="immediate_stop">Immediate stop</h2>
+          <p id="stop-description" data-i18n="stop_description">Requests cancellation through the local runtime. It cannot approve or start an action.</p>
         </div>
-        <button id="stop" type="button" disabled>Stop automation</button>
+        <button id="stop" type="button" disabled aria-describedby="stop-description" data-i18n="stop_automation">Stop automation</button>
       </section>
 
-      <p id="notice" class="notice" role="status">Loading local runtime state…</p>
+      <div id="error-region" class="error-region" role="alert" aria-atomic="true" hidden>
+        <p id="error-message"></p>
+        <button id="retry" class="secondary" type="button" data-i18n="retry">Retry</button>
+      </div>
+      <p id="notice" class="notice" role="status" aria-live="polite" aria-atomic="true" data-i18n="loading_runtime">Loading local runtime state…</p>
     </main>
+
+    <dialog id="forget-confirm" aria-labelledby="forget-confirm-title" aria-describedby="forget-confirm-description">
+      <form method="dialog">
+        <h2 id="forget-confirm-title" data-i18n="forget_confirm_title">Forget local pairing?</h2>
+        <p id="forget-confirm-description" data-i18n="forget_confirm_description">This removes the Device credential from this computer. An administrator must revoke the server record separately.</p>
+        <div class="dialog-actions">
+          <button id="cancel-forget" class="secondary" value="cancel" data-i18n="cancel">Cancel</button>
+          <button id="confirm-forget" value="confirm" data-i18n="confirm_forget">Forget pairing</button>
+        </div>
+      </form>
+    </dialog>
   </body>
 </html>

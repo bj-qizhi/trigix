@@ -1025,4 +1025,64 @@ mod tests {
         assert!(!script.contains("claim_secret"));
         assert!(!script.contains("claimSecret"));
     }
+
+    #[test]
+    fn desktop_shell_accessibility_localization_and_recovery_are_bounded() {
+        let html = include_str!("../../ui/index.html");
+        assert!(html.contains("class=\"skip-link\""));
+        assert!(html.contains("role=\"alert\""));
+        assert!(html.contains("aria-live=\"polite\""));
+        assert!(html.contains("<dialog id=\"forget-confirm\""));
+        assert!(html.contains("data-i18n=\"stop_automation\""));
+
+        let script = include_str!("../../ui/app.js");
+        assert!(script.contains("trigix.desktop.locale"));
+        assert!(script.contains("document.documentElement.lang"));
+        assert!(script.contains("showModal()"));
+        assert!(script.contains("visibilitychange"));
+        assert!(script.contains("document.hidden"));
+        assert!(script.contains("zh: {"));
+        assert!(script.contains("en: {"));
+        assert!(!script.contains("error.message"));
+        let (english, chinese_and_runtime) = script.split_once("  zh: {").unwrap();
+        let chinese = chinese_and_runtime.split_once("const elements").unwrap().0;
+        for attribute in ["data-i18n=\"", "data-i18n-aria=\""] {
+            for occurrence in html.split(attribute).skip(1) {
+                let key = occurrence.split_once('"').unwrap().0;
+                let declaration = format!("    {key}:");
+                assert!(english.contains(&declaration), "missing English key {key}");
+                assert!(chinese.contains(&declaration), "missing Chinese key {key}");
+            }
+        }
+        for key in [
+            "approve_before",
+            "runtime_unavailable",
+            "pairing_start_error",
+            "pairing_claim_error",
+            "pairing_forget_error",
+            "stop_error",
+            "state_offline",
+            "state_connecting",
+            "state_online",
+            "state_degraded",
+            "state_idle",
+            "state_running",
+            "state_awaiting_approval",
+            "state_stopping",
+            "state_ready",
+            "state_unavailable",
+            "state_unpaired",
+            "state_waiting_for_approval",
+            "state_paired",
+        ] {
+            let declaration = format!("    {key}:");
+            assert!(english.contains(&declaration), "missing English key {key}");
+            assert!(chinese.contains(&declaration), "missing Chinese key {key}");
+        }
+
+        let styles = include_str!("../../ui/styles.css");
+        assert!(styles.contains(":focus-visible"));
+        assert!(styles.contains("prefers-reduced-motion: no-preference"));
+        assert!(styles.contains("forced-colors: active"));
+    }
 }
