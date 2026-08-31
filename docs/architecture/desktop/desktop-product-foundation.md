@@ -192,6 +192,10 @@ The supported operating-system, session, policy, and resource budgets are define
 
 Voice input produces conversation events; it does not directly produce operating-system calls. Speech recognition output enters the same Agent, Tool, policy, and Approval path as typed input. Microphone use must have a visible local indicator and immediate stop control.
 
+The first voice foundation is consent-gated and local. Only the Desktop shell's explicit Start action may request browser microphone permission. While permission is pending or a track is live, the shell exposes a persistent accessible status and Stop control. Stop, hidden-window transitions, ended input tracks, and page teardown release every local media track; denial or missing capture support fails closed. This foundation neither records nor transmits audio and does not advertise the `voice_conversation` Device capability.
+
+Voice events have a separate versioned, provider-neutral contract for permission, listening, speech boundaries, bounded transcripts, processing, speaking, interruption, reconnect, stop, and fixed failure categories. Its latency telemetry contains only state and bounded duration values, never audio or transcript content. A future final transcript may enter the authenticated Agent conversation ingress, but no voice event can contain a Desktop action or grant execution authority. See [ADR 0007](../../adr/0007-consent-gated-voice-session-boundary.md).
+
 Avatar rendering consumes bounded presentation events such as speaking state, phoneme timing, expression, and interruption. It cannot authorize or execute desktop actions. Licensed models, voices, and customer media remain outside the public source repository.
 
 ## First Vertical Slice

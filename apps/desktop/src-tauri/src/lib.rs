@@ -1027,6 +1027,44 @@ mod tests {
     }
 
     #[test]
+    fn voice_capture_requires_consent_and_releases_every_local_track() {
+        let html = include_str!("../../ui/index.html");
+        assert!(html.contains("id=\"start-voice\""));
+        assert!(html.contains("id=\"stop-voice\""));
+        assert!(html.contains("id=\"voice-status\""));
+        assert!(html.contains("role=\"status\""));
+        assert!(html.contains("data-state=\"idle\""));
+
+        let script = include_str!("../../ui/app.js");
+        let consent_handler = script
+            .find("elements.startVoice.addEventListener(\"click\"")
+            .expect("explicit microphone consent handler");
+        let capture = script.find("navigator.mediaDevices.getUserMedia").unwrap();
+        assert!(consent_handler < capture);
+        assert_eq!(
+            script
+                .matches("navigator.mediaDevices.getUserMedia")
+                .count(),
+            1
+        );
+        assert!(script.contains("stream.getTracks().forEach((track) => track.stop())"));
+        assert!(script.contains("if (voiceStream || voiceRequestPending)"));
+        assert!(script.contains("document.hidden"));
+        assert!(script.contains("pagehide"));
+        assert!(script.contains("beforeunload"));
+        assert!(script.contains("echoCancellation: true"));
+        assert!(script.contains("noiseSuppression: true"));
+        assert!(script.contains("video: false"));
+        assert!(!script.contains("MediaRecorder"));
+        assert!(!script.contains("audio_base64"));
+
+        let styles = include_str!("../../ui/styles.css");
+        assert!(styles.contains(".voice-status[data-state=\"listening\"]"));
+        assert!(styles.contains("prefers-reduced-motion: no-preference"));
+        assert!(styles.contains("forced-colors: active"));
+    }
+
+    #[test]
     fn desktop_shell_accessibility_localization_and_recovery_are_bounded() {
         let html = include_str!("../../ui/index.html");
         assert!(html.contains("class=\"skip-link\""));
@@ -1061,6 +1099,18 @@ mod tests {
             "pairing_claim_error",
             "pairing_forget_error",
             "stop_error",
+            "state_microphone_off",
+            "state_requesting_permission",
+            "state_listening",
+            "state_microphone_stopped",
+            "state_permission_denied",
+            "state_microphone_unavailable",
+            "requesting_microphone",
+            "microphone_active",
+            "microphone_stopped",
+            "microphone_hidden_stop",
+            "microphone_permission_denied",
+            "microphone_unavailable",
             "state_offline",
             "state_connecting",
             "state_online",

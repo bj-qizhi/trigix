@@ -29,6 +29,23 @@ const messages = {
     local_device_id: "LOCAL DEVICE ID",
     credential_protected: "The Device credential is protected by Windows Credential Manager.",
     forget_pairing: "Forget local pairing",
+    voice_conversation: "VOICE CONVERSATION",
+    local_microphone: "Local microphone",
+    voice_description: "Microphone access starts only after you choose Start. Audio remains local in this foundation and cannot authorize automation.",
+    start_voice: "Start microphone",
+    stop_voice: "Stop microphone",
+    state_microphone_off: "Microphone off",
+    state_requesting_permission: "Requesting permission",
+    state_listening: "Microphone active",
+    state_microphone_stopped: "Microphone stopped",
+    state_permission_denied: "Permission denied",
+    state_microphone_unavailable: "Microphone unavailable",
+    requesting_microphone: "Requesting microphone permission…",
+    microphone_active: "Microphone is active. Choose Stop at any time.",
+    microphone_stopped: "Microphone access stopped and local tracks were released.",
+    microphone_hidden_stop: "Microphone access stopped because the window was hidden.",
+    microphone_permission_denied: "Microphone permission was denied. Use Start to request access again.",
+    microphone_unavailable: "No usable microphone is available.",
     safety_control: "SAFETY CONTROL",
     immediate_stop: "Immediate stop",
     stop_description: "Requests cancellation through the local runtime. It cannot approve or start an action.",
@@ -99,6 +116,23 @@ const messages = {
     local_device_id: "本机设备 ID",
     credential_protected: "设备凭据由 Windows 凭据管理器保护。",
     forget_pairing: "忘记本机配对",
+    voice_conversation: "语音对话",
+    local_microphone: "本机麦克风",
+    voice_description: "仅在你选择“启动”后申请麦克风权限。此基础版本的音频保留在本机，且不能授权自动化。",
+    start_voice: "启动麦克风",
+    stop_voice: "停止麦克风",
+    state_microphone_off: "麦克风已关闭",
+    state_requesting_permission: "正在请求权限",
+    state_listening: "麦克风使用中",
+    state_microphone_stopped: "麦克风已停止",
+    state_permission_denied: "权限被拒绝",
+    state_microphone_unavailable: "麦克风不可用",
+    requesting_microphone: "正在请求麦克风权限…",
+    microphone_active: "麦克风正在使用中，可随时选择“停止”。",
+    microphone_stopped: "麦克风访问已停止，本机媒体轨道已释放。",
+    microphone_hidden_stop: "窗口已隐藏，麦克风访问已停止。",
+    microphone_permission_denied: "麦克风权限被拒绝，可再次选择“启动”重新申请。",
+    microphone_unavailable: "没有可用的麦克风。",
     safety_control: "安全控制",
     immediate_stop: "立即停止",
     stop_description: "通过本机运行时请求取消；此操作不能批准或启动自动化。",
@@ -167,6 +201,10 @@ const elements = {
   errorMessage: document.querySelector("#error-message"),
   retry: document.querySelector("#retry"),
   forgetConfirm: document.querySelector("#forget-confirm"),
+  voiceStatus: document.querySelector("#voice-status"),
+  voiceStatusLabel: document.querySelector("#voice-status-label"),
+  startVoice: document.querySelector("#start-voice"),
+  stopVoice: document.querySelector("#stop-voice"),
   localeEn: document.querySelector("#locale-en"),
   localeZh: document.querySelector("#locale-zh"),
 };
@@ -184,6 +222,10 @@ let refreshing = false;
 let retryAction = null;
 let noticeState = { key: "loading_runtime", values: {} };
 let errorState = null;
+let voiceStream = null;
+let voiceState = "idle";
+let voiceRequestGeneration = 0;
+let voiceRequestPending = false;
 
 function translate(key, values = {}) {
   const template = messages[locale][key] ?? messages.en[key] ?? key;
@@ -244,6 +286,7 @@ function applyLocale(nextLocale, persist = true) {
   }
   if (shellSnapshot) renderShell(shellSnapshot);
   if (pairingSnapshot) renderPairing(pairingSnapshot, false);
+  renderVoiceState(voiceState);
   setNotice(noticeState.key, noticeState.values);
   if (errorState) showError(errorState.key, errorState.retry, false);
 }
@@ -298,6 +341,33 @@ function renderPairing(snapshot, focusPhase) {
   if (focusPhase && phaseChanged) {
     window.requestAnimationFrame(() => elements.pairingTitle.focus());
   }
+}
+
+function renderVoiceState(state) {
+  voiceState = state;
+  const statusKey = {
+    idle: "state_microphone_off",
+    requesting_permission: "state_requesting_permission",
+    listening: "state_listening",
+    stopped: "state_microphone_stopped",
+    permission_denied: "state_permission_denied",
+    unavailable: "state_microphone_unavailable",
+  }[state] ?? "state_microphone_unavailable";
+  const active = state === "requesting_permission" || state === "listening";
+  elements.voiceStatus.dataset.state = state;
+  elements.voiceStatusLabel.textContent = translate(statusKey);
+  elements.startVoice.disabled = active;
+  elements.stopVoice.disabled = !active;
+}
+
+function stopVoiceSession(state = "stopped", noticeKey = "microphone_stopped") {
+  voiceRequestGeneration += 1;
+  voiceRequestPending = false;
+  const stream = voiceStream;
+  voiceStream = null;
+  if (stream) stream.getTracks().forEach((track) => track.stop());
+  renderVoiceState(state);
+  if (noticeKey) setNotice(noticeKey);
 }
 
 function setOperation(name, busy) {
@@ -406,6 +476,55 @@ elements.stopButton.addEventListener("click", async () => {
   }
 });
 
+elements.startVoice.addEventListener("click", async () => {
+  if (voiceStream || voiceRequestPending) return;
+  clearError();
+  voiceRequestGeneration += 1;
+  const requestGeneration = voiceRequestGeneration;
+  voiceRequestPending = true;
+  renderVoiceState("requesting_permission");
+  setNotice("requesting_microphone");
+  try {
+    if (!navigator.mediaDevices?.getUserMedia) throw new Error("microphone unavailable");
+    const stream = await navigator.mediaDevices.getUserMedia({
+      audio: {
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: true,
+      },
+      video: false,
+    });
+    if (requestGeneration !== voiceRequestGeneration || document.hidden) {
+      stream.getTracks().forEach((track) => track.stop());
+      return;
+    }
+    const audioTracks = stream
+      .getAudioTracks()
+      .filter((track) => track.readyState === "live");
+    if (audioTracks.length === 0) {
+      stream.getTracks().forEach((track) => track.stop());
+      throw new Error("microphone unavailable");
+    }
+    voiceStream = stream;
+    voiceRequestPending = false;
+    audioTracks.forEach((track) => {
+      track.addEventListener("ended", () => {
+        if (voiceStream === stream) stopVoiceSession("unavailable", "microphone_unavailable");
+      }, { once: true });
+    });
+    renderVoiceState("listening");
+    setNotice("microphone_active");
+  } catch (error) {
+    if (requestGeneration !== voiceRequestGeneration) return;
+    voiceRequestPending = false;
+    const denied = error?.name === "NotAllowedError" || error?.name === "SecurityError";
+    renderVoiceState(denied ? "permission_denied" : "unavailable");
+    setNotice(denied ? "microphone_permission_denied" : "microphone_unavailable");
+  }
+});
+
+elements.stopVoice.addEventListener("click", () => stopVoiceSession());
+
 elements.retry.addEventListener("click", async () => {
   const action = retryAction;
   clearError();
@@ -416,8 +535,17 @@ elements.localeEn.addEventListener("click", () => applyLocale("en"));
 elements.localeZh.addEventListener("click", () => applyLocale("zh"));
 
 document.addEventListener("visibilitychange", () => {
-  if (!document.hidden) void refresh();
+  if (document.hidden) {
+    if (voiceStream || voiceRequestPending) {
+      stopVoiceSession("stopped", "microphone_hidden_stop");
+    }
+  } else {
+    void refresh();
+  }
 });
+
+window.addEventListener("pagehide", () => stopVoiceSession("stopped", null));
+window.addEventListener("beforeunload", () => stopVoiceSession("stopped", null));
 
 applyLocale(locale, false);
 void refresh();

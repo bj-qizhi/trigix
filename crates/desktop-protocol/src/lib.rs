@@ -12,6 +12,9 @@ pub const MAX_INSPECTION_DURATION_MS: u32 = 5_000;
 pub const MAX_INSPECTION_PAYLOAD_BYTES: u32 = 60 * 1024;
 pub const MIN_VISUAL_SUGGESTION_CONFIDENCE_BPS: u16 = 9_000;
 pub const MAX_VISUAL_SUGGESTION_AGE_MS: u64 = 30_000;
+pub const VOICE_EVENT_SCHEMA_VERSION: u16 = 1;
+pub const MAX_VOICE_TRANSCRIPT_BYTES: usize = 16_384;
+pub const MAX_VOICE_LATENCY_MS: u32 = 60_000;
 
 fn previous_protocol_revision() -> u16 {
     PREVIOUS_PROTOCOL_REVISION
@@ -203,6 +206,198 @@ pub struct HeartbeatAccepted {
     pub session_id: String,
     pub state: DeviceState,
     pub server_time_unix_ms: u64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum VoiceSessionState {
+    RequestingPermission,
+    Listening,
+    Processing,
+    Speaking,
+    Interrupted,
+    Reconnecting,
+    Stopped,
+    Failed,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum VoiceInterruptionReason {
+    UserSpeech,
+    UserStop,
+    InputDeviceChanged,
+    OutputDeviceChanged,
+    SessionHidden,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum VoiceStopReason {
+    UserStop,
+    PermissionRevoked,
+    InputDeviceEnded,
+    SessionHidden,
+    PageTeardown,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum VoiceFailureCategory {
+    PermissionDenied,
+    InputUnavailable,
+    OutputUnavailable,
+    ProviderUnavailable,
+    NetworkUnavailable,
+    ProtocolViolation,
+    Internal,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct VoiceSessionSnapshot {
+    pub schema_version: u16,
+    pub session_id: String,
+    pub started_at_unix_ms: u64,
+    pub updated_at_unix_ms: u64,
+    pub state: VoiceSessionState,
+    pub last_sequence: u32,
+}
+
+impl VoiceSessionSnapshot {
+    pub fn validate(&self) -> Result<(), ProtocolError> {
+        if self.schema_version != VOICE_EVENT_SCHEMA_VERSION {
+            return Err(ProtocolError::InvalidField("voice_session.schema_version"));
+        }
+        validate_identifier("voice_session.session_id", &self.session_id)?;
+        if self.started_at_unix_ms == 0 || self.updated_at_unix_ms < self.started_at_unix_ms {
+            return Err(ProtocolError::InvalidField("voice_session.timestamp"));
+        }
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(
+    tag = "kind",
+    content = "detail",
+    rename_all = "snake_case",
+    deny_unknown_fields
+)]
+pub enum VoiceConversationEventKind {
+    PermissionRequested,
+    PermissionGranted,
+    ListeningStarted,
+    SpeechStarted,
+    SpeechEnded,
+    TranscriptPartial { text: String },
+    TranscriptFinal { text: String },
+    ProcessingStarted,
+    SpeakingStarted,
+    Interrupted { reason: VoiceInterruptionReason },
+    Reconnecting { attempt: u8, delay_ms: u32 },
+    Stopped { reason: VoiceStopReason },
+    Failed { category: VoiceFailureCategory },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct VoiceConversationEvent {
+    pub schema_version: u16,
+    pub session_id: String,
+    pub sequence: u32,
+    pub occurred_at_unix_ms: u64,
+    pub event: VoiceConversationEventKind,
+}
+
+impl VoiceConversationEvent {
+    pub fn validate(&self) -> Result<(), ProtocolError> {
+        if self.schema_version != VOICE_EVENT_SCHEMA_VERSION {
+            return Err(ProtocolError::InvalidField("voice.schema_version"));
+        }
+        validate_identifier("voice.session_id", &self.session_id)?;
+        if self.sequence == 0 {
+            return Err(ProtocolError::InvalidField("voice.sequence"));
+        }
+        if self.occurred_at_unix_ms == 0 {
+            return Err(ProtocolError::InvalidField("voice.occurred_at_unix_ms"));
+        }
+        match &self.event {
+            VoiceConversationEventKind::TranscriptPartial { text }
+            | VoiceConversationEventKind::TranscriptFinal { text } => {
+                validate_text("voice.transcript", text, MAX_VOICE_TRANSCRIPT_BYTES)
+            }
+            VoiceConversationEventKind::Reconnecting { attempt, delay_ms } => {
+                if !(1..=8).contains(attempt) || !(100..=30_000).contains(delay_ms) {
+                    return Err(ProtocolError::InvalidField("voice.reconnect"));
+                }
+                Ok(())
+            }
+            _ => Ok(()),
+        }
+    }
+
+    pub fn validate_after(&self, previous: &Self) -> Result<(), ProtocolError> {
+        previous.validate()?;
+        self.validate()?;
+        if self.session_id != previous.session_id {
+            return Err(ProtocolError::InvalidField("voice.session_id"));
+        }
+        if previous.sequence.checked_add(1) != Some(self.sequence) {
+            return Err(ProtocolError::InvalidField("voice.sequence"));
+        }
+        if self.occurred_at_unix_ms < previous.occurred_at_unix_ms {
+            return Err(ProtocolError::InvalidField("voice.occurred_at_unix_ms"));
+        }
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct VoiceLatencyTelemetry {
+    pub schema_version: u16,
+    pub session_id: String,
+    pub sequence: u32,
+    pub captured_at_unix_ms: u64,
+    pub state: VoiceSessionState,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub speech_start_ms: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub final_transcript_ms: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub first_audio_ms: Option<u32>,
+}
+
+impl VoiceLatencyTelemetry {
+    pub fn validate(&self) -> Result<(), ProtocolError> {
+        if self.schema_version != VOICE_EVENT_SCHEMA_VERSION {
+            return Err(ProtocolError::InvalidField(
+                "voice_telemetry.schema_version",
+            ));
+        }
+        validate_identifier("voice_telemetry.session_id", &self.session_id)?;
+        if self.sequence == 0 {
+            return Err(ProtocolError::InvalidField("voice_telemetry.sequence"));
+        }
+        if self.captured_at_unix_ms == 0 {
+            return Err(ProtocolError::InvalidField(
+                "voice_telemetry.captured_at_unix_ms",
+            ));
+        }
+        if [
+            self.speech_start_ms,
+            self.final_transcript_ms,
+            self.first_audio_ms,
+        ]
+        .into_iter()
+        .flatten()
+        .any(|latency| latency > MAX_VOICE_LATENCY_MS)
+        {
+            return Err(ProtocolError::InvalidField("voice_telemetry.latency_ms"));
+        }
+        Ok(())
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
@@ -1061,6 +1256,133 @@ mod tests {
             heartbeat.validate(),
             Err(ProtocolError::InvalidField("health_detail"))
         );
+    }
+
+    fn voice_event(event: VoiceConversationEventKind) -> VoiceConversationEvent {
+        VoiceConversationEvent {
+            schema_version: VOICE_EVENT_SCHEMA_VERSION,
+            session_id: "voice-session-1".to_owned(),
+            sequence: 1,
+            occurred_at_unix_ms: 1_000,
+            event,
+        }
+    }
+
+    #[test]
+    fn voice_events_are_versioned_provider_neutral_and_bounded() {
+        let mut session = VoiceSessionSnapshot {
+            schema_version: VOICE_EVENT_SCHEMA_VERSION,
+            session_id: "voice-session-1".to_owned(),
+            started_at_unix_ms: 1_000,
+            updated_at_unix_ms: 1_000,
+            state: VoiceSessionState::RequestingPermission,
+            last_sequence: 0,
+        };
+        session.validate().unwrap();
+        session.updated_at_unix_ms = 999;
+        assert_eq!(
+            session.validate(),
+            Err(ProtocolError::InvalidField("voice_session.timestamp"))
+        );
+
+        let events = [
+            VoiceConversationEventKind::PermissionRequested,
+            VoiceConversationEventKind::PermissionGranted,
+            VoiceConversationEventKind::ListeningStarted,
+            VoiceConversationEventKind::SpeechStarted,
+            VoiceConversationEventKind::SpeechEnded,
+            VoiceConversationEventKind::ProcessingStarted,
+            VoiceConversationEventKind::SpeakingStarted,
+            VoiceConversationEventKind::Interrupted {
+                reason: VoiceInterruptionReason::UserSpeech,
+            },
+            VoiceConversationEventKind::Reconnecting {
+                attempt: 1,
+                delay_ms: 100,
+            },
+            VoiceConversationEventKind::Stopped {
+                reason: VoiceStopReason::UserStop,
+            },
+            VoiceConversationEventKind::Failed {
+                category: VoiceFailureCategory::PermissionDenied,
+            },
+        ];
+        for event in events {
+            voice_event(event).validate().unwrap();
+        }
+
+        let previous = voice_event(VoiceConversationEventKind::PermissionRequested);
+        let mut next = voice_event(VoiceConversationEventKind::PermissionGranted);
+        next.sequence = 2;
+        next.occurred_at_unix_ms = 1_001;
+        next.validate_after(&previous).unwrap();
+        next.sequence = 3;
+        assert_eq!(
+            next.validate_after(&previous),
+            Err(ProtocolError::InvalidField("voice.sequence"))
+        );
+        next.sequence = 2;
+        next.occurred_at_unix_ms = 999;
+        assert_eq!(
+            next.validate_after(&previous),
+            Err(ProtocolError::InvalidField("voice.occurred_at_unix_ms"))
+        );
+
+        let mut reconnecting = voice_event(VoiceConversationEventKind::Reconnecting {
+            attempt: 9,
+            delay_ms: 100,
+        });
+        assert_eq!(
+            reconnecting.validate(),
+            Err(ProtocolError::InvalidField("voice.reconnect"))
+        );
+        reconnecting.event = VoiceConversationEventKind::TranscriptFinal {
+            text: "x".repeat(MAX_VOICE_TRANSCRIPT_BYTES + 1),
+        };
+        assert_eq!(
+            reconnecting.validate(),
+            Err(ProtocolError::InvalidField("voice.transcript"))
+        );
+    }
+
+    #[test]
+    fn voice_telemetry_excludes_content_and_rejects_unbounded_latency() {
+        let mut telemetry = VoiceLatencyTelemetry {
+            schema_version: VOICE_EVENT_SCHEMA_VERSION,
+            session_id: "voice-session-1".to_owned(),
+            sequence: 2,
+            captured_at_unix_ms: 1_500,
+            state: VoiceSessionState::Listening,
+            speech_start_ms: Some(120),
+            final_transcript_ms: None,
+            first_audio_ms: None,
+        };
+        telemetry.validate().unwrap();
+        let serialized = serde_json::to_value(&telemetry).unwrap();
+        assert!(serialized.get("text").is_none());
+        assert!(serialized.get("transcript").is_none());
+        assert!(serialized.get("audio").is_none());
+
+        telemetry.first_audio_ms = Some(MAX_VOICE_LATENCY_MS + 1);
+        assert_eq!(
+            telemetry.validate(),
+            Err(ProtocolError::InvalidField("voice_telemetry.latency_ms"))
+        );
+    }
+
+    #[test]
+    fn voice_event_cannot_embed_desktop_execution_authority() {
+        let value = serde_json::json!({
+            "schema_version": VOICE_EVENT_SCHEMA_VERSION,
+            "session_id": "voice-session-1",
+            "sequence": 1,
+            "occurred_at_unix_ms": 1_000,
+            "event": {
+                "kind": "listening_started",
+                "desktop_action": { "kind": "read_system_information" }
+            }
+        });
+        assert!(serde_json::from_value::<VoiceConversationEvent>(value).is_err());
     }
 
     #[test]

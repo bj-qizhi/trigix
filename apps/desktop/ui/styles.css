@@ -146,6 +146,68 @@ h1 {
   border: 1px solid #343a43;
 }
 
+.voice-panel {
+  margin-top: 32px;
+  padding: 32px;
+  border: 1px solid #343a43;
+}
+
+.voice-heading,
+.voice-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+}
+
+.voice-heading h2 {
+  margin: 0;
+  font-size: 32px;
+  font-weight: 540;
+}
+
+.voice-panel > p {
+  max-width: 72ch;
+  margin: 24px 0;
+  color: #aeb7c2;
+  line-height: 1.55;
+}
+
+.voice-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+  color: #d6dce3;
+}
+
+.voice-indicator {
+  width: 12px;
+  height: 12px;
+  border: 2px solid #8f9ba8;
+  border-radius: 50%;
+  background: transparent;
+}
+
+.voice-status[data-state="requesting_permission"] .voice-indicator {
+  border-color: #ffd166;
+  background: #ffd166;
+}
+
+.voice-status[data-state="listening"] .voice-indicator {
+  border-color: #ff6b5f;
+  background: #ff6b5f;
+}
+
+.voice-status[data-state="permission_denied"] .voice-indicator,
+.voice-status[data-state="unavailable"] .voice-indicator {
+  border-color: #ff8b82;
+}
+
+.voice-actions {
+  justify-content: flex-start;
+}
+
 .pairing-heading,
 .pairing-result {
   display: flex;
@@ -362,9 +424,15 @@ dialog p {
   }
 
   .pairing-heading,
-  .pairing-result {
+  .pairing-result,
+  .voice-heading,
+  .voice-actions {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .voice-actions button {
+    width: 100%;
   }
 
   .error-region,
@@ -383,6 +451,15 @@ dialog p {
   .skip-link {
     transition: transform 120ms ease-out;
   }
+
+  .voice-status[data-state="listening"] .voice-indicator {
+    animation: voice-pulse 1.6s ease-out infinite;
+  }
+}
+
+@keyframes voice-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 #ff6b5f66; }
+  50% { box-shadow: 0 0 0 7px #ff6b5f00; }
 }
 
 @media (forced-colors: active) {
@@ -390,6 +467,8 @@ dialog p {
   input,
   dialog,
   .pairing-panel,
+  .voice-panel,
+  .voice-indicator,
   .error-region {
     forced-color-adjust: auto;
   }
