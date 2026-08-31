@@ -15,6 +15,8 @@ pub const MAX_VISUAL_SUGGESTION_AGE_MS: u64 = 30_000;
 pub const VOICE_EVENT_SCHEMA_VERSION: u16 = 1;
 pub const MAX_VOICE_TRANSCRIPT_BYTES: usize = 16_384;
 pub const MAX_VOICE_LATENCY_MS: u32 = 60_000;
+pub const AVATAR_EVENT_SCHEMA_VERSION: u16 = 1;
+pub const MAX_AVATAR_VISEME_DURATION_MS: u16 = 500;
 
 fn previous_protocol_revision() -> u16 {
     PREVIOUS_PROTOCOL_REVISION
@@ -395,6 +397,124 @@ impl VoiceLatencyTelemetry {
         .any(|latency| latency > MAX_VOICE_LATENCY_MS)
         {
             return Err(ProtocolError::InvalidField("voice_telemetry.latency_ms"));
+        }
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AvatarPresentationState {
+    Idle,
+    Listening,
+    Thinking,
+    Speaking,
+    Interrupted,
+    Error,
+    Stopped,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AvatarEmotion {
+    Neutral,
+    Attentive,
+    Positive,
+    Concerned,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AvatarViseme {
+    Rest,
+    Closed,
+    Open,
+    Wide,
+    Rounded,
+    Labiodental,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AvatarFailureCategory {
+    RendererUnavailable,
+    PackageRejected,
+    DeviceLost,
+    ResourceLimit,
+    ProtocolViolation,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(
+    tag = "kind",
+    content = "detail",
+    rename_all = "snake_case",
+    deny_unknown_fields
+)]
+pub enum AvatarPresentationEventKind {
+    StateChanged {
+        state: AvatarPresentationState,
+    },
+    Viseme {
+        viseme: AvatarViseme,
+        duration_ms: u16,
+        intensity: u8,
+    },
+    EmotionChanged {
+        emotion: AvatarEmotion,
+        intensity: u8,
+    },
+    Interrupted,
+    Failed {
+        category: AvatarFailureCategory,
+    },
+    Stopped,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct AvatarPresentationEvent {
+    pub schema_version: u16,
+    pub session_id: String,
+    pub sequence: u32,
+    pub occurred_at_unix_ms: u64,
+    pub event: AvatarPresentationEventKind,
+}
+
+impl AvatarPresentationEvent {
+    pub fn validate(&self) -> Result<(), ProtocolError> {
+        if self.schema_version != AVATAR_EVENT_SCHEMA_VERSION {
+            return Err(ProtocolError::InvalidField("avatar.schema_version"));
+        }
+        validate_identifier("avatar.session_id", &self.session_id)?;
+        if self.sequence == 0 || self.occurred_at_unix_ms == 0 {
+            return Err(ProtocolError::InvalidField("avatar.sequence_or_time"));
+        }
+        match &self.event {
+            AvatarPresentationEventKind::Viseme {
+                duration_ms,
+                intensity,
+                ..
+            } if !(16..=MAX_AVATAR_VISEME_DURATION_MS).contains(duration_ms)
+                || *intensity > 100 =>
+            {
+                Err(ProtocolError::InvalidField("avatar.viseme"))
+            }
+            AvatarPresentationEventKind::EmotionChanged { intensity, .. } if *intensity > 100 => {
+                Err(ProtocolError::InvalidField("avatar.emotion"))
+            }
+            _ => Ok(()),
+        }
+    }
+
+    pub fn validate_after(&self, previous: &Self) -> Result<(), ProtocolError> {
+        previous.validate()?;
+        self.validate()?;
+        if self.session_id != previous.session_id
+            || previous.sequence.checked_add(1) != Some(self.sequence)
+            || self.occurred_at_unix_ms < previous.occurred_at_unix_ms
+        {
+            return Err(ProtocolError::InvalidField("avatar.order"));
         }
         Ok(())
     }
@@ -1383,6 +1503,77 @@ mod tests {
             }
         });
         assert!(serde_json::from_value::<VoiceConversationEvent>(value).is_err());
+    }
+
+    #[test]
+    fn avatar_events_are_versioned_ordered_and_content_free() {
+        let first = AvatarPresentationEvent {
+            schema_version: AVATAR_EVENT_SCHEMA_VERSION,
+            session_id: "avatar-session-1".to_owned(),
+            sequence: 1,
+            occurred_at_unix_ms: 1_000,
+            event: AvatarPresentationEventKind::StateChanged {
+                state: AvatarPresentationState::Listening,
+            },
+        };
+        first.validate().unwrap();
+        let mut next = AvatarPresentationEvent {
+            sequence: 2,
+            occurred_at_unix_ms: 1_001,
+            event: AvatarPresentationEventKind::Viseme {
+                viseme: AvatarViseme::Open,
+                duration_ms: 80,
+                intensity: 70,
+            },
+            ..first.clone()
+        };
+        next.validate_after(&first).unwrap();
+        let value = serde_json::to_value(&next).unwrap();
+        for field in [
+            "transcript",
+            "audio",
+            "tool",
+            "desktop_action",
+            "url",
+            "script",
+        ] {
+            assert!(value.get(field).is_none());
+        }
+        next.sequence = 3;
+        assert_eq!(
+            next.validate_after(&first),
+            Err(ProtocolError::InvalidField("avatar.order"))
+        );
+    }
+
+    #[test]
+    fn avatar_contract_rejects_authority_content_and_unbounded_motion() {
+        let authority = serde_json::json!({
+            "schema_version": AVATAR_EVENT_SCHEMA_VERSION,
+            "session_id": "avatar-session-1",
+            "sequence": 1,
+            "occurred_at_unix_ms": 1_000,
+            "event": {
+                "kind": "state_changed",
+                "detail": {"state": "speaking", "desktop_action": {"kind": "pointer_click"}}
+            }
+        });
+        assert!(serde_json::from_value::<AvatarPresentationEvent>(authority).is_err());
+        let unbounded = AvatarPresentationEvent {
+            schema_version: AVATAR_EVENT_SCHEMA_VERSION,
+            session_id: "avatar-session-1".to_owned(),
+            sequence: 1,
+            occurred_at_unix_ms: 1_000,
+            event: AvatarPresentationEventKind::Viseme {
+                viseme: AvatarViseme::Wide,
+                duration_ms: MAX_AVATAR_VISEME_DURATION_MS + 1,
+                intensity: 100,
+            },
+        };
+        assert_eq!(
+            unbounded.validate(),
+            Err(ProtocolError::InvalidField("avatar.viseme"))
+        );
     }
 
     #[test]

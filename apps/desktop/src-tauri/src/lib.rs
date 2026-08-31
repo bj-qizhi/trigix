@@ -127,6 +127,26 @@ pub enum VoiceIpcError {
     InvalidRequest,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct AvatarQualificationInput {
+    pub startup_ms: u32,
+    pub frame_time_p95_micros: u32,
+    pub memory_bytes: u64,
+    pub dropped_frame_percent: u8,
+    pub resize_recovered: bool,
+    pub device_loss_recovered: bool,
+    pub background_suspended: bool,
+    pub interruption_recovered: bool,
+    pub long_session_minutes: u16,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(tag = "code", rename_all = "snake_case")]
+pub enum AvatarIpcError {
+    QualificationFailed,
+}
+
 struct ShellState {
     revision: u64,
     connection: ConnectionState,
@@ -318,6 +338,7 @@ mod native {
 
     static HEARTBEAT_SEQUENCE: AtomicU64 = AtomicU64::new(1);
     static VOICE_QUALIFIED: AtomicBool = AtomicBool::new(false);
+    static AVATAR_QUALIFIED: AtomicBool = AtomicBool::new(false);
     static PENDING_VOICE_BOOTSTRAP: Mutex<Option<(String, u64)>> = Mutex::new(None);
 
     fn qualified_capabilities(command: Option<&CommandRuntime>) -> Vec<DeviceCapability> {
@@ -328,6 +349,11 @@ mod native {
             && !capabilities.contains(&DeviceCapability::VoiceConversation)
         {
             capabilities.push(DeviceCapability::VoiceConversation);
+        }
+        if AVATAR_QUALIFIED.load(Ordering::Acquire)
+            && !capabilities.contains(&DeviceCapability::AvatarRendering)
+        {
+            capabilities.push(DeviceCapability::AvatarRendering);
         }
         capabilities
     }
@@ -377,6 +403,7 @@ mod native {
     ) -> Result<PairingSnapshot, PairingIpcError> {
         let input = input.validate()?;
         VOICE_QUALIFIED.store(false, Ordering::Release);
+        AVATAR_QUALIFIED.store(false, Ordering::Release);
         if let Ok(mut pending) = PENDING_VOICE_BOOTSTRAP.lock() {
             *pending = None;
         }
@@ -448,6 +475,7 @@ mod native {
         let store = WindowsDeviceCredentialStore::new(&device_id)?;
         let snapshot = controller.forget(&store)?;
         VOICE_QUALIFIED.store(false, Ordering::Release);
+        AVATAR_QUALIFIED.store(false, Ordering::Release);
         if let Ok(mut pending) = PENDING_VOICE_BOOTSTRAP.lock() {
             *pending = None;
         }
@@ -577,6 +605,29 @@ mod native {
             return Err(VoiceIpcError::InvalidRequest);
         }
         VOICE_QUALIFIED.store(true, Ordering::Release);
+        Ok(())
+    }
+
+    #[tauri::command]
+    fn confirm_avatar_renderer_qualified(
+        input: super::AvatarQualificationInput,
+    ) -> Result<(), super::AvatarIpcError> {
+        let metrics = desktop_avatar::RendererMetrics {
+            startup_ms: input.startup_ms,
+            frame_time_p95_micros: input.frame_time_p95_micros,
+            memory_bytes: input.memory_bytes,
+            dropped_frame_percent: input.dropped_frame_percent,
+            resize_recovered: input.resize_recovered,
+            device_loss_recovered: input.device_loss_recovered,
+            background_suspended: input.background_suspended,
+            interruption_recovered: input.interruption_recovered,
+            long_session_minutes: input.long_session_minutes,
+        };
+        if !desktop_avatar::qualify_builtin_renderer(metrics) {
+            AVATAR_QUALIFIED.store(false, Ordering::Release);
+            return Err(super::AvatarIpcError::QualificationFailed);
+        }
+        AVATAR_QUALIFIED.store(true, Ordering::Release);
         Ok(())
     }
 
@@ -1137,7 +1188,8 @@ mod native {
                 bootstrap_realtime_voice,
                 accept_final_voice_transcript,
                 record_voice_telemetry,
-                confirm_realtime_voice_connected
+                confirm_realtime_voice_connected,
+                confirm_avatar_renderer_qualified
             ])
             .run(tauri::generate_context!())
             .expect("Trigix Desktop runtime failed");
@@ -1244,7 +1296,8 @@ mod tests {
                 "allow-bootstrap-realtime-voice",
                 "allow-accept-final-voice-transcript",
                 "allow-record-voice-telemetry",
-                "allow-confirm-realtime-voice-connected"
+                "allow-confirm-realtime-voice-connected",
+                "allow-confirm-avatar-renderer-qualified"
             ])
         );
         assert!(capability.get("remote").is_none());
@@ -1345,6 +1398,31 @@ mod tests {
         assert!(styles.contains(".voice-status[data-state=\"listening\"]"));
         assert!(styles.contains("prefers-reduced-motion: no-preference"));
         assert!(styles.contains("forced-colors: active"));
+    }
+
+    #[test]
+    fn avatar_renderer_is_local_bounded_accessible_and_authority_free() {
+        let html = include_str!("../../ui/index.html");
+        assert!(html.contains("id=\"avatar-stage\""));
+        assert!(html.contains("id=\"avatar-enabled\""));
+        assert!(html.contains("id=\"avatar-stop\""));
+        assert!(html.contains("aria-live=\"polite\""));
+
+        let script = include_str!("../../ui/app.js");
+        assert!(script.contains("confirm_avatar_renderer_qualified"));
+        assert!(script.contains("trigix.desktop.avatar.preferences.v1"));
+        assert!(script.contains("window.requestAnimationFrame"));
+        assert!(script.contains("performance.memory"));
+        assert!(script.contains("document.hidden"));
+        assert!(!script.contains("avatarTranscript"));
+        assert!(!script.contains("avatarAudio"));
+        assert!(!script.contains("avatarTool"));
+        assert!(!script.contains("avatarUrl"));
+
+        let styles = include_str!("../../ui/styles.css");
+        assert!(styles.contains(".avatar-stage[data-motion=\"reduced\"]"));
+        assert!(styles.contains(".avatar-panel[data-high-contrast=\"true\"]"));
+        assert!(styles.contains("prefers-reduced-motion"));
     }
 
     #[test]

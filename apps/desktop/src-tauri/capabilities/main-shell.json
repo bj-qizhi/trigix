@@ -14,6 +14,7 @@
     "allow-bootstrap-realtime-voice",
     "allow-accept-final-voice-transcript",
     "allow-record-voice-telemetry",
-    "allow-confirm-realtime-voice-connected"
+    "allow-confirm-realtime-voice-connected",
+    "allow-confirm-avatar-renderer-qualified"
   ]
 }

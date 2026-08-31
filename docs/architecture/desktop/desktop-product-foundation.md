@@ -19,6 +19,7 @@ crates/desktop-identity/         Ed25519 identity and operating-system Credentia
 crates/desktop-host/             tested presentation/host IPC boundary
 crates/desktop-automation/       isolated IPC plus Windows target inspection adapter
 crates/desktop-voice/            provider-neutral VAD, interruption, and reconnect coordinator
+crates/desktop-avatar/           presentation-only avatar state, package policy, qualification
 apps/desktop/                    Tauri application shell and local presentation assets
 services/desktop-automation-host/ isolated automation child process
 services/desktop-automation-fixture/ deterministic native Windows fixture
@@ -209,7 +210,13 @@ Production realtime voice uses a Device-authenticated Platform bootstrap and dir
 
 Operators enable the adapter with `OPENAI_API_KEY`. Optional bounded settings are `VOICE_REALTIME_MODEL` (default `gpt-realtime-2.1`), `VOICE_TRANSCRIPTION_MODEL` (default `gpt-4o-mini-transcribe`), and `VOICE_REALTIME_VOICE` (default `marin`). The Platform requires trusted ingress to overwrite and forward the HTTPS scheme. The Desktop CSP permits only `https://api.openai.com` for realtime SDP; changing providers therefore requires an explicit code and architecture review, not a runtime URL override. Live credentials and recorded audio are prohibited from fixtures and source control.
 
-Avatar rendering consumes bounded presentation events such as speaking state, phoneme timing, expression, and interruption. It cannot authorize or execute desktop actions. Licensed models, voices, and customer media remain outside the public source repository.
+Avatar rendering consumes a separate versioned and closed presentation contract for idle, listening, thinking, speaking, interruption, error, stop, bounded visemes, and bounded emotions. Unknown fields fail closed, sequence and time are monotonic, and the contract has no transcript, audio, Tool, Approval, Credential, URL, script, or Desktop action field. The renderer cannot authorize or execute desktop actions.
+
+The built-in avatar is code-native and requires no public media asset. It exposes local controls for enablement, voice playback, full/reduced/no motion, captions, high contrast, and immediate stop. Remote WebRTC audio is reduced to a transient bounded level for lip motion; sample buffers are neither retained nor sent through IPC. Stop, hiding, teardown, interruption, device loss, and package rejection return to a content-free fallback state and release Web Audio resources.
+
+Optional licensed packages may enter only through a controlled HTTPS-origin policy. The package boundary validates identifier, version, byte size, SHA-256 digest, and a deployment-owned signature verifier before activation. Failure remains isolated to the package and selects the built-in fallback. Licensed models, recorded voices, customer likenesses, generated media, private download URLs, and signing material remain outside the public source repository.
+
+The Device advertises `avatar_rendering` only after the local code path reports bounded startup, p95 frame time, memory and dropped-frame budgets and passes resize, device-loss, background, interruption, and 60-minute deterministic qualification gates. Pairing restart or removal clears the qualification. See [ADR 0012](../../adr/0012-bounded-avatar-presentation.md).
 
 ## First Vertical Slice
 

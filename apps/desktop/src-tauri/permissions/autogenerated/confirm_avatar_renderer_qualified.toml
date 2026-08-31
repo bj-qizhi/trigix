@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-confirm-avatar-renderer-qualified"
+description = "Enables the confirm_avatar_renderer_qualified command without any pre-configured scope."
+commands.allow = ["confirm_avatar_renderer_qualified"]
+
+[[permission]]
+identifier = "deny-confirm-avatar-renderer-qualified"
+description = "Denies the confirm_avatar_renderer_qualified command without any pre-configured scope."
+commands.deny = ["confirm_avatar_renderer_qualified"]

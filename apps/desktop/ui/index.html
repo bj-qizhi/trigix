@@ -115,6 +115,38 @@
         </div>
       </section>
 
+      <section class="avatar-panel" aria-labelledby="avatar-title" data-high-contrast="false">
+        <div class="avatar-copy">
+          <p class="eyebrow" data-i18n="avatar_presentation">AVATAR PRESENTATION</p>
+          <h2 id="avatar-title" data-i18n="local_avatar">Local virtual presence</h2>
+          <p id="avatar-description" data-i18n="avatar_description">The built-in renderer shows conversation state only. It cannot approve tools, access credentials, or operate this computer.</p>
+          <fieldset class="avatar-controls" aria-describedby="avatar-description">
+            <legend class="visually-hidden" data-i18n="avatar_controls">Avatar controls</legend>
+            <label><input id="avatar-enabled" type="checkbox" checked /> <span data-i18n="show_avatar">Show avatar</span></label>
+            <label><input id="avatar-voice-playback" type="checkbox" checked /> <span data-i18n="voice_playback">Voice playback</span></label>
+            <label><input id="avatar-captions" type="checkbox" checked /> <span data-i18n="captions">Captions</span></label>
+            <label><input id="avatar-high-contrast" type="checkbox" /> <span data-i18n="high_contrast">High contrast</span></label>
+            <label for="avatar-motion"><span data-i18n="motion">Motion</span>
+              <select id="avatar-motion">
+                <option value="full" data-i18n="motion_full">Full</option>
+                <option value="reduced" data-i18n="motion_reduced">Reduced</option>
+                <option value="none" data-i18n="motion_none">None</option>
+              </select>
+            </label>
+          </fieldset>
+          <button id="avatar-stop" class="secondary" type="button" data-i18n="stop_avatar">Stop avatar</button>
+        </div>
+        <figure id="avatar-stage" class="avatar-stage" data-state="idle" data-motion="full" aria-labelledby="avatar-caption">
+          <div class="avatar-orbit" aria-hidden="true"></div>
+          <div class="avatar-face" aria-hidden="true">
+            <span class="avatar-eye avatar-eye-left"></span>
+            <span class="avatar-eye avatar-eye-right"></span>
+            <span class="avatar-mouth"></span>
+          </div>
+          <figcaption id="avatar-caption" role="status" aria-live="polite" aria-atomic="true" data-i18n="state_avatar_idle">Avatar idle</figcaption>
+        </figure>
+      </section>
+
       <section class="control-panel" aria-labelledby="control-title">
         <div>
           <p class="eyebrow" data-i18n="safety_control">SAFETY CONTROL</p>

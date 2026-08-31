@@ -1,0 +1,9 @@
+[package]
+name = "desktop-avatar"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+desktop-protocol = { path = "../desktop-protocol" }
+sha2 = "0.10"
+url = "2"
