@@ -46,6 +46,11 @@ const messages = {
     microphone_hidden_stop: "Microphone access stopped because the window was hidden.",
     microphone_permission_denied: "Microphone permission was denied. Use Start to request access again.",
     microphone_unavailable: "No usable microphone is available.",
+    input_device: "Input device",
+    device_permission_required: "Start the microphone to list devices",
+    voice_activity: "Voice activity",
+    input_switched: "Microphone input changed.",
+    input_switch_error: "The selected microphone could not be activated.",
     safety_control: "SAFETY CONTROL",
     immediate_stop: "Immediate stop",
     stop_description: "Requests cancellation through the local runtime. It cannot approve or start an action.",
@@ -133,6 +138,11 @@ const messages = {
     microphone_hidden_stop: "窗口已隐藏，麦克风访问已停止。",
     microphone_permission_denied: "麦克风权限被拒绝，可再次选择“启动”重新申请。",
     microphone_unavailable: "没有可用的麦克风。",
+    input_device: "输入设备",
+    device_permission_required: "启动麦克风后可列出设备",
+    voice_activity: "语音活动",
+    input_switched: "麦克风输入已切换。",
+    input_switch_error: "无法启用所选麦克风。",
     safety_control: "安全控制",
     immediate_stop: "立即停止",
     stop_description: "通过本机运行时请求取消；此操作不能批准或启动自动化。",
@@ -205,6 +215,8 @@ const elements = {
   voiceStatusLabel: document.querySelector("#voice-status-label"),
   startVoice: document.querySelector("#start-voice"),
   stopVoice: document.querySelector("#stop-voice"),
+  voiceDevice: document.querySelector("#voice-device"),
+  voiceActivity: document.querySelector("#voice-activity"),
   localeEn: document.querySelector("#locale-en"),
   localeZh: document.querySelector("#locale-zh"),
 };
@@ -226,6 +238,11 @@ let voiceStream = null;
 let voiceState = "idle";
 let voiceRequestGeneration = 0;
 let voiceRequestPending = false;
+let voiceAudioContext = null;
+let voiceSource = null;
+let voiceAnalyser = null;
+let voiceActivityFrame = null;
+let voiceActivityBuffer = null;
 
 function translate(key, values = {}) {
   const template = messages[locale][key] ?? messages.en[key] ?? key;
@@ -286,6 +303,9 @@ function applyLocale(nextLocale, persist = true) {
   }
   if (shellSnapshot) renderShell(shellSnapshot);
   if (pairingSnapshot) renderPairing(pairingSnapshot, false);
+  if (!voiceStream) {
+    elements.voiceDevice.replaceChildren(new Option(translate("device_permission_required"), ""));
+  }
   renderVoiceState(voiceState);
   setNotice(noticeState.key, noticeState.values);
   if (errorState) showError(errorState.key, errorState.retry, false);
@@ -365,9 +385,94 @@ function stopVoiceSession(state = "stopped", noticeKey = "microphone_stopped") {
   voiceRequestPending = false;
   const stream = voiceStream;
   voiceStream = null;
+  stopVoiceAnalysis();
   if (stream) stream.getTracks().forEach((track) => track.stop());
+  elements.voiceDevice.disabled = true;
+  elements.voiceDevice.replaceChildren(new Option(translate("device_permission_required"), ""));
   renderVoiceState(state);
   if (noticeKey) setNotice(noticeKey);
+}
+
+function stopVoiceAnalysis() {
+  if (voiceActivityFrame !== null) window.cancelAnimationFrame(voiceActivityFrame);
+  voiceActivityFrame = null;
+  if (voiceSource) voiceSource.disconnect();
+  if (voiceAnalyser) voiceAnalyser.disconnect();
+  if (voiceAudioContext) void voiceAudioContext.close();
+  voiceSource = null;
+  voiceAnalyser = null;
+  voiceAudioContext = null;
+  voiceActivityBuffer = null;
+  elements.voiceActivity.value = 0;
+  elements.voiceActivity.textContent = "0%";
+}
+
+function startVoiceAnalysis(stream) {
+  stopVoiceAnalysis();
+  const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+  if (!AudioContextClass) return;
+  voiceAudioContext = new AudioContextClass();
+  voiceSource = voiceAudioContext.createMediaStreamSource(stream);
+  voiceAnalyser = voiceAudioContext.createAnalyser();
+  voiceAnalyser.fftSize = 512;
+  voiceAnalyser.smoothingTimeConstant = 0.35;
+  voiceActivityBuffer = new Uint8Array(voiceAnalyser.fftSize);
+  voiceSource.connect(voiceAnalyser);
+  const updateActivity = () => {
+    if (!voiceAnalyser || !voiceActivityBuffer || voiceStream !== stream) return;
+    voiceAnalyser.getByteTimeDomainData(voiceActivityBuffer);
+    let energy = 0;
+    for (const sample of voiceActivityBuffer) {
+      const centered = sample - 128;
+      energy += centered * centered;
+    }
+    const rms = Math.sqrt(energy / voiceActivityBuffer.length);
+    const level = Math.min(100, Math.round(rms * 4));
+    elements.voiceActivity.value = level;
+    elements.voiceActivity.textContent = `${level}%`;
+    voiceActivityFrame = window.requestAnimationFrame(updateActivity);
+  };
+  voiceActivityFrame = window.requestAnimationFrame(updateActivity);
+}
+
+function watchVoiceInput(stream) {
+  stream.getAudioTracks().forEach((track) => {
+    track.addEventListener("ended", () => {
+      if (voiceStream === stream) stopVoiceSession("unavailable", "microphone_unavailable");
+    }, { once: true });
+  });
+}
+
+async function refreshVoiceDevices(stream) {
+  const devices = await navigator.mediaDevices.enumerateDevices();
+  if (voiceStream !== stream) return;
+  const inputs = devices.filter((device) => device.kind === "audioinput");
+  const selectedId = stream.getAudioTracks()[0]?.getSettings().deviceId ?? "";
+  const options = inputs.map((device, index) => new Option(
+    device.label || `${translate("input_device")} ${index + 1}`,
+    device.deviceId,
+    false,
+    device.deviceId === selectedId,
+  ));
+  elements.voiceDevice.replaceChildren(...options);
+  elements.voiceDevice.disabled = inputs.length < 2;
+}
+
+async function activateVoiceStream(stream) {
+  voiceStream = stream;
+  voiceRequestPending = false;
+  watchVoiceInput(stream);
+  try {
+    startVoiceAnalysis(stream);
+  } catch (_error) {
+    stopVoiceAnalysis();
+  }
+  try {
+    await refreshVoiceDevices(stream);
+  } catch (_error) {
+    elements.voiceDevice.disabled = true;
+  }
+  renderVoiceState("listening");
 }
 
 function setOperation(name, busy) {
@@ -505,14 +610,7 @@ elements.startVoice.addEventListener("click", async () => {
       stream.getTracks().forEach((track) => track.stop());
       throw new Error("microphone unavailable");
     }
-    voiceStream = stream;
-    voiceRequestPending = false;
-    audioTracks.forEach((track) => {
-      track.addEventListener("ended", () => {
-        if (voiceStream === stream) stopVoiceSession("unavailable", "microphone_unavailable");
-      }, { once: true });
-    });
-    renderVoiceState("listening");
+    await activateVoiceStream(stream);
     setNotice("microphone_active");
   } catch (error) {
     if (requestGeneration !== voiceRequestGeneration) return;
@@ -524,6 +622,45 @@ elements.startVoice.addEventListener("click", async () => {
 });
 
 elements.stopVoice.addEventListener("click", () => stopVoiceSession());
+
+elements.voiceDevice.addEventListener("change", async () => {
+  const currentStream = voiceStream;
+  const deviceId = elements.voiceDevice.value;
+  if (!currentStream || !deviceId || document.hidden) return;
+  elements.voiceDevice.disabled = true;
+  try {
+    const replacement = await navigator.mediaDevices.getUserMedia({
+      audio: {
+        deviceId: { exact: deviceId },
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: true,
+      },
+      video: false,
+    });
+    if (voiceStream !== currentStream || document.hidden) {
+      replacement.getTracks().forEach((track) => track.stop());
+      return;
+    }
+    if (!replacement.getAudioTracks().some((track) => track.readyState === "live")) {
+      replacement.getTracks().forEach((track) => track.stop());
+      throw new Error("microphone unavailable");
+    }
+    await activateVoiceStream(replacement);
+    currentStream.getTracks().forEach((track) => track.stop());
+    setNotice("input_switched");
+  } catch (_error) {
+    if (voiceStream === currentStream) {
+      elements.voiceDevice.disabled = false;
+      setNotice("input_switch_error");
+    }
+  }
+});
+
+navigator.mediaDevices?.addEventListener("devicechange", () => {
+  const stream = voiceStream;
+  if (stream) void refreshVoiceDevices(stream).catch(() => {});
+});
 
 elements.retry.addEventListener("click", async () => {
   const action = retryAction;

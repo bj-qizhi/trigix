@@ -1,0 +1,7 @@
+[package]
+name = "desktop-voice"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+desktop-protocol = { path = "../desktop-protocol" }
