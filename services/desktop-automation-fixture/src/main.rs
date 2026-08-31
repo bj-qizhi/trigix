@@ -170,6 +170,9 @@ mod tests {
         assert!(script.contains("Get-AuthenticodeSignature"));
         assert!(script.contains("X509ChainTrustMode]::CustomRootTrust"));
         assert!(script.contains("isolated_chain_trusted = $true"));
+        assert!(script.contains("tamper_check_rejected = $true"));
+        assert!(script.contains("SignatureStatus]::UnknownError"));
+        assert!(script.contains("accepted a tampered executable"));
         assert!(script.contains("signature_hash_algorithm = \"sha256\""));
         assert!(script.contains("Remove-QualificationCertificate"));
         assert!(

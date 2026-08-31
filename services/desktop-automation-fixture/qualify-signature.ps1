@@ -108,7 +108,8 @@ function Assert-ValidFixtureSignature([string]$path) {
     $signature = Get-AuthenticodeSignature -LiteralPath $path
     if ($signature.Status -notin @(
         [System.Management.Automation.SignatureStatus]::Valid,
-        [System.Management.Automation.SignatureStatus]::NotTrusted
+        [System.Management.Automation.SignatureStatus]::NotTrusted,
+        [System.Management.Automation.SignatureStatus]::UnknownError
     )) {
         throw "Fixture Authenticode integrity check failed: $($signature.Status)."
     }
@@ -160,13 +161,36 @@ switch ($Action) {
             -LiteralPath $fixture `
             -Certificate $certificate `
             -HashAlgorithm SHA256
-        if ($signature.Status -notin @(
-            [System.Management.Automation.SignatureStatus]::Valid,
-            [System.Management.Automation.SignatureStatus]::NotTrusted
-        )) {
-            throw "Fixture signing failed: $($signature.Status)."
+        if ($null -eq $signature.SignerCertificate -or
+            $signature.SignerCertificate.Thumbprint -ne $certificate.Thumbprint) {
+            throw "Fixture signing did not produce the expected signer."
         }
         $verified = Assert-ValidFixtureSignature $fixture
+
+        $tamperedFixture = Join-Path $StateDirectory "tampered-fixture.exe"
+        Copy-Item -LiteralPath $fixture -Destination $tamperedFixture
+        $tamperedStream = [System.IO.File]::OpenWrite($tamperedFixture)
+        try {
+            $tamperedStream.Seek(0, [System.IO.SeekOrigin]::End) | Out-Null
+            $tamperedStream.WriteByte(0)
+        }
+        finally {
+            $tamperedStream.Dispose()
+        }
+        $tamperRejected = $false
+        try {
+            Assert-ValidFixtureSignature $tamperedFixture | Out-Null
+        }
+        catch {
+            $tamperRejected = $true
+        }
+        finally {
+            Remove-Item -LiteralPath $tamperedFixture -Force
+        }
+        if (-not $tamperRejected) {
+            throw "Fixture signature verification accepted a tampered executable."
+        }
+
         $digest = (Get-FileHash -LiteralPath $fixture -Algorithm SHA256).Hash.ToUpperInvariant()
         $evidence = [ordered]@{
             schema_version = 1
@@ -175,6 +199,7 @@ switch ($Action) {
             certificate_thumbprint = $verified.SignerCertificate.Thumbprint.ToUpperInvariant()
             signature_status = $verified.Status.ToString()
             isolated_chain_trusted = $true
+            tamper_check_rejected = $true
             signature_hash_algorithm = "sha256"
             fixture_sha256 = $digest
             operating_system = [System.Environment]::OSVersion.VersionString
@@ -201,6 +226,7 @@ switch ($Action) {
             $evidence.certificate_thumbprint -ne $thumbprint -or
             $evidence.signature_status -ne $signature.Status.ToString() -or
             $evidence.isolated_chain_trusted -ne $true -or
+            $evidence.tamper_check_rejected -ne $true -or
             $evidence.signature_hash_algorithm -ne "sha256") {
             throw "Qualification evidence is invalid."
         }
