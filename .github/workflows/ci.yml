@@ -147,7 +147,7 @@ jobs:
 
       - name: Upload fixture signature evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: fixture-signature-${{ matrix.os }}
           path: ${{ runner.temp }}/trigix-fixture-signing/qualification.json
@@ -193,7 +193,7 @@ jobs:
         run: npm run test:coverage
 
       - name: Upload Web coverage evidence
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: web-coverage
           path: |
@@ -320,7 +320,7 @@ jobs:
 
       - name: Upload dependency and release-input evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: release-quality-evidence
           path: evidence/
