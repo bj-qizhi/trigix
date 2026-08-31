@@ -47,6 +47,8 @@ The recovery journal lives in the application's per-user local data directory so
 
 Enterprise release eligibility is evaluated by the installer-independent `desktop-release` boundary. It validates signed, expiring, replay-protected metadata, controlled online origins or explicitly enabled offline bundles, channel and version policy, protocol compatibility, rollout, maintenance window, SBOM, provenance, and artifact digest before returning a fixed decision. It has no download or process API. A protected installer component must independently revalidate the decision, manifest, Authenticode chain, artifact, and current policy immediately before mutation. Operational requirements are in [Enterprise Desktop Release Operations](../../operations/desktop-enterprise-release.md).
 
+Production signing has an earlier fail-closed readiness gate. A closed record binds the exact installer digest to supported-client smoke, Authenticode, malware, dependency, penetration-test, and approval evidence digests with bounded validity. Critical or high findings, stale evidence, a failed control, an installer mismatch, or an incomplete record blocks readiness. The public verifier performs no I/O and cannot sign or publish; original evidence stays in the protected release systems. See [ADR 0015](../../adr/0015-desktop-release-readiness-evidence.md).
+
 ## Failure behavior
 
 - Poisoned or unavailable state returns a typed error and disables the UI stop control.

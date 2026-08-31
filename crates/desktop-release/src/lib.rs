@@ -9,6 +9,9 @@ pub const MAX_RELEASE_ARTIFACT_BYTES: u64 = 1024 * 1024 * 1024;
 pub const MAX_EVIDENCE_BYTES: u64 = 32 * 1024 * 1024;
 pub const MAX_MANIFEST_LIFETIME_SECONDS: u64 = 31 * 24 * 60 * 60;
 pub const MAX_HEALTH_AGE_SECONDS: u64 = 24 * 60 * 60;
+pub const RELEASE_READINESS_SCHEMA_VERSION: u16 = 1;
+pub const MAX_READINESS_LIFETIME_SECONDS: u64 = 7 * 24 * 60 * 60;
+pub const MAX_EXTERNAL_EVIDENCE_AGE_SECONDS: u64 = 366 * 24 * 60 * 60;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -471,6 +474,160 @@ pub fn classify_fleet_device(
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ReadinessOutcome {
+    Passed,
+    Failed,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ReleaseControlEvidence {
+    pub subject_artifact_sha256: String,
+    pub evidence_sha256: String,
+    pub completed_at_unix_seconds: u64,
+    pub valid_until_unix_seconds: u64,
+    pub outcome: ReadinessOutcome,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PenetrationTestDisposition {
+    pub control: ReleaseControlEvidence,
+    pub unresolved_critical: u16,
+    pub unresolved_high: u16,
+    pub unresolved_medium: u16,
+    pub medium_risk_acceptance_sha256: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ReleaseReadinessRecord {
+    pub schema_version: u16,
+    pub release_id: String,
+    pub version: String,
+    pub source_revision: String,
+    pub artifact_sha256: String,
+    pub sbom_sha256: String,
+    pub provenance_sha256: String,
+    pub attested_at_unix_seconds: u64,
+    pub expires_at_unix_seconds: u64,
+    pub windows_client_smoke: ReleaseControlEvidence,
+    pub authenticode_verification: ReleaseControlEvidence,
+    pub malware_scan: ReleaseControlEvidence,
+    pub dependency_review: ReleaseControlEvidence,
+    pub penetration_test: PenetrationTestDisposition,
+    pub release_approval: ReleaseControlEvidence,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ReadinessRejection {
+    InvalidRecord,
+    ManifestMismatch,
+    Expired,
+    ArtifactMismatch,
+    ControlFailed,
+    EvidenceExpired,
+    UnresolvedSecurityFindings,
+}
+
+pub fn verify_release_readiness(
+    record: &ReleaseReadinessRecord,
+    manifest: &ReleaseManifest,
+    now_unix_seconds: u64,
+) -> Result<(), ReadinessRejection> {
+    if record.schema_version != RELEASE_READINESS_SCHEMA_VERSION
+        || !valid_identifier(&record.release_id, 128)
+        || Version::parse(&record.version).is_err()
+        || !valid_source_revision(&record.source_revision)
+        || !valid_digest(&record.artifact_sha256)
+        || !valid_digest(&record.sbom_sha256)
+        || !valid_digest(&record.provenance_sha256)
+        || record.attested_at_unix_seconds > now_unix_seconds
+        || record.expires_at_unix_seconds <= record.attested_at_unix_seconds
+        || record.expires_at_unix_seconds - record.attested_at_unix_seconds
+            > MAX_READINESS_LIFETIME_SECONDS
+    {
+        return Err(ReadinessRejection::InvalidRecord);
+    }
+    if now_unix_seconds >= record.expires_at_unix_seconds {
+        return Err(ReadinessRejection::Expired);
+    }
+    if record.release_id != manifest.release_id
+        || record.version != manifest.version
+        || !record
+            .artifact_sha256
+            .eq_ignore_ascii_case(&manifest.artifact.sha256_hex)
+        || !record
+            .sbom_sha256
+            .eq_ignore_ascii_case(&manifest.sbom.sha256_hex)
+        || !record
+            .provenance_sha256
+            .eq_ignore_ascii_case(&manifest.provenance.sha256_hex)
+    {
+        return Err(ReadinessRejection::ManifestMismatch);
+    }
+    let controls = [
+        &record.windows_client_smoke,
+        &record.authenticode_verification,
+        &record.malware_scan,
+        &record.dependency_review,
+        &record.penetration_test.control,
+        &record.release_approval,
+    ];
+    for control in controls {
+        verify_readiness_control(record, control)?;
+    }
+    if record.penetration_test.unresolved_critical != 0
+        || record.penetration_test.unresolved_high != 0
+        || (record.penetration_test.unresolved_medium != 0
+            && record
+                .penetration_test
+                .medium_risk_acceptance_sha256
+                .as_ref()
+                .is_none_or(|digest| !valid_digest(digest)))
+        || (record.penetration_test.unresolved_medium == 0
+            && record
+                .penetration_test
+                .medium_risk_acceptance_sha256
+                .is_some())
+    {
+        return Err(ReadinessRejection::UnresolvedSecurityFindings);
+    }
+    Ok(())
+}
+
+fn verify_readiness_control(
+    record: &ReleaseReadinessRecord,
+    control: &ReleaseControlEvidence,
+) -> Result<(), ReadinessRejection> {
+    if !control
+        .subject_artifact_sha256
+        .eq_ignore_ascii_case(&record.artifact_sha256)
+    {
+        return Err(ReadinessRejection::ArtifactMismatch);
+    }
+    if control.outcome != ReadinessOutcome::Passed {
+        return Err(ReadinessRejection::ControlFailed);
+    }
+    if !valid_digest(&control.evidence_sha256)
+        || control.completed_at_unix_seconds > record.attested_at_unix_seconds
+        || record.attested_at_unix_seconds - control.completed_at_unix_seconds
+            > MAX_EXTERNAL_EVIDENCE_AGE_SECONDS
+    {
+        return Err(ReadinessRejection::InvalidRecord);
+    }
+    if control.valid_until_unix_seconds < record.expires_at_unix_seconds {
+        return Err(ReadinessRejection::EvidenceExpired);
+    }
+    Ok(())
+}
+
+fn valid_source_revision(value: &str) -> bool {
+    matches!(value.len(), 40 | 64) && value.bytes().all(|byte| byte.is_ascii_hexdigit())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -803,6 +960,120 @@ mod tests {
         assert_eq!(
             classify_fleet_device(&device, "1.5.1", 10_000 + MAX_HEALTH_AGE_SECONDS + 1),
             FleetCompliance::Stale
+        );
+    }
+
+    fn readiness_control() -> ReleaseControlEvidence {
+        ReleaseControlEvidence {
+            subject_artifact_sha256: "a".repeat(64),
+            evidence_sha256: "b".repeat(64),
+            completed_at_unix_seconds: 9_000,
+            valid_until_unix_seconds: 20_000,
+            outcome: ReadinessOutcome::Passed,
+        }
+    }
+
+    fn readiness() -> ReleaseReadinessRecord {
+        ReleaseReadinessRecord {
+            schema_version: RELEASE_READINESS_SCHEMA_VERSION,
+            release_id: "stable-1.6.0-1".to_owned(),
+            version: "1.6.0".to_owned(),
+            source_revision: "e".repeat(40),
+            artifact_sha256: "a".repeat(64),
+            sbom_sha256: "c".repeat(64),
+            provenance_sha256: "d".repeat(64),
+            attested_at_unix_seconds: 10_000,
+            expires_at_unix_seconds: 13_600,
+            windows_client_smoke: readiness_control(),
+            authenticode_verification: readiness_control(),
+            malware_scan: readiness_control(),
+            dependency_review: readiness_control(),
+            penetration_test: PenetrationTestDisposition {
+                control: readiness_control(),
+                unresolved_critical: 0,
+                unresolved_high: 0,
+                unresolved_medium: 0,
+                medium_risk_acceptance_sha256: None,
+            },
+            release_approval: readiness_control(),
+        }
+    }
+
+    fn readiness_manifest() -> ReleaseManifest {
+        let mut value = manifest();
+        value.release_id = "stable-1.6.0-1".to_owned();
+        value.version = "1.6.0".to_owned();
+        value.artifact.sha256_hex = "a".repeat(64);
+        value.sbom.sha256_hex = "c".repeat(64);
+        value.provenance.sha256_hex = "d".repeat(64);
+        value
+    }
+
+    #[test]
+    fn complete_release_readiness_record_is_deterministic_and_closed() {
+        assert_eq!(
+            verify_release_readiness(&readiness(), &readiness_manifest(), 10_001),
+            Ok(())
+        );
+        let mut unknown = serde_json::to_value(readiness()).unwrap();
+        unknown
+            .as_object_mut()
+            .unwrap()
+            .insert("signing_key".to_owned(), serde_json::json!("forbidden"));
+        assert!(serde_json::from_value::<ReleaseReadinessRecord>(unknown).is_err());
+        let mut missing = serde_json::to_value(readiness()).unwrap();
+        missing.as_object_mut().unwrap().remove("penetration_test");
+        assert!(serde_json::from_value::<ReleaseReadinessRecord>(missing).is_err());
+    }
+
+    #[test]
+    fn readiness_rejects_tamper_failure_and_expiry() {
+        let mut mismatched = readiness();
+        mismatched.release_id = "stable-1.6.0-other".to_owned();
+        assert_eq!(
+            verify_release_readiness(&mismatched, &readiness_manifest(), 10_001),
+            Err(ReadinessRejection::ManifestMismatch)
+        );
+        let mut tampered = readiness();
+        tampered.malware_scan.subject_artifact_sha256 = "f".repeat(64);
+        assert_eq!(
+            verify_release_readiness(&tampered, &readiness_manifest(), 10_001),
+            Err(ReadinessRejection::ArtifactMismatch)
+        );
+        let mut failed = readiness();
+        failed.authenticode_verification.outcome = ReadinessOutcome::Failed;
+        assert_eq!(
+            verify_release_readiness(&failed, &readiness_manifest(), 10_001),
+            Err(ReadinessRejection::ControlFailed)
+        );
+        assert_eq!(
+            verify_release_readiness(&readiness(), &readiness_manifest(), 13_600),
+            Err(ReadinessRejection::Expired)
+        );
+    }
+
+    #[test]
+    fn readiness_rejects_stale_evidence_and_unresolved_findings() {
+        let mut stale = readiness();
+        stale.dependency_review.valid_until_unix_seconds = 13_599;
+        assert_eq!(
+            verify_release_readiness(&stale, &readiness_manifest(), 10_001),
+            Err(ReadinessRejection::EvidenceExpired)
+        );
+        let mut critical = readiness();
+        critical.penetration_test.unresolved_critical = 1;
+        assert_eq!(
+            verify_release_readiness(&critical, &readiness_manifest(), 10_001),
+            Err(ReadinessRejection::UnresolvedSecurityFindings)
+        );
+        let mut accepted_medium = readiness();
+        accepted_medium.penetration_test.unresolved_medium = 2;
+        accepted_medium
+            .penetration_test
+            .medium_risk_acceptance_sha256 = Some("9".repeat(64));
+        assert_eq!(
+            verify_release_readiness(&accepted_medium, &readiness_manifest(), 10_001),
+            Ok(())
         );
     }
 

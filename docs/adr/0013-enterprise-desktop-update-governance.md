@@ -18,6 +18,8 @@ Central policy selects disabled, manual, or automatic mode; one release channel;
 
 A valid decision is only `current`, `available_for_manual_install`, `install_authorized`, or a fixed rejection/deferral reason. It contains no command line, Credential, private URL, arbitrary error, or installer handle. The crate has no filesystem, process, HTTP, Tauri, Device identity, Workflow, Approval, or automation-host dependency. A separate protected release component must revalidate the manifest, artifact digest, Authenticode chain, and policy immediately before installation.
 
+Before production signing or promotion, the same crate verifies a separate content-free release-readiness record binding the installer, source revision, SBOM, provenance, supported-client smoke, Authenticode, malware scan, dependency review, penetration-test disposition, and accountable approval. This verifier is deterministic and authority-free; the protected release environment remains responsible for retrieving original evidence and verifying its digest. See [ADR 0015](0015-desktop-release-readiness-evidence.md).
+
 Rollout assignment hashes Device and release identifiers into a deterministic bucket; no Credential or customer data enters the manifest. Security deadlines may override an automatic-mode maintenance deferral, but cannot override disabled/manual mode, channel, pin, signature, expiry, replay, origin, protocol, or rollback policy.
 
 Fleet compliance uses only bounded Device inventory metadata: identifier, Agent semantic version, lifecycle, and last-seen time. It distinguishes compliant, update-required, ahead-of-policy, stale, suspended, revoked, and invalid inventory. It cannot change lifecycle or dispatch a Desktop Command.
