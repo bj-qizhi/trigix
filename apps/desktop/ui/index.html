@@ -43,6 +43,15 @@
         </div>
       </section>
 
+      <section id="permission-panel" class="control-panel" aria-labelledby="permission-title" hidden>
+        <div>
+          <p class="eyebrow" data-i18n="automation_permission">AUTOMATION PERMISSION</p>
+          <h2 id="permission-title"><span data-i18n="automation_permission">Automation permission</span>: <span id="automation-permission" data-i18n="checking">Checking</span></h2>
+          <p id="permission-help" data-i18n="permission_help">macOS Accessibility permission is required for local automation and can be revoked in System Settings.</p>
+        </div>
+        <button id="request-permission" type="button" aria-describedby="permission-help" data-i18n="grant_permission">Open macOS permission settings</button>
+      </section>
+
       <section class="pairing-panel" aria-labelledby="pairing-title">
         <div class="pairing-heading">
           <div>
@@ -61,7 +70,7 @@
           </label>
           <label>
             <span data-i18n="device_name">Device name</span>
-            <input id="device-name" name="device-name" type="text" required maxlength="128" value="My Windows PC" autocomplete="off" />
+            <input id="device-name" name="device-name" type="text" required maxlength="128" value="My computer" autocomplete="off" />
           </label>
           <button id="start-pairing" type="submit" data-i18n="create_pairing_code">Create pairing code</button>
         </form>
@@ -79,7 +88,7 @@
           <div>
             <span class="label" data-i18n="local_device_id">LOCAL DEVICE ID</span>
             <strong id="paired-device">—</strong>
-            <p data-i18n="credential_protected">The Device credential is protected by Windows Credential Manager.</p>
+            <p data-i18n="credential_protected">The Device credential is protected by the operating system credential vault.</p>
           </div>
           <button id="forget-pairing" class="secondary" type="button" data-i18n="forget_pairing">Forget local pairing</button>
         </div>
