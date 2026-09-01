@@ -18,7 +18,7 @@ def test_html_to_text_decodes_entities():
 
 def test_html_to_text_keep_links():
     out = html_to_text('<a href="https://x.com">site</a>', keep_links=True)
-    assert "site" in out and "https://x.com" in out
+    assert out == "site (https://x.com)"
 
 
 def test_redact_pii_masks_each_category():

@@ -10,18 +10,142 @@ import { fileURLToPath } from 'node:url'
 import { defineNode, serve } from '../index.js'
 
 // ── html → text ────────────────────────────────────────────────────────────
+const BLOCK_TAGS = new Set(['p', 'br', 'div', 'li', 'tr', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6'])
+const ENTITIES = {
+  amp: '&',
+  lt: '<',
+  gt: '>',
+  quot: '"',
+  '#39': "'",
+  nbsp: ' ',
+}
+
+function isSpace(char) {
+  return char === ' ' || char === '\t' || char === '\r' || char === '\n'
+}
+
+function isNameChar(char) {
+  if (!char) return false
+  const code = char.charCodeAt(0)
+  return (code >= 48 && code <= 57)
+    || (code >= 65 && code <= 90)
+    || (code >= 97 && code <= 122)
+    || char === '-' || char === ':' || char === '_'
+}
+
+function parseTag(raw) {
+  let cursor = 0
+  while (isSpace(raw[cursor])) cursor++
+  const closing = raw[cursor] === '/'
+  if (closing) cursor++
+  while (isSpace(raw[cursor])) cursor++
+  const nameStart = cursor
+  while (isNameChar(raw[cursor])) cursor++
+  if (cursor === nameStart) return null
+  return {
+    name: raw.slice(nameStart, cursor).toLowerCase(),
+    closing,
+    attributesStart: cursor,
+    selfClosing: raw.trimEnd().endsWith('/'),
+  }
+}
+
+function readAttribute(raw, start, wantedName) {
+  let cursor = start
+  while (cursor < raw.length) {
+    while (isSpace(raw[cursor]) || raw[cursor] === '/') cursor++
+    const nameStart = cursor
+    while (isNameChar(raw[cursor])) cursor++
+    if (cursor === nameStart) {
+      cursor++
+      continue
+    }
+    const name = raw.slice(nameStart, cursor).toLowerCase()
+    while (isSpace(raw[cursor])) cursor++
+    if (raw[cursor] !== '=') continue
+    cursor++
+    while (isSpace(raw[cursor])) cursor++
+    const quote = raw[cursor]
+    let value
+    if (quote === '"' || quote === "'") {
+      cursor++
+      const valueStart = cursor
+      while (cursor < raw.length && raw[cursor] !== quote) cursor++
+      value = raw.slice(valueStart, cursor)
+      if (cursor < raw.length) cursor++
+    } else {
+      const valueStart = cursor
+      while (cursor < raw.length && !isSpace(raw[cursor])) cursor++
+      value = raw.slice(valueStart, cursor)
+    }
+    if (name === wantedName) return value
+  }
+  return null
+}
+
+function trustedLink(value) {
+  if (!value) return null
+  try {
+    const parsed = new URL(value)
+    return parsed.protocol === 'http:' || parsed.protocol === 'https:' ? value.trim() : null
+  } catch {
+    return null
+  }
+}
+
+function decodeEntitiesOnce(text) {
+  return text.replace(/&(amp|lt|gt|quot|#39|nbsp);/g, (_match, name) => ENTITIES[name])
+}
+
 export function htmlToText(html, keepLinks = false) {
-  let s = String(html).replace(/<(script|style)[^>]*>[\s\S]*?<\/\1>/gi, '')
-  if (keepLinks) s = s.replace(/<a[^>]*href="([^"]*)"[^>]*>([\s\S]*?)<\/a>/gi, '$2 ($1)')
-  s = s.replace(/<(p|br|div|li|tr|h[1-6])[^>]*>/gi, '\n').replace(/<[^>]+>/g, '')
-  s = s
-    .replace(/&amp;/g, '&')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
-    .replace(/&nbsp;/g, ' ')
-  return s
+  const source = String(html)
+  const output = []
+  let cursor = 0
+  let skippedTag = null
+  let activeLink = null
+
+  while (cursor < source.length) {
+    if (source[cursor] !== '<') {
+      if (!skippedTag) output.push(source[cursor])
+      cursor++
+      continue
+    }
+    // Treat a repeated opener as literal text, then parse the following tag.
+    if (source[cursor + 1] === '<') {
+      if (!skippedTag) output.push('<')
+      cursor++
+      continue
+    }
+    const end = source.indexOf('>', cursor + 1)
+    if (end < 0) {
+      if (!skippedTag) output.push(source.slice(cursor))
+      break
+    }
+    const rawTag = source.slice(cursor + 1, end)
+    const tag = parseTag(rawTag)
+    cursor = end + 1
+    if (!tag) continue
+
+    if (skippedTag) {
+      if (tag.closing && tag.name === skippedTag) skippedTag = null
+      continue
+    }
+    if (!tag.closing && !tag.selfClosing && (tag.name === 'script' || tag.name === 'style')) {
+      skippedTag = tag.name
+      continue
+    }
+    if (tag.name === 'a' && keepLinks) {
+      if (tag.closing) {
+        if (activeLink) output.push(` (${activeLink})`)
+        activeLink = null
+      } else {
+        activeLink = trustedLink(readAttribute(rawTag, tag.attributesStart, 'href'))
+      }
+    }
+    if (!tag.closing && BLOCK_TAGS.has(tag.name)) output.push('\n')
+  }
+
+  return decodeEntitiesOnce(output.join(''))
     .split('\n')
     .map((l) => l.replace(/[ \t]+/g, ' ').trim())
     .filter(Boolean)

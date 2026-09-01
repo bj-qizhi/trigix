@@ -127,7 +127,7 @@ test('editing a node config and saving sends the new value in the version graph'
   await expect(inputs.first()).toBeVisible()
   let urlField = null
   for (let i = 0; i < (await inputs.count()); i++) {
-    if ((await inputs.nth(i).inputValue()).includes('example.com')) { urlField = inputs.nth(i); break }
+    if ((await inputs.nth(i).inputValue()) === 'https://example.com') { urlField = inputs.nth(i); break }
   }
   expect(urlField, 'HTTP node URL field should be present').not.toBeNull()
   await urlField!.fill('https://changed.example.com/new')
@@ -454,7 +454,7 @@ test('typing {{credential. autocompletes the saved credentials', async ({ page }
   await expect(inputs.first()).toBeVisible()
   let urlField = null
   for (let i = 0; i < (await inputs.count()); i++) {
-    if ((await inputs.nth(i).inputValue()).includes('example.com')) { urlField = inputs.nth(i); break }
+    if ((await inputs.nth(i).inputValue()) === 'https://example.com') { urlField = inputs.nth(i); break }
   }
   await urlField!.fill('')
   await urlField!.click()

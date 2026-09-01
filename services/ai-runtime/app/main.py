@@ -297,8 +297,9 @@ async def rag_generate_stream(req: RagGenerateRequest) -> StreamingResponse:
 
 def _resolve_template(template: str, input_json: str, node_outputs: dict[str, str]) -> str:
     """Replace {{expr}} patterns. expr = 'input', 'input.a.b', 'node_id', 'node_id.a.b'."""
-    def resolve_expr(m: re.Match) -> str:
-        expr = m.group(1).strip()
+
+    def resolve_expr(raw_expr: str) -> str:
+        expr = raw_expr.strip()
         parts = expr.split(".", 1)
         root, path = parts[0], parts[1] if len(parts) > 1 else None
         raw = input_json if root == "input" else node_outputs.get(root, "")
@@ -319,7 +320,30 @@ def _resolve_template(template: str, input_json: str, node_outputs: dict[str, st
         except (json.JSONDecodeError, IndexError):
             return ""
 
-    return re.sub(r"\{\{([^}]+)\}\}", resolve_expr, template)
+    # Parse placeholders in one forward pass. A user-controlled template can
+    # contain arbitrarily many opening delimiters, so a backtracking regular
+    # expression is inappropriate here. Malformed/empty placeholders remain
+    # literal and scanning always resumes after the consumed delimiter.
+    rendered: list[str] = []
+    cursor = 0
+    while cursor < len(template):
+        start = template.find("{{", cursor)
+        if start < 0:
+            rendered.append(template[cursor:])
+            break
+        rendered.append(template[cursor:start])
+        first_close = template.find("}", start + 2)
+        if first_close < 0:
+            rendered.append(template[start:])
+            break
+        has_pair = first_close + 1 < len(template) and template[first_close + 1] == "}"
+        if has_pair and first_close > start + 2:
+            rendered.append(resolve_expr(template[start + 2:first_close]))
+            cursor = first_close + 2
+        else:
+            rendered.append(template[start:first_close + 1])
+            cursor = first_close + 1
+    return "".join(rendered)
 
 
 def _build_user_message(
