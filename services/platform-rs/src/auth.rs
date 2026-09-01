@@ -137,6 +137,31 @@ mod tests {
     }
 
     #[test]
+    fn malformed_not_before_claim_is_rejected() {
+        let claims = serde_json::json!({
+            "sub": "user-1",
+            "nbf": "99999999999",
+            "exp": 99999999999_u64,
+        });
+        let token = encode(
+            &Header::default(),
+            &claims,
+            &EncodingKey::from_secret(&jwt_secret()),
+        )
+        .unwrap();
+        let mut validation = Validation::new(jsonwebtoken::Algorithm::HS256);
+        validation.validate_nbf = true;
+
+        let result = decode::<serde_json::Value>(
+            &token,
+            &DecodingKey::from_secret(&jwt_secret()),
+            &validation,
+        );
+
+        assert!(result.is_err());
+    }
+
+    #[test]
     fn default_role_is_editor() {
         let role: Role = Default::default();
         assert_eq!(role, Role::Editor);
