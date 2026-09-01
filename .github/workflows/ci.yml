@@ -143,10 +143,42 @@ jobs:
           cargo test -p trigix-desktop-automation
           cargo test -p desktop-automation-host --test process_boundary
 
-      - name: Build unsigned NSIS qualification package
+      - name: Prepare ephemeral Windows development identity
+        if: matrix.os == 'windows-2022'
+        id: windows-development-signing
+        shell: pwsh
+        run: |
+          $config = ./apps/desktop/scripts/qualify-windows-development-signing.ps1 `
+            -Action Prepare `
+            -StateDirectory "${{ runner.temp }}/trigix-development-signing"
+          "config=$config" >> $env:GITHUB_OUTPUT
+
+      - name: Build self-signed NSIS qualification package
         if: matrix.os == 'windows-2022'
         working-directory: apps/desktop
-        run: npx --yes @tauri-apps/cli@2 build --debug --bundles nsis
+        run: npx --yes @tauri-apps/cli@2 build --debug --bundles nsis --config "${{ steps.windows-development-signing.outputs.config }}"
+
+      - name: Verify self-signed Windows development package
+        if: matrix.os == 'windows-2022'
+        shell: pwsh
+        run: |
+          $installer = Get-ChildItem target/debug/bundle/nsis -Filter '*.exe' | Select-Object -First 1
+          if ($null -eq $installer) { throw "NSIS installer was not produced." }
+          ./apps/desktop/scripts/qualify-windows-development-signing.ps1 `
+            -Action Verify `
+            -ArtifactPath @("target/debug/trigix-desktop.exe", $installer.FullName) `
+            -StateDirectory "${{ runner.temp }}/trigix-development-signing"
+
+      - name: Upload Windows development-signing evidence
+        if: matrix.os == 'windows-2022'
+        uses: actions/upload-artifact@v7
+        with:
+          name: windows-development-signed-qualification
+          path: |
+            target/debug/bundle/nsis/*.exe
+            ${{ runner.temp }}/trigix-development-signing/windows-development-signing.json
+          if-no-files-found: error
+          retention-days: 14
 
       - name: Upload fixture signature evidence
         if: always()
@@ -165,6 +197,14 @@ jobs:
             -Action Cleanup `
             -FixturePath target/debug/desktop-automation-fixture.exe `
             -StateDirectory "${{ runner.temp }}/trigix-fixture-signing"
+
+      - name: Remove Windows development-signing state
+        if: always() && matrix.os == 'windows-2022'
+        shell: pwsh
+        run: |
+          ./apps/desktop/scripts/qualify-windows-development-signing.ps1 `
+            -Action Cleanup `
+            -StateDirectory "${{ runner.temp }}/trigix-development-signing"
 
   macos-automation:
     name: macOS automation (${{ matrix.os }}, ${{ matrix.architecture }})
@@ -217,26 +257,38 @@ jobs:
           cargo test -p trigix-desktop-automation
           cargo test -p desktop-automation-host --test process_boundary
 
-      - name: Build unsigned Universal DMG qualification package
+      - name: Prepare ephemeral macOS development identity
+        if: matrix.os == 'macos-15' && matrix.architecture == 'arm64'
+        id: macos-development-signing
+        run: |
+          config="$(./apps/desktop/scripts/qualify-macos-development-signing.sh prepare "$RUNNER_TEMP/trigix-development-signing")"
+          printf 'config=%s\n' "$config" >> "$GITHUB_OUTPUT"
+          printf 'APPLE_SIGNING_IDENTITY=Trigix Development Qualification\n' >> "$GITHUB_ENV"
+
+      - name: Build self-signed Universal DMG qualification package
         if: matrix.os == 'macos-15' && matrix.architecture == 'arm64'
         working-directory: apps/desktop
         run: |
           ./scripts/prepare-universal-sidecar.sh release
-          npx --yes @tauri-apps/cli@2 build --target universal-apple-darwin --bundles dmg
+          npx --yes @tauri-apps/cli@2 build --target universal-apple-darwin --bundles dmg --config "${{ steps.macos-development-signing.outputs.config }}"
           dmg_path="$(find ../../target/universal-apple-darwin/release/bundle/dmg -name '*.dmg' -type f -print -quit)"
           test -n "$dmg_path"
-          printf '%s  %s\n' "$(shasum -a 256 "$dmg_path" | awk '{print $1}')" "$(basename "$dmg_path")" > "$RUNNER_TEMP/trigix-macos-dmg.sha256"
+          ./scripts/qualify-macos-development-signing.sh verify "$RUNNER_TEMP/trigix-development-signing" "$dmg_path"
 
-      - name: Upload unsigned Universal DMG evidence
+      - name: Upload self-signed Universal DMG evidence
         if: matrix.os == 'macos-15' && matrix.architecture == 'arm64'
         uses: actions/upload-artifact@v7
         with:
-          name: macos-universal-unsigned-qualification
+          name: macos-universal-development-signed-qualification
           path: |
             target/universal-apple-darwin/release/bundle/dmg/*.dmg
-            ${{ runner.temp }}/trigix-macos-dmg.sha256
+            ${{ runner.temp }}/trigix-development-signing/macos-development-signing.txt
           if-no-files-found: error
           retention-days: 14
+
+      - name: Remove macOS development-signing state
+        if: always() && matrix.os == 'macos-15' && matrix.architecture == 'arm64'
+        run: ./apps/desktop/scripts/qualify-macos-development-signing.sh cleanup "$RUNNER_TEMP/trigix-development-signing"
 
   web:
     # Keep this stable: the protected branch requires this check name.
@@ -467,11 +519,11 @@ jobs:
 
       - name: Template (default + value permutations)
         run: |
-          KEY="--set secrets.credentialMasterKey=ci-render-key"
-          helm template t charts/trigix $KEY > /tmp/default.yaml
-          helm template t charts/trigix $KEY --set executor.enabled=true > /tmp/executor.yaml
-          helm template t charts/trigix $KEY --set aiRuntime.enabled=false > /tmp/no-ai.yaml
-          helm template t charts/trigix --set secrets.databaseUrl=postgres://u:p@h:5432/d $KEY > /tmp/extdb.yaml
+          KEY_ARGS=(--set secrets.credentialMasterKey=ci-render-key)
+          helm template t charts/trigix "${KEY_ARGS[@]}" > /tmp/default.yaml
+          helm template t charts/trigix "${KEY_ARGS[@]}" --set executor.enabled=true > /tmp/executor.yaml
+          helm template t charts/trigix "${KEY_ARGS[@]}" --set aiRuntime.enabled=false > /tmp/no-ai.yaml
+          helm template t charts/trigix --set secrets.databaseUrl=postgres://u:p@h:5432/d "${KEY_ARGS[@]}" > /tmp/extdb.yaml
           # Dev escape hatch must also render.
           helm template t charts/trigix --set allowPlaintextCredentials=true > /tmp/plaintext.yaml
 
