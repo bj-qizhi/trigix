@@ -123,6 +123,8 @@ services:
       RUST_LOG: ${RUST_LOG:-info}
       # Set USE_QUEUE=true to run executions through the Redis Streams queue.
       USE_QUEUE: ${USE_QUEUE:-false}
+      EXEC_QUEUE_RECLAIM_IDLE_MS: ${EXEC_QUEUE_RECLAIM_IDLE_MS:-900000}
+      EXEC_QUEUE_MAX_RECOVERIES: ${EXEC_QUEUE_MAX_RECOVERIES:-3}
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://localhost:38080/healthz || exit 1"]
       interval: 30s
