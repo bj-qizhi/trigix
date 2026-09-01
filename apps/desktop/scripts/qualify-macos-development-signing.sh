@@ -52,10 +52,9 @@ prepare() {
   security unlock-keychain -p "$keychain_password" "$keychain_path"
   security import "$state_directory/identity.p12" \
     -P "$keychain_password" -A -x -t cert -f pkcs12 -k "$keychain_path"
-  security add-trusted-cert -r trustRoot -p codeSign -k "$keychain_path" "$state_directory/certificate.pem"
   security list-keychains -d user -s "$keychain_path" login.keychain-db
   security set-key-partition-list -S apple-tool:,apple: -s -k "$keychain_password" "$keychain_path"
-  security find-identity -v -p codesigning "$keychain_path" | grep -Fq "\"$identity\""
+  security find-certificate -c "$identity" "$keychain_path" >/dev/null
 
   printf '{"bundle":{"macOS":{"signingIdentity":"%s"}}}\n' "$identity" > "$config_path"
   rm -f "$state_directory/private-key.pem" "$state_directory/identity.p12" "$openssl_config"
