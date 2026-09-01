@@ -7,6 +7,8 @@ use std::process::{Command, Stdio};
 use std::sync::mpsc;
 use std::sync::Arc;
 use std::time::Duration;
+#[cfg(unix)]
+use std::time::Instant;
 use std::time::{SystemTime, UNIX_EPOCH};
 #[cfg(unix)]
 use trigix_desktop_automation::SupervisedActionExecutor;
@@ -262,11 +264,13 @@ fn command_processor_persists_supervised_cancellation_and_timeout_outcomes() {
         let result = processor.process(&active_command, now, None).unwrap();
         (processor, active_command, result)
     });
-    for _ in 0..100 {
-        if handle.active_commands() == 1 {
-            break;
-        }
-        std::thread::sleep(Duration::from_millis(5));
+    let active_deadline = Instant::now() + Duration::from_secs(5);
+    while handle.active_commands() != 1 {
+        assert!(
+            Instant::now() < active_deadline,
+            "supervised command did not become active before cancellation"
+        );
+        std::thread::sleep(Duration::from_millis(10));
     }
     assert!(handle.cancel("processor-cancel"));
     let (mut processor, active_command, cancelled) = process_handle.join().unwrap();
