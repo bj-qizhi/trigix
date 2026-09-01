@@ -349,6 +349,22 @@ pub enum NodeType {
     Custom,
     /// A Platform-governed action executed by a paired desktop Device.
     Desktop,
+    /// Create an isolated stateful Browser Session.
+    BrowserStart,
+    /// Navigate a Browser Session to an allowed HTTP(S) destination.
+    BrowserNavigate,
+    /// Click a selector in a Browser Session.
+    BrowserClick,
+    /// Enter a bounded value into a Browser Session selector.
+    BrowserInput,
+    /// Wait for a selector, URL, load state, or bounded duration.
+    BrowserWait,
+    /// Extract structured content from a Browser Session.
+    BrowserExtract,
+    /// Capture a Browser Session screenshot as an Artifact.
+    BrowserScreenshot,
+    /// Close and release a Browser Session.
+    BrowserClose,
 }
 
 impl WorkflowGraph {
@@ -634,6 +650,27 @@ mod tests {
         .unwrap();
         assert_eq!(desktop.node_type, NodeType::Desktop);
         assert_eq!(desktop.config.unwrap()["device_id"], "device-1");
+
+        for node_type in [
+            "browser_start",
+            "browser_navigate",
+            "browser_click",
+            "browser_input",
+            "browser_wait",
+            "browser_extract",
+            "browser_screenshot",
+            "browser_close",
+        ] {
+            let node: Node = serde_json::from_value(serde_json::json!({
+                "id": node_type,
+                "type": node_type,
+            }))
+            .unwrap();
+            assert_eq!(
+                serde_json::to_value(node).unwrap()["type"],
+                serde_json::Value::String(node_type.to_string())
+            );
+        }
     }
 
     #[test]

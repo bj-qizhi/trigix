@@ -391,6 +391,43 @@ jobs:
       - name: Run e2e
         run: npm run e2e
 
+  browser-runtime:
+    name: Browser Runtime (lint, test, e2e)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: services/browser-runtime
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: services/browser-runtime/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Audit production dependencies
+        run: npm audit --omit=dev --audit-level=high
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Build
+        run: npm run build
+
+      - name: Unit tests
+        run: npm test
+
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Browser integration tests
+        run: npm run test:e2e
+
   ai-runtime:
     name: AI Runtime (tests)
     runs-on: ubuntu-latest
@@ -512,6 +549,15 @@ jobs:
           cache-from: type=gha,scope=ai-runtime
           cache-to: type=gha,mode=max,scope=ai-runtime
 
+      - name: Build browser runtime image
+        uses: docker/build-push-action@v7
+        with:
+          context: ./services/browser-runtime
+          load: true
+          tags: trigix-browser-runtime:ci
+          cache-from: type=gha,scope=browser-runtime
+          cache-to: type=gha,mode=max,scope=browser-runtime
+
       - name: Smoke - platform binary and nginx present
         run: docker run --rm --entrypoint /bin/sh trigix-platform:ci -c 'command -v trigix-platform && nginx -v'
 
@@ -524,6 +570,19 @@ jobs:
           done
           curl -fsS http://localhost:8000/healthz
           docker rm -f airt
+
+      - name: Smoke - browser runtime answers /healthz
+        run: |
+          docker run -d --name browser-runtime -p 38100:38100 --shm-size=1g \
+            -e NODE_ENV=production \
+            -e BROWSER_RUNTIME_AUTH_TOKEN=01234567890123456789012345678901 \
+            trigix-browser-runtime:ci
+          for _ in $(seq 1 30); do
+            curl -fsS http://localhost:38100/healthz && break
+            sleep 2
+          done
+          curl -fsS http://localhost:38100/healthz
+          docker rm -f browser-runtime
 
   helm:
     name: Helm (lint, template)
@@ -552,6 +611,8 @@ jobs:
           KEY_ARGS=(--set secrets.credentialMasterKey=ci-render-key)
           helm template t charts/trigix "${KEY_ARGS[@]}" > /tmp/default.yaml
           helm template t charts/trigix "${KEY_ARGS[@]}" --set executor.enabled=true > /tmp/executor.yaml
+          helm template t charts/trigix "${KEY_ARGS[@]}" --set browserRuntime.enabled=true --set-string browserRuntime.authToken=01234567890123456789012345678901 > /tmp/browser-runtime.yaml
+          helm template t charts/trigix "${KEY_ARGS[@]}" --set browserRuntime.enabled=true --set-string browserRuntime.authToken=01234567890123456789012345678901 --set browserRuntime.autoscaling.enabled=true --set browserRuntime.artifact.provider=s3 --set browserRuntime.artifact.bucket=ci-browser-artifacts > /tmp/browser-runtime-hpa.yaml
           helm template t charts/trigix "${KEY_ARGS[@]}" --set aiRuntime.enabled=false > /tmp/no-ai.yaml
           helm template t charts/trigix --set secrets.databaseUrl=postgres://u:p@h:5432/d "${KEY_ARGS[@]}" > /tmp/extdb.yaml
           # Dev escape hatch must also render.
@@ -561,4 +622,4 @@ jobs:
         run: |
           curl -fsSL https://github.com/yannh/kubeconform/releases/download/v0.6.7/kubeconform-linux-amd64.tar.gz | tar xz
           ./kubeconform -strict -summary -kubernetes-version 1.29.0 \
-            /tmp/default.yaml /tmp/executor.yaml /tmp/no-ai.yaml /tmp/extdb.yaml
+            /tmp/default.yaml /tmp/executor.yaml /tmp/browser-runtime.yaml /tmp/browser-runtime-hpa.yaml /tmp/no-ai.yaml /tmp/extdb.yaml

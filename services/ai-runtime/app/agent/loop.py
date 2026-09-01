@@ -108,11 +108,17 @@ async def run_agent_loop(
         usage["input_tokens"] += int(turn.get("input_tokens", 0) or 0)
         usage["output_tokens"] += int(turn.get("output_tokens", 0) or 0)
 
+    async def _finish(result: AgentResult) -> AgentResult:
+        cleanups = [tool.cleanup for tool in tools if tool.cleanup is not None]
+        if cleanups:
+            await asyncio.gather(*(cleanup() for cleanup in cleanups), return_exceptions=True)
+        return result
+
     for _ in range(max(1, max_iterations)):
         resp = await llm.respond(system, messages, schemas, on_text_delta=on_text_delta)
         _accumulate(resp.usage)
         if not resp.tool_calls:
-            return AgentResult(output=resp.text or "", steps=steps, usage=usage)
+            return await _finish(AgentResult(output=resp.text or "", steps=steps, usage=usage))
 
         messages.append({"role": "assistant", "content": resp.assistant_content})
 
@@ -137,11 +143,11 @@ async def run_agent_loop(
             )
         messages.append({"role": "user", "content": results})
 
-    return AgentResult(
+    return await _finish(AgentResult(
         output="(agent reached the maximum number of steps without a final answer)",
         steps=steps,
         usage=usage,
-    )
+    ))
 
 
 class AnthropicLLM:

@@ -37,6 +37,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      browser-runtime:
+        condition: service_healthy
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:-trigix}:${POSTGRES_PASSWORD:-changeme}@postgres:5432/${POSTGRES_DB:-trigix}
       # Optional — real embeddings / reranker / Chinese FTS / agent model gateway.
@@ -50,12 +52,45 @@ services:
       EMBED_API_KEY: ${EMBED_API_KEY:-}
       EMBED_MODEL: ${EMBED_MODEL:-}
       EMBED_DIM: ${EMBED_DIM:-}
+      BROWSER_RUNTIME_BASE_URL: http://browser-runtime:38100
+      BROWSER_RUNTIME_AUTH_TOKEN: ${BROWSER_RUNTIME_AUTH_TOKEN:?set a random BROWSER_RUNTIME_AUTH_TOKEN of at least 32 characters}
     healthcheck:
       test: ["CMD-SHELL", "python -c \"import urllib.request;urllib.request.urlopen('http://localhost:8000/healthz')\""]
       interval: 15s
       timeout: 5s
       retries: 5
       start_period: 20s
+
+  browser-runtime:
+    build:
+      context: ./services/browser-runtime
+    restart: unless-stopped
+    init: true
+    depends_on:
+      redis:
+        condition: service_healthy
+    shm_size: "1gb"
+    environment:
+      NODE_ENV: production
+      BROWSER_RUNTIME_AUTH_TOKEN: ${BROWSER_RUNTIME_AUTH_TOKEN:?set a random BROWSER_RUNTIME_AUTH_TOKEN of at least 32 characters}
+      REDIS_URL: redis://redis:6379
+      BROWSER_ARTIFACT_PROVIDER: ${BROWSER_ARTIFACT_PROVIDER:-local}
+      BROWSER_ARTIFACT_DIR: /data/browser
+      BROWSER_ARTIFACT_BUCKET: ${BROWSER_ARTIFACT_BUCKET:-}
+      BROWSER_ARTIFACT_ENDPOINT: ${BROWSER_ARTIFACT_ENDPOINT:-}
+      BROWSER_ARTIFACT_REGION: ${BROWSER_ARTIFACT_REGION:-us-east-1}
+      AWS_ACCESS_KEY_ID: ${BROWSER_ARTIFACT_ACCESS_KEY_ID:-}
+      AWS_SECRET_ACCESS_KEY: ${BROWSER_ARTIFACT_SECRET_ACCESS_KEY:-}
+      BROWSER_BLOCK_PRIVATE_NETWORK: "true"
+      BROWSER_ENABLE_EVALUATE: "false"
+    volumes:
+      - browser_artifacts:/data/browser
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:38100/healthz || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
 
   app:
     build:
@@ -69,12 +104,16 @@ services:
         condition: service_started
       ai-runtime:
         condition: service_started
+      browser-runtime:
+        condition: service_healthy
     ports:
       - "${PORT:-8080}:80"
     environment:
       DATABASE_URL: postgres://${POSTGRES_USER:-trigix}:${POSTGRES_PASSWORD:-changeme}@postgres:5432/${POSTGRES_DB:-trigix}
       REDIS_URL: redis://redis:6379
       AI_RUNTIME_BASE_URL: http://ai-runtime:8000
+      BROWSER_RUNTIME_BASE_URL: http://browser-runtime:38100
+      BROWSER_RUNTIME_AUTH_TOKEN: ${BROWSER_RUNTIME_AUTH_TOKEN:?set a random BROWSER_RUNTIME_AUTH_TOKEN of at least 32 characters}
       DEV_API_KEY: ${API_KEY:-changeme}
       JWT_SECRET: ${JWT_SECRET:-change-me-in-production}
       AUTH_REQUIRED: "true"
@@ -93,3 +132,4 @@ services:
 volumes:
   postgres_data:
   redis_data:
+  browser_artifacts:

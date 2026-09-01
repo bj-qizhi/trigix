@@ -13,6 +13,7 @@ This project avoids common host ports because the development host may already r
 | Rust Platform HTTP | n/a | `38080` |
 | Rust Executor HTTP | n/a | `38090` |
 | Python AI Runtime HTTP | n/a | `38070` |
+| Browser Runtime HTTP | n/a | `38100` |
 | React Web Console | n/a | `3100` |
 
 ## Useful URLs
@@ -25,6 +26,7 @@ MinIO Console:  http://localhost:39001
 Rust Platform:  http://127.0.0.1:38080
 Rust Executor:  http://127.0.0.1:38090
 Python Runtime: http://127.0.0.1:38070
+Browser Runtime: http://127.0.0.1:38100
 Web Console:    http://localhost:3100
 ```
 

@@ -1,15 +1,16 @@
 // Copyright © 2026 北京祺智科技有限公司. All rights reserved.
 // https://www.qzso.com/ · managecode@gmail.com
 
-use std::sync::Arc;
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
 
 use std::convert::Infallible;
 
-use axum::extract::State;
-use axum::http::StatusCode;
+use axum::extract::{Path, State};
+use axum::http::{HeaderMap, StatusCode};
 use axum::response::sse::{Event as SseEvent, KeepAlive, Sse};
 use axum::response::{IntoResponse, Response};
-use axum::routing::{get, post};
+use axum::routing::{delete, get, post};
 use axum::{Json, Router};
 use serde::{Deserialize, Serialize};
 use tokio::sync::mpsc;
@@ -24,6 +25,7 @@ use crate::runtime::{
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct RunExecutionRequest {
+    pub tenant_id: String,
     pub execution_id: String,
     pub graph: WorkflowGraph,
     pub input_json: String,
@@ -34,6 +36,7 @@ pub struct RunExecutionRequest {
 #[derive(Clone)]
 struct AppState {
     executor: Arc<DispatchingNodeExecutor>,
+    active: Arc<Mutex<HashMap<String, futures::future::AbortHandle>>>,
 }
 
 pub fn router() -> Router {
@@ -44,12 +47,14 @@ pub fn router() -> Router {
 pub fn router_with_config(ai_runtime_base_url: Option<String>) -> Router {
     let state = AppState {
         executor: Arc::new(DispatchingNodeExecutor::new(ai_runtime_base_url)),
+        active: Arc::new(Mutex::new(HashMap::new())),
     };
 
     Router::new()
         .route("/healthz", get(healthz))
         .route("/v1/executions:run", post(run_execution))
         .route("/v1/run-stream", post(run_execution_stream))
+        .route("/v1/executions/:execution_id", delete(cancel_execution))
         .with_state(state)
 }
 
@@ -82,6 +87,15 @@ async fn run_execution_stream(
 ) -> Sse<ReceiverStream<Result<SseEvent, Infallible>>> {
     let (tx, rx) = mpsc::channel::<Result<SseEvent, Infallible>>(256);
     let node_executor = (*state.executor).clone();
+    let active = Arc::clone(&state.active);
+    let active_key = execution_key(&request.tenant_id, &request.execution_id);
+    let cleanup_key = active_key.clone();
+    let (abort_handle, abort_registration) = futures::future::AbortHandle::new_pair();
+    if let Ok(mut executions) = active.lock() {
+        if let Some(previous) = executions.insert(active_key, abort_handle) {
+            previous.abort();
+        }
+    }
 
     tokio::spawn(async move {
         if let Err(err) = validate_request(&request) {
@@ -98,29 +112,39 @@ async fn run_execution_stream(
             let _ = sink_tx.try_send(Ok(SseEvent::default().event("token").data(data)));
         });
 
-        let result = TOKEN_SINK
-            .scope(
-                Some(sink),
-                run_workflow_with_progress(
-                    request.execution_id,
-                    &request.graph,
-                    request.input_json,
-                    &node_executor,
-                    &progress,
-                    request.dry_run,
+        let result = futures::future::Abortable::new(
+            execution_core::TENANT_ID.scope(
+                Some(request.tenant_id),
+                TOKEN_SINK.scope(
+                    Some(sink),
+                    run_workflow_with_progress(
+                        request.execution_id,
+                        &request.graph,
+                        request.input_json,
+                        &node_executor,
+                        &progress,
+                        request.dry_run,
+                    ),
                 ),
-            )
-            .await;
+            ),
+            abort_registration,
+        )
+        .await;
+
+        if let Ok(mut executions) = active.lock() {
+            executions.remove(&cleanup_key);
+        }
 
         let data = match result {
-            Ok(report) => match serde_json::to_string(&report) {
+            Ok(Ok(report)) => match serde_json::to_string(&report) {
                 Ok(report_json) => format!(r#"{{"kind":"report","report":{report_json}}}"#),
                 Err(_) => r#"{"kind":"error","message":"SerializeReport"}"#.to_string(),
             },
-            Err(err) => {
+            Ok(Err(err)) => {
                 let message = ApiError::from(err).message;
                 serde_json::json!({ "kind": "error", "message": message }).to_string()
             }
+            Err(_) => r#"{"kind":"error","message":"ExecutionCancelled"}"#.to_string(),
         };
         let event = if data.contains(r#""kind":"report""#) {
             "report"
@@ -144,21 +168,74 @@ async fn run_execution(
     validate_request(&request)?;
 
     let node_executor = (*state.executor).clone();
-    let report = run_workflow(
-        request.execution_id,
-        &request.graph,
-        request.input_json,
-        &node_executor,
-        request.dry_run,
+    let active_key = execution_key(&request.tenant_id, &request.execution_id);
+    let (abort_handle, abort_registration) = futures::future::AbortHandle::new_pair();
+    if let Ok(mut executions) = state.active.lock() {
+        if let Some(previous) = executions.insert(active_key.clone(), abort_handle) {
+            previous.abort();
+        }
+    }
+    let result = futures::future::Abortable::new(
+        execution_core::TENANT_ID.scope(
+            Some(request.tenant_id),
+            run_workflow(
+                request.execution_id,
+                &request.graph,
+                request.input_json,
+                &node_executor,
+                request.dry_run,
+            ),
+        ),
+        abort_registration,
     )
-    .await?;
+    .await;
+    if let Ok(mut executions) = state.active.lock() {
+        executions.remove(&active_key);
+    }
+    let report = result.map_err(|_| ApiError {
+        status: StatusCode::CONFLICT,
+        message: "ExecutionCancelled".to_string(),
+    })??;
 
     Ok(Json(report))
+}
+
+async fn cancel_execution(
+    State(state): State<AppState>,
+    Path(execution_id): Path<String>,
+    headers: HeaderMap,
+) -> StatusCode {
+    let tenant_id = headers
+        .get("x-trigix-tenant-id")
+        .and_then(|value| value.to_str().ok())
+        .unwrap_or_default();
+    if tenant_id.is_empty() {
+        return StatusCode::UNAUTHORIZED;
+    }
+    let handle = state
+        .active
+        .lock()
+        .ok()
+        .and_then(|mut executions| executions.remove(&execution_key(tenant_id, &execution_id)));
+    match handle {
+        Some(handle) => {
+            handle.abort();
+            StatusCode::NO_CONTENT
+        }
+        None => StatusCode::NOT_FOUND,
+    }
+}
+
+fn execution_key(tenant_id: &str, execution_id: &str) -> String {
+    format!("{tenant_id}\u{1f}{execution_id}")
 }
 
 fn validate_request(request: &RunExecutionRequest) -> Result<(), ApiError> {
     if request.execution_id.is_empty() {
         return Err(ApiError::bad_request("MissingExecution"));
+    }
+    if request.tenant_id.is_empty() {
+        return Err(ApiError::bad_request("MissingTenant"));
     }
     if request.input_json.is_empty() {
         return Err(ApiError::bad_request("MissingInput"));
@@ -303,6 +380,7 @@ mod tests {
     #[tokio::test]
     async fn rejects_invalid_graph_over_http() {
         let request = json!({
+            "tenant_id": "tenant-1",
             "execution_id": "execution-1",
             "graph": {
                 "workflow_version_id": "version-1",
@@ -373,6 +451,7 @@ mod tests {
     #[tokio::test]
     async fn streaming_endpoint_reports_invalid_input() {
         let bad = json!({
+            "tenant_id": "tenant-1",
             "execution_id": "execution-1",
             "graph": trigger_only_request()["graph"].clone(),
             "input_json": ""
@@ -399,8 +478,54 @@ mod tests {
         );
     }
 
+    #[tokio::test]
+    async fn cancellation_endpoint_aborts_an_active_execution() {
+        let app = test_router();
+        let run_app = app.clone();
+        let run = tokio::spawn(async move {
+            run_app
+                .oneshot(
+                    Request::builder()
+                        .method("POST")
+                        .uri("/v1/executions:run")
+                        .header("content-type", "application/json")
+                        .body(Body::from(
+                            json!({
+                                "tenant_id": "tenant-1",
+                                "execution_id": "execution-cancel",
+                                "graph": {
+                                    "workflow_version_id": "version-1",
+                                    "nodes": [{"id": "delay", "type": "delay", "config": {"seconds": 5}}],
+                                    "edges": []
+                                },
+                                "input_json": "{}"
+                            })
+                            .to_string(),
+                        ))
+                        .unwrap(),
+                )
+                .await
+                .unwrap()
+        });
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        let cancelled = app
+            .oneshot(
+                Request::builder()
+                    .method("DELETE")
+                    .uri("/v1/executions/execution-cancel")
+                    .header("x-trigix-tenant-id", "tenant-1")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(cancelled.status(), StatusCode::NO_CONTENT);
+        assert_eq!(run.await.unwrap().status(), StatusCode::CONFLICT);
+    }
+
     fn trigger_only_request() -> serde_json::Value {
         json!({
+            "tenant_id": "tenant-1",
             "execution_id": "execution-1",
             "graph": {
                 "workflow_version_id": "version-1",
@@ -413,6 +538,7 @@ mod tests {
 
     fn valid_request() -> serde_json::Value {
         json!({
+            "tenant_id": "tenant-1",
             "execution_id": "execution-1",
             "graph": {
                 "workflow_version_id": "version-1",

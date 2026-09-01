@@ -17,6 +17,8 @@ import ipaddress
 import json
 import operator
 import socket
+import asyncio
+import time
 from dataclasses import dataclass
 from typing import Any, Awaitable, Callable
 from urllib.parse import urlparse
@@ -32,6 +34,7 @@ class Tool:
     description: str
     input_schema: dict
     run: ToolRun
+    cleanup: Callable[[], Awaitable[None]] | None = None
 
 
 # ── Calculator (sandboxed arithmetic, no eval) ──────────────────────────────
@@ -284,6 +287,196 @@ def custom_node_tool(spec: dict) -> Tool:
     )
 
 
+# ── Browser Runtime tools ───────────────────────────────────────────────────
+
+_BROWSER_ACTIONS = ("navigate", "click", "input", "wait", "extract", "screenshot")
+
+
+def browser_runtime_tools(
+    base_url: str,
+    auth_token: str,
+    tenant_id: str,
+    execution_id: str,
+    allowed_hosts: list[str],
+    allowed_actions: list[str],
+    max_steps: int,
+    max_duration_seconds: int,
+) -> list[Tool]:
+    """Build a bounded, tenant-bound Browser Agent tool set.
+
+    The Browser Runtime remains the network-policy authority. The Agent adds a
+    narrower per-run host/action/step/duration policy so a model cannot expand
+    the operator-approved scope during tool use.
+    """
+    if not base_url or len(auth_token) < 32 or not tenant_id:
+        return []
+    hosts = {str(host).strip().lower() for host in allowed_hosts if str(host).strip()}
+    actions = {action for action in allowed_actions if action in _BROWSER_ACTIONS}
+    step_limit = min(max(1, max_steps), 100)
+    duration_limit = min(max(1, max_duration_seconds), 3600)
+    deadline = time.monotonic() + duration_limit
+    state: dict[str, Any] = {"session_id": None, "steps": 0}
+    lock = asyncio.Lock()
+    headers = {
+        "authorization": f"Bearer {auth_token}",
+        "x-trigix-tenant-id": tenant_id,
+    }
+
+    async def runtime_request(method: str, path: str, payload: dict | None = None) -> dict:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise RuntimeError("Browser Agent duration limit reached")
+        timeout = min(15.0, max(0.25, remaining))
+        async with httpx.AsyncClient(timeout=timeout, follow_redirects=False) as client:
+            response = await client.request(
+                method,
+                f"{base_url.rstrip('/')}{path}",
+                headers=headers,
+                json=payload,
+            )
+        data = response.json()
+        if response.status_code >= 400:
+            error = data.get("error", {}) if isinstance(data, dict) else {}
+            raise RuntimeError(
+                f"{error.get('code', 'BROWSER_RUNTIME_ERROR')}: "
+                f"{error.get('message', response.text[:500])}"
+            )
+        return data
+
+    async def start(_args: dict) -> str:
+        async with lock:
+            if state["session_id"]:
+                return json.dumps({"session_id": state["session_id"], "reused": True})
+            session = await runtime_request(
+                "POST",
+                "/v1/sessions",
+                {"tenant_id": tenant_id, "execution_id": execution_id},
+            )
+            state["session_id"] = session["id"]
+            return json.dumps({"session_id": session["id"]})
+
+    async def close(_args: dict) -> str:
+        async with lock:
+            session_id = state["session_id"]
+            if not session_id:
+                return json.dumps({"closed": True, "session_id": None})
+            await runtime_request("DELETE", f"/v1/sessions/{session_id}")
+            state["session_id"] = None
+            return json.dumps({"closed": True, "session_id": session_id})
+
+    async def action_run(action: str, args: dict) -> str:
+        async with lock:
+            if action not in actions:
+                return f"error: browser action '{action}' is not allowed"
+            if state["steps"] >= step_limit:
+                return "error: Browser Agent step limit reached"
+            if time.monotonic() >= deadline:
+                return "error: Browser Agent duration limit reached"
+            session_id = state["session_id"]
+            if not session_id:
+                return "error: call browser_start before browser actions"
+            if action == "navigate":
+                host = (urlparse(str(args.get("url", ""))).hostname or "").lower()
+                if not _host_is_allowed(host, hosts):
+                    return f"error: browser host '{host}' is not allowed"
+            state["steps"] += 1
+            created = await runtime_request(
+                "POST",
+                "/v1/tasks",
+                {
+                    "tenant_id": tenant_id,
+                    "execution_id": execution_id,
+                    "session_id": session_id,
+                    "timeout_ms": min(60_000, max(1_000, int((deadline - time.monotonic()) * 1000))),
+                    "actions": [{"type": action, "params": args}],
+                },
+            )
+            task_id = created["task_id"]
+            while True:
+                task = await runtime_request("GET", f"/v1/tasks/{task_id}")
+                if task.get("status") in ("completed", "failed", "timeout", "cancelled"):
+                    break
+                await asyncio.sleep(0.1)
+            if task.get("status") != "completed":
+                error = task.get("error") or {}
+                return f"error: {error.get('code', 'BROWSER_ACTION_FAILED')}: {error.get('message', task.get('status'))}"
+            result = task.get("result") or {}
+            action_results = result.get("actions") or []
+            output = action_results[-1].get("data") if action_results else None
+            artifact_id = output.get("id") if isinstance(output, dict) else None
+            return json.dumps(
+                {
+                    "task_id": task_id,
+                    "session_id": session_id,
+                    "result": output,
+                    "artifact_url": f"/v1/browser/artifacts/{artifact_id}" if artifact_id else None,
+                    "url": result.get("final_url"),
+                    "title": result.get("title"),
+                    "steps_used": state["steps"],
+                    "steps_remaining": step_limit - state["steps"],
+                }
+            )[:8000]
+
+    tools = [
+        Tool(
+            name="browser_start",
+            description="Start an isolated Browser Session before using browser action tools.",
+            input_schema={"type": "object", "properties": {}},
+            run=start,
+            cleanup=lambda: _cleanup_browser(close),
+        )
+    ]
+    schemas = {
+        "navigate": ({"url": {"type": "string"}, "wait_until": {"type": "string", "enum": ["load", "domcontentloaded", "networkidle", "commit"]}}, ["url"]),
+        "click": ({"selector": {"type": "string"}}, ["selector"]),
+        "input": ({"selector": {"type": "string"}, "value": {"type": "string"}, "clear_first": {"type": "boolean"}}, ["selector", "value"]),
+        "wait": ({"selector": {"type": "string"}, "milliseconds": {"type": "number"}, "url": {"type": "string"}, "load_state": {"type": "string"}}, []),
+        "extract": ({"selector": {"type": "string"}, "mode": {"type": "string", "enum": ["text", "html", "attribute", "json", "list", "table"]}, "attribute": {"type": "string"}}, ["selector"]),
+        "screenshot": ({"full_page": {"type": "boolean"}}, []),
+    }
+    for action in _BROWSER_ACTIONS:
+        if action not in actions:
+            continue
+        properties, required = schemas[action]
+
+        async def run(args: dict, selected: str = action) -> str:
+            return await action_run(selected, args)
+
+        tools.append(
+            Tool(
+                name=f"browser_{action}",
+                description=f"Run the bounded Browser {action} action in the active session.",
+                input_schema={"type": "object", "properties": properties, "required": required},
+                run=run,
+            )
+        )
+    tools.append(
+        Tool(
+            name="browser_close",
+            description="Close the active Browser Session and release its resources.",
+            input_schema={"type": "object", "properties": {}},
+            run=close,
+        )
+    )
+    return tools
+
+
+def _host_is_allowed(host: str, allowed_hosts: set[str]) -> bool:
+    if not host:
+        return False
+    return host in allowed_hosts or any(
+        pattern.startswith("*.") and host.endswith(pattern[1:]) and host != pattern[2:]
+        for pattern in allowed_hosts
+    )
+
+
+async def _cleanup_browser(close: ToolRun) -> None:
+    try:
+        await close({})
+    except Exception:
+        pass
+
+
 def build_tools(
     names: list[str],
     store: Any = None,
@@ -292,6 +485,14 @@ def build_tools(
     node_tools: list[dict] | None = None,
     http_allow_hosts: list[str] | None = None,
     http_allow_public: bool = False,
+    browser_runtime_base_url: str = "",
+    browser_runtime_auth_token: str = "",
+    browser_tenant_id: str = "",
+    browser_execution_id: str = "",
+    browser_allowed_hosts: list[str] | None = None,
+    browser_allowed_actions: list[str] | None = None,
+    browser_max_steps: int = 12,
+    browser_max_duration_seconds: int = 120,
 ) -> list[Tool]:
     """Resolve enabled tool names into Tool instances. Unknown names and
     rag_search without a store are skipped. `node_tools` are explicit custom
@@ -304,6 +505,19 @@ def build_tools(
             tools.append(rag_search_tool(store, tenant_id, default_kb))
         elif name == "http_request":
             tools.append(http_request_tool(http_allow_hosts, http_allow_public))
+        elif name == "browser":
+            tools.extend(
+                browser_runtime_tools(
+                    browser_runtime_base_url,
+                    browser_runtime_auth_token,
+                    browser_tenant_id,
+                    browser_execution_id,
+                    browser_allowed_hosts if isinstance(browser_allowed_hosts, list) else [],
+                    browser_allowed_actions if isinstance(browser_allowed_actions, list) else list(_BROWSER_ACTIONS),
+                    browser_max_steps,
+                    browser_max_duration_seconds,
+                )
+            )
     for spec in node_tools or []:
         if spec.get("name") and spec.get("url"):
             tools.append(custom_node_tool(spec))

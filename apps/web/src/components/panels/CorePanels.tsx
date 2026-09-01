@@ -481,7 +481,7 @@ export function AgentConfig({ config, set, str, num }: ConfigProps) {
       <div className="field">
         <label>{fl("Tools (tool-use loop)")}</label>
         <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap' }}>
-          {(['calculator', 'rag_search', 'http_request'] as const).map((tool) => (
+          {(['calculator', 'rag_search', 'http_request', 'browser'] as const).map((tool) => (
             <label key={tool} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 13 }}>
               <input type="checkbox" checked={tools.includes(tool)} onChange={(e) => toggleTool(tool, e.target.checked)} />
               {tool}
@@ -539,6 +539,39 @@ export function AgentConfig({ config, set, str, num }: ConfigProps) {
             <span style={{ fontSize: 11, color: 'var(--muted)' }}>
               {fl("Outbound is denied by default. Allowlist hosts, or allow any public host — either way private/loopback/metadata IPs are blocked and the resolved IP is pinned.")}
             </span>
+          </div>
+        </>
+      )}
+      {tools.includes('browser') && (
+        <>
+          <div className="field">
+            <label>{fl('Browser allowed hosts (comma-separated)')}</label>
+            <input
+              placeholder="app.example.com, *.staging.example.com"
+              value={((config['browser_allowed_hosts'] as string[] | undefined) ?? []).join(', ')}
+              onChange={(e) => {
+                const hosts = e.target.value.split(',').map((host) => host.trim().toLowerCase()).filter(Boolean)
+                set('browser_allowed_hosts', hosts.length ? hosts : undefined)
+              }}
+            />
+            <span style={{ fontSize: 11, color: 'var(--muted)' }}>Browser navigation is denied when this list is empty.</span>
+          </div>
+          <div className="field">
+            <label>{fl('Browser allowed actions')}</label>
+            <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+              {(['navigate', 'click', 'input', 'wait', 'extract', 'screenshot'] as const).map((action) => {
+                const selected = (config['browser_allowed_actions'] as string[] | undefined) ?? ['navigate', 'click', 'input', 'wait', 'extract', 'screenshot']
+                return <label key={action} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 13 }}><input type="checkbox" checked={selected.includes(action)} onChange={(e) => set('browser_allowed_actions', e.target.checked ? [...selected, action] : selected.filter((item) => item !== action))} />{action}</label>
+              })}
+            </div>
+          </div>
+          <div className="field">
+            <label>{fl('Browser max steps')}</label>
+            <input type="number" min={1} max={100} value={num('browser_max_steps', 12)} onChange={(e) => set('browser_max_steps', Number(e.target.value))} />
+          </div>
+          <div className="field">
+            <label>{fl('Browser max duration (seconds)')}</label>
+            <input type="number" min={1} max={3600} value={num('browser_max_duration_seconds', 120)} onChange={(e) => set('browser_max_duration_seconds', Number(e.target.value))} />
           </div>
         </>
       )}

@@ -1,0 +1,209 @@
+{{- if .Values.browserRuntime.enabled -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "trigix.fullname" . }}-browser-runtime
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "trigix.labels" . | nindent 4 }}
+    app.kubernetes.io/component: browser-runtime
+spec:
+  {{- if not .Values.browserRuntime.autoscaling.enabled }}
+  replicas: {{ .Values.browserRuntime.replicaCount }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "trigix.browserRuntimeSelectorLabels" . | nindent 6 }}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        {{- include "trigix.browserRuntimeSelectorLabels" . | nindent 8 }}
+      {{- with .Values.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    spec:
+      terminationGracePeriodSeconds: 45
+      serviceAccountName: {{ include "trigix.serviceAccountName" . }}
+      containers:
+        - name: browser-runtime
+          image: "{{ .Values.browserRuntime.image.repository }}:{{ default .Chart.AppVersion .Values.browserRuntime.image.tag }}"
+          imagePullPolicy: {{ .Values.browserRuntime.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 38100
+              protocol: TCP
+          envFrom:
+            - configMapRef:
+                name: {{ include "trigix.fullname" . }}
+            - secretRef:
+                name: {{ include "trigix.fullname" . }}
+          env:
+            - name: NODE_ENV
+              value: production
+            - name: BROWSER_POOL_SIZE
+              value: {{ .Values.browserRuntime.poolSize | quote }}
+            - name: BROWSER_MAX_CONTEXTS_PER_BROWSER
+              value: {{ .Values.browserRuntime.maxContextsPerBrowser | quote }}
+            - name: BROWSER_MAX_PAGES_PER_CONTEXT
+              value: {{ .Values.browserRuntime.maxPagesPerContext | quote }}
+            - name: BROWSER_TASK_TIMEOUT_MS
+              value: {{ .Values.browserRuntime.taskTimeoutMs | quote }}
+            - name: BROWSER_ACTION_TIMEOUT_MS
+              value: {{ .Values.browserRuntime.actionTimeoutMs | quote }}
+            - name: BROWSER_NAVIGATION_TIMEOUT_MS
+              value: {{ .Values.browserRuntime.navigationTimeoutMs | quote }}
+            - name: BROWSER_IDLE_SESSION_TIMEOUT_MS
+              value: {{ .Values.browserRuntime.idleSessionTimeoutMs | quote }}
+            - name: BROWSER_BLOCK_PRIVATE_NETWORK
+              value: {{ .Values.browserRuntime.blockPrivateNetwork | quote }}
+            - name: BROWSER_ALLOWED_HOSTS
+              value: {{ .Values.browserRuntime.allowedHosts | quote }}
+            - name: BROWSER_ENABLE_EVALUATE
+              value: {{ .Values.browserRuntime.enableEvaluate | quote }}
+            - name: BROWSER_ARTIFACT_PROVIDER
+              value: {{ .Values.browserRuntime.artifact.provider | quote }}
+            - name: BROWSER_ARTIFACT_DIR
+              value: /data/browser
+            - name: BROWSER_ARTIFACT_BUCKET
+              value: {{ .Values.browserRuntime.artifact.bucket | quote }}
+            {{- if .Values.browserRuntime.artifact.endpoint }}
+            - name: BROWSER_ARTIFACT_ENDPOINT
+              value: {{ .Values.browserRuntime.artifact.endpoint | quote }}
+            {{- end }}
+            - name: BROWSER_ARTIFACT_REGION
+              value: {{ .Values.browserRuntime.artifact.region | quote }}
+            {{- range $key, $value := .Values.browserRuntime.env }}
+            - name: {{ $key }}
+              value: {{ $value | quote }}
+            {{- end }}
+          volumeMounts:
+            - name: browser-shm
+              mountPath: /dev/shm
+            - name: browser-artifacts
+              mountPath: /data/browser
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 3
+          lifecycle:
+            preStop:
+              exec:
+                command: ["sleep", "5"]
+          resources:
+            {{- toYaml .Values.browserRuntime.resources | nindent 12 }}
+      volumes:
+        - name: browser-shm
+          emptyDir:
+            medium: Memory
+            sizeLimit: 1Gi
+        - name: browser-artifacts
+          {{- if eq .Values.browserRuntime.artifact.provider "local" }}
+          persistentVolumeClaim:
+            claimName: {{ include "trigix.fullname" . }}-browser-runtime
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "trigix.fullname" . }}-browser-runtime
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "trigix.labels" . | nindent 4 }}
+    app.kubernetes.io/component: browser-runtime
+spec:
+  type: ClusterIP
+  sessionAffinity: ClientIP
+  sessionAffinityConfig:
+    clientIP:
+      timeoutSeconds: 10800
+  ports:
+    - name: http
+      port: 38100
+      targetPort: http
+      protocol: TCP
+  selector:
+    {{- include "trigix.browserRuntimeSelectorLabels" . | nindent 4 }}
+{{- if eq .Values.browserRuntime.artifact.provider "local" }}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "trigix.fullname" . }}-browser-runtime
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "trigix.labels" . | nindent 4 }}
+spec:
+  accessModes: ["ReadWriteOnce"]
+  {{- with .Values.browserRuntime.artifact.storageClassName }}
+  storageClassName: {{ . | quote }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.browserRuntime.artifact.storage }}
+{{- end }}
+{{- if .Values.browserRuntime.autoscaling.enabled }}
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ include "trigix.fullname" . }}-browser-runtime
+  namespace: {{ .Release.Namespace }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "trigix.fullname" . }}-browser-runtime
+  minReplicas: {{ .Values.browserRuntime.autoscaling.minReplicas }}
+  maxReplicas: {{ .Values.browserRuntime.autoscaling.maxReplicas }}
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.browserRuntime.autoscaling.targetCPUUtilizationPercentage }}
+{{- end }}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "trigix.fullname" . }}-browser-runtime
+  namespace: {{ .Release.Namespace }}
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      {{- include "trigix.browserRuntimeSelectorLabels" . | nindent 6 }}
+{{- end }}

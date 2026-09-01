@@ -96,6 +96,50 @@ aiRuntime:
   # FTS / agent model gateway, e.g. OPENAI_API_KEY, RERANK_BASE_URL, RAG_FTS_CONFIG.
   env: {}
 
+browserRuntime:
+  enabled: false
+  replicaCount: 1
+  image:
+    repository: trigix/browser-runtime
+    tag: ""
+    pullPolicy: IfNotPresent
+  # Shared service credential used by the platform/executor. Supply this with
+  # --set-string browserRuntime.authToken=... or an encrypted values source.
+  authToken: ""
+  poolSize: 3
+  maxContextsPerBrowser: 10
+  maxPagesPerContext: 3
+  taskTimeoutMs: 60000
+  actionTimeoutMs: 10000
+  navigationTimeoutMs: 15000
+  idleSessionTimeoutMs: 300000
+  blockPrivateNetwork: true
+  allowedHosts: ""
+  enableEvaluate: false
+  artifact:
+    provider: local
+    storage: 20Gi
+    storageClassName: ""
+    bucket: ""
+    endpoint: ""
+    region: us-east-1
+    accessKeyId: ""
+    secretAccessKey: ""
+    sessionToken: ""
+  resources:
+    requests:
+      cpu: "500m"
+      memory: "1Gi"
+    limits:
+      cpu: "4000m"
+      memory: "4Gi"
+  autoscaling:
+    enabled: false
+    minReplicas: 1
+    maxReplicas: 6
+    targetCPUUtilizationPercentage: 70
+  env: {}
+
 executor:
   enabled: false
   replicaCount: 3

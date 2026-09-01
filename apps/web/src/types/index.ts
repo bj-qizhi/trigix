@@ -13,6 +13,8 @@ export type NodeType = 'trigger' | 'http' | 'agent' | 'condition' | 'approval' |
  | 'html_extract' | 'rss' | 'mysql' | 'snowflake' | 'bigquery' | 'ftp' | 'sftp' | 'ssh' | 'imap' | 'wait' | 'sqlserver'
  | 'minimax' | 'ernie'
  | 'openai_compat' | 'desktop'
+ | 'browser_start' | 'browser_navigate' | 'browser_click' | 'browser_input'
+ | 'browser_wait' | 'browser_extract' | 'browser_screenshot' | 'browser_close'
  | 'rag' | 'rag_ingest' | 'custom'
 
 export interface ApiNode {

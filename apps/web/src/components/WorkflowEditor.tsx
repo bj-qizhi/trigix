@@ -49,6 +49,14 @@ interface Props {
 
 const NODE_TYPE_LIST: { type: NodeType; label: string; color: string; desc: string; category: string }[] = [
   { type: 'desktop', label: 'Desktop Action', color: '#2563eb', desc: 'Runs a typed, governed action on an eligible paired desktop Device.', category: 'Integration' },
+  { type: 'browser_start', label: 'Browser Start', color: '#0f766e', desc: 'Creates an isolated, tenant-bound Browser Session.', category: 'Browser' },
+  { type: 'browser_navigate', label: 'Browser Navigate', color: '#0f766e', desc: 'Navigates a Browser Session to a policy-approved HTTP(S) URL.', category: 'Browser' },
+  { type: 'browser_click', label: 'Browser Click', color: '#0f766e', desc: 'Clicks a selector in an existing Browser Session.', category: 'Browser' },
+  { type: 'browser_input', label: 'Browser Input', color: '#0f766e', desc: 'Enters a value into a selector in an existing Browser Session.', category: 'Browser' },
+  { type: 'browser_wait', label: 'Browser Wait', color: '#0f766e', desc: 'Waits for a selector, URL, load state, or bounded duration.', category: 'Browser' },
+  { type: 'browser_extract', label: 'Browser Extract', color: '#0f766e', desc: 'Extracts text, HTML, attributes, JSON, lists, or tables from a page.', category: 'Browser' },
+  { type: 'browser_screenshot', label: 'Browser Screenshot', color: '#0f766e', desc: 'Captures a page screenshot into the governed Artifact store.', category: 'Browser' },
+  { type: 'browser_close', label: 'Browser Close', color: '#0f766e', desc: 'Closes a Browser Session and releases its Browser Context.', category: 'Browser' },
   { type: 'trigger',      label: 'Trigger',      color: 'var(--node-trigger)',   desc: 'Starts the workflow. Passes input_json to downstream nodes. Supports manual, webhook, and scheduled runs.',  category: 'Control' },
   { type: 'condition',    label: 'Condition',     color: 'var(--node-condition)',   desc: 'Routes to true/false branches by comparing a field. Operators: equals, not_equals, contains, gt, lt, gte, lte, exists.', category: 'Control' },
   { type: 'approval',     label: 'Approval',      color: 'var(--node-approval)',  desc: 'Pauses execution until a human approves or rejects. Approve/Reject buttons appear in the execution panel.', category: 'Control' },
@@ -229,9 +237,17 @@ const NODE_TYPE_LIST: { type: NodeType; label: string; color: string; desc: stri
   { type: 'copper',       label: 'Copper CRM',     color: 'var(--node-copper)',  desc: 'CRM automation via Copper. Config: api_key, user_email, resource (people/leads/opportunities/companies), operation (list/get/create/update/delete), record_id, body, filter. Returns {status, body}.', category: 'Integration' },
 ]
 
-const PALETTE_CATEGORY_ORDER = ['Control', 'Integration', 'AI', 'Transform', 'Utility']
+const PALETTE_CATEGORY_ORDER = ['Control', 'Browser', 'Integration', 'AI', 'Transform', 'Utility']
 
 const NODE_ZH: Record<string, { labelZh: string; descZh: string }> = {
+  browser_start: { labelZh: '浏览器启动', descZh: '创建租户隔离的浏览器会话。' },
+  browser_navigate: { labelZh: '浏览器导航', descZh: '将浏览器会话导航到策略允许的 HTTP(S) 地址。' },
+  browser_click: { labelZh: '浏览器点击', descZh: '在现有浏览器会话中点击选择器。' },
+  browser_input: { labelZh: '浏览器输入', descZh: '向现有浏览器会话中的选择器输入值。' },
+  browser_wait: { labelZh: '浏览器等待', descZh: '等待选择器、URL、加载状态或限定时长。' },
+  browser_extract: { labelZh: '浏览器提取', descZh: '从页面提取文本、HTML、属性、JSON、列表或表格。' },
+  browser_screenshot: { labelZh: '浏览器截图', descZh: '将页面截图保存到受治理的 Artifact 存储。' },
+  browser_close: { labelZh: '浏览器关闭', descZh: '关闭浏览器会话并释放浏览器上下文。' },
   // Control
   trigger:      { labelZh: '触发器',      descZh: '启动工作流，将 input_json 传递给下游节点，支持手动、Webhook 和定时运行。' },
   condition:    { labelZh: '条件判断',    descZh: '对字段或模板表达式求值，路由到 true/false 分支，支持等于、包含、大小比较、正则。' },

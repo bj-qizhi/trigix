@@ -160,6 +160,14 @@ export function graphFromApi(
 // Per-node accent colour (drives minimap dots and the node header background).
 export const NODE_COLORS: Record<string, string> = {
   desktop: '#2563eb',
+              browser_start: '#0f766e',
+              browser_navigate: '#0f766e',
+              browser_click: '#0f766e',
+              browser_input: '#0f766e',
+              browser_wait: '#0f766e',
+              browser_extract: '#0f766e',
+              browser_screenshot: '#0f766e',
+              browser_close: '#0f766e',
               trigger: '#238636',
               http: '#1f6feb',
               agent: '#8957e5',
@@ -342,6 +350,14 @@ export const NODE_COLORS: Record<string, string> = {
 
 const NODE_LABELS: Record<NodeType, string> = {
   desktop: 'Desktop Action',
+  browser_start: 'Browser Start',
+  browser_navigate: 'Browser Navigate',
+  browser_click: 'Browser Click',
+  browser_input: 'Browser Input',
+  browser_wait: 'Browser Wait',
+  browser_extract: 'Browser Extract',
+  browser_screenshot: 'Browser Screenshot',
+  browser_close: 'Browser Close',
   trigger: 'Trigger',
   http: 'HTTP',
   agent: 'Agent',

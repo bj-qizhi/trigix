@@ -33,6 +33,13 @@ supports the full production palette (roughly 180 types), including triggers,
 control flow, transforms, Agent/RAG, model providers, databases, messaging,
 storage, SaaS connectors, document processing, and human Approval.
 
+Browser automation uses the explicit `browser_start`, `browser_navigate`,
+`browser_click`, `browser_input`, `browser_wait`, `browser_extract`,
+`browser_screenshot`, and `browser_close` variants. Stateful nodes receive the
+session through a template such as `{{browser_start.browser.session_id}}` and a
+workflow must close every session it starts. These variants are external
+runtime nodes: Executor calls Browser Runtime and never embeds Chromium.
+
 The Rust `NodeType` enum is the compatibility contract. Executor runtime policy
 (local, external, Approval, or Wait) is centralized in the Node registry. New
 types must update the enum, registry policy, handler, frontend configuration,

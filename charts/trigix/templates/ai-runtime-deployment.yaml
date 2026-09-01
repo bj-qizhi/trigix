@@ -32,6 +32,15 @@ spec:
               containerPort: 8000
               protocol: TCP
           env:
+            {{- if .Values.browserRuntime.enabled }}
+            - name: BROWSER_RUNTIME_BASE_URL
+              value: {{ printf "http://%s-browser-runtime:38100" (include "trigix.fullname" .) | quote }}
+            - name: BROWSER_RUNTIME_AUTH_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "trigix.fullname" . }}
+                  key: BROWSER_RUNTIME_AUTH_TOKEN
+            {{- end }}
             {{- if and .Values.postgresql.enabled (not .Values.secrets.databaseUrl) }}
             - name: POSTGRES_PASSWORD
               valueFrom:

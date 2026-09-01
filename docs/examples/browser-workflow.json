@@ -1,0 +1,70 @@
+{
+  "workflow_version_id": "browser-runtime-example-v1",
+  "nodes": [
+    {
+      "id": "trigger",
+      "type": "trigger"
+    },
+    {
+      "id": "browser_start",
+      "type": "browser_start"
+    },
+    {
+      "id": "navigate",
+      "type": "browser_navigate",
+      "config": {
+        "session_id": "{{browser_start.browser.session_id}}",
+        "url": "https://example.com",
+        "wait_until": "domcontentloaded",
+        "timeout_ms": 15000
+      }
+    },
+    {
+      "id": "extract_heading",
+      "type": "browser_extract",
+      "config": {
+        "session_id": "{{browser_start.browser.session_id}}",
+        "selector": "h1",
+        "mode": "text",
+        "timeout_ms": 10000
+      }
+    },
+    {
+      "id": "capture_page",
+      "type": "browser_screenshot",
+      "config": {
+        "session_id": "{{browser_start.browser.session_id}}",
+        "full_page": true,
+        "timeout_ms": 10000
+      }
+    },
+    {
+      "id": "browser_close",
+      "type": "browser_close",
+      "config": {
+        "session_id": "{{browser_start.browser.session_id}}"
+      }
+    }
+  ],
+  "edges": [
+    { "source": "trigger", "target": "browser_start" },
+    { "source": "browser_start", "target": "navigate" },
+    { "source": "navigate", "target": "extract_heading" },
+    { "source": "extract_heading", "target": "capture_page" },
+    { "source": "capture_page", "target": "browser_close" }
+  ],
+  "output_schema": [
+    {
+      "key": "heading",
+      "field_type": "string",
+      "description": "Extracted page heading",
+      "source": "{{extract_heading.browser.result.data}}"
+    },
+    {
+      "key": "screenshot_artifact",
+      "field_type": "json",
+      "description": "Screenshot Artifact metadata",
+      "source": "{{capture_page.browser.result}}"
+    }
+  ]
+}

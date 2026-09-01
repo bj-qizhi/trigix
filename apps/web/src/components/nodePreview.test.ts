@@ -41,6 +41,24 @@ describe('nodePreview', () => {
     expect(nodePreview('webhook', { url: 'https://hooks.test/abc' })).toBe('hooks.test/abc')
   })
 
+  it('renders Browser node state without exposing input values', () => {
+    expect(nodePreview('browser_start', {})).toBe('Creates an isolated session')
+    expect(nodePreview('browser_navigate', { url: 'https://example.com/path' })).toBe('example.com/path')
+    expect(nodePreview('browser_navigate', {})).toBe('No URL set')
+    expect(nodePreview('browser_click', { selector: '#submit' })).toBe('click #submit')
+    expect(nodePreview('browser_click', {})).toBe('No selector set')
+    expect(nodePreview('browser_input', { selector: '#password', value: 'secret' })).toBe('input #password')
+    expect(nodePreview('browser_input', { value: 'secret' })).toBe('No selector set')
+    expect(nodePreview('browser_wait', {})).toBe('selector wait')
+    expect(nodePreview('browser_wait', { wait_mode: 'duration' })).toBe('duration wait')
+    expect(nodePreview('browser_extract', { selector: 'main' })).toBe('text main')
+    expect(nodePreview('browser_extract', { selector: 'a', mode: 'attribute' })).toBe('attribute a')
+    expect(nodePreview('browser_extract', {})).toBe('No selector set')
+    expect(nodePreview('browser_screenshot', { full_page: false })).toBe('Viewport screenshot')
+    expect(nodePreview('browser_screenshot', {})).toBe('Full-page screenshot')
+    expect(nodePreview('browser_close', {})).toBe('Closes the session')
+  })
+
   it('covers the previously-missing node previews', () => {
     expect(nodePreview('trigger', {})).toBe('Workflow entry point')
     expect(nodePreview('switch', {})).toBe('No field set')

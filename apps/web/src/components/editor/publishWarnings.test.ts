@@ -92,4 +92,22 @@ describe('collectPublishWarnings', () => {
     expect(messages(w)).toContain('Desktop Action node "desktop" has no Device')
     expect(messages(w)).toContain('Desktop Action node "desktop" has no stable selector')
   })
+
+  it('validates Browser session inputs and Browser Agent policy', () => {
+    const w = collectPublishWarnings(
+      [
+        node('trigger', 'trigger'),
+        node('navigate', 'browser_navigate', { url: 'https://example.com' }),
+        node('agent', 'agent', {
+          prompt_template: 'Inspect the page',
+          tools: ['browser'],
+          browser_allowed_actions: [],
+        }),
+      ],
+      [edge('trigger', 'navigate'), edge('navigate', 'agent')],
+    )
+    expect(messages(w)).toContain('Browser Navigate node "navigate" has no Session ID')
+    expect(messages(w)).toContain('Agent node "agent" has no Browser allowed hosts')
+    expect(messages(w)).toContain('Agent node "agent" has no Browser allowed actions')
+  })
 })

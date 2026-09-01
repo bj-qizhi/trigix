@@ -22,6 +22,14 @@ pub type TokenSink = std::sync::Arc<dyn Fn(&str, &str) + Send + Sync>;
 
 tokio::task_local! {
     pub static TOKEN_SINK: Option<TokenSink>;
+    pub static TENANT_ID: Option<String>;
+}
+
+/// Return the authenticated Tenant bound by the execution host. External
+/// runtime nodes fail closed when no Tenant is bound rather than accepting a
+/// tenant identifier from Workflow configuration.
+pub fn current_tenant_id() -> Option<String> {
+    TENANT_ID.try_with(Clone::clone).ok().flatten()
 }
 
 /// Emit a token delta for `node_id` if a streaming sink is active for this

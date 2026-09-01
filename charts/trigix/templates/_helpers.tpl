@@ -77,6 +77,12 @@ AI runtime selector labels.
 app.kubernetes.io/component: ai-runtime
 {{- end }}
 
+{{/* Browser runtime selector labels. */}}
+{{- define "trigix.browserRuntimeSelectorLabels" -}}
+{{ include "trigix.selectorLabels" . }}
+app.kubernetes.io/component: browser-runtime
+{{- end }}
+
 {{/*
 Create the name of the service account to use.
 */}}

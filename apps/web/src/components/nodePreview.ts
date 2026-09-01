@@ -5,6 +5,14 @@
 // table extracted from Canvas's FlowNodeComponent.
 const NODE_PREVIEW: Record<string, (c: Record<string, unknown>) => string> = {
   desktop: (c) => `${String(c.action_kind ?? 'click_element')} · ${c.device_id ? String(c.device_id) : 'No Device'}`,
+  browser_start: (_c) => 'Creates an isolated session',
+  browser_navigate: (c) => c.url ? String(c.url).replace(/^https?:\/\//, '') : 'No URL set',
+  browser_click: (c) => c.selector ? `click ${String(c.selector)}` : 'No selector set',
+  browser_input: (c) => c.selector ? `input ${String(c.selector)}` : 'No selector set',
+  browser_wait: (c) => `${String(c.wait_mode ?? 'selector')} wait`,
+  browser_extract: (c) => c.selector ? `${String(c.mode ?? 'text')} ${String(c.selector)}` : 'No selector set',
+  browser_screenshot: (c) => c.full_page === false ? 'Viewport screenshot' : 'Full-page screenshot',
+  browser_close: (_c) => 'Closes the session',
   http: (c) => (c.url as string) || 'No URL set',
   agent: (c) => (c.model as string) || 'claude-sonnet-4-6',
   condition: (c) => c.field ? `if ${String(c.field)}` : 'No field set',
