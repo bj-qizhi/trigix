@@ -2,6 +2,8 @@
 
 This policy defines public intake, severity, response targets, triage, escalation, and security handoff for Trigix. It is not a paid support agreement or uptime service-level agreement.
 
+This policy covers the official repository, official source releases, and Official Trigix artifacts within their stated supported boundary. A Community Build or Self-managed Distribution is supported by its identified distributor. The public project may accept an upstream source defect that reproduces independently of that distribution, but it does not assume the distributor's signing, installation, update, privacy, incident, or customer-support obligations. See [Distribution and GA responsibility](../release/distribution-responsibility.md).
+
 ## Channels
 
 | Need | Channel | Public content rule |

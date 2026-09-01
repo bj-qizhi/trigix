@@ -39,8 +39,8 @@ async function loadDesktopRelease() {
     const releases = await response.json();
     const release = releases.find((item) => !item.draft && !item.prerelease && /^desktop-v\d+\.\d+\.\d+$/.test(item.tag_name));
     if (!release) {
-      releaseTitle.textContent = "Desktop GA has not been published";
-      releaseDetail.textContent = "Signed installers will appear here after production qualification. Platform releases remain available on GitHub.";
+      releaseTitle.textContent = "Official Desktop GA has not been published";
+      releaseDetail.textContent = "Official signed installers will appear here after production qualification. Independent distributors may publish clearly identified builds under their own responsibility.";
       return;
     }
 

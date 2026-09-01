@@ -2,7 +2,9 @@
 
 Public Trigix Desktop releases use tags in the form `desktop-vMAJOR.MINOR.PATCH`. Download the installer and its matching `.sha256` file from the same [GitHub Release](https://github.com/bj-qizhi/trigix/releases). Source archives attached automatically by GitHub are not Desktop installers.
 
-If no stable `desktop-v*` release exists, there is no public Desktop GA installer. Do not substitute a CI artifact or a development-signed build.
+If no stable `desktop-v*` release exists, there is no Official Trigix Desktop GA installer. Do not substitute a CI artifact or a development-signed build and describe it as official.
+
+Community and self-managed distributors may publish their own installers without waiting for Official GA. Verify the named distributor, its signing identity, source revision, modifications, support boundary, security channel, and release evidence. Responsibility for that artifact remains with its distributor. See [Distribution and GA responsibility](distribution-responsibility.md).
 
 ## Verify SHA-256
 
@@ -31,7 +33,7 @@ $signature | Format-List Status,StatusMessage,SignerCertificate,TimeStamperCerti
 if ($signature.Status -ne "Valid") { throw "Invalid Authenticode signature" }
 ```
 
-Compare the certificate subject and SHA-256 thumbprint with the release note. Confirm a valid public timestamp. Stop if Windows reports an unknown publisher, hash mismatch, untrusted chain, or different subject.
+Compare the certificate subject and SHA-256 thumbprint with the release note. Confirm a valid public timestamp. For an Official Trigix release, the release note names the Trigix publisher identity. For an independent distribution, it names that distributor. Stop if Windows reports an unexpected publisher, hash mismatch, untrusted chain, or different subject.
 
 ## Verify macOS trust and architecture
 
@@ -50,7 +52,7 @@ lipo -archs "/Volumes/Trigix Desktop/Trigix Desktop.app/Contents/MacOS/Trigix De
 lipo -archs "/Volumes/Trigix Desktop/Trigix Desktop.app/Contents/MacOS/desktop-automation-host"
 ```
 
-Both binaries must report `x86_64 arm64` or `arm64 x86_64`. Compare the Developer ID identity and Team ID with the release note. Stop when Gatekeeper, stapling, signature, or architecture verification fails.
+Both binaries must report `x86_64 arm64` or `arm64 x86_64`. Compare the Developer ID identity and Team ID with the release note. Official and independent distributors use their own distinct identities. Stop when Gatekeeper, stapling, signature, or architecture verification fails.
 
 ## Mirrors and offline transfer
 

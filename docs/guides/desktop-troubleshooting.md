@@ -92,8 +92,8 @@ If the computer is lost or compromised, the Tenant administrator must revoke the
 - Voice depends on a deployment-approved realtime provider and allowed WebRTC connectivity.
 - Voice can propose a published Workflow execution but cannot approve tools or Desktop actions.
 - The built-in avatar is a presentation surface, not an autonomous operator.
-- Desktop GA installers are unavailable until the production signing and release qualification gates complete.
+- Official Trigix Desktop GA installers are unavailable until the official production signing and release qualification gates complete. Independent distributors may qualify and support their own clearly identified builds.
 
 ## Get help
 
-Use [GitHub Discussions](https://github.com/bj-qizhi/trigix/discussions) for questions and [GitHub Issues](https://github.com/bj-qizhi/trigix/issues/new/choose) for reproducible bugs. Follow the [support policy](../support/support-policy.md). Report suspected vulnerabilities through the private channel in [SECURITY.md](../../SECURITY.md), never in a public issue.
+For an Official Trigix artifact or a source-level defect reproducible on official supported code, use [GitHub Discussions](https://github.com/bj-qizhi/trigix/discussions) or [GitHub Issues](https://github.com/bj-qizhi/trigix/issues/new/choose). For Community Builds and Self-managed Distributions, contact the identified distributor first for installation, signing, update, privacy, incident, and support questions. Follow the [support policy](../support/support-policy.md). Report suspected vulnerabilities through the appropriate private security channel, never in a public issue.
