@@ -15,8 +15,14 @@ test('htmlToText strips tags and scripts, decodes entities', () => {
 
 test('htmlToText keeps links when asked', () => {
   const out = htmlToText('<a href="https://x.com">site</a>', true)
-  assert.match(out, /site/)
-  assert.match(out, /https:\/\/x\.com/)
+  assert.equal(out, 'site (https://x.com)')
+})
+
+test('htmlToText decodes entities once and excludes active content', () => {
+  assert.equal(htmlToText('&amp;lt;script&amp;gt;'), '&lt;script&gt;')
+  assert.equal(htmlToText('before<script>evil()</script>after'), 'beforeafter')
+  assert.doesNotMatch(htmlToText('<<script>evil()</script>safe'), /evil/)
+  assert.equal(htmlToText('<a href="javascript:alert(1)">site</a>', true), 'site')
 })
 
 test('redactPii masks each category', () => {
