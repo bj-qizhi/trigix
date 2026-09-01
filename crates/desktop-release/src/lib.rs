@@ -4,12 +4,12 @@ use sha2::{Digest, Sha256};
 use std::collections::HashSet;
 use url::Url;
 
-pub const RELEASE_MANIFEST_SCHEMA_VERSION: u16 = 1;
+pub const RELEASE_MANIFEST_SCHEMA_VERSION: u16 = 2;
 pub const MAX_RELEASE_ARTIFACT_BYTES: u64 = 1024 * 1024 * 1024;
 pub const MAX_EVIDENCE_BYTES: u64 = 32 * 1024 * 1024;
 pub const MAX_MANIFEST_LIFETIME_SECONDS: u64 = 31 * 24 * 60 * 60;
 pub const MAX_HEALTH_AGE_SECONDS: u64 = 24 * 60 * 60;
-pub const RELEASE_READINESS_SCHEMA_VERSION: u16 = 1;
+pub const RELEASE_READINESS_SCHEMA_VERSION: u16 = 2;
 pub const MAX_READINESS_LIFETIME_SECONDS: u64 = 7 * 24 * 60 * 60;
 pub const MAX_EXTERNAL_EVIDENCE_AGE_SECONDS: u64 = 366 * 24 * 60 * 60;
 
@@ -56,6 +56,7 @@ pub struct ReleaseEvidence {
 #[serde(deny_unknown_fields)]
 pub struct ReleaseManifest {
     pub schema_version: u16,
+    pub target: ReleaseTarget,
     pub release_id: String,
     pub sequence: u64,
     pub version: String,
@@ -77,6 +78,7 @@ pub struct ReleaseManifest {
 #[serde(deny_unknown_fields)]
 struct UnsignedReleaseManifest<'a> {
     schema_version: u16,
+    target: ReleaseTarget,
     release_id: &'a str,
     sequence: u64,
     version: &'a str,
@@ -130,6 +132,7 @@ pub struct EnterpriseUpdatePolicy {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct UpdateContext {
+    pub target: ReleaseTarget,
     pub installed_version: String,
     pub protocol_revision: u16,
     pub device_id: String,
@@ -150,6 +153,7 @@ pub enum RejectionReason {
     ChannelMismatch,
     VersionPinMismatch,
     OfflineImportDisabled,
+    TargetMismatch,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -281,6 +285,9 @@ impl ReleasePolicy {
         {
             return Err(RejectionReason::InvalidManifest);
         }
+        if manifest.target != context.target {
+            return Err(RejectionReason::TargetMismatch);
+        }
         match &manifest.artifact.location {
             ArtifactLocation::Online { url } => {
                 let url = Url::parse(url).map_err(|_| RejectionReason::UntrustedOrigin)?;
@@ -345,6 +352,7 @@ impl ReleasePolicy {
 pub fn signing_payload(manifest: &ReleaseManifest) -> Result<Vec<u8>, serde_json::Error> {
     serde_json::to_vec(&UnsignedReleaseManifest {
         schema_version: manifest.schema_version,
+        target: manifest.target,
         release_id: &manifest.release_id,
         sequence: manifest.sequence,
         version: &manifest.version,
@@ -481,6 +489,20 @@ pub enum ReadinessOutcome {
     Failed,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ReleaseTarget {
+    WindowsX86_64,
+    MacOsUniversal,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ClientArchitecture {
+    X86_64,
+    Arm64,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ReleaseControlEvidence {
@@ -503,8 +525,21 @@ pub struct PenetrationTestDisposition {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
+pub struct ClientQualificationEvidence {
+    pub os_version: String,
+    pub architecture: ClientArchitecture,
+    pub clean_install: ReleaseControlEvidence,
+    pub automation: ReleaseControlEvidence,
+    pub upgrade: ReleaseControlEvidence,
+    pub rollback: ReleaseControlEvidence,
+    pub uninstall: ReleaseControlEvidence,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ReleaseReadinessRecord {
     pub schema_version: u16,
+    pub target: ReleaseTarget,
     pub release_id: String,
     pub version: String,
     pub source_revision: String,
@@ -513,8 +548,9 @@ pub struct ReleaseReadinessRecord {
     pub provenance_sha256: String,
     pub attested_at_unix_seconds: u64,
     pub expires_at_unix_seconds: u64,
-    pub windows_client_smoke: ReleaseControlEvidence,
-    pub authenticode_verification: ReleaseControlEvidence,
+    pub client_qualifications: Vec<ClientQualificationEvidence>,
+    pub code_signature_verification: ReleaseControlEvidence,
+    pub notarization_verification: Option<ReleaseControlEvidence>,
     pub malware_scan: ReleaseControlEvidence,
     pub dependency_review: ReleaseControlEvidence,
     pub penetration_test: PenetrationTestDisposition,
@@ -551,11 +587,13 @@ pub fn verify_release_readiness(
     {
         return Err(ReadinessRejection::InvalidRecord);
     }
+    validate_client_matrix(record)?;
     if now_unix_seconds >= record.expires_at_unix_seconds {
         return Err(ReadinessRejection::Expired);
     }
     if record.release_id != manifest.release_id
         || record.version != manifest.version
+        || record.target != manifest.target
         || !record
             .artifact_sha256
             .eq_ignore_ascii_case(&manifest.artifact.sha256_hex)
@@ -569,8 +607,7 @@ pub fn verify_release_readiness(
         return Err(ReadinessRejection::ManifestMismatch);
     }
     let controls = [
-        &record.windows_client_smoke,
-        &record.authenticode_verification,
+        &record.code_signature_verification,
         &record.malware_scan,
         &record.dependency_review,
         &record.penetration_test.control,
@@ -578,6 +615,20 @@ pub fn verify_release_readiness(
     ];
     for control in controls {
         verify_readiness_control(record, control)?;
+    }
+    if let Some(notarization) = &record.notarization_verification {
+        verify_readiness_control(record, notarization)?;
+    }
+    for qualification in &record.client_qualifications {
+        for control in [
+            &qualification.clean_install,
+            &qualification.automation,
+            &qualification.upgrade,
+            &qualification.rollback,
+            &qualification.uninstall,
+        ] {
+            verify_readiness_control(record, control)?;
+        }
     }
     if record.penetration_test.unresolved_critical != 0
         || record.penetration_test.unresolved_high != 0
@@ -594,6 +645,50 @@ pub fn verify_release_readiness(
                 .is_some())
     {
         return Err(ReadinessRejection::UnresolvedSecurityFindings);
+    }
+    Ok(())
+}
+
+fn validate_client_matrix(record: &ReleaseReadinessRecord) -> Result<(), ReadinessRejection> {
+    let mut environments = HashSet::new();
+    let mut os_versions = HashSet::new();
+    for qualification in &record.client_qualifications {
+        if !valid_identifier(&qualification.os_version, 64)
+            || !environments.insert((qualification.os_version.clone(), qualification.architecture))
+        {
+            return Err(ReadinessRejection::InvalidRecord);
+        }
+        os_versions.insert(qualification.os_version.as_str());
+    }
+    if os_versions.len() != 2 {
+        return Err(ReadinessRejection::InvalidRecord);
+    }
+    match record.target {
+        ReleaseTarget::WindowsX86_64 => {
+            if record.notarization_verification.is_some()
+                || record.client_qualifications.len() != 2
+                || record
+                    .client_qualifications
+                    .iter()
+                    .any(|qualification| qualification.architecture != ClientArchitecture::X86_64)
+            {
+                return Err(ReadinessRejection::InvalidRecord);
+            }
+        }
+        ReleaseTarget::MacOsUniversal => {
+            if record.notarization_verification.is_none()
+                || record.client_qualifications.len() != 4
+                || os_versions.iter().any(|os_version| {
+                    [ClientArchitecture::Arm64, ClientArchitecture::X86_64]
+                        .into_iter()
+                        .any(|architecture| {
+                            !environments.contains(&(os_version.to_string(), architecture))
+                        })
+                })
+            {
+                return Err(ReadinessRejection::InvalidRecord);
+            }
+        }
     }
     Ok(())
 }
@@ -643,6 +738,7 @@ mod tests {
         let bytes = b"signed-installer-fixture";
         let mut value = ReleaseManifest {
             schema_version: RELEASE_MANIFEST_SCHEMA_VERSION,
+            target: ReleaseTarget::WindowsX86_64,
             release_id: "stable-1.6.0-1".to_owned(),
             sequence: 12,
             version: "1.6.0".to_owned(),
@@ -690,6 +786,7 @@ mod tests {
 
     fn context() -> UpdateContext {
         UpdateContext {
+            target: ReleaseTarget::WindowsX86_64,
             installed_version: "1.5.1".to_owned(),
             protocol_revision: 2,
             device_id: "device-001".to_owned(),
@@ -709,6 +806,40 @@ mod tests {
             UpdateDecision::InstallAuthorized
         );
         validate_artifact_bytes(&manifest().artifact, b"signed-installer-fixture").unwrap();
+    }
+
+    #[test]
+    fn release_manifest_target_must_match_device_target() {
+        assert_eq!(
+            release_policy().decide(
+                &manifest(),
+                &policy(),
+                &UpdateContext {
+                    target: ReleaseTarget::MacOsUniversal,
+                    ..context()
+                },
+                &TestVerifier
+            ),
+            UpdateDecision::Rejected(RejectionReason::TargetMismatch)
+        );
+
+        let mut macos = ReleaseManifest {
+            target: ReleaseTarget::MacOsUniversal,
+            ..manifest()
+        };
+        macos.signature = hex_digest(&signing_payload(&macos).unwrap());
+        assert_eq!(
+            release_policy().decide(
+                &macos,
+                &policy(),
+                &UpdateContext {
+                    target: ReleaseTarget::MacOsUniversal,
+                    ..context()
+                },
+                &TestVerifier
+            ),
+            UpdateDecision::InstallAuthorized
+        );
     }
 
     #[test]
@@ -973,9 +1104,25 @@ mod tests {
         }
     }
 
+    fn client_qualification(
+        os_version: &str,
+        architecture: ClientArchitecture,
+    ) -> ClientQualificationEvidence {
+        ClientQualificationEvidence {
+            os_version: os_version.to_owned(),
+            architecture,
+            clean_install: readiness_control(),
+            automation: readiness_control(),
+            upgrade: readiness_control(),
+            rollback: readiness_control(),
+            uninstall: readiness_control(),
+        }
+    }
+
     fn readiness() -> ReleaseReadinessRecord {
         ReleaseReadinessRecord {
             schema_version: RELEASE_READINESS_SCHEMA_VERSION,
+            target: ReleaseTarget::WindowsX86_64,
             release_id: "stable-1.6.0-1".to_owned(),
             version: "1.6.0".to_owned(),
             source_revision: "e".repeat(40),
@@ -984,8 +1131,12 @@ mod tests {
             provenance_sha256: "d".repeat(64),
             attested_at_unix_seconds: 10_000,
             expires_at_unix_seconds: 13_600,
-            windows_client_smoke: readiness_control(),
-            authenticode_verification: readiness_control(),
+            client_qualifications: vec![
+                client_qualification("windows-11-24h2", ClientArchitecture::X86_64),
+                client_qualification("windows-11-25h2", ClientArchitecture::X86_64),
+            ],
+            code_signature_verification: readiness_control(),
+            notarization_verification: None,
             malware_scan: readiness_control(),
             dependency_review: readiness_control(),
             penetration_test: PenetrationTestDisposition {
@@ -999,6 +1150,20 @@ mod tests {
         }
     }
 
+    fn macos_readiness() -> ReleaseReadinessRecord {
+        ReleaseReadinessRecord {
+            target: ReleaseTarget::MacOsUniversal,
+            client_qualifications: vec![
+                client_qualification("macos-15", ClientArchitecture::Arm64),
+                client_qualification("macos-15", ClientArchitecture::X86_64),
+                client_qualification("macos-26", ClientArchitecture::Arm64),
+                client_qualification("macos-26", ClientArchitecture::X86_64),
+            ],
+            notarization_verification: Some(readiness_control()),
+            ..readiness()
+        }
+    }
+
     fn readiness_manifest() -> ReleaseManifest {
         let mut value = manifest();
         value.release_id = "stable-1.6.0-1".to_owned();
@@ -1007,6 +1172,13 @@ mod tests {
         value.sbom.sha256_hex = "c".repeat(64);
         value.provenance.sha256_hex = "d".repeat(64);
         value
+    }
+
+    fn macos_readiness_manifest() -> ReleaseManifest {
+        ReleaseManifest {
+            target: ReleaseTarget::MacOsUniversal,
+            ..readiness_manifest()
+        }
     }
 
     #[test]
@@ -1041,7 +1213,7 @@ mod tests {
             Err(ReadinessRejection::ArtifactMismatch)
         );
         let mut failed = readiness();
-        failed.authenticode_verification.outcome = ReadinessOutcome::Failed;
+        failed.code_signature_verification.outcome = ReadinessOutcome::Failed;
         assert_eq!(
             verify_release_readiness(&failed, &readiness_manifest(), 10_001),
             Err(ReadinessRejection::ControlFailed)
@@ -1049,6 +1221,65 @@ mod tests {
         assert_eq!(
             verify_release_readiness(&readiness(), &readiness_manifest(), 13_600),
             Err(ReadinessRejection::Expired)
+        );
+    }
+
+    #[test]
+    fn readiness_requires_exact_target_qualification_matrix() {
+        assert_eq!(
+            verify_release_readiness(&macos_readiness(), &macos_readiness_manifest(), 10_001),
+            Ok(())
+        );
+        assert_eq!(
+            verify_release_readiness(&macos_readiness(), &readiness_manifest(), 10_001),
+            Err(ReadinessRejection::ManifestMismatch)
+        );
+
+        let mut missing_intel = macos_readiness();
+        missing_intel.client_qualifications.pop();
+        assert_eq!(
+            verify_release_readiness(&missing_intel, &macos_readiness_manifest(), 10_001),
+            Err(ReadinessRejection::InvalidRecord)
+        );
+
+        let mut duplicate = macos_readiness();
+        duplicate.client_qualifications[3] = duplicate.client_qualifications[2].clone();
+        assert_eq!(
+            verify_release_readiness(&duplicate, &macos_readiness_manifest(), 10_001),
+            Err(ReadinessRejection::InvalidRecord)
+        );
+
+        let mut missing_notarization = macos_readiness();
+        missing_notarization.notarization_verification = None;
+        assert_eq!(
+            verify_release_readiness(&missing_notarization, &macos_readiness_manifest(), 10_001),
+            Err(ReadinessRejection::InvalidRecord)
+        );
+
+        let mut unexpected_notarization = readiness();
+        unexpected_notarization.notarization_verification = Some(readiness_control());
+        assert_eq!(
+            verify_release_readiness(&unexpected_notarization, &readiness_manifest(), 10_001),
+            Err(ReadinessRejection::InvalidRecord)
+        );
+    }
+
+    #[test]
+    fn readiness_requires_every_client_journey_to_pass() {
+        let mut failed = macos_readiness();
+        failed.client_qualifications[0].rollback.outcome = ReadinessOutcome::Failed;
+        assert_eq!(
+            verify_release_readiness(&failed, &macos_readiness_manifest(), 10_001),
+            Err(ReadinessRejection::ControlFailed)
+        );
+
+        let mut wrong_artifact = readiness();
+        wrong_artifact.client_qualifications[0]
+            .automation
+            .subject_artifact_sha256 = "f".repeat(64);
+        assert_eq!(
+            verify_release_readiness(&wrong_artifact, &readiness_manifest(), 10_001),
+            Err(ReadinessRejection::ArtifactMismatch)
         );
     }
 

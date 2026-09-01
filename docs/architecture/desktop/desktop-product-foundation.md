@@ -32,6 +32,11 @@ The protocol and policy crates are independent of Tauri and Windows APIs. This m
 
 `desktop-release` is likewise independent of the installer and network client. It verifies release metadata and produces a policy decision, but it cannot download or execute an artifact. Production signing and installation remain protected release operations. See [Enterprise Desktop Release Operations](../../operations/desktop-enterprise-release.md) and [ADR 0013](../../adr/0013-enterprise-desktop-update-governance.md).
 
+Production-candidate evidence is target-specific. Windows and macOS records
+bind every control to one installer or DMG digest and require the complete
+supported operating-system and processor matrix before approval. See
+[Cross-platform desktop release readiness](cross-platform-release-readiness.md).
+
 The Platform exposes an administrator-only Tenant update policy and fleet compliance view without extending that authority. Policy writes use an observed revision, persist behind Tenant row-level security, and default to disabled updates when absent. Compliance is computed from the authoritative Device lifecycle, Agent version, and server-observed last-seen time with fixed categories and bounded pagination. The API accepts no release origin, artifact, signature, Credential, or installation command. See [ADR 0014](../../adr/0014-tenant-desktop-update-policy-and-fleet-compliance.md).
 
 The initial Tauri shell and its least-privilege IPC boundary are defined in [Secure Desktop Shell](secure-desktop-shell.md). Its WebView can read sanitized runtime state and request cancellation only; it cannot submit actions or bypass the Device command path.
