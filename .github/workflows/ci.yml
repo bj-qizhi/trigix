@@ -164,10 +164,40 @@ jobs:
         run: |
           $installer = Get-ChildItem target/debug/bundle/nsis -Filter '*.exe' | Select-Object -First 1
           if ($null -eq $installer) { throw "NSIS installer was not produced." }
-          ./apps/desktop/scripts/qualify-windows-development-signing.ps1 `
-            -Action Verify `
-            -ArtifactPath @("target/debug/trigix-desktop.exe", $installer.FullName) `
-            -StateDirectory "${{ runner.temp }}/trigix-development-signing"
+          $installDirectory = Join-Path "${{ runner.temp }}" "trigix-development-install"
+          if (Test-Path -LiteralPath $installDirectory) {
+            throw "Isolated development installation directory already exists."
+          }
+          try {
+            $install = Start-Process `
+              -FilePath $installer.FullName `
+              -ArgumentList @("/S", "/D=$installDirectory") `
+              -PassThru `
+              -Wait
+            if ($install.ExitCode -ne 0) {
+              throw "NSIS development installation failed with exit code $($install.ExitCode)."
+            }
+            $application = Get-ChildItem -LiteralPath $installDirectory -Recurse -Filter 'trigix-desktop.exe' | Select-Object -First 1
+            $host = Get-ChildItem -LiteralPath $installDirectory -Recurse -Filter 'desktop-automation-host.exe' | Select-Object -First 1
+            if ($null -eq $application -or $null -eq $host) {
+              throw "Installed development application or Host is missing."
+            }
+            ./apps/desktop/scripts/qualify-windows-development-signing.ps1 `
+              -Action Verify `
+              -ArtifactPath @($installer.FullName, $application.FullName, $host.FullName) `
+              -StateDirectory "${{ runner.temp }}/trigix-development-signing"
+          }
+          finally {
+            if (Test-Path -LiteralPath $installDirectory -PathType Container) {
+              $uninstaller = Get-ChildItem -LiteralPath $installDirectory -Recurse -Filter 'uninstall.exe' | Select-Object -First 1
+              if ($null -ne $uninstaller) {
+                Start-Process -FilePath $uninstaller.FullName -ArgumentList '/S' -Wait
+              }
+              if (Test-Path -LiteralPath $installDirectory -PathType Container) {
+                Remove-Item -LiteralPath $installDirectory -Recurse -Force
+              }
+            }
+          }
 
       - name: Upload Windows development-signing evidence
         if: matrix.os == 'windows-2022'
