@@ -1,150 +1,184 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-
-  <title>Trigix — AI-Native Workflow Automation Platform (Rust, Self-Hosted)</title>
-  <meta name="description" content="Trigix is an open-source, AI-native workflow automation platform with a Rust execution engine and 180+ node types. An AI copilot builds and edits workflows for you; visual canvas, LLM &amp; agent nodes, RAG over pgvector, MCP support, multi-tenant, Kubernetes Helm chart. A self-hosted n8n alternative." />
-  <meta name="keywords" content="workflow automation, AI workflow, low-code, Rust workflow engine, LLM, RAG, AI agent, MCP, n8n alternative, self-hosted automation, DAG, pgvector, Kubernetes, open source" />
-  <meta name="author" content="北京祺智科技有限公司 (Beijing Qizhi Technology)" />
+  <meta name="color-scheme" content="light dark" />
+  <title>Trigix | Governed workflow and desktop automation</title>
+  <meta name="description" content="Open-source workflow automation with a Rust execution engine, visual canvas, AI building blocks, and governed desktop automation for Windows and macOS." />
   <link rel="canonical" href="https://bj-qizhi.github.io/trigix/" />
   <meta name="robots" content="index, follow" />
-
-  <!-- Open Graph -->
   <meta property="og:type" content="website" />
   <meta property="og:site_name" content="Trigix" />
-  <meta property="og:title" content="Trigix — AI-Native Workflow Automation Platform" />
-  <meta property="og:description" content="Open-source, AI-native workflow automation. Rust execution engine, 180+ node types, visual canvas, LLM/agent nodes, RAG, MCP, Kubernetes Helm chart. A self-hosted n8n alternative." />
+  <meta property="og:title" content="Trigix | Governed workflow and desktop automation" />
+  <meta property="og:description" content="Build workflows visually, execute them with a Rust engine, and extend governed automation to Windows and macOS devices." />
   <meta property="og:url" content="https://bj-qizhi.github.io/trigix/" />
-  <meta property="og:image" content="https://bj-qizhi.github.io/trigix/og.png?v=2" />
-
-  <!-- Twitter -->
+  <meta property="og:image" content="https://bj-qizhi.github.io/trigix/og.png?v=3" />
   <meta name="twitter:card" content="summary_large_image" />
-  <meta name="twitter:title" content="Trigix — AI-Native Workflow Automation Platform" />
-  <meta name="twitter:description" content="Open-source, AI-native workflow automation. Rust engine, 180+ nodes, LLM/agent, RAG, MCP, Helm chart. Self-hosted n8n alternative." />
-  <meta name="twitter:image" content="https://bj-qizhi.github.io/trigix/og.png?v=2" />
-
-  <!-- Structured data: SoftwareApplication -->
+  <link rel="stylesheet" href="styles.css" />
+  <script src="site.js" defer></script>
   <script type="application/ld+json">
   {
     "@context": "https://schema.org",
     "@type": "SoftwareApplication",
     "name": "Trigix",
     "applicationCategory": "DeveloperApplication",
-    "operatingSystem": "Linux, Docker, Kubernetes",
-    "description": "Open-source, AI-native workflow automation platform with a Rust execution engine, 180+ node types, visual canvas, LLM and agent nodes, RAG over pgvector, and MCP support.",
+    "operatingSystem": "Linux, Windows 11, macOS",
     "url": "https://bj-qizhi.github.io/trigix/",
-    "downloadUrl": "https://github.com/bj-qizhi/trigix",
-    "license": "https://opensource.org/licenses/MIT",
-    "author": {
-      "@type": "Organization",
-      "name": "北京祺智科技有限公司",
-      "url": "https://www.qzso.com/"
-    },
-    "offers": {
-      "@type": "Offer",
-      "price": "0",
-      "priceCurrency": "USD"
-    }
+    "downloadUrl": "https://github.com/bj-qizhi/trigix/releases",
+    "license": "https://github.com/bj-qizhi/trigix/blob/master/LICENSE",
+    "author": {"@type": "Organization", "name": "北京祺智科技有限公司"}
   }
   </script>
-
-  <style>
-    :root { --bg:#0b0e14; --fg:#e6e6e6; --muted:#9aa4b2; --accent:#ff6a3d; --card:#141a24; --line:#222b38; }
-    * { box-sizing: border-box; }
-    body { margin:0; background:var(--bg); color:var(--fg); font:16px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif; }
-    a { color:var(--accent); text-decoration:none; }
-    a:hover { text-decoration:underline; }
-    .wrap { max-width:960px; margin:0 auto; padding:0 24px; }
-    header { padding:72px 0 40px; text-align:center; }
-    h1 { font-size:2.6rem; margin:0 0 12px; letter-spacing:-0.02em; }
-    .tagline { font-size:1.25rem; color:var(--muted); margin:0 auto 28px; max-width:680px; }
-    .cta a { display:inline-block; margin:6px; padding:12px 22px; border-radius:8px; font-weight:600; }
-    .cta .primary { background:var(--accent); color:#0b0e14; }
-    .cta .ghost { border:1px solid var(--line); color:var(--fg); }
-    .badges { margin:20px 0 0; }
-    .badges img { height:20px; margin:3px; vertical-align:middle; }
-    .announce { display:inline-block; margin:26px auto 0; padding:9px 18px; border:1px solid var(--accent); border-radius:999px; background:rgba(255,106,61,0.08); color:var(--fg); font-size:0.95rem; }
-    .announce a { font-weight:600; }
-    section { padding:36px 0; border-top:1px solid var(--line); }
-    h2 { font-size:1.5rem; margin:0 0 18px; }
-    .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); gap:16px; }
-    .card { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:18px; }
-    .card h3 { margin:0 0 8px; font-size:1.05rem; }
-    .card p { margin:0; color:var(--muted); font-size:0.95rem; }
-    pre { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:16px; overflow:auto; font-size:0.9rem; }
-    code { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; }
-    footer { padding:40px 0 60px; color:var(--muted); font-size:0.9rem; text-align:center; border-top:1px solid var(--line); }
-    ul.feat { columns:2; gap:24px; padding-left:20px; }
-    @media (max-width:600px){ h1{font-size:2rem;} ul.feat{columns:1;} }
-  </style>
 </head>
 <body>
-  <div class="wrap">
-    <header>
-      <h1>Trigix</h1>
-      <p class="tagline">An open-source, <strong>AI-native workflow automation platform</strong> — a Rust execution engine, 180+ node types, and a visual drag-and-drop canvas. Self-hosted, multi-tenant, Kubernetes-ready.</p>
-      <p class="cta">
-        <a class="primary" href="https://github.com/bj-qizhi/trigix">⭐ Star on GitHub</a>
-        <a class="ghost" href="#quickstart">Quick Start</a>
-        <a class="ghost" href="https://github.com/bj-qizhi/trigix#readme">Documentation</a>
-      </p>
-      <p class="badges">
-        <img src="https://img.shields.io/github/stars/bj-qizhi/trigix?style=social" alt="GitHub stars" />
-        <img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="MIT License" />
-        <img src="https://img.shields.io/badge/Rust-2021-orange.svg" alt="Rust" />
-      </p>
-      <p class="announce">🎉 <strong>v1.5.1 is out</strong> — an AI copilot that edits your canvas (streaming, any OpenAI-compatible model), natural-language workflow generation, node-level field assist that writes prompts / regex / code for you, and typed, declarable outputs. <a href="https://github.com/bj-qizhi/trigix/releases/tag/v1.5.1">Read the release notes →</a></p>
-    </header>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="site-header">
+    <a class="brand" href="#top" aria-label="Trigix home"><span aria-hidden="true"></span>Trigix</a>
+    <nav aria-label="Primary navigation">
+      <a href="#platform">Platform</a>
+      <a href="#desktop">Desktop</a>
+      <a href="#downloads">Downloads</a>
+      <a href="#resources">Resources</a>
+    </nav>
+    <div class="header-actions">
+      <button id="theme-toggle" class="icon-button" type="button" aria-label="Switch color theme">Theme</button>
+      <a class="button quiet" href="https://github.com/bj-qizhi/trigix">GitHub</a>
+    </div>
+  </header>
 
-    <section>
-      <h2>What is Trigix?</h2>
-      <p>Trigix is an enterprise-grade, AI-native workflow automation platform. Build, run, and monitor complex workflows visually — connecting AI models, APIs, databases, and SaaS tools with a drag-and-drop canvas editor. It is a powerful <strong>self-hosted n8n alternative</strong> built for AI-first automation.</p>
-      <div class="grid">
-        <div class="card"><h3>🦀 Rust Execution Engine</h3><p>Async DAG scheduling, parallel fan-out/fan-in, retries, timeouts, and cancellation.</p></div>
-        <div class="card"><h3>🤖 AI-Native</h3><p>Built-in LLM nodes, an agent tool-use loop, RAG over pgvector, MCP support — plus an AI copilot that builds and edits workflows for you.</p></div>
-        <div class="card"><h3>🧩 180+ Node Types</h3><p>AI models, 100+ SaaS integrations, data transforms, and control flow — extend with the node SDK.</p></div>
-        <div class="card"><h3>🏢 Enterprise-Ready</h3><p>SSO (OIDC), JWT + RBAC, multi-tenant, encrypted secrets, audit log, Kubernetes Helm chart.</p></div>
+  <main id="main">
+    <section id="top" class="hero section-shell">
+      <div class="hero-copy">
+        <p class="kicker">OPEN SOURCE · SELF HOSTED · POLICY CONTROLLED</p>
+        <h1>Automation that reaches the desktop without losing control.</h1>
+        <p class="lead">Design workflows on a visual canvas, run them on a Rust execution engine, and connect approved actions to Windows and macOS devices. Every privileged step stays bounded by identity, policy, approval, and audit.</p>
+        <div class="button-row">
+          <a class="button primary" href="#downloads">Check desktop availability</a>
+          <a class="button quiet" href="https://github.com/bj-qizhi/trigix#quick-start">Deploy the platform</a>
+        </div>
+        <dl class="proof-strip">
+          <div><dt>Execution</dt><dd>Async Rust DAG</dd></div>
+          <div><dt>Library</dt><dd>180 node types</dd></div>
+          <div><dt>Control</dt><dd>Tenant scoped</dd></div>
+        </dl>
+      </div>
+
+      <div class="system-map" role="img" aria-label="A workflow moves from an approved trigger through an agent and policy gate to a paired desktop device">
+        <div class="map-head"><span>LIVE CONTROL PATH</span><span class="pulse">POLICY ACTIVE</span></div>
+        <div class="map-row"><span class="map-index">01</span><div><strong>Trigger</strong><small>Webhook · Schedule · Manual</small></div><b>READY</b></div>
+        <div class="map-line" aria-hidden="true"></div>
+        <div class="map-row"><span class="map-index">02</span><div><strong>Workflow + Agent</strong><small>Typed input · Tool proposal</small></div><b>SCOPED</b></div>
+        <div class="map-line" aria-hidden="true"></div>
+        <div class="map-row emphasized"><span class="map-index">03</span><div><strong>Approval boundary</strong><small>Lease · Policy · Audit</small></div><b>REQUIRED</b></div>
+        <div class="map-line" aria-hidden="true"></div>
+        <div class="map-row"><span class="map-index">04</span><div><strong>Paired device</strong><small>Windows · macOS</small></div><b>VISIBLE</b></div>
       </div>
     </section>
 
-    <section>
-      <h2>Features</h2>
-      <ul class="feat">
-        <li>Visual canvas editor (React Flow): minimap, snap-to-grid, undo/redo</li>
-        <li>AI editor assistant: a copilot that edits the canvas (streaming), natural-language workflow generation, and per-field "write this for me" (prompts, regex, code)</li>
-        <li>Typed I/O contracts: declare input &amp; output schemas; results render by content type (tables, media, JSON)</li>
-        <li>Async DAG engine: parallel branches, sub-workflows, ForEach, loop</li>
-        <li>AI nodes: Claude, OpenAI, Gemini, Vertex AI, Bedrock, Groq, Mistral, Cohere + Chinese LLMs</li>
-        <li>AI building blocks: embedding, rerank, classifier, structured output, image gen, speech↔text</li>
-        <li>Vector stores: pgvector, Pinecone, Qdrant, Weaviate, Chroma, Milvus — with hybrid search, rerank, HNSW</li>
-        <li>Agent tool-use loop with sandboxed egress</li>
-        <li>100+ integrations: GitHub, Jira, Notion, Slack, Stripe, Feishu, DingTalk, WeChat Work…</li>
-        <li>Data &amp; protocols: MySQL, SQL Server, Snowflake, BigQuery, MongoDB, Kafka, RabbitMQ, SSH/SFTP/FTP, IMAP</li>
-        <li>Triggers: Webhook (HMAC-SHA256), Cron, Interval, Manual, Form</li>
-        <li>Auth &amp; security: JWT, RBAC, API keys, encrypted secrets</li>
-        <li>Observability: audit log, Prometheus metrics, OpenTelemetry tracing</li>
-        <li>Infrastructure: PostgreSQL, Redis Streams, Docker, Kubernetes Helm</li>
-      </ul>
+    <section id="platform" class="section-shell split-section">
+      <div class="section-intro">
+        <p class="kicker">PLATFORM</p>
+        <h2>One graph from intent to evidence.</h2>
+        <p>Compose AI, integrations, data transforms, and control flow in one versioned workflow. Execute in parallel, retry deliberately, and inspect every run.</p>
+      </div>
+      <div class="capability-list">
+        <article><span>01</span><div><h3>Visual authoring</h3><p>Canvas editing, typed contracts, reusable workflows, and an assistant for bounded authoring tasks.</p></div></article>
+        <article><span>02</span><div><h3>AI building blocks</h3><p>LLM, RAG, agent, MCP, speech, embedding, rerank, and structured output nodes.</p></div></article>
+        <article><span>03</span><div><h3>Operational control</h3><p>RBAC, tenant isolation, encrypted credentials, approvals, audit logs, metrics, and traces.</p></div></article>
+        <article><span>04</span><div><h3>Portable deployment</h3><p>Run locally, with Docker Compose, or on Kubernetes through the published Helm chart.</p></div></article>
+      </div>
     </section>
 
-    <section id="quickstart">
-      <h2>Quick Start</h2>
-      <p>Deploy on Kubernetes with the Helm chart (published to GHCR):</p>
-      <pre><code>helm install trigix oci://ghcr.io/bj-qizhi/charts/trigix --version 0.3.6 \
-  --namespace trigix --create-namespace</code></pre>
-      <p>Or run on a single host with Docker Compose:</p>
-      <pre><code>docker compose -f docker-compose.prod.yml up -d --build</code></pre>
-      <p>Full instructions in the <a href="https://github.com/bj-qizhi/trigix#readme">README</a>.</p>
+    <section id="desktop" class="section-shell desktop-section">
+      <div class="section-intro">
+        <p class="kicker">TRIGIX DESKTOP</p>
+        <h2>Local control stays local and interruptible.</h2>
+      </div>
+      <div class="desktop-grid">
+        <article class="feature-block featured">
+          <p class="feature-label">AUTOMATION</p>
+          <h3>Semantic actions, not blind replay.</h3>
+          <p>Trigix resolves windows and accessible controls, rejects protected fields, verifies focus, and stops when selectors are stale or ambiguous.</p>
+          <a href="https://github.com/bj-qizhi/trigix/blob/master/docs/guides/desktop-onboarding.md#automation-and-approvals">Read the safety model</a>
+        </article>
+        <article class="feature-block">
+          <p class="feature-label">VOICE</p>
+          <h3>Consent first.</h3>
+          <p>The microphone starts only after a local action. Voice can propose work, but it cannot approve or execute desktop actions by itself.</p>
+        </article>
+        <article class="feature-block">
+          <p class="feature-label">AVATAR</p>
+          <h3>Presentation only.</h3>
+          <p>The built-in avatar reflects conversation state. It cannot access credentials, approve tools, or operate the computer.</p>
+        </article>
+      </div>
     </section>
 
-    <footer>
-      <p>Trigix is free and open source under the MIT License.<br />
-      © 2026 <a href="https://www.qzso.com/">北京祺智科技有限公司</a> ·
-      <a href="https://github.com/bj-qizhi/trigix">GitHub</a> ·
-      <a href="https://www.qzso.com/solution/trigix/">Product page</a></p>
-    </footer>
-  </div>
+    <section id="downloads" class="section-shell download-section" aria-labelledby="download-title">
+      <div class="section-intro">
+        <p class="kicker">DESKTOP RELEASES</p>
+        <h2 id="download-title">Download only what can be verified.</h2>
+        <p>Production installers are published as immutable GitHub Release assets with a matching SHA-256 checksum. Development-signed qualification builds are never presented here as public releases.</p>
+      </div>
+      <div id="release-panel" class="release-panel" aria-live="polite" aria-busy="true">
+        <div>
+          <p class="status-label">RELEASE STATUS</p>
+          <h3 id="release-title">Checking signed desktop releases...</h3>
+          <p id="release-detail">Querying the public GitHub Releases feed.</p>
+        </div>
+        <div id="release-actions" class="release-actions">
+          <a class="button quiet" href="https://github.com/bj-qizhi/trigix/releases">All releases</a>
+        </div>
+      </div>
+      <div class="support-matrix">
+        <div><strong>Windows</strong><span>Windows 11 Pro or Enterprise 24H2 and 25H2, x64</span></div>
+        <div><strong>macOS</strong><span>Current and previous GA major, Apple Silicon and Intel</span></div>
+        <div><strong>Verify</strong><span>SHA-256 checksum, publisher signature, and platform trust checks</span></div>
+      </div>
+      <p class="fine-print">Windows ARM64, Windows 10, locked sessions, Session 0, and cross-user desktops are not supported. macOS requires Accessibility permission for automation. Exact macOS major versions are recorded at each release freeze.</p>
+      <a class="text-link" href="https://github.com/bj-qizhi/trigix/blob/master/docs/release/desktop-download-verification.md">Installation and verification guide</a>
+    </section>
+
+    <section id="resources" class="section-shell resources-section">
+      <div class="section-intro">
+        <p class="kicker">OPERATE WITH CONFIDENCE</p>
+        <h2>Public guidance from first launch to incident response.</h2>
+      </div>
+      <div class="resource-list">
+        <a href="https://github.com/bj-qizhi/trigix/blob/master/docs/guides/desktop-onboarding.md"><span>01</span><div><strong>Desktop onboarding</strong><small>Install, pair, permissions, automation, voice, avatar, update, and uninstall</small></div><b>OPEN</b></a>
+        <a href="https://github.com/bj-qizhi/trigix/blob/master/docs/guides/desktop-troubleshooting.md"><span>02</span><div><strong>Troubleshooting</strong><small>Recovery paths, accessibility guidance, and known limitations</small></div><b>OPEN</b></a>
+        <a href="https://github.com/bj-qizhi/trigix/blob/master/docs/support/support-policy.md"><span>03</span><div><strong>Support policy</strong><small>Intake, severity, response targets, escalation, and security handoff</small></div><b>OPEN</b></a>
+        <a href="https://github.com/bj-qizhi/trigix/security/policy"><span>04</span><div><strong>Security</strong><small>Private vulnerability reporting and coordinated disclosure</small></div><b>OPEN</b></a>
+        <a href="https://github.com/bj-qizhi/trigix/blob/master/docs/legal/privacy.md"><span>05</span><div><strong>Privacy and data boundaries</strong><small>Website, platform, desktop, voice, telemetry, and retention</small></div><b>OPEN</b></a>
+        <a href="https://github.com/bj-qizhi/trigix/discussions"><span>06</span><div><strong>Questions and feedback</strong><small>Community help, product feedback, and implementation discussion</small></div><b>OPEN</b></a>
+      </div>
+    </section>
+
+    <section class="section-shell quickstart-section">
+      <div>
+        <p class="kicker">START WITH THE PLATFORM</p>
+        <h2>Run Trigix on infrastructure you control.</h2>
+      </div>
+      <pre><code>helm install trigix oci://ghcr.io/bj-qizhi/charts/trigix \
+  --version 0.3.6 --namespace trigix --create-namespace</code></pre>
+      <div class="button-row">
+        <a class="button primary" href="https://github.com/bj-qizhi/trigix#quick-start">Full quick start</a>
+        <a class="button quiet" href="https://github.com/bj-qizhi/trigix/blob/master/docs/architecture/ai-agent-workflow-platform-design.md">Architecture</a>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div><a class="brand" href="#top"><span aria-hidden="true"></span>Trigix</a><p>Open-source workflow and governed desktop automation.</p></div>
+    <div class="footer-links">
+      <a href="https://github.com/bj-qizhi/trigix/blob/master/LICENSE">MIT License</a>
+      <a href="https://github.com/bj-qizhi/trigix/blob/master/docs/legal/terms.md">Terms</a>
+      <a href="https://github.com/bj-qizhi/trigix/blob/master/docs/legal/acceptable-use.md">Acceptable use</a>
+      <a href="https://github.com/bj-qizhi/trigix/blob/master/THIRD_PARTY_NOTICES.md">Third-party notices</a>
+      <a href="https://github.com/bj-qizhi/trigix/issues/new/choose">Report a bug</a>
+    </div>
+    <p class="copyright">© 2026 北京祺智科技有限公司</p>
+  </footer>
 </body>
 </html>
