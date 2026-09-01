@@ -42,11 +42,11 @@ abstract class BaseStore implements ArtifactStore {
 
 class LocalArtifactStore extends BaseStore {
   async write(key: string, body: Buffer) {
-    const target = path.join(this.config.BROWSER_ARTIFACT_DIR, ...key.split('/'))
+    const target = artifactPath(this.config.BROWSER_ARTIFACT_DIR, key)
     await mkdir(path.dirname(target), { recursive: true, mode: 0o700 })
     await writeFile(target, body, { mode: 0o600 })
   }
-  read(key: string) { return readFile(path.join(this.config.BROWSER_ARTIFACT_DIR, ...key.split('/'))) }
+  read(key: string) { return readFile(artifactPath(this.config.BROWSER_ARTIFACT_DIR, key)) }
   async saveMetadata(artifact: BrowserArtifact) {
     const target = metadataPath(this.config.BROWSER_ARTIFACT_DIR, artifact.tenant_id, artifact.id)
     await mkdir(path.dirname(target), { recursive: true, mode: 0o700 })
@@ -94,9 +94,24 @@ class S3ArtifactStore extends BaseStore {
   }
 }
 
-function safeSegment(value: string) { return value.replace(/[^A-Za-z0-9._-]/g, '_').slice(0, 128) }
+function safeSegment(value: string) {
+  const segment = path.basename(value)
+  if (segment !== value || segment === '.' || segment === '..' || !/^[A-Za-z0-9._:-]{1,128}$/.test(segment)) {
+    throw new BrowserRuntimeError('BROWSER_ARTIFACT_FAILED', 'Artifact path identifier is invalid', 400)
+  }
+  return segment
+}
 function metadataKey(tenantId: string, id: string) { return `browser-metadata/${safeSegment(tenantId)}/${safeSegment(id)}.json` }
-function metadataPath(root: string, tenantId: string, id: string) { return path.join(root, ...metadataKey(tenantId, id).split('/')) }
+function metadataPath(root: string, tenantId: string, id: string) { return withinRoot(root, 'browser-metadata', safeSegment(tenantId), `${safeSegment(id)}.json`) }
+function artifactPath(root: string, key: string) { return withinRoot(root, ...key.split('/').map(safeSegment)) }
+function withinRoot(root: string, ...segments: string[]) {
+  const resolvedRoot = path.resolve(root)
+  const target = path.resolve(resolvedRoot, ...segments)
+  if (target === resolvedRoot || !target.startsWith(`${resolvedRoot}${path.sep}`)) {
+    throw new BrowserRuntimeError('BROWSER_ARTIFACT_FAILED', 'Artifact path escapes the storage root', 400)
+  }
+  return target
+}
 function validateMetadata(value: unknown, id: string, tenantId: string) {
   if (!value || typeof value !== 'object') return undefined
   const artifact = value as BrowserArtifact

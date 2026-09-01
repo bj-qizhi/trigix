@@ -1,6 +1,11 @@
+import { mkdtemp, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { ArtifactManager } from '../src/artifacts/manager.js'
-import type { ArtifactStore } from '../src/artifacts/store.js'
+import { createArtifactStore, type ArtifactStore } from '../src/artifacts/store.js'
+import { loadConfig } from '../src/config.js'
+import { RuntimeMetrics } from '../src/telemetry/metrics.js'
 import type { BrowserArtifact } from '../src/types.js'
 
 class DurableMemoryStore implements ArtifactStore {
@@ -30,5 +35,23 @@ describe('ArtifactManager', () => {
     const restarted = new ArtifactManager(store)
     expect((await restarted.read(artifact.id, 'tenant-a')).body.toString()).toBe('png')
     await expect(restarted.getMetadata(artifact.id, 'tenant-b')).rejects.toMatchObject({ httpStatus: 404 })
+  })
+
+  it('rejects traversal identifiers before local filesystem access', async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), 'trigix-artifact-path-'))
+    try {
+      const config = loadConfig({ NODE_ENV: 'test', BROWSER_ARTIFACT_DIR: directory })
+      const store = createArtifactStore(config, new RuntimeMetrics(false))
+      await expect(store.loadMetadata('../artifact', 'tenant-a')).rejects.toMatchObject({
+        code: 'BROWSER_ARTIFACT_FAILED',
+        httpStatus: 400,
+      })
+      await expect(store.loadMetadata('artifact', '../tenant-a')).rejects.toMatchObject({
+        code: 'BROWSER_ARTIFACT_FAILED',
+        httpStatus: 400,
+      })
+    } finally {
+      await rm(directory, { recursive: true, force: true })
+    }
   })
 })
