@@ -6,6 +6,14 @@ This runbook governs Desktop release distribution, fleet compliance, private mir
 
 The public repository qualifies unsigned development artifacts only. Production release jobs run in a protected environment with human approval, hardware- or service-protected signing identity, restricted network egress, immutable logs, and short-lived workload credentials. Signing keys, private mirror URLs, customer identifiers, Device Credentials, installer tokens, licensed media, and production configuration must never enter source, ordinary CI, issue text, or public build artifacts.
 
+## Tenant policy and fleet API
+
+Tenant administrators read and mutate policy at `GET/PATCH /v1/desktop/update-policy`. A mutation must send the last observed `revision`; HTTP 409 requires the operator to reload and review the newer policy before retrying. Automatic mode requires a UTC maintenance window, and an exact pin must equal the required version. The safe initial response is revision zero with updates disabled.
+
+Tenant administrators read compliance at `GET /v1/desktop/fleet-compliance`. Optional `state` and fixed `compliance` filters may be combined with `limit` and `offset`; each page is capped at 100. The response includes the policy revision and required version used for classification. `stale` requires Device health recovery before update action, `invalid_inventory` requires registry repair, and lifecycle suspension or revocation must be resolved through Device governance. An explicitly rejected fleet-size bound is an operational signal to partition the query or deploy a reviewed database-side compliance index, never a reason to bypass Tenant isolation.
+
+These endpoints never accept or return signing keys, signatures, private mirror origins, artifact locations, Device Credentials, command payloads, or installer authority. Policy Audit Log events contain only actor, revision, mode, and channel.
+
 ## Roles
 
 | Role | Allowed | Prohibited |

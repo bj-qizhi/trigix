@@ -23,7 +23,15 @@ The Executor currently includes a small Rust runtime core and HTTP service bound
 - `ExecutionReport` captures final Execution status and per-node reports.
 - `POST /v1/executions:run` runs a Workflow Graph and returns an `ExecutionReport`.
 
-This keeps the execution semantics testable before adding persistence, queues, async workers, or the gRPC transport.
+The Platform can invoke this runtime inline, through the Executor HTTP API, or
+through a Redis Streams worker. PostgreSQL stores Execution and Node Execution
+state; Redis queue delivery is at-least-once, with stale-pending reclamation,
+terminal-state idempotency, bounded recovery attempts, and a dead-letter stream.
+
+Node runtime policy is resolved through the registry in
+`src/executor/registry.rs`. It classifies local, external, Approval, and Wait
+Nodes so dry-run and suspension behaviour have one source of truth. Handler
+implementations remain grouped by domain under `src/executor/`.
 
 Run:
 
