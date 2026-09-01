@@ -178,13 +178,13 @@ jobs:
               throw "NSIS development installation failed with exit code $($install.ExitCode)."
             }
             $application = Get-ChildItem -LiteralPath $installDirectory -Recurse -Filter 'trigix-desktop.exe' | Select-Object -First 1
-            $host = Get-ChildItem -LiteralPath $installDirectory -Recurse -Filter 'desktop-automation-host.exe' | Select-Object -First 1
-            if ($null -eq $application -or $null -eq $host) {
+            $automationHost = Get-ChildItem -LiteralPath $installDirectory -Recurse -Filter 'desktop-automation-host.exe' | Select-Object -First 1
+            if ($null -eq $application -or $null -eq $automationHost) {
               throw "Installed development application or Host is missing."
             }
             ./apps/desktop/scripts/qualify-windows-development-signing.ps1 `
               -Action Verify `
-              -ArtifactPath @($installer.FullName, $application.FullName, $host.FullName) `
+              -ArtifactPath @($installer.FullName, $application.FullName, $automationHost.FullName) `
               -StateDirectory "${{ runner.temp }}/trigix-development-signing"
           }
           finally {
