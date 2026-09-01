@@ -13,6 +13,8 @@
 
 > Self-hosting and independent distribution do not require an official Desktop GA release. Community and organization-managed builds must identify their distributor and carry their own signing, qualification, update, security, privacy, and support responsibility. See [Distribution and GA Responsibility](docs/release/distribution-responsibility.md).
 
+> The public repository is a single free, open-source edition with no repository-enforced paid entitlement or feature paywall. Public project support is community support without a paid SLA; third parties may provide services under their own terms.
+
 > © 2026 [北京祺智科技有限公司](https://www.qzso.com/) · managecode@gmail.com
 
 ---
