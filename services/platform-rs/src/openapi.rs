@@ -938,6 +938,18 @@ pub fn spec() -> Value {
             "responses": { "200": { "description": "text/event-stream" } }
           }
         },
+        "/v1/browser/artifacts/{artifact_id}": {
+          "get": {
+            "tags": ["Executions"],
+            "summary": "Download a Tenant-owned Browser Artifact",
+            "parameters": [{ "name": "artifact_id", "in": "path", "required": true, "schema": { "type": "string" } }],
+            "responses": {
+              "200": { "description": "Artifact binary", "content": { "application/octet-stream": { "schema": { "type": "string", "format": "binary" } } } },
+              "404": { "description": "Artifact not found for the authenticated Tenant" },
+              "503": { "description": "Browser Runtime is not configured" }
+            }
+          }
+        },
         "/v1/credentials": {
           "get": {
             "tags": ["Credentials"],

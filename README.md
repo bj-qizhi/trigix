@@ -100,6 +100,7 @@ apps/web                 React web console (Vite + React Flow)
 services/platform-rs     Rust platform API (Axum, JWT, multi-tenant)
 services/executor        Rust execution engine (DAG, parallel, retries)
 services/ai-runtime      Python AI runtime (FastAPI) — RAG (pgvector) + agent tool-use
+services/browser-runtime Node.js/Playwright browser automation runtime
 sdk/python               Custom node SDK (Python) — published as trigix-node-sdk
 sdk/typescript           Custom node SDK (TypeScript/JS) — published as trigix-node-sdk
 crates/workflow-core     Shared WorkflowGraph model + DAG validation
@@ -117,6 +118,7 @@ docs/                    Architecture, ADRs, dev guides
 |----------|-------------|
 | [Architecture Design](docs/architecture/ai-agent-workflow-platform-design.md) | System architecture, service boundaries, domain model |
 | [Workflow Graph JSON](docs/architecture/workflow-graph-json.md) | Node/Edge schema reference |
+| [Browser Runtime](docs/architecture/browser-runtime.md) | Browser isolation, task contract, security, deployment, and operations |
 | [Dev Bootstrap Guide](docs/dev/bootstrap.md) | Local setup with PostgreSQL |
 | [Port Reference](docs/dev/ports.md) | All local service ports |
 | [ADR-0001: Layered Architecture](docs/adr/0001-layered-platform-architecture.md) | Architecture decision record |
@@ -170,6 +172,8 @@ up in the workflow editor.
 | `DATABASE_URL` | Platform | PostgreSQL connection (default: in-memory) |
 | `EXECUTOR_BASE_URL` | Platform | Standalone executor URL (default: inline) |
 | `AI_RUNTIME_BASE_URL` | Executor | Python AI runtime URL |
+| `BROWSER_RUNTIME_BASE_URL` | Executor / AI Runtime | Isolated Browser Runtime URL |
+| `BROWSER_RUNTIME_AUTH_TOKEN` | Browser Runtime / callers | Shared service token; at least 32 characters |
 | `ANTHROPIC_API_KEY` | AI Runtime | Claude API key |
 | `AUTH_REQUIRED` | Platform | Enforce JWT on all routes (`true`/`false`) |
 | `DEV_API_KEY` | Platform | Dev API key (default: `dev`) |

@@ -99,8 +99,8 @@ use crate::event_subscriptions::{
     EVENT_EXECUTION_STARTED,
 };
 use crate::execution::{
-    ExecutionError, ExecutionRecord, ExecutionService, ExecutionSummary, PlatformExecutionStore,
-    PlatformExecutorClient, StartExecutionRequest,
+    ExecutionError, ExecutionRecord, ExecutionService, ExecutionStore, ExecutionSummary,
+    PlatformExecutionStore, PlatformExecutorClient, StartExecutionRequest,
 };
 use crate::form::{FormError, PlatformFormStore, PublishFormRequest};
 use crate::invitations::InviteStore;
@@ -642,14 +642,42 @@ fn spawn_queue_worker(state: AppState) {
                                 }
                             }
                         });
-                        let execution_result = inline.start(&record).await;
+                        let cancellation_store = state.execution_service.store().clone();
+                        let cancellation_tenant = record.tenant_id.clone();
+                        let cancellation_execution = record.id.clone();
+                        let wait_for_cancellation = async move {
+                            let mut interval =
+                                tokio::time::interval(std::time::Duration::from_millis(250));
+                            interval.tick().await;
+                            loop {
+                                interval.tick().await;
+                                if cancellation_store
+                                    .get(&cancellation_tenant, &cancellation_execution)
+                                    .await
+                                    .map(|current| {
+                                        current.status == execution_core::ExecutionStatus::Cancelled
+                                    })
+                                    .unwrap_or(false)
+                                {
+                                    break;
+                                }
+                            }
+                        };
+                        let execution_result = tokio::select! {
+                            result = inline.start(&record) => Some(result),
+                            _ = wait_for_cancellation => None,
+                        };
                         let _ = stop_heartbeat.send(());
                         let _ = heartbeat.await;
                         match execution_result {
-                            Ok(_) => None,
-                            Err(e) => {
+                            Some(Ok(_)) => None,
+                            Some(Err(e)) => {
                                 tracing::error!(execution_id = %record.id, error = ?e, "Queue worker: execution failed");
                                 Some(format!("execution failed: {e:?}"))
+                            }
+                            None => {
+                                tracing::info!(execution_id = %record.id, "Queue worker: execution cancelled");
+                                None
                             }
                         }
                     }

@@ -27,3 +27,6 @@ data:
   {{- if .Values.executor.enabled }}
   EXECUTOR_BASE_URL: {{ printf "http://%s-executor:38081" (include "trigix.fullname" .) | quote }}
   {{- end }}
+  {{- if .Values.browserRuntime.enabled }}
+  BROWSER_RUNTIME_BASE_URL: {{ printf "http://%s-browser-runtime:38100" (include "trigix.fullname" .) | quote }}
+  {{- end }}

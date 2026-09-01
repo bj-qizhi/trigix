@@ -2,6 +2,7 @@
 // https://www.qzso.com/ · managecode@gmail.com
 
 pub mod approval;
+pub mod browser;
 pub mod executor;
 pub mod http;
 pub mod runtime;

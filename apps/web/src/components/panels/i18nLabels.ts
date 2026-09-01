@@ -28,6 +28,19 @@ export function labelLocale(): Locale {
 
 // Base terms (no trailing ` *` / parenthetical — those are handled by fl()).
 const LABEL_ZH: Record<string, string> = {
+  'Session ID': '会话 ID',
+  'Timeout (ms)': '超时（毫秒）',
+  'Wait until': '等待至',
+  Selector: '选择器',
+  'Wait mode': '等待模式',
+  State: '状态',
+  Milliseconds: '毫秒',
+  'URL pattern': 'URL 匹配模式',
+  'Load state': '加载状态',
+  'Browser allowed hosts (comma-separated)': '浏览器允许域名（逗号分隔）',
+  'Browser allowed actions': '浏览器允许动作',
+  'Browser max steps': '浏览器最大步骤数',
+  'Browser max duration (seconds)': '浏览器最长运行时间（秒）',
   // HTTP / request
   URL: '地址 (URL)',
   Method: '请求方法',

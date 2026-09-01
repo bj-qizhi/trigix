@@ -163,7 +163,8 @@ fn sse_err(tx: &mpsc::Sender<Result<SseEvent, Infallible>>, msg: &str) {
 /// generator so it can use the full palette, not just the ~30 detailed above.
 /// Keep in sync when node types are added/removed.
 const ALL_NODE_TYPES: &str = "activecampaign, agent, aggregate, airtable, algolia, amplitude, apify, approval, array_utils, \
-asana, assert, awss3, azure_blob, azure_openai, azure_devops, bedrock, bigquery, bitbucket, box, braintree, calendly, catch, \
+asana, assert, awss3, azure_blob, azure_openai, azure_devops, bedrock, bigquery, bitbucket, box, braintree, browser_click, browser_close, \
+browser_extract, browser_input, browser_navigate, browser_screenshot, browser_start, browser_wait, calendly, catch, \
 chroma, classifier, claude, clickhouse, clickup, cloudflare, cloudinary, code, cohere, condition, confluence, contentful, \
 copper, crypto, csv, custom, database, datadog, date, dedupe, delay, dingtalk, discord, docusign, dropbox, elasticsearch, \
 email, embedding, ernie, extract, fan_in, fan_out, feishu, figma, filter, firebase, for_each, format, freshdesk, ftp, \
@@ -274,6 +275,14 @@ Generate a workflow graph JSON based on the user's description. Respond with ONL
 
 Available node types and their required config fields:
 - trigger: {} (always start here)
+- browser_start: {} (creates an isolated session; output browser.session_id)
+- browser_navigate: { session_id ({{browser_start.browser.session_id}}), url, wait_until? }
+- browser_click: { session_id, selector, timeout_ms? }
+- browser_input: { session_id, selector, value, clear_first? }
+- browser_wait: { session_id, wait_mode (selector/milliseconds/url/load_state), selector?/milliseconds?/url?/load_state?, timeout_ms? }
+- browser_extract: { session_id, selector, mode (text/html/attribute/json/list/table), attribute? }
+- browser_screenshot: { session_id, full_page? }
+- browser_close: { session_id } (always close a started session)
 - http: { url, method (GET/POST), headers?, body? }
 - claude: { api_key, model (claude-sonnet-4-6), prompt_template, system_prompt?, max_tokens? }
 - openai: { api_key, model (gpt-5.4-mini), prompt_template, system_prompt?, max_tokens? }
@@ -283,7 +292,7 @@ Available node types and their required config fields:
 - transform: { template (JSON with {{node_id.field}} placeholders) }
 - filter: { items (expr), field, operator, value? }
 - aggregate: { items (expr), operation (count/sum/avg/min/max/join/first/last), field? }
-- delay: { delay_secs }
+- delay: { seconds }
 - slack: { webhook_url, message_template }
 - github: { token, endpoint, method }
 - jira: { base_url, email, token, endpoint, method, body? }
@@ -645,7 +654,8 @@ Include ALL nodes (unchanged ones verbatim), keep existing node ids stable, and 
 For pure questions (no change requested), reply in plain text ONLY — no code block.\n\n\
 Common node types: trigger, http, openai_compat (config.provider=deepseek/qwen/grok/zhipu/moonshot/hunyuan/ollama/doubao, or base_url), \
 openai, claude, gemini, condition (field/operator/value + true/false condition_label on edges), transform (template), filter, aggregate, \
-code (Rhai), slack, database, rag, extract, merge, loop, fan_out/fan_in, catch (connect via error edge), assert, delay, note. \
+code (Rhai), slack, database, rag, extract, merge, loop, fan_out/fan_in, catch (connect via error edge), assert, delay, \
+browser_start/browser_navigate/browser_click/browser_input/browser_wait/browser_extract/browser_screenshot/browser_close, note. \
 Template variables: {{{{input.x}}}}, {{{{node_id.x}}}}, {{{{credential.name}}}}, {{{{env.KEY}}}}.{graph_context}"
     )
 }

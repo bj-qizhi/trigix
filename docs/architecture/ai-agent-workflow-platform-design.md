@@ -31,6 +31,9 @@ Execution Engine
 AI Runtime
   Python
 
+Browser Runtime
+  Node.js + Playwright
+
 Storage
   PostgreSQL + Redis + MinIO + pgvector / Qdrant
 
@@ -57,10 +60,11 @@ High-level flow:
         v
 [Rust Execution Engine]
   DAG execution, scheduling, retries, timeout, cancellation, state machine
+        |-- [Python AI Runtime]
+        |     Agent, RAG, LLM calls, embedding, document parsing, eval
         |
-        v
-[Python AI Runtime]
-  Agent, RAG, LangGraph, LLM calls, embedding, document parsing, eval
+        `-- [Browser Runtime]
+              Isolated Chromium pool, sessions, governed actions, browser artifacts
         |
         v
 [Storage / Infra]

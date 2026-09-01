@@ -7,6 +7,7 @@ import pytest
 
 from app.agent import tools as tools_mod
 from app.agent.tools import (
+    browser_runtime_tools,
     build_tools,
     calculator_tool,
     custom_node_tool,
@@ -207,3 +208,57 @@ def test_build_tools_wires_new_tools():
         http_allow_hosts=["x"],
     )
     assert [t.name for t in built] == ["calculator", "http_request", "n1"]
+
+
+def test_browser_tools_require_authenticated_runtime_and_tenant():
+    assert browser_runtime_tools("", "x" * 32, "tenant", "execution", [], [], 5, 30) == []
+    assert browser_runtime_tools("http://browser", "short", "tenant", "execution", [], [], 5, 30) == []
+    assert browser_runtime_tools("http://browser", "x" * 32, "", "execution", [], [], 5, 30) == []
+
+
+async def test_browser_tools_enforce_host_step_and_runtime_contract(monkeypatch):
+    calls: list[dict] = []
+    responses = [
+        _BrowserResp(201, {"id": "bs_1"}),
+        _BrowserResp(202, {"task_id": "bt_1"}),
+        _BrowserResp(200, {"status": "running"}),
+        _BrowserResp(200, {"status": "completed", "result": {"actions": [{"data": {"url": "https://example.com"}}], "final_url": "https://example.com", "title": "Example"}}),
+        _BrowserResp(200, {"status": "closed"}),
+    ]
+
+    class BrowserClient:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *exc):
+            return False
+
+        async def request(self, method, url, **kwargs):
+            calls.append({"method": method, "url": url, **kwargs})
+            return responses.pop(0)
+
+    monkeypatch.setattr(tools_mod.httpx, "AsyncClient", lambda **kwargs: BrowserClient())
+    tools = browser_runtime_tools(
+        "http://browser:38100", "x" * 32, "tenant-1", "execution-1",
+        ["example.com"], ["navigate"], 1, 30,
+    )
+    by_name = {tool.name: tool for tool in tools}
+    assert set(by_name) == {"browser_start", "browser_navigate", "browser_close"}
+    assert json.loads(await by_name["browser_start"].run({}))["session_id"] == "bs_1"
+    assert (await by_name["browser_navigate"].run({"url": "http://127.0.0.1"})).startswith("error:")
+    result = json.loads(await by_name["browser_navigate"].run({"url": "https://example.com"}))
+    assert result["steps_remaining"] == 0
+    assert (await by_name["browser_navigate"].run({"url": "https://example.com"})).startswith("error:")
+    await by_name["browser_close"].run({})
+    assert calls[0]["headers"]["x-trigix-tenant-id"] == "tenant-1"
+    assert calls[1]["json"]["execution_id"] == "execution-1"
+
+
+class _BrowserResp:
+    def __init__(self, status_code, payload):
+        self.status_code = status_code
+        self._payload = payload
+        self.text = json.dumps(payload)
+
+    def json(self):
+        return self._payload

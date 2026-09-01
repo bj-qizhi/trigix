@@ -4,6 +4,7 @@
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
+use crate::browser::{execute_browser_node, BrowserRuntimeClient};
 use hmac::Mac as _;
 use lru::LruCache;
 use rhai;
@@ -361,6 +362,7 @@ pub struct DispatchingNodeExecutor {
     http_client: reqwest::Client,
     ai_runtime_base_url: Option<String>,
     approval_gate: Option<Arc<ApprovalGate>>,
+    browser_runtime: Option<BrowserRuntimeClient>,
 }
 
 impl DispatchingNodeExecutor {
@@ -378,6 +380,7 @@ impl DispatchingNodeExecutor {
             http_client,
             ai_runtime_base_url,
             approval_gate: None,
+            browser_runtime: BrowserRuntimeClient::from_env(),
         }
     }
 
@@ -433,6 +436,7 @@ impl NodeExecutor for DispatchingNodeExecutor {
             // Clone cheaply (reqwest::Client is Arc-backed; ai_runtime_base_url is a small String)
             let http_client = self.http_client.clone();
             let ai_base = self.ai_runtime_base_url.clone();
+            let browser_runtime = self.browser_runtime.clone();
 
             let mut last = NodeExecutionResult::failed("Execution not started");
             for attempt in 0..=max_retries {
@@ -441,6 +445,7 @@ impl NodeExecutor for DispatchingNodeExecutor {
                     context,
                     &http_client,
                     ai_base.as_deref(),
+                    browser_runtime.as_ref(),
                     timeout_secs,
                 )
                 .await;
@@ -501,10 +506,34 @@ async fn dispatch_with_timeout(
     context: &ExecutionContext,
     http_client: &reqwest::Client,
     ai_runtime_base_url: Option<&str>,
+    browser_runtime: Option<&BrowserRuntimeClient>,
     timeout_secs: Option<u64>,
 ) -> NodeExecutionResult {
     let handlers = BuiltinNodeHandlers;
-    let fut = handlers.execute(node, context, http_client, ai_runtime_base_url);
+    let fut = if matches!(
+        node.node_type,
+        NodeType::BrowserStart
+            | NodeType::BrowserNavigate
+            | NodeType::BrowserClick
+            | NodeType::BrowserInput
+            | NodeType::BrowserWait
+            | NodeType::BrowserExtract
+            | NodeType::BrowserScreenshot
+            | NodeType::BrowserClose
+    ) {
+        Box::pin(execute_browser_node(
+            node,
+            context,
+            browser_runtime,
+            resolve_config_strings(
+                node.config.as_ref().unwrap_or(&serde_json::json!({})),
+                context,
+            ),
+        ))
+            as std::pin::Pin<Box<dyn std::future::Future<Output = NodeExecutionResult> + Send>>
+    } else {
+        handlers.execute(node, context, http_client, ai_runtime_base_url)
+    };
     match timeout_secs {
         Some(secs) => match tokio::time::timeout(std::time::Duration::from_secs(secs), fut).await {
             Ok(result) => result,
@@ -537,6 +566,16 @@ async fn dispatch_builtin(
         NodeType::Custom => execute_custom(node, context, http_client).await,
         NodeType::Desktop => NodeExecutionResult::failed(
             "Desktop actions must be dispatched by the Platform command gateway",
+        ),
+        NodeType::BrowserStart
+        | NodeType::BrowserNavigate
+        | NodeType::BrowserClick
+        | NodeType::BrowserInput
+        | NodeType::BrowserWait
+        | NodeType::BrowserExtract
+        | NodeType::BrowserScreenshot
+        | NodeType::BrowserClose => NodeExecutionResult::failed(
+            "Browser Nodes must be dispatched through BrowserRuntimeClient",
         ),
         NodeType::Condition => execute_condition(node, context),
         NodeType::Map => execute_map(node, context),
@@ -949,6 +988,8 @@ async fn execute_http(
 
 #[derive(Debug, Serialize)]
 struct AgentNodeRequest {
+    tenant_id: String,
+    execution_id: String,
     node_id: String,
     node_config: serde_json::Value,
     input_json: String,
@@ -983,6 +1024,8 @@ async fn execute_agent(
     let endpoint = format!("{}/v1/nodes/agent", base_url.trim_end_matches('/'));
 
     let request = AgentNodeRequest {
+        tenant_id: execution_core::current_tenant_id().unwrap_or_default(),
+        execution_id: context.execution_id.clone(),
         node_id: node.id.clone(),
         node_config: config,
         input_json: context.input_json.clone(),

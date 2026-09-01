@@ -530,6 +530,72 @@ async fn cancel_execution(
     Ok(Json(serde_json::json!({ "ok": true })))
 }
 
+async fn get_browser_artifact(
+    Extension(claims): Extension<Option<Claims>>,
+    Path(artifact_id): Path<String>,
+) -> Result<Response, ApiError> {
+    let tenant_id = effective_tenant_id(&claims, "");
+    let base_url = std::env::var("BROWSER_RUNTIME_BASE_URL")
+        .ok()
+        .filter(|value| !value.trim().is_empty())
+        .ok_or_else(|| ApiError {
+            status: StatusCode::SERVICE_UNAVAILABLE,
+            message: "BrowserRuntimeUnavailable".to_string(),
+        })?;
+    let token = std::env::var("BROWSER_RUNTIME_AUTH_TOKEN")
+        .ok()
+        .filter(|value| value.len() >= 32)
+        .ok_or_else(|| ApiError {
+            status: StatusCode::SERVICE_UNAVAILABLE,
+            message: "BrowserRuntimeUnavailable".to_string(),
+        })?;
+    static CLIENT: std::sync::OnceLock<reqwest::Client> = std::sync::OnceLock::new();
+    let response = CLIENT
+        .get_or_init(reqwest::Client::new)
+        .get(format!(
+            "{}/v1/artifacts/{artifact_id}",
+            base_url.trim_end_matches('/')
+        ))
+        .bearer_auth(token)
+        .header("x-trigix-tenant-id", tenant_id)
+        .send()
+        .await
+        .map_err(|_| ApiError {
+            status: StatusCode::BAD_GATEWAY,
+            message: "BrowserRuntimeUnavailable".to_string(),
+        })?;
+    let status = response.status();
+    if !status.is_success() {
+        return Err(ApiError {
+            status: StatusCode::from_u16(status.as_u16()).unwrap_or(StatusCode::BAD_GATEWAY),
+            message: if status.as_u16() == 404 {
+                "BrowserArtifactNotFound".to_string()
+            } else {
+                "BrowserArtifactUnavailable".to_string()
+            },
+        });
+    }
+    let content_type = response
+        .headers()
+        .get(reqwest::header::CONTENT_TYPE)
+        .and_then(|value| value.to_str().ok())
+        .unwrap_or("application/octet-stream")
+        .to_string();
+    let body = response.bytes().await.map_err(|_| ApiError {
+        status: StatusCode::BAD_GATEWAY,
+        message: "BrowserArtifactUnavailable".to_string(),
+    })?;
+    Response::builder()
+        .status(StatusCode::OK)
+        .header("content-type", content_type)
+        .header("cache-control", "private, no-store")
+        .body(axum::body::Body::from(body))
+        .map_err(|_| ApiError {
+            status: StatusCode::INTERNAL_SERVER_ERROR,
+            message: "BrowserArtifactResponseFailed".to_string(),
+        })
+}
+
 async fn cancel_all_running_executions(
     State(state): State<AppState>,
     Extension(claims): Extension<Option<Claims>>,
@@ -701,6 +767,10 @@ async fn cron_preview_handler(Json(req): Json<CronPreviewRequest>) -> impl IntoR
 
 pub(super) fn routes() -> Router<AppState> {
     Router::new()
+        .route(
+            "/v1/browser/artifacts/:artifact_id",
+            get(get_browser_artifact),
+        )
         .route("/v1/executions", get(list_executions).post(start_execution))
         .route("/v1/executions/batch", post(start_execution_batch))
         .route("/v1/executions/stats", get(execution_stats_handler))

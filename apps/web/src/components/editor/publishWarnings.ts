@@ -10,6 +10,13 @@ interface NodeFieldSpec { name: string; fields: Array<[string, string]> }
 
 const NODE_REQUIRED_FIELDS: Record<string, NodeFieldSpec> = {
   desktop: { name: 'Desktop Action', fields: [['action_kind', 'action type'], ['device_id', 'Device']] },
+  browser_navigate: { name: 'Browser Navigate', fields: [['session_id', 'Session ID'], ['url', 'URL']] },
+  browser_click: { name: 'Browser Click', fields: [['session_id', 'Session ID'], ['selector', 'selector']] },
+  browser_input: { name: 'Browser Input', fields: [['session_id', 'Session ID'], ['selector', 'selector'], ['value', 'value']] },
+  browser_wait: { name: 'Browser Wait', fields: [['session_id', 'Session ID']] },
+  browser_extract: { name: 'Browser Extract', fields: [['session_id', 'Session ID'], ['selector', 'selector']] },
+  browser_screenshot: { name: 'Browser Screenshot', fields: [['session_id', 'Session ID']] },
+  browser_close: { name: 'Browser Close', fields: [['session_id', 'Session ID']] },
   http: { name: 'HTTP', fields: [['url', 'URL']] },
   openai: { name: 'OpenAI', fields: [['api_key', 'API key']] },
   gemini: { name: 'Gemini', fields: [['api_key', 'API key']] },
@@ -200,6 +207,14 @@ export function collectPublishWarnings(nodes: FlowNode[], edges: FlowEdge[]): Pu
       }
       if (action === 'launch_application' && !c.application_id) {
         warnings.push({ message: `Desktop Action node "${label}" has no application ID`, nodeId: id })
+      }
+    }
+    if (nt === 'agent' && Array.isArray(c.tools) && c.tools.includes('browser')) {
+      if (!Array.isArray(c.browser_allowed_hosts) || c.browser_allowed_hosts.length === 0) {
+        warnings.push({ message: `Agent node "${label}" has no Browser allowed hosts`, nodeId: id })
+      }
+      if (Array.isArray(c.browser_allowed_actions) && c.browser_allowed_actions.length === 0) {
+        warnings.push({ message: `Agent node "${label}" has no Browser allowed actions`, nodeId: id })
       }
     }
   }

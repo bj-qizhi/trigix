@@ -12,6 +12,7 @@ import * as api from '../api/client'
 import { captureField, isInsertableField, insertText, subscribe, replaceRange, type FieldSnapshot } from './varInsert'
 import { JsonTree } from './JsonTree'
 import { DesktopActionConfig } from './panels/DesktopActionConfig'
+import { BrowserNodeConfig } from './panels/BrowserPanels'
 
 import {
   TriggerConfig, HttpConfig, AgentConfig, ApprovalConfig, CodeConfig, SubWorkflowConfig, CustomConfig,
@@ -55,6 +56,14 @@ import {
 
 const NODE_DESCRIPTIONS: Partial<Record<NodeType, { en: string; zh: string }>> = {
   desktop:      { en: 'Runs a schema-bounded action on an eligible paired Device through the governed Platform command path.', zh: '通过受治理的平台命令通道，在符合条件的已配对设备上运行字段受限的操作。' },
+  browser_start: { en: 'Creates an isolated Browser Session.', zh: '创建隔离的浏览器会话。' },
+  browser_navigate: { en: 'Navigates to a policy-approved URL.', zh: '导航到策略允许的 URL。' },
+  browser_click: { en: 'Clicks a selector in a Browser Session.', zh: '在浏览器会话中点击选择器。' },
+  browser_input: { en: 'Enters a value into a Browser Session selector.', zh: '向浏览器会话中的选择器输入值。' },
+  browser_wait: { en: 'Waits for browser state with a bounded timeout.', zh: '在有限超时内等待浏览器状态。' },
+  browser_extract: { en: 'Extracts structured page content.', zh: '提取结构化页面内容。' },
+  browser_screenshot: { en: 'Stores a screenshot as a governed Artifact.', zh: '将截图保存为受治理的制品。' },
+  browser_close: { en: 'Closes and releases a Browser Session.', zh: '关闭并释放浏览器会话。' },
   trigger:      { en: 'Starts the workflow. Supports manual, schedule (interval/cron), and webhook triggers.', zh: '工作流入口节点。支持手动触发、定时调度（间隔/Cron表达式）和 Webhook 触发。' },
   http:         { en: 'Makes an HTTP request to any URL. Supports GET/POST/PUT/DELETE with custom headers and body.', zh: '发起 HTTP 请求。支持 GET/POST/PUT/DELETE，可设置自定义请求头和请求体。' },
   agent:        { en: 'Runs an AI agent loop with tool use. Connects to the Python AI runtime.', zh: 'AI 智能体节点，支持工具调用循环，连接 Python AI 运行时。' },
@@ -153,6 +162,8 @@ const NODE_DESCRIPTIONS: Partial<Record<NodeType, { en: string; zh: string }>> =
 
 const NODE_LABELS: Partial<Record<NodeType, string>> = {
   desktop: 'Desktop Action',
+  browser_start: 'Browser Start', browser_navigate: 'Browser Navigate', browser_click: 'Browser Click', browser_input: 'Browser Input',
+  browser_wait: 'Browser Wait', browser_extract: 'Browser Extract', browser_screenshot: 'Browser Screenshot', browser_close: 'Browser Close',
   trigger: 'Trigger',
   http: 'HTTP',
   agent: 'Agent',
@@ -231,6 +242,8 @@ const NODE_LABELS: Partial<Record<NodeType, string>> = {
 
 const NODE_COLORS: Partial<Record<NodeType, string>> = {
   desktop: '#2563eb',
+  browser_start: '#0f766e', browser_navigate: '#0f766e', browser_click: '#0f766e', browser_input: '#0f766e',
+  browser_wait: '#0f766e', browser_extract: '#0f766e', browser_screenshot: '#0f766e', browser_close: '#0f766e',
   trigger: 'var(--node-trigger)',
   http: 'var(--node-http)',
   agent: 'var(--node-agent)',
@@ -310,6 +323,14 @@ const NODE_COLORS: Partial<Record<NodeType, string>> = {
 
 const NODE_OUTPUTS: Partial<Record<NodeType, string[]>> = {
   desktop:      ['outcome', 'output'],
+  browser_start: ['browser.session_id'],
+  browser_navigate: ['browser.session_id', 'browser.url', 'browser.title', 'browser.duration_ms'],
+  browser_click: ['browser.session_id', 'browser.url', 'browser.duration_ms'],
+  browser_input: ['browser.session_id', 'browser.duration_ms'],
+  browser_wait: ['browser.session_id', 'browser.url', 'browser.duration_ms'],
+  browser_extract: ['browser.session_id', 'browser.result', 'browser.duration_ms'],
+  browser_screenshot: ['browser.session_id', 'browser.result', 'browser.artifact_url', 'browser.duration_ms'],
+  browser_close: ['browser.session_id', 'browser.closed'],
   trigger:      ['input'],
   http:         ['status', 'body', 'headers'],
   // agent / transform / code emit a model- or script-defined shape with no fixed
@@ -693,6 +714,7 @@ export function NodeConfigPanel({ node, onUpdateConfig, recentExecutions, onSele
         </div>
         {nt === 'trigger' && <TriggerConfig config={config} set={set} str={str} num={num} webhookUrl={webhookUrl} webhookSecret={webhookSecret} />}
         {nt === 'desktop' && <DesktopActionConfig config={config} set={set} str={str} num={num} workflowProjectId={workflowProjectId} activeExecution={activeExecution} recentExecutions={recentExecutions} />}
+        {(['browser_start', 'browser_navigate', 'browser_click', 'browser_input', 'browser_wait', 'browser_extract', 'browser_screenshot', 'browser_close'] as NodeType[]).includes(nt) && <BrowserNodeConfig nodeType={nt} config={config} set={set} str={str} num={num} />}
         {nt === 'http' && <HttpConfig config={config} set={set} str={str} num={num} />}
         {nt === 'agent' && <AgentConfig config={config} set={set} str={str} num={num} />}
         {nt === 'condition' && <ConditionConfig config={config} set={set} str={str} num={num} />}

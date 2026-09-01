@@ -21,6 +21,8 @@ app = FastAPI(title="Trigix AI Runtime")
 app.include_router(rag_router)
 
 class AgentNodeRequest(BaseModel):
+    tenant_id: str = ""
+    execution_id: str = ""
     node_id: str
     node_config: dict[str, Any]
     input_json: str
@@ -59,6 +61,12 @@ async def _prepare_agent(request: AgentNodeRequest):
     # Resolve the agent's tool set. `calculator` is always available; `rag_search`
     # is added when configured and a knowledge-base store is reachable.
     tool_names = config.get("tools") or []
+    if "browser" in tool_names:
+        system_prompt += (
+            "\n\nBrowser safety policy: operate only on the configured allowed hosts and actions. "
+            "Never attempt CAPTCHA solving, anti-bot evasion, fingerprint spoofing, or access-control bypass. "
+            "Close the Browser Session when the task is complete."
+        )
     store = None
     if "rag_search" in tool_names:
         try:
@@ -83,6 +91,14 @@ async def _prepare_agent(request: AgentNodeRequest):
         node_tools=node_tools,
         http_allow_hosts=http_allow_hosts,
         http_allow_public=http_allow_public,
+        browser_runtime_base_url=os.environ.get("BROWSER_RUNTIME_BASE_URL", "").strip(),
+        browser_runtime_auth_token=os.environ.get("BROWSER_RUNTIME_AUTH_TOKEN", "").strip(),
+        browser_tenant_id=request.tenant_id,
+        browser_execution_id=request.execution_id,
+        browser_allowed_hosts=config.get("browser_allowed_hosts"),
+        browser_allowed_actions=config.get("browser_allowed_actions"),
+        browser_max_steps=int(config.get("browser_max_steps", 12)),
+        browser_max_duration_seconds=int(config.get("browser_max_duration_seconds", 120)),
     )
     max_iterations = int(config.get("max_iterations", 6))
     llm = _build_llm(config, model, max_tokens)

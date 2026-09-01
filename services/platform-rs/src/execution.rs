@@ -234,11 +234,22 @@ pub trait ExecutorClient: Clone + Send + Sync + 'static {
         &self,
         record: &ExecutionRecord,
     ) -> impl std::future::Future<Output = Result<(), ExecutionError>> + Send;
+
+    fn cancel(
+        &self,
+        _tenant_id: &str,
+        _execution_id: &str,
+    ) -> impl std::future::Future<Output = Result<(), ExecutionError>> + Send {
+        async { Ok(()) }
+    }
 }
 
 pub struct ExecutionService<S, E> {
     store: S,
     executor: E,
+    active: std::sync::Arc<
+        std::sync::Mutex<std::collections::HashMap<String, tokio::task::AbortHandle>>,
+    >,
 }
 
 impl<S, E> ExecutionService<S, E>
@@ -247,7 +258,11 @@ where
     E: ExecutorClient,
 {
     pub fn new(store: S, executor: E) -> Self {
-        Self { store, executor }
+        Self {
+            store,
+            executor,
+            active: std::sync::Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
+        }
     }
 
     pub fn store(&self) -> &S {
@@ -264,7 +279,12 @@ where
         let executor = self.executor.clone();
         let store = self.store.clone();
         let record_clone = record.clone();
-        tokio::spawn(async move {
+        let active = std::sync::Arc::clone(&self.active);
+        let active_key = key(&record.tenant_id, &record.id);
+        let cleanup_key = active_key.clone();
+        let (start_tx, start_rx) = tokio::sync::oneshot::channel();
+        let handle = tokio::spawn(async move {
+            let _ = start_rx.await;
             if executor.start(&record_clone).await.is_err() {
                 let _ = store
                     .fail(
@@ -274,7 +294,14 @@ where
                     )
                     .await;
             }
+            if let Ok(mut executions) = active.lock() {
+                executions.remove(&cleanup_key);
+            }
         });
+        if let Ok(mut executions) = self.active.lock() {
+            executions.insert(active_key, handle.abort_handle());
+        }
+        let _ = start_tx.send(());
 
         Ok(record)
     }
@@ -288,7 +315,23 @@ where
     }
 
     pub async fn cancel(&self, tenant_id: &str, execution_id: &str) -> Result<(), ExecutionError> {
-        self.store.cancel(tenant_id, execution_id).await
+        self.store.cancel(tenant_id, execution_id).await?;
+        let _ = self.executor.cancel(tenant_id, execution_id).await;
+        let aborted = self
+            .active
+            .lock()
+            .ok()
+            .and_then(|mut executions| executions.remove(&key(tenant_id, execution_id)));
+        if let Some(handle) = aborted {
+            handle.abort();
+            let _ = crate::http::METRIC_EXEC_RUNNING.fetch_update(
+                std::sync::atomic::Ordering::Relaxed,
+                std::sync::atomic::Ordering::Relaxed,
+                |value| Some(value.saturating_sub(1)),
+            );
+            crate::http::METRIC_EXEC_CANCELLED.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        }
+        Ok(())
     }
 
     pub async fn list(&self, tenant_id: &str) -> Result<Vec<ExecutionSummary>, ExecutionError> {
@@ -312,7 +355,7 @@ where
             .collect();
         let count = live.len();
         for summary in live {
-            let _ = self.store.cancel(tenant_id, &summary.id).await;
+            let _ = self.cancel(tenant_id, &summary.id).await;
         }
         Ok(count)
     }
@@ -327,7 +370,7 @@ where
         let stale = self.store.list_stale_running(timeout_secs, now).await?;
         let count = stale.len();
         for summary in stale {
-            let _ = self.store.cancel(&summary.tenant_id, &summary.id).await;
+            let _ = self.cancel(&summary.tenant_id, &summary.id).await;
         }
         Ok(count)
     }
@@ -1034,16 +1077,19 @@ where
                 let data = serde_json::json!({ "node_id": node_id, "delta": delta }).to_string();
                 crate::execution_bus::publish(&stream_exec_id, "token", data);
             });
-        let report = execution_core::TOKEN_SINK
+        let report = execution_core::TENANT_ID
             .scope(
-                Some(token_sink),
-                run_workflow_with_progress(
-                    record.id.clone(),
-                    &record.graph,
-                    record.input_json.clone(),
-                    &node_executor,
-                    &progress,
-                    record.dry_run,
+                Some(record.tenant_id.clone()),
+                execution_core::TOKEN_SINK.scope(
+                    Some(token_sink),
+                    run_workflow_with_progress(
+                        record.id.clone(),
+                        &record.graph,
+                        record.input_json.clone(),
+                        &node_executor,
+                        &progress,
+                        record.dry_run,
+                    ),
                 ),
             )
             .await
@@ -1237,6 +1283,7 @@ where
 {
     async fn start(&self, record: &ExecutionRecord) -> Result<(), ExecutionError> {
         let request = RemoteRunExecutionRequest {
+            tenant_id: record.tenant_id.clone(),
             execution_id: record.id.clone(),
             graph: record.graph.clone(),
             input_json: record.input_json.clone(),
@@ -1281,6 +1328,25 @@ where
             .await?;
         fire_callback_if_set(&completed);
         Ok(())
+    }
+
+    async fn cancel(&self, tenant_id: &str, execution_id: &str) -> Result<(), ExecutionError> {
+        let base = self
+            .endpoint
+            .strip_suffix("/v1/executions:run")
+            .unwrap_or(&self.endpoint);
+        let response = self
+            .http
+            .delete(format!("{base}/v1/executions/{execution_id}"))
+            .header("x-trigix-tenant-id", tenant_id)
+            .send()
+            .await
+            .map_err(|_| ExecutionError::ExecutorUnavailable)?;
+        if response.status().is_success() || response.status() == reqwest::StatusCode::NOT_FOUND {
+            Ok(())
+        } else {
+            Err(ExecutionError::ExecutorUnavailable)
+        }
     }
 }
 
@@ -1367,10 +1433,20 @@ impl ExecutorClient for PlatformExecutorClient {
             Self::Queue(client) => client.start(record).await,
         }
     }
+
+    async fn cancel(&self, tenant_id: &str, execution_id: &str) -> Result<(), ExecutionError> {
+        match self {
+            Self::Inline(client) => client.cancel(tenant_id, execution_id).await,
+            Self::Http(client) => client.cancel(tenant_id, execution_id).await,
+            Self::Noop(client) => client.cancel(tenant_id, execution_id).await,
+            Self::Queue(client) => client.cancel(tenant_id, execution_id).await,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize)]
 struct RemoteRunExecutionRequest {
+    tenant_id: String,
     execution_id: String,
     graph: WorkflowGraph,
     input_json: String,
@@ -2368,6 +2444,14 @@ fn node_type_to_str(node_type: &workflow_core::NodeType) -> &'static str {
         workflow_core::NodeType::RagIngest => "rag_ingest",
         workflow_core::NodeType::Custom => "custom",
         workflow_core::NodeType::Desktop => "desktop",
+        workflow_core::NodeType::BrowserStart => "browser_start",
+        workflow_core::NodeType::BrowserNavigate => "browser_navigate",
+        workflow_core::NodeType::BrowserClick => "browser_click",
+        workflow_core::NodeType::BrowserInput => "browser_input",
+        workflow_core::NodeType::BrowserWait => "browser_wait",
+        workflow_core::NodeType::BrowserExtract => "browser_extract",
+        workflow_core::NodeType::BrowserScreenshot => "browser_screenshot",
+        workflow_core::NodeType::BrowserClose => "browser_close",
         workflow_core::NodeType::Condition => "condition",
         workflow_core::NodeType::Approval => "approval",
         workflow_core::NodeType::Map => "map",
