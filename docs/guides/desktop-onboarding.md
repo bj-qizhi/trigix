@@ -20,7 +20,7 @@ You need:
 3. A Tenant administrator who can approve a Device pairing code.
 4. Permission to install software and, on macOS, grant Accessibility and microphone access when those features are needed.
 
-Download only from the [Trigix Releases page](https://github.com/bj-qizhi/trigix/releases). Follow the [download verification guide](../release/desktop-download-verification.md) before opening an installer. Builds signed with a self-issued development identity are qualification artifacts, not public releases.
+For an Official Trigix build, download only from the [Trigix Releases page](https://github.com/bj-qizhi/trigix/releases). For a Community Build or Self-managed Distribution, use only the location and signing identity approved by that distributor or organization. Follow the [download verification guide](../release/desktop-download-verification.md) before opening an installer. Builds signed with a self-issued development identity are qualification artifacts unless an organization explicitly manages that identity in its own trust domain.
 
 ## Install on Windows
 

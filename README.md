@@ -11,6 +11,8 @@
 
 > Open-source, **AI-native workflow automation** — a Rust execution engine, 180+ node types, RAG, agents, MCP, and a visual canvas. A self-hosted [n8n](https://github.com/n8n-io/n8n) alternative built for AI-first automation.
 
+> Self-hosting and independent distribution do not require an official Desktop GA release. Community and organization-managed builds must identify their distributor and carry their own signing, qualification, update, security, privacy, and support responsibility. See [Distribution and GA Responsibility](docs/release/distribution-responsibility.md).
+
 > © 2026 [北京祺智科技有限公司](https://www.qzso.com/) · managecode@gmail.com
 
 ---
@@ -120,6 +122,7 @@ docs/                    Architecture, ADRs, dev guides
 | [Desktop Onboarding](docs/guides/desktop-onboarding.md) | Install, pair, permissions, automation, voice, avatar, update, and uninstall |
 | [Desktop Troubleshooting](docs/guides/desktop-troubleshooting.md) | Recovery guidance and known limitations |
 | [Download Verification](docs/release/desktop-download-verification.md) | Verify checksums and Windows or macOS publisher trust |
+| [Distribution and GA Responsibility](docs/release/distribution-responsibility.md) | Official GA, Community Build, and self-managed release boundaries |
 | [Support Policy](docs/support/support-policy.md) | Intake, severity targets, escalation, and security handoff |
 | [Security Policy](SECURITY.md) | Private vulnerability reporting and coordinated disclosure |
 | [Privacy Boundaries](docs/legal/privacy.md) | Website, self-hosted Platform, Desktop, voice, and retention |

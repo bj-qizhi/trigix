@@ -4,6 +4,8 @@
 
 Security fixes are prepared for the latest stable Platform release and, after Desktop GA, the latest stable `desktop-v*` release. A release may set an earlier security deadline or require an immediate upgrade. Unsupported versions may not receive a patch.
 
+Community Builds and Self-managed Distributions retain their own vulnerability intake, signing, update, incident, and disclosure responsibility. Report an upstream source weakness here when it reproduces on official supported code. Report a distributor-only packaging, key, mirror, modification, or deployment weakness to that distributor unless it also compromises an Official Trigix boundary.
+
 ## Report a vulnerability privately
 
 Use [GitHub private vulnerability reporting](https://github.com/bj-qizhi/trigix/security/advisories/new) for suspected vulnerabilities. Do not open a public issue, discussion, pull request, or test against systems or data you do not own or have explicit permission to assess.
