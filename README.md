@@ -117,6 +117,12 @@ docs/                    Architecture, ADRs, dev guides
 | [Port Reference](docs/dev/ports.md) | All local service ports |
 | [ADR-0001: Layered Architecture](docs/adr/0001-layered-platform-architecture.md) | Architecture decision record |
 | [Demo: Feedback Triage](docs/demo-feedback-triage.md) | Annotated end-to-end run of a custom-node pipeline |
+| [Desktop Onboarding](docs/guides/desktop-onboarding.md) | Install, pair, permissions, automation, voice, avatar, update, and uninstall |
+| [Desktop Troubleshooting](docs/guides/desktop-troubleshooting.md) | Recovery guidance and known limitations |
+| [Download Verification](docs/release/desktop-download-verification.md) | Verify checksums and Windows or macOS publisher trust |
+| [Support Policy](docs/support/support-policy.md) | Intake, severity targets, escalation, and security handoff |
+| [Security Policy](SECURITY.md) | Private vulnerability reporting and coordinated disclosure |
+| [Privacy Boundaries](docs/legal/privacy.md) | Website, self-hosted Platform, Desktop, voice, and retention |
 
 ---
 
