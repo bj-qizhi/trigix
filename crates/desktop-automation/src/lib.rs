@@ -11,9 +11,18 @@ use std::io::{self, BufRead, Write};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 mod agent_executor;
+#[cfg(target_os = "macos")]
+mod macos_adapter;
 mod supervisor;
 
 pub use agent_executor::{SupervisedActionExecutor, SupervisedActionExecutorHandle};
+#[cfg(target_os = "macos")]
+pub use macos_adapter::MacosAutomationAdapter;
+#[cfg(target_os = "macos")]
+pub use macos_adapter::{
+    accessibility_trusted as macos_accessibility_trusted,
+    request_accessibility as request_macos_accessibility,
+};
 pub use supervisor::{AutomationCancellation, AutomationHostSupervisor, SupervisorConfig};
 
 pub const MAX_HOST_MESSAGE_BYTES: u64 = 64 * 1024;
@@ -21,6 +30,30 @@ pub const FIXTURE_WINDOW_AUTOMATION_ID: &str = "Trigix.AutomationFixture.Main";
 pub const FIXTURE_INPUT_AUTOMATION_ID: &str = "1001";
 pub const FIXTURE_SUBMIT_AUTOMATION_ID: &str = "1002";
 pub const FIXTURE_PASSWORD_AUTOMATION_ID: &str = "1003";
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct AutomationPermissionSnapshot {
+    pub required: bool,
+    pub granted: bool,
+}
+
+pub fn automation_permission_status() -> AutomationPermissionSnapshot {
+    #[cfg(target_os = "macos")]
+    {
+        AutomationPermissionSnapshot {
+            required: true,
+            granted: macos_accessibility_trusted(),
+        }
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        AutomationPermissionSnapshot {
+            required: false,
+            granted: true,
+        }
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AutomationHostError {

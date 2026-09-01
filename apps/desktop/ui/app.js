@@ -9,6 +9,12 @@ const messages = {
     automation: "Automation",
     automation_host: "Automation host",
     state_revision: "State revision",
+    automation_permission: "Automation permission",
+    permission_not_required: "Not required",
+    permission_granted: "Granted",
+    permission_required: "Permission required",
+    grant_permission: "Open macOS permission settings",
+    permission_help: "macOS Accessibility permission is required for local automation and can be revoked in System Settings.",
     checking: "Checking",
     device_trust: "DEVICE TRUST",
     pair_this_computer: "Pair this computer",
@@ -20,14 +26,14 @@ const messages = {
     platform_origin: "Platform HTTPS origin",
     platform_origin_help: "HTTPS is required. Paths, queries, and fragments are not accepted.",
     device_name: "Device name",
-    default_device_name: "My Windows PC",
+    default_device_name: "My computer",
     create_pairing_code: "Create pairing code",
     pairing_code: "PAIRING CODE",
     approve_code_admin: "Approve this code in your Tenant administration page.",
     approve_before: "Approve this code before {time}.",
     approved_code: "I approved the code",
     local_device_id: "LOCAL DEVICE ID",
-    credential_protected: "The Device credential is protected by Windows Credential Manager.",
+    credential_protected: "The Device credential is protected by the operating system credential vault.",
     forget_pairing: "Forget local pairing",
     voice_conversation: "VOICE CONVERSATION",
     local_microphone: "Local microphone",
@@ -86,7 +92,7 @@ const messages = {
     loading_runtime: "Loading local runtime state…",
     action_active: "An automation action is active.",
     no_action_active: "No interruptible automation action is active.",
-    secure_storage_unavailable: "Windows secure storage is unavailable; pairing is disabled.",
+    secure_storage_unavailable: "Operating system secure storage is unavailable; pairing is disabled.",
     runtime_unavailable: "Local runtime state is unavailable.",
     creating_pairing: "Creating a short-lived pairing code…",
     pairing_created: "Pairing code created. Approval is required in the Tenant administration page.",
@@ -124,6 +130,12 @@ const messages = {
     automation: "自动化",
     automation_host: "自动化主机",
     state_revision: "状态版本",
+    automation_permission: "自动化权限",
+    permission_not_required: "无需授权",
+    permission_granted: "已授权",
+    permission_required: "需要授权",
+    grant_permission: "打开 macOS 权限设置",
+    permission_help: "本机自动化需要 macOS 辅助功能权限，可在系统设置中随时撤销。",
     checking: "检查中",
     device_trust: "设备信任",
     pair_this_computer: "配对此电脑",
@@ -135,14 +147,14 @@ const messages = {
     platform_origin: "平台 HTTPS 地址",
     platform_origin_help: "必须使用 HTTPS，且不能包含路径、查询参数或片段。",
     device_name: "设备名称",
-    default_device_name: "我的 Windows 电脑",
+    default_device_name: "我的电脑",
     create_pairing_code: "创建配对码",
     pairing_code: "配对码",
     approve_code_admin: "请在租户管理页面批准此配对码。",
     approve_before: "请在 {time} 前批准此配对码。",
     approved_code: "我已批准配对码",
     local_device_id: "本机设备 ID",
-    credential_protected: "设备凭据由 Windows 凭据管理器保护。",
+    credential_protected: "设备凭据由操作系统安全凭据库保护。",
     forget_pairing: "忘记本机配对",
     voice_conversation: "语音对话",
     local_microphone: "本机麦克风",
@@ -201,7 +213,7 @@ const messages = {
     loading_runtime: "正在加载本机运行时状态…",
     action_active: "当前有自动化操作正在运行。",
     no_action_active: "当前没有可中止的自动化操作。",
-    secure_storage_unavailable: "Windows 安全存储不可用，设备配对已禁用。",
+    secure_storage_unavailable: "操作系统安全存储不可用，设备配对已禁用。",
     runtime_unavailable: "无法读取本机运行时状态。",
     creating_pairing: "正在创建短期配对码…",
     pairing_created: "配对码已创建，请在租户管理页面批准。",
@@ -236,6 +248,9 @@ const elements = {
   automation: document.querySelector("#automation"),
   automationHost: document.querySelector("#automation-host"),
   revision: document.querySelector("#revision"),
+  automationPermission: document.querySelector("#automation-permission"),
+  permissionPanel: document.querySelector("#permission-panel"),
+  requestPermission: document.querySelector("#request-permission"),
   stopButton: document.querySelector("#stop"),
   notice: document.querySelector("#notice"),
   statusPanel: document.querySelector(".status-panel"),
@@ -283,6 +298,7 @@ let locale = storedLocale === "en" || storedLocale === "zh"
 let currentRevision = 0;
 let shellSnapshot = null;
 let pairingSnapshot = null;
+let automationPermissionSnapshot = null;
 let lastCanRequestStop = null;
 let activeOperation = null;
 let refreshing = false;
@@ -465,6 +481,7 @@ function applyLocale(nextLocale, persist = true) {
   }
   if (shellSnapshot) renderShell(shellSnapshot);
   if (pairingSnapshot) renderPairing(pairingSnapshot, false);
+  if (automationPermissionSnapshot) renderAutomationPermission(automationPermissionSnapshot);
   if (!voiceStream) {
     elements.voiceDevice.replaceChildren(new Option(translate("device_permission_required"), ""));
   }
@@ -487,6 +504,15 @@ function renderShell(snapshot) {
     setNotice(snapshot.can_request_stop ? "action_active" : "no_action_active");
   }
   lastCanRequestStop = snapshot.can_request_stop;
+}
+
+function renderAutomationPermission(snapshot) {
+  automationPermissionSnapshot = snapshot;
+  elements.permissionPanel.hidden = !snapshot.required;
+  elements.automationPermission.textContent = snapshot.required
+    ? translate(snapshot.granted ? "permission_granted" : "permission_required")
+    : translate("permission_not_required");
+  elements.requestPermission.hidden = !snapshot.required || snapshot.granted;
 }
 
 function pairingTitleKey(phase) {
@@ -888,12 +914,14 @@ async function refresh(force = false) {
   if (refreshing || document.hidden || (activeOperation && !force)) return;
   refreshing = true;
   try {
-    const [shell, pairing] = await Promise.all([
+    const [shell, pairing, permission] = await Promise.all([
       window.__TAURI__.core.invoke("shell_status"),
       window.__TAURI__.core.invoke("pairing_status"),
+      window.__TAURI__.core.invoke("automation_permission_status"),
     ]);
     renderShell(shell);
     renderPairing(pairing, false);
+    renderAutomationPermission(permission);
     if (voiceStream && (shell.connection !== "online" || pairing.phase !== "paired")) {
       stopVoiceSession("unavailable", "voice_connection_failed");
     }
@@ -1117,6 +1145,16 @@ elements.retry.addEventListener("click", async () => {
 
 elements.localeEn.addEventListener("click", () => applyLocale("en"));
 elements.localeZh.addEventListener("click", () => applyLocale("zh"));
+
+elements.requestPermission.addEventListener("click", async () => {
+  elements.requestPermission.disabled = true;
+  try {
+    const permission = await window.__TAURI__.core.invoke("request_automation_permission");
+    renderAutomationPermission(permission);
+  } finally {
+    elements.requestPermission.disabled = false;
+  }
+});
 
 document.addEventListener("visibilitychange", () => {
   if (document.hidden) {

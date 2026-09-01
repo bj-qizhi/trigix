@@ -1,0 +1,115 @@
+name: Release Desktop macOS
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Existing desktop-v* tag to publish
+        required: true
+        type: string
+  push:
+    tags:
+      - desktop-v*
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-desktop-macos-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  signed-universal-dmg:
+    name: Signed, notarized Universal DMG
+    runs-on: macos-15
+    timeout-minutes: 60
+    environment: desktop-production
+    env:
+      APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+      APPLE_ID: ${{ secrets.APPLE_ID }}
+      APPLE_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref }}
+
+      - name: Validate protected release inputs
+        env:
+          RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name }}
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+        run: |
+          [[ "$RELEASE_TAG" =~ ^desktop-v[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          test -n "$APPLE_CERTIFICATE"
+          test -n "$APPLE_CERTIFICATE_PASSWORD"
+          test -n "$APPLE_SIGNING_IDENTITY"
+          test -n "$APPLE_ID"
+          test -n "$APPLE_PASSWORD"
+          test -n "$APPLE_TEAM_ID"
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Import Developer ID certificate
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          KEYCHAIN_PASSWORD: ${{ secrets.MACOS_KEYCHAIN_PASSWORD }}
+        run: |
+          test -n "$KEYCHAIN_PASSWORD"
+          certificate_path="$RUNNER_TEMP/developer-id.p12"
+          keychain_path="$RUNNER_TEMP/trigix-signing.keychain-db"
+          printf '%s' "$APPLE_CERTIFICATE" | base64 -D > "$certificate_path"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$keychain_path"
+          security set-keychain-settings -lut 21600 "$keychain_path"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$keychain_path"
+          security import "$certificate_path" -P "$APPLE_CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k "$keychain_path"
+          security list-keychains -d user -s "$keychain_path" login.keychain-db
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD" "$keychain_path"
+          rm -f "$certificate_path"
+
+      - name: Build, sign and notarize Universal DMG
+        working-directory: apps/desktop
+        run: |
+          ./scripts/prepare-universal-sidecar.sh release
+          npx --yes @tauri-apps/cli@2 build --target universal-apple-darwin --bundles dmg
+
+      - name: Verify architecture, signature, Gatekeeper and notarization
+        run: |
+          dmg_path="$(find target/universal-apple-darwin/release/bundle/dmg -name '*.dmg' -type f -print -quit)"
+          test -n "$dmg_path"
+          ./apps/desktop/scripts/verify-macos-release.sh "$dmg_path" | tee "$RUNNER_TEMP/macos-release-verification.txt"
+          shasum -a 256 "$dmg_path" > "$dmg_path.sha256"
+
+      - name: Upload immutable release evidence
+        uses: actions/upload-artifact@v7
+        with:
+          name: macos-universal-signed-${{ github.sha }}
+          path: |
+            target/universal-apple-darwin/release/bundle/dmg/*.dmg
+            target/universal-apple-darwin/release/bundle/dmg/*.sha256
+            ${{ runner.temp }}/macos-release-verification.txt
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Publish direct-download assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name }}
+        run: |
+          assets=(target/universal-apple-darwin/release/bundle/dmg/*.dmg target/universal-apple-darwin/release/bundle/dmg/*.sha256)
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release upload "$RELEASE_TAG" "${assets[@]}" --clobber
+          else
+            gh release create "$RELEASE_TAG" "${assets[@]}" --verify-tag --generate-notes --title "Trigix Desktop ${RELEASE_TAG#desktop-v}"
+          fi
+
+      - name: Remove temporary signing keychain
+        if: always()
+        run: security delete-keychain "$RUNNER_TEMP/trigix-signing.keychain-db" || true

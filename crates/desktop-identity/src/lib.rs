@@ -104,14 +104,14 @@ fn hex_prefix(bytes: &[u8], length: usize) -> String {
     encoded
 }
 
-#[cfg(windows)]
-pub struct WindowsCredentialStore {
+#[cfg(any(windows, target_os = "macos"))]
+pub struct NativeCredentialStore {
     service: String,
     account: String,
 }
 
-#[cfg(windows)]
-impl WindowsCredentialStore {
+#[cfg(any(windows, target_os = "macos"))]
+impl NativeCredentialStore {
     pub fn new(device_id: &str) -> Self {
         Self {
             service: "com.trigix.desktop.device-identity".to_string(),
@@ -125,8 +125,8 @@ impl WindowsCredentialStore {
     }
 }
 
-#[cfg(windows)]
-impl DeviceSecretStore for WindowsCredentialStore {
+#[cfg(any(windows, target_os = "macos"))]
+impl DeviceSecretStore for NativeCredentialStore {
     fn load(&self) -> Result<Option<String>, IdentityError> {
         match self.entry()?.get_password() {
             Ok(secret) => Ok(Some(secret)),
@@ -142,13 +142,13 @@ impl DeviceSecretStore for WindowsCredentialStore {
     }
 }
 
-#[cfg(windows)]
-pub struct WindowsDeviceCredentialStore {
+#[cfg(any(windows, target_os = "macos"))]
+pub struct NativeDeviceCredentialStore {
     entry: keyring::Entry,
 }
 
-#[cfg(windows)]
-impl WindowsDeviceCredentialStore {
+#[cfg(any(windows, target_os = "macos"))]
+impl NativeDeviceCredentialStore {
     pub fn new(device_id: &str) -> Result<Self, IdentityError> {
         let entry = keyring::Entry::new("com.trigix.desktop.device-credential", device_id)
             .map_err(|error| IdentityError::Store(error.to_string()))?;
@@ -156,8 +156,8 @@ impl WindowsDeviceCredentialStore {
     }
 }
 
-#[cfg(windows)]
-impl DeviceCredentialStore for WindowsDeviceCredentialStore {
+#[cfg(any(windows, target_os = "macos"))]
+impl DeviceCredentialStore for NativeDeviceCredentialStore {
     fn load(&self) -> Result<Option<String>, IdentityError> {
         match self.entry.get_password() {
             Ok(secret) => Ok(Some(secret)),
@@ -179,6 +179,11 @@ impl DeviceCredentialStore for WindowsDeviceCredentialStore {
         }
     }
 }
+
+#[cfg(windows)]
+pub type WindowsCredentialStore = NativeCredentialStore;
+#[cfg(windows)]
+pub type WindowsDeviceCredentialStore = NativeDeviceCredentialStore;
 
 #[cfg(test)]
 mod tests {

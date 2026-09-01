@@ -3,9 +3,9 @@ use std::collections::{HashSet, VecDeque};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 
-#[cfg_attr(not(target_os = "windows"), allow(dead_code))]
+#[cfg_attr(not(any(target_os = "windows", target_os = "macos")), allow(dead_code))]
 mod command_runtime;
-#[cfg_attr(not(target_os = "windows"), allow(dead_code))]
+#[cfg_attr(not(any(target_os = "windows", target_os = "macos")), allow(dead_code))]
 mod connection;
 mod pairing;
 
@@ -311,7 +311,7 @@ fn remember_request(state: &mut ShellState, request_id: String) {
     state.request_order.push_back(request_id);
 }
 
-#[cfg(target_os = "windows")]
+#[cfg(any(target_os = "windows", target_os = "macos"))]
 mod native {
     use super::command_runtime::CommandRuntime;
     use super::connection::{
@@ -325,7 +325,7 @@ mod native {
         PairingSnapshot, RealtimeVoiceBootstrap, ShellController, ShellIpcError, ShellSnapshot,
         StartPairingInput, StopAccepted, StopRequest, VoiceIpcError, VoiceTelemetryInput,
     };
-    use desktop_identity::{DeviceIdentity, WindowsCredentialStore, WindowsDeviceCredentialStore};
+    use desktop_identity::{DeviceIdentity, NativeCredentialStore, NativeDeviceCredentialStore};
     use desktop_protocol::{
         CommandOutcome, DesktopCommandAcknowledgement, DeviceCapability, DeviceDescriptor,
         DeviceState, Envelope, Heartbeat,
@@ -335,6 +335,7 @@ mod native {
     use std::sync::{Arc, Mutex};
     use std::time::{Duration, SystemTime, UNIX_EPOCH};
     use tauri::{Manager, State};
+    use trigix_desktop_automation::AutomationPermissionSnapshot;
 
     static HEARTBEAT_SEQUENCE: AtomicU64 = AtomicU64::new(1);
     static VOICE_QUALIFIED: AtomicBool = AtomicBool::new(false);
@@ -376,6 +377,18 @@ mod native {
     }
 
     #[tauri::command]
+    fn automation_permission_status() -> AutomationPermissionSnapshot {
+        trigix_desktop_automation::automation_permission_status()
+    }
+
+    #[tauri::command]
+    fn request_automation_permission() -> AutomationPermissionSnapshot {
+        #[cfg(target_os = "macos")]
+        let _ = trigix_desktop_automation::request_macos_accessibility();
+        trigix_desktop_automation::automation_permission_status()
+    }
+
+    #[tauri::command]
     fn request_automation_stop(
         controller: State<'_, Arc<ShellController>>,
         runtime: State<'_, NativeRuntimeState>,
@@ -407,14 +420,14 @@ mod native {
         if let Ok(mut pending) = PENDING_VOICE_BOOTSTRAP.lock() {
             *pending = None;
         }
-        let identity_store = WindowsCredentialStore::new("primary-device");
+        let identity_store = NativeCredentialStore::new("primary-device");
         let identity = DeviceIdentity::load_or_create(&identity_store)?;
         let device_id = identity.device_id();
         let request = serde_json::json!({
             "device": DeviceDescriptor {
                 device_id: device_id.clone(),
                 display_name: input.display_name,
-                operating_system: "windows".to_owned(),
+                operating_system: std::env::consts::OS.to_owned(),
                 agent_version: env!("CARGO_PKG_VERSION").to_owned(),
                 capabilities: runtime.capabilities(),
             },
@@ -460,7 +473,7 @@ mod native {
             .json::<ClaimedDeviceCredential>()
             .await
             .map_err(|_| PairingIpcError::InvalidPlatformResponse)?;
-        let store = WindowsDeviceCredentialStore::new(&pending.device_id)?;
+        let store = NativeDeviceCredentialStore::new(&pending.device_id)?;
         controller.complete(claimed, &store, unix_seconds())
     }
 
@@ -472,7 +485,7 @@ mod native {
             .snapshot()?
             .device_id
             .ok_or(PairingIpcError::InvalidState)?;
-        let store = WindowsDeviceCredentialStore::new(&device_id)?;
+        let store = NativeDeviceCredentialStore::new(&device_id)?;
         let snapshot = controller.forget(&store)?;
         VOICE_QUALIFIED.store(false, Ordering::Release);
         AVATAR_QUALIFIED.store(false, Ordering::Release);
@@ -531,7 +544,7 @@ mod native {
         let snapshot = pairing.snapshot().map_err(|_| VoiceIpcError::NotPaired)?;
         let device_id = snapshot.device_id.ok_or(VoiceIpcError::NotPaired)?;
         let store =
-            WindowsDeviceCredentialStore::new(&device_id).map_err(|_| VoiceIpcError::NotPaired)?;
+            NativeDeviceCredentialStore::new(&device_id).map_err(|_| VoiceIpcError::NotPaired)?;
         pairing
             .connection_secret(&store)
             .map_err(|_| VoiceIpcError::NotPaired)?
@@ -727,8 +740,8 @@ mod native {
         let Some(device_id) = snapshot.device_id else {
             return Ok(None);
         };
-        let store = WindowsDeviceCredentialStore::new(&device_id)
-            .map_err(|_| ConnectionError::Transport)?;
+        let store =
+            NativeDeviceCredentialStore::new(&device_id).map_err(|_| ConnectionError::Transport)?;
         pairing
             .connection_secret(&store)
             .map_err(|_| ConnectionError::Transport)
@@ -1128,10 +1141,10 @@ mod native {
     fn create_pairing_controller() -> PairingController {
         let controller = PairingController::default();
         let restored =
-            DeviceIdentity::load_or_create(&WindowsCredentialStore::new("primary-device"))
+            DeviceIdentity::load_or_create(&NativeCredentialStore::new("primary-device"))
                 .map_err(PairingIpcError::from)
                 .and_then(|identity| {
-                    WindowsDeviceCredentialStore::new(&identity.device_id())
+                    NativeDeviceCredentialStore::new(&identity.device_id())
                         .map_err(PairingIpcError::from)
                 })
                 .and_then(|store| controller.restore(&store));
@@ -1143,9 +1156,12 @@ mod native {
 
     fn initialize_command_runtime(app: &tauri::App) -> Option<Arc<CommandRuntime>> {
         let executable = std::env::current_exe().ok()?;
-        let host_executable = executable
-            .parent()?
-            .join(PathBuf::from("desktop-automation-host.exe"));
+        let host_name = if cfg!(target_os = "windows") {
+            "desktop-automation-host.exe"
+        } else {
+            "desktop-automation-host"
+        };
+        let host_executable = executable.parent()?.join(PathBuf::from(host_name));
         let recovery_path = app
             .path()
             .app_local_data_dir()
@@ -1180,6 +1196,8 @@ mod native {
             })
             .invoke_handler(tauri::generate_handler![
                 shell_status,
+                automation_permission_status,
+                request_automation_permission,
                 request_automation_stop,
                 pairing_status,
                 start_device_pairing,
@@ -1196,7 +1214,7 @@ mod native {
     }
 }
 
-#[cfg(target_os = "windows")]
+#[cfg(any(target_os = "windows", target_os = "macos"))]
 pub use native::run;
 
 #[cfg(test)]
@@ -1283,11 +1301,16 @@ mod tests {
             serde_json::from_str(include_str!("../capabilities/main-shell.json")).unwrap();
 
         assert_eq!(capability["windows"], serde_json::json!(["main"]));
-        assert_eq!(capability["platforms"], serde_json::json!(["windows"]));
+        assert_eq!(
+            capability["platforms"],
+            serde_json::json!(["windows", "macOS"])
+        );
         assert_eq!(
             capability["permissions"],
             serde_json::json!([
                 "allow-shell-status",
+                "allow-automation-permission-status",
+                "allow-request-automation-permission",
                 "allow-request-automation-stop",
                 "allow-pairing-status",
                 "allow-start-device-pairing",
@@ -1321,10 +1344,22 @@ mod tests {
 
         let bundle = &config["bundle"];
         assert_eq!(bundle["active"], true);
-        assert_eq!(bundle["targets"], serde_json::json!(["nsis"]));
+        assert!(bundle.get("targets").is_none());
         assert_eq!(
             bundle["externalBin"],
             serde_json::json!(["binaries/desktop-automation-host"])
+        );
+
+        let windows: serde_json::Value =
+            serde_json::from_str(include_str!("../tauri.windows.conf.json")).unwrap();
+        let macos: serde_json::Value =
+            serde_json::from_str(include_str!("../tauri.macos.conf.json")).unwrap();
+        assert_eq!(windows["bundle"]["targets"], serde_json::json!(["nsis"]));
+        assert_eq!(macos["bundle"]["targets"], serde_json::json!(["dmg"]));
+        assert_eq!(macos["bundle"]["macOS"]["minimumSystemVersion"], "15.0");
+        assert_eq!(
+            macos["bundle"]["macOS"]["entitlements"],
+            "Entitlements.plist"
         );
     }
 

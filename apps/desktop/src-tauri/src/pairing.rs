@@ -89,7 +89,7 @@ pub enum PairingIpcError {
     StateUnavailable,
 }
 
-#[cfg(target_os = "windows")]
+#[cfg(any(target_os = "windows", target_os = "macos"))]
 #[derive(Clone)]
 pub(crate) struct PendingClaim {
     pub platform_url: String,
@@ -198,7 +198,7 @@ impl PairingController {
         Ok(snapshot_from(&state))
     }
 
-    #[cfg(target_os = "windows")]
+    #[cfg(any(target_os = "windows", target_os = "macos"))]
     pub(crate) fn pending_claim(
         &self,
         now_unix_seconds: i64,

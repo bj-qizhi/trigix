@@ -166,6 +166,78 @@ jobs:
             -FixturePath target/debug/desktop-automation-fixture.exe `
             -StateDirectory "${{ runner.temp }}/trigix-fixture-signing"
 
+  macos-automation:
+    name: macOS automation (${{ matrix.os }}, ${{ matrix.architecture }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 35
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-15
+            architecture: arm64
+          - os: macos-15-intel
+            architecture: x86_64
+          - os: macos-26
+            architecture: arm64
+          - os: macos-26-intel
+            architecture: x86_64
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Configure Swift runtime lookup
+        run: |
+          swift_runtime_paths="$(swiftc -print-target-info | jq -r '.paths.runtimeLibraryPaths | join(":")')"
+          test -n "$swift_runtime_paths"
+          printf 'DYLD_LIBRARY_PATH=%s\n' "$swift_runtime_paths" >> "$GITHUB_ENV"
+
+      - name: Rebuild Swift bridges for selected Xcode
+        run: cargo clean -p axuielement -p apple-cf
+
+      - name: Prepare native Host sidecar
+        run: ./apps/desktop/scripts/prepare-sidecar.sh debug
+
+      - name: Clippy macOS desktop targets
+        run: cargo clippy -p trigix-desktop-shell -p trigix-desktop-automation -p desktop-automation-host --all-targets -- -D warnings
+
+      - name: Run macOS automation and process tests
+        run: |
+          host_triple="$(rustc -vV | awk '/^host: / { print $2 }')"
+          export TRIGIX_AUTOMATION_HOST_EXE="$PWD/target/$host_triple/debug/desktop-automation-host"
+          cargo test -p trigix-desktop-shell --lib
+          cargo test -p trigix-desktop-automation
+          cargo test -p desktop-automation-host --test process_boundary
+
+      - name: Build unsigned Universal DMG qualification package
+        if: matrix.os == 'macos-15' && matrix.architecture == 'arm64'
+        working-directory: apps/desktop
+        run: |
+          ./scripts/prepare-universal-sidecar.sh release
+          npx --yes @tauri-apps/cli@2 build --target universal-apple-darwin --bundles dmg
+          dmg_path="$(find ../../target/universal-apple-darwin/release/bundle/dmg -name '*.dmg' -type f -print -quit)"
+          test -n "$dmg_path"
+          printf '%s  %s\n' "$(shasum -a 256 "$dmg_path" | awk '{print $1}')" "$(basename "$dmg_path")" > "$RUNNER_TEMP/trigix-macos-dmg.sha256"
+
+      - name: Upload unsigned Universal DMG evidence
+        if: matrix.os == 'macos-15' && matrix.architecture == 'arm64'
+        uses: actions/upload-artifact@v7
+        with:
+          name: macos-universal-unsigned-qualification
+          path: |
+            target/universal-apple-darwin/release/bundle/dmg/*.dmg
+            ${{ runner.temp }}/trigix-macos-dmg.sha256
+          if-no-files-found: error
+          retention-days: 14
+
   web:
     # Keep this stable: the protected branch requires this check name.
     name: Web (typecheck, build)

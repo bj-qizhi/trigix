@@ -16,3 +16,8 @@ windows-sys = { version = "0.59", features = [
   "Win32_UI_Input_KeyboardAndMouse",
   "Win32_UI_WindowsAndMessaging",
 ] }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+axuielement = "0.9.1"
+core-graphics = { version = "0.25", features = ["elcapitan", "highsierra", "link"] }
+sysinfo = { version = "0.37.2", default-features = false, features = ["system"] }

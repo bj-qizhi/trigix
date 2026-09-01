@@ -3,9 +3,11 @@
   "identifier": "main-shell",
   "description": "Least-privilege presentation capability for the main local shell.",
   "windows": ["main"],
-  "platforms": ["windows"],
+  "platforms": ["windows", "macOS"],
   "permissions": [
     "allow-shell-status",
+    "allow-automation-permission-status",
+    "allow-request-automation-permission",
     "allow-request-automation-stop",
     "allow-pairing-status",
     "allow-start-device-pairing",
