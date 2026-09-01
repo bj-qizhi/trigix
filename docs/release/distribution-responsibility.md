@@ -2,6 +2,21 @@
 
 Trigix source code is available under the MIT License. A person or organization may use, modify, publish, distribute, sublicense, or sell copies while preserving the copyright and license notice required by that license. Release maturity and operational responsibility are separate from source-code permission.
 
+## Project offering
+
+The public repository is one free, open-source Trigix edition. It has no repository-enforced paid entitlement or feature paywall. The MIT License governs the Trigix source except where an included component identifies a different license.
+
+Public project support is community support and carries no paid support or uptime service-level agreement. A person or organization may offer paid hosting, integration, maintenance, or support under its own terms, but that does not convert its build into an Official Trigix release or create an obligation for the project maintainers.
+
+The supported deployment forms are:
+
+- source-based self-hosting;
+- clearly identified Community Builds;
+- clearly identified Self-managed Distributions; and
+- maintainer-published Official Trigix releases when available.
+
+No license key or commercial approval from the Trigix maintainers is required to use, modify, self-host, or independently distribute the MIT-licensed source. Each distributor remains responsible for third-party licenses, non-code assets, applicable law, and the release obligations below.
+
 `GA` means that a specific distributor considers a specific artifact generally available under that distributor's own support and release policy. It is not a certification automatically inherited from this repository, a source commit, or another distributor's build.
 
 ## Distribution classes

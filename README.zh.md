@@ -11,6 +11,8 @@
 
 [English](README.md) · [中文]
 
+> 公共仓库是单一、免费、开源的 Trigix 版本，不设置由仓库强制执行的付费授权或功能付费墙。项目提供无付费 SLA 的社区支持；第三方可在自行承担签名、验收、更新、安全、隐私和支持责任的前提下自托管或独立发行。详见[发行与 GA 责任](docs/release/distribution-responsibility.md)。
+
 > © 2026 [北京祺智科技有限公司](https://www.qzso.com/) · managecode@gmail.com
 
 ---
