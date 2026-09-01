@@ -291,8 +291,8 @@ jobs:
         if: matrix.os == 'macos-15' && matrix.architecture == 'arm64'
         id: macos-development-signing
         run: |
-          config="$(./apps/desktop/scripts/qualify-macos-development-signing.sh prepare "$RUNNER_TEMP/trigix-development-signing")"
-          printf 'config=%s\n' "$config" >> "$GITHUB_OUTPUT"
+          ./apps/desktop/scripts/qualify-macos-development-signing.sh prepare "$RUNNER_TEMP/trigix-development-signing"
+          printf 'config=%s\n' "$RUNNER_TEMP/trigix-development-signing/tauri.macos-development-signing.json" >> "$GITHUB_OUTPUT"
           printf 'APPLE_SIGNING_IDENTITY=Trigix Development Qualification\n' >> "$GITHUB_ENV"
 
       - name: Build self-signed Universal DMG qualification package
