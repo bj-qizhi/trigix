@@ -1411,7 +1411,7 @@ dependencies = [
 
 [[package]]
 name = "desktop-agent-core"
-version = "1.5.1"
+version = "1.6.0-rc.1"
 dependencies = [
  "desktop-protocol",
  "serde",
@@ -1420,7 +1420,7 @@ dependencies = [
 
 [[package]]
 name = "desktop-automation-fixture"
-version = "1.5.1"
+version = "1.6.0-rc.1"
 dependencies = [
  "trigix-desktop-automation",
  "windows-sys 0.59.0",
@@ -1428,7 +1428,7 @@ dependencies = [
 
 [[package]]
 name = "desktop-automation-host"
-version = "1.5.1"
+version = "1.6.0-rc.1"
 dependencies = [
  "desktop-agent-core",
  "desktop-protocol",
@@ -1439,7 +1439,7 @@ dependencies = [
 
 [[package]]
 name = "desktop-avatar"
-version = "1.5.1"
+version = "1.6.0-rc.1"
 dependencies = [
  "desktop-protocol",
  "sha2 0.10.9",
@@ -1448,7 +1448,7 @@ dependencies = [
 
 [[package]]
 name = "desktop-device-simulator"
-version = "1.5.1"
+version = "1.6.0-rc.1"
 dependencies = [
  "desktop-agent-core",
  "desktop-protocol",
@@ -1460,7 +1460,7 @@ dependencies = [
 
 [[package]]
 name = "desktop-identity"
-version = "1.5.1"
+version = "1.6.0-rc.1"
 dependencies = [
  "base64 0.22.1",
  "ed25519-dalek 2.2.0",
@@ -1471,7 +1471,7 @@ dependencies = [
 
 [[package]]
 name = "desktop-protocol"
-version = "1.5.1"
+version = "1.6.0-rc.1"
 dependencies = [
  "serde",
  "serde_json",
@@ -1479,7 +1479,7 @@ dependencies = [
 
 [[package]]
 name = "desktop-release"
-version = "1.5.1"
+version = "1.6.0-rc.1"
 dependencies = [
  "semver",
  "serde",
@@ -1490,7 +1490,7 @@ dependencies = [
 
 [[package]]
 name = "desktop-voice"
-version = "1.5.1"
+version = "1.6.0-rc.1"
 dependencies = [
  "desktop-protocol",
 ]
@@ -1917,7 +1917,7 @@ dependencies = [
 
 [[package]]
 name = "execution-core"
-version = "1.5.1"
+version = "1.6.0-rc.1"
 dependencies = [
  "futures",
  "serde",
@@ -7380,7 +7380,7 @@ dependencies = [
 
 [[package]]
 name = "trigix-desktop-automation"
-version = "1.5.1"
+version = "1.6.0-rc.1"
 dependencies = [
  "axuielement",
  "core-graphics",
@@ -7394,7 +7394,7 @@ dependencies = [
 
 [[package]]
 name = "trigix-desktop-host"
-version = "1.5.1"
+version = "1.6.0-rc.1"
 dependencies = [
  "desktop-agent-core",
  "desktop-protocol",
@@ -7403,7 +7403,7 @@ dependencies = [
 
 [[package]]
 name = "trigix-desktop-shell"
-version = "1.5.1"
+version = "1.6.0-rc.1"
 dependencies = [
  "desktop-agent-core",
  "desktop-avatar",
@@ -7421,7 +7421,7 @@ dependencies = [
 
 [[package]]
 name = "trigix-executor"
-version = "1.5.1"
+version = "1.6.0-rc.1"
 dependencies = [
  "axum",
  "base64 0.22.1",
@@ -7466,7 +7466,7 @@ dependencies = [
 
 [[package]]
 name = "trigix-platform"
-version = "1.5.1"
+version = "1.6.0-rc.1"
 dependencies = [
  "aes-gcm 0.10.3",
  "axum",
@@ -8762,7 +8762,7 @@ dependencies = [
 
 [[package]]
 name = "workflow-core"
-version = "1.5.1"
+version = "1.6.0-rc.1"
 dependencies = [
  "serde",
  "serde_json",

@@ -2,8 +2,8 @@ apiVersion: v2
 name: trigix
 description: AI Agent Workflow Platform — Rust backend + React frontend
 type: application
-version: 0.3.6
-appVersion: "1.5.1"
+version: 0.4.0-rc.1
+appVersion: "1.6.0-rc.1"
 keywords:
   - ai
   - workflow
