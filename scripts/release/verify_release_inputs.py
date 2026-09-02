@@ -15,6 +15,7 @@ ROOT = Path(__file__).resolve().parents[2]
 LOCK_FILES = (
     "Cargo.lock",
     "apps/web/package-lock.json",
+    "services/browser-runtime/package-lock.json",
     "services/ai-runtime/requirements.lock",
     "services/ai-runtime/requirements-test.lock",
     "sdk/python/requirements.lock",
@@ -46,10 +47,22 @@ def verify() -> dict[str, object]:
     workspace_version = cargo["workspace"]["package"]["version"]
     web_package = json.loads((ROOT / "apps/web/package.json").read_text(encoding="utf-8"))
     web_lock = json.loads((ROOT / "apps/web/package-lock.json").read_text(encoding="utf-8"))
+    browser_package = json.loads(
+        (ROOT / "services/browser-runtime/package.json").read_text(encoding="utf-8")
+    )
+    browser_lock = json.loads(
+        (ROOT / "services/browser-runtime/package-lock.json").read_text(encoding="utf-8")
+    )
+    desktop_config = json.loads(
+        (ROOT / "apps/desktop/src-tauri/tauri.conf.json").read_text(encoding="utf-8")
+    )
     versions = {
         "rust_workspace": workspace_version,
         "web": web_package["version"],
         "web_lock": web_lock["packages"][""]["version"],
+        "browser_runtime": browser_package["version"],
+        "browser_runtime_lock": browser_lock["packages"][""]["version"],
+        "desktop": desktop_config["version"],
         "helm_app": chart_app_version(),
     }
     if len(set(versions.values())) != 1:
@@ -97,8 +110,14 @@ def verify() -> dict[str, object]:
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--output", type=Path)
+    parser.add_argument("--expected-version")
     args = parser.parse_args()
     evidence = verify()
+    if args.expected_version and evidence["product_version"] != args.expected_version:
+        fail(
+            "expected product version "
+            f"{args.expected_version}, found {evidence['product_version']}"
+        )
     encoded = json.dumps(evidence, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
     if args.output:
         args.output.parent.mkdir(parents=True, exist_ok=True)

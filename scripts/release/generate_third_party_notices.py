@@ -18,6 +18,10 @@ PYTHON_LOCKS = (
     ROOT / "services/ai-runtime/requirements-test.lock",
     ROOT / "sdk/python/requirements.lock",
 )
+NODE_PROJECTS = (
+    ROOT / "apps/web",
+    ROOT / "services/browser-runtime",
+)
 
 
 @dataclass(frozen=True, order=True)
@@ -64,38 +68,45 @@ def rust_dependencies() -> set[Dependency]:
 
 
 def node_dependencies() -> set[Dependency]:
-    lock_path = ROOT / "apps/web/package-lock.json"
-    lock = json.loads(lock_path.read_text(encoding="utf-8"))
     dependencies: set[Dependency] = set()
     missing: list[str] = []
-    for relative, locked in lock["packages"].items():
-        if not relative.startswith("node_modules/"):
-            continue
-        package_path = ROOT / "apps/web" / relative / "package.json"
-        if not package_path.is_file():
-            if locked.get("optional"):
+    for project in NODE_PROJECTS:
+        lock_path = project / "package-lock.json"
+        lock = json.loads(lock_path.read_text(encoding="utf-8"))
+        for relative, locked in lock["packages"].items():
+            if not relative.startswith("node_modules/"):
                 continue
-            missing.append(relative)
-            continue
-        package = json.loads(package_path.read_text(encoding="utf-8"))
-        license_value = package.get("license")
-        if isinstance(license_value, dict):
-            license_value = license_value.get("type")
-        dependencies.add(
-            Dependency(
-                "Node.js",
-                package.get("name") or relative.removeprefix("node_modules/"),
-                locked["version"],
-                safe(license_value),
-                source_value(
-                    package.get("repository") or package.get("homepage") or locked.get("resolved"),
-                    f"https://www.npmjs.com/package/{package.get('name') or relative.removeprefix('node_modules/')}/v/{locked['version']}",
-                ),
+            package_path = project / relative / "package.json"
+            if not package_path.is_file():
+                if locked.get("optional"):
+                    continue
+                missing.append(f"{project.relative_to(ROOT)}/{relative}")
+                continue
+            package = json.loads(package_path.read_text(encoding="utf-8"))
+            license_value = package.get("license")
+            if isinstance(license_value, dict):
+                license_value = license_value.get("type")
+            package_name = package.get("name") or relative.removeprefix("node_modules/")
+            dependencies.add(
+                Dependency(
+                    "Node.js",
+                    package_name,
+                    locked["version"],
+                    safe(license_value),
+                    source_value(
+                        package.get("repository")
+                        or package.get("homepage")
+                        or locked.get("resolved"),
+                        f"https://www.npmjs.com/package/{package_name}/v/{locked['version']}",
+                    ),
+                )
             )
-        )
     if missing:
         sample = "\n  ".join(missing[:20])
-        raise SystemExit(f"Run `npm ci` in apps/web before generating notices. Missing:\n  {sample}")
+        raise SystemExit(
+            "Run `npm ci` in every configured Node.js project before generating "
+            f"notices. Missing:\n  {sample}"
+        )
     return dependencies
 
 

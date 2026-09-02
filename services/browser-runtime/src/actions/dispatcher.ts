@@ -130,7 +130,7 @@ export class ActionDispatcher {
       }
       case 'har': {
         const entries = this.networkEntries.get(page) ?? []
-        const body = Buffer.from(JSON.stringify({ log: { version: '1.2', creator: { name: 'Trigix Browser Runtime', version: '1.5.1' }, entries } }))
+        const body = Buffer.from(JSON.stringify({ log: { version: '1.2', creator: { name: 'Trigix Browser Runtime', version: '1.6.0-rc.1' }, entries } }))
         const artifact = await this.artifacts.create(artifactInput(task, 'har', 'application/json', body))
         return { data: artifact, artifacts: [artifact] }
       }

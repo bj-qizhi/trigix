@@ -4,6 +4,56 @@ All notable changes to Trigix will be documented in this file.
 
 ## [Unreleased]
 
+## [1.6.0-rc.1] - 2026-09-02
+
+This release candidate is a source and self-hosting technical preview. It does
+not include an Official Trigix Desktop GA installer; development-signed CI
+packages remain qualification evidence only.
+
+### Added
+
+- **Governed Windows and macOS desktop automation.** The Tauri shell, isolated
+  native Host, authenticated Device lifecycle, semantic selectors, bounded
+  keyboard and pointer input, Approval handling, cancellation, recovery, and
+  redacted evidence now form an end-to-end desktop automation path.
+- **Realtime voice and bounded avatar coordination.** Consent, tenant privacy,
+  authenticated realtime transport, Tool proposal approval, telemetry, cleanup,
+  and safe avatar degradation are integrated across Desktop and Platform.
+- **Isolated Browser Runtime.** Playwright browser sessions, secure URL policy,
+  concurrency controls, artifact storage, tracing, metrics, and Executor nodes
+  are available as a separately deployable service.
+- **Enterprise desktop update governance.** Versioned manifests, tenant policy,
+  fleet compliance, release-readiness evidence, staged rollout, halt, rollback,
+  private mirror, and air-gapped distribution contracts are implemented.
+
+### Changed
+
+- Execution reliability now includes PostgreSQL-backed state, Redis Streams
+  stale-pending recovery, bounded recovery attempts, terminal idempotency, and a
+  dead-letter stream.
+- Release qualification covers Windows 11 build matrices and macOS Universal
+  Apple Silicon/Intel packages using ephemeral development identities in CI.
+- Dependency, CodeQL, release-input, Helm, Docker, browser, desktop, and database
+  checks are enforced by the protected CI matrix.
+
+### Security
+
+- Tenant isolation, Credential encryption, SSH host identity pinning, desktop
+  action policy, protected-field rejection, and Browser Runtime network policy
+  were hardened.
+- The Web `browserslist` high-severity advisory was resolved. The remaining
+  Linux-only GTK3 `glib` advisory is tracked as an upstream-blocked risk and
+  prevents a production Linux desktop release.
+
+### Release status
+
+- Source archives, checksums, an SPDX SBOM, third-party notices, deterministic
+  release-input evidence, and GitHub Sigstore attestations are published for
+  this candidate.
+- Windows Authenticode production signing, Apple Developer ID notarization,
+  independent penetration-test disposition, clean-device qualification, and
+  staged closed-beta evidence remain required before Official Desktop GA.
+
 ## [1.5.1] - 2026-07-05
 
 ### Added

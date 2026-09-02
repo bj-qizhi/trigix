@@ -1,0 +1,132 @@
+name: Release source distribution
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+  id-token: write
+  attestations: write
+  artifact-metadata: write
+
+concurrency:
+  group: release-source-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Package, attest, and publish source
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Validate tag, source revision, and release inputs
+        id: release
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          version="${RELEASE_TAG#v}"
+          [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]
+          printf 'version=%s\n' "$version" >> "$GITHUB_OUTPUT"
+          git fetch origin "${{ github.event.repository.default_branch }}"
+          test "$(git rev-parse FETCH_HEAD)" = "$GITHUB_SHA"
+          test -f "docs/release/${RELEASE_TAG}.md"
+          python scripts/release/verify_release_inputs.py \
+            --expected-version "$version" \
+            --output "$RUNNER_TEMP/release-inputs.json"
+
+      - name: Build deterministic source archives
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          version="${RELEASE_TAG#v}"
+          prefix="trigix-${version}/"
+          mkdir -p dist "$RUNNER_TEMP/release-root"
+          git archive --format=tar --prefix="$prefix" "$GITHUB_SHA" \
+            | gzip -n -9 > "dist/trigix-${version}-source.tar.gz"
+          git archive --format=zip --prefix="$prefix" \
+            --output="dist/trigix-${version}-source.zip" "$GITHUB_SHA"
+          tar -xzf "dist/trigix-${version}-source.tar.gz" \
+            -C "$RUNNER_TEMP/release-root" --strip-components=1
+          cp THIRD_PARTY_NOTICES.md "dist/trigix-${version}-THIRD_PARTY_NOTICES.md"
+          cp "$RUNNER_TEMP/release-inputs.json" \
+            "dist/trigix-${version}-release-inputs.json"
+
+      - name: Generate SPDX SBOM
+        uses: anchore/sbom-action@v0
+        with:
+          path: ${{ runner.temp }}/release-root
+          format: spdx-json
+          output-file: dist/trigix-${{ steps.release.outputs.version }}.spdx.json
+          artifact-name: trigix-${{ steps.release.outputs.version }}-source-sbom
+          upload-artifact: false
+          upload-release-assets: false
+
+      - name: Calculate and verify checksums
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          version="${RELEASE_TAG#v}"
+          (
+            cd dist
+            sha256sum \
+              "trigix-${version}-source.tar.gz" \
+              "trigix-${version}-source.zip" \
+              "trigix-${version}.spdx.json" \
+              "trigix-${version}-THIRD_PARTY_NOTICES.md" \
+              "trigix-${version}-release-inputs.json" \
+              > "trigix-${version}-SHA256SUMS"
+            sha256sum --check "trigix-${version}-SHA256SUMS"
+          )
+
+      - name: Attest build provenance
+        id: provenance
+        uses: actions/attest@v4
+        with:
+          subject-path: |
+            dist/trigix-${{ steps.release.outputs.version }}-source.tar.gz
+            dist/trigix-${{ steps.release.outputs.version }}-source.zip
+            dist/trigix-${{ steps.release.outputs.version }}.spdx.json
+            dist/trigix-${{ steps.release.outputs.version }}-THIRD_PARTY_NOTICES.md
+            dist/trigix-${{ steps.release.outputs.version }}-release-inputs.json
+            dist/trigix-${{ steps.release.outputs.version }}-SHA256SUMS
+
+      - name: Attest source SBOM
+        id: sbom-attestation
+        uses: actions/attest@v4
+        with:
+          subject-path: dist/trigix-${{ steps.release.outputs.version }}-source.tar.gz
+          sbom-path: dist/trigix-${{ steps.release.outputs.version }}.spdx.json
+
+      - name: Collect offline attestation bundles
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+          PROVENANCE_BUNDLE: ${{ steps.provenance.outputs.bundle-path }}
+          SBOM_BUNDLE: ${{ steps.sbom-attestation.outputs.bundle-path }}
+        run: |
+          version="${RELEASE_TAG#v}"
+          cp "$PROVENANCE_BUNDLE" \
+            "dist/trigix-${version}-provenance.sigstore.json"
+          cp "$SBOM_BUNDLE" \
+            "dist/trigix-${version}-sbom.sigstore.json"
+
+      - name: Publish GitHub prerelease or stable source release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          version="${RELEASE_TAG#v}"
+          release_args=()
+          if [[ "$version" == *-* ]]; then
+            release_args+=(--prerelease)
+          fi
+          gh release create "$RELEASE_TAG" dist/* \
+            --verify-tag \
+            --title "Trigix ${version}" \
+            --notes-file "docs/release/${RELEASE_TAG}.md" \
+            "${release_args[@]}"
