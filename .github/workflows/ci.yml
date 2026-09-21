@@ -87,6 +87,19 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
+      - name: Setup Node for Desktop packaging
+        if: matrix.os == 'windows-2022'
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/desktop/package-lock.json
+
+      - name: Install locked Desktop packaging tools
+        if: matrix.os == 'windows-2022'
+        working-directory: apps/desktop
+        run: npm ci --ignore-scripts
+
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
@@ -156,7 +169,7 @@ jobs:
       - name: Build self-signed NSIS qualification package
         if: matrix.os == 'windows-2022'
         working-directory: apps/desktop
-        run: npx --yes @tauri-apps/cli@2 build --debug --bundles nsis --config "${{ steps.windows-development-signing.outputs.config }}"
+        run: npx tauri build --debug --bundles nsis --config "${{ steps.windows-development-signing.outputs.config }}"
 
       - name: Verify self-signed Windows development package
         if: matrix.os == 'windows-2022'
@@ -203,12 +216,12 @@ jobs:
         if: matrix.os == 'windows-2022'
         uses: actions/upload-artifact@v7
         with:
-          name: windows-development-signed-qualification
+          name: windows-development-signed-qualification-${{ github.sha }}
           path: |
             target/debug/bundle/nsis/*.exe
             ${{ runner.temp }}/trigix-development-signing/windows-development-signing.json
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 90
 
       - name: Upload fixture signature evidence
         if: always()
@@ -255,6 +268,19 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
+      - name: Setup Node for Desktop packaging
+        if: matrix.os == 'macos-15' && matrix.architecture == 'arm64'
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/desktop/package-lock.json
+
+      - name: Install locked Desktop packaging tools
+        if: matrix.os == 'macos-15' && matrix.architecture == 'arm64'
+        working-directory: apps/desktop
+        run: npm ci --ignore-scripts
+
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
@@ -300,7 +326,7 @@ jobs:
         working-directory: apps/desktop
         run: |
           ./scripts/prepare-universal-sidecar.sh release
-          npx --yes @tauri-apps/cli@2 build --target universal-apple-darwin --bundles dmg --config "${{ steps.macos-development-signing.outputs.config }}"
+          npx tauri build --target universal-apple-darwin --bundles dmg --config "${{ steps.macos-development-signing.outputs.config }}"
           dmg_path="$(find ../../target/universal-apple-darwin/release/bundle/dmg -name '*.dmg' -type f -print -quit)"
           test -n "$dmg_path"
           ./scripts/qualify-macos-development-signing.sh verify "$RUNNER_TEMP/trigix-development-signing" "$dmg_path"
@@ -309,12 +335,12 @@ jobs:
         if: matrix.os == 'macos-15' && matrix.architecture == 'arm64'
         uses: actions/upload-artifact@v7
         with:
-          name: macos-universal-development-signed-qualification
+          name: macos-universal-development-signed-qualification-${{ github.sha }}
           path: |
             target/universal-apple-darwin/release/bundle/dmg/*.dmg
             ${{ runner.temp }}/trigix-development-signing/macos-development-signing.txt
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 90
 
       - name: Remove macOS development-signing state
         if: always() && matrix.os == 'macos-15' && matrix.architecture == 'arm64'
@@ -502,6 +528,10 @@ jobs:
       - name: Audit Node dependencies
         working-directory: apps/web
         run: npm audit --audit-level=high --json > ../../evidence/npm-audit.json
+
+      - name: Audit Desktop packaging dependencies
+        working-directory: apps/desktop
+        run: npm audit --audit-level=high --json > ../../evidence/desktop-npm-audit.json
 
       - name: Audit AI Runtime dependencies
         run: pip-audit -r services/ai-runtime/requirements.lock --format json --output evidence/ai-runtime-pip-audit.json

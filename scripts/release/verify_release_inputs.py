@@ -14,6 +14,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 LOCK_FILES = (
     "Cargo.lock",
+    "apps/desktop/package-lock.json",
     "apps/web/package-lock.json",
     "services/browser-runtime/package-lock.json",
     "services/ai-runtime/requirements.lock",
@@ -56,6 +57,10 @@ def verify() -> dict[str, object]:
     desktop_config = json.loads(
         (ROOT / "apps/desktop/src-tauri/tauri.conf.json").read_text(encoding="utf-8")
     )
+    desktop_package = json.loads((ROOT / "apps/desktop/package.json").read_text(encoding="utf-8"))
+    desktop_lock = json.loads(
+        (ROOT / "apps/desktop/package-lock.json").read_text(encoding="utf-8")
+    )
     versions = {
         "rust_workspace": workspace_version,
         "web": web_package["version"],
@@ -63,6 +68,8 @@ def verify() -> dict[str, object]:
         "browser_runtime": browser_package["version"],
         "browser_runtime_lock": browser_lock["packages"][""]["version"],
         "desktop": desktop_config["version"],
+        "desktop_build": desktop_package["version"],
+        "desktop_build_lock": desktop_lock["packages"][""]["version"],
         "helm_app": chart_app_version(),
     }
     if len(set(versions.values())) != 1:

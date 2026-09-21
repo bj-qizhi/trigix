@@ -102,6 +102,8 @@ verify() (
     printf 'schema_version=1\n'
     printf 'purpose=macos_development_qualification\n'
     printf 'production_release_eligible=false\n'
+    printf 'source_revision=%s\n' "$(git -C "$(dirname "$0")/../../.." rev-parse HEAD)"
+    printf 'product_version=%s\n' "$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["version"])' "$(dirname "$0")/../src-tauri/tauri.conf.json")"
     printf 'signer_identity=%s\n' "$identity"
     printf 'isolated_signature_verified=true\n'
     printf 'public_gatekeeper_accepted=false\n'

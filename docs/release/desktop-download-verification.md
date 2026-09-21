@@ -2,6 +2,8 @@
 
 Public Trigix Desktop releases use tags in the form `desktop-vMAJOR.MINOR.PATCH`. Download the installer and its matching `.sha256` file from the same [GitHub Release](https://github.com/bj-qizhi/trigix/releases). Source archives attached automatically by GitHub are not Desktop installers.
 
+Each Official Desktop release also publishes a platform-specific SPDX JSON SBOM and offline Sigstore provenance bundle. GitHub stores the corresponding signed attestation. Asset names include `windows` or `macos`; do not substitute an SBOM or provenance bundle from the other platform or another version.
+
 If no stable `desktop-v*` release exists, there is no Official Trigix Desktop GA installer. Do not substitute a CI artifact or a development-signed build and describe it as official.
 
 Community and self-managed distributors may publish their own installers without waiting for Official GA. Verify the named distributor, its signing identity, source revision, modifications, support boundary, security channel, and release evidence. Responsibility for that artifact remains with its distributor. See [Distribution and GA responsibility](distribution-responsibility.md).
@@ -53,6 +55,18 @@ lipo -archs "/Volumes/Trigix Desktop/Trigix Desktop.app/Contents/MacOS/desktop-a
 ```
 
 Both binaries must report `x86_64 arm64` or `arm64 x86_64`. Compare the Developer ID identity and Team ID with the release note. Official and independent distributors use their own distinct identities. Stop when Gatekeeper, stapling, signature, or architecture verification fails.
+
+## Verify build provenance
+
+With GitHub CLI authenticated for public attestation verification, verify the downloaded installer or DMG against this repository:
+
+```sh
+gh attestation verify DOWNLOADED_DESKTOP_ARTIFACT --repo bj-qizhi/trigix
+```
+
+The verified subject digest must equal the downloaded artifact SHA-256 and the workflow source repository must be `bj-qizhi/trigix`. Compare the attestation's source revision with the release tag and the content-free signing evidence. The platform-specific offline `*-provenance.sigstore.json` asset is retained for verification environments that cannot query GitHub during evidence review.
+
+Review the matching `*-windows.spdx.json` or `*-macos.spdx.json` inventory as part of dependency and license review. An SBOM describes the packaged payload; it does not replace checksum, publisher, notarization, malware, supported-device, or penetration-test evidence.
 
 ## Mirrors and offline transfer
 

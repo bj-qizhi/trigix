@@ -180,6 +180,8 @@ switch ($Action) {
             schema_version = 1
             purpose = "windows_development_qualification"
             production_release_eligible = $false
+            source_revision = (git -C (Resolve-Path (Join-Path $PSScriptRoot "../../..")).Path rev-parse HEAD).Trim()
+            product_version = (Get-Content (Join-Path $PSScriptRoot "../src-tauri/tauri.conf.json") -Raw | ConvertFrom-Json).version
             signer_subject = $developmentSubject
             certificate_thumbprint = $thumbprint
             isolated_chain_trusted = $true

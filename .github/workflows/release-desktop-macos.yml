@@ -13,6 +13,9 @@ on:
 
 permissions:
   contents: write
+  id-token: write
+  attestations: write
+  artifact-metadata: write
 
 concurrency:
   group: release-desktop-macos-${{ github.ref }}
@@ -24,21 +27,22 @@ jobs:
     runs-on: macos-15
     timeout-minutes: 60
     environment: desktop-production
-    env:
-      APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
-      APPLE_ID: ${{ secrets.APPLE_ID }}
-      APPLE_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
-      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
     steps:
       - uses: actions/checkout@v6
         with:
           ref: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref }}
+          fetch-depth: 0
 
       - name: Validate protected release inputs
+        id: release
         env:
           RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name }}
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
           [[ "$RELEASE_TAG" =~ ^desktop-v[0-9]+\.[0-9]+\.[0-9]+$ ]]
           test -n "$APPLE_CERTIFICATE"
@@ -47,6 +51,13 @@ jobs:
           test -n "$APPLE_ID"
           test -n "$APPLE_PASSWORD"
           test -n "$APPLE_TEAM_ID"
+          version="${RELEASE_TAG#desktop-v}"
+          source_revision="$(git rev-parse HEAD)"
+          test "$(git rev-list -n 1 "$RELEASE_TAG")" = "$source_revision"
+          git fetch origin "${{ github.event.repository.default_branch }}"
+          test "$(git rev-parse FETCH_HEAD)" = "$source_revision"
+          python scripts/release/verify_release_inputs.py --expected-version "$version" --output "$RUNNER_TEMP/release-inputs.json"
+          printf 'version=%s\n' "$version" >> "$GITHUB_OUTPUT"
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -55,6 +66,17 @@ jobs:
 
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/desktop/package-lock.json
+
+      - name: Install locked Desktop packaging tools
+        working-directory: apps/desktop
+        run: npm ci --ignore-scripts
 
       - name: Import Developer ID certificate
         env:
@@ -76,9 +98,14 @@ jobs:
 
       - name: Build, sign and notarize Universal DMG
         working-directory: apps/desktop
+        env:
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
           ./scripts/prepare-universal-sidecar.sh release
-          npx --yes @tauri-apps/cli@2 build --target universal-apple-darwin --bundles dmg
+          npx tauri build --target universal-apple-darwin --bundles dmg
 
       - name: Verify architecture, signature, Gatekeeper and notarization
         run: |
@@ -87,6 +114,35 @@ jobs:
           ./apps/desktop/scripts/verify-macos-release.sh "$dmg_path" | tee "$RUNNER_TEMP/macos-release-verification.txt"
           shasum -a 256 "$dmg_path" > "$dmg_path.sha256"
 
+      - name: Remove signing identity before evidence processing
+        run: |
+          security list-keychains -d user -s login.keychain-db
+          security delete-keychain "$RUNNER_TEMP/trigix-signing.keychain-db"
+
+      - name: Generate installed-payload SPDX SBOM
+        uses: anchore/sbom-action@v0
+        with:
+          path: target/universal-apple-darwin/release/bundle/macos
+          format: spdx-json
+          output-file: ${{ runner.temp }}/trigix-desktop-${{ steps.release.outputs.version }}-macos.spdx.json
+          artifact-name: macos-desktop-sbom-${{ github.sha }}
+          upload-artifact: false
+          upload-release-assets: false
+
+      - name: Attest macOS release artifacts
+        id: provenance
+        uses: actions/attest@v4
+        with:
+          subject-path: |
+            target/universal-apple-darwin/release/bundle/dmg/*.dmg
+            target/universal-apple-darwin/release/bundle/dmg/*.sha256
+            ${{ runner.temp }}/trigix-desktop-${{ steps.release.outputs.version }}-macos.spdx.json
+
+      - name: Collect offline macOS provenance bundle
+        run: |
+          cp "${{ steps.provenance.outputs.bundle-path }}" \
+            "$RUNNER_TEMP/trigix-desktop-${{ steps.release.outputs.version }}-macos-provenance.sigstore.json"
+
       - name: Upload immutable release evidence
         uses: actions/upload-artifact@v7
         with:
@@ -94,6 +150,8 @@ jobs:
           path: |
             target/universal-apple-darwin/release/bundle/dmg/*.dmg
             target/universal-apple-darwin/release/bundle/dmg/*.sha256
+            ${{ runner.temp }}/trigix-desktop-${{ steps.release.outputs.version }}-macos.spdx.json
+            ${{ runner.temp }}/trigix-desktop-${{ steps.release.outputs.version }}-macos-provenance.sigstore.json
             ${{ runner.temp }}/macos-release-verification.txt
           if-no-files-found: error
           retention-days: 90
@@ -103,13 +161,22 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name }}
         run: |
-          assets=(target/universal-apple-darwin/release/bundle/dmg/*.dmg target/universal-apple-darwin/release/bundle/dmg/*.sha256)
-          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
-            gh release upload "$RELEASE_TAG" "${assets[@]}" --clobber
-          else
-            gh release create "$RELEASE_TAG" "${assets[@]}" --verify-tag --generate-notes --title "Trigix Desktop ${RELEASE_TAG#desktop-v}"
+          assets=(
+            target/universal-apple-darwin/release/bundle/dmg/*.dmg
+            target/universal-apple-darwin/release/bundle/dmg/*.sha256
+            "$RUNNER_TEMP/trigix-desktop-${{ steps.release.outputs.version }}-macos.spdx.json"
+            "$RUNNER_TEMP/trigix-desktop-${{ steps.release.outputs.version }}-macos-provenance.sigstore.json"
+          )
+          if ! gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            if ! gh release create "$RELEASE_TAG" --verify-tag --generate-notes --title "Trigix Desktop ${RELEASE_TAG#desktop-v}"; then
+              gh release view "$RELEASE_TAG" >/dev/null
+            fi
           fi
+          gh release upload "$RELEASE_TAG" "${assets[@]}"
 
       - name: Remove temporary signing keychain
         if: always()
-        run: security delete-keychain "$RUNNER_TEMP/trigix-signing.keychain-db" || true
+        run: |
+          rm -f "$RUNNER_TEMP/developer-id.p12"
+          security list-keychains -d user -s login.keychain-db || true
+          security delete-keychain "$RUNNER_TEMP/trigix-signing.keychain-db" || true

@@ -126,6 +126,9 @@ docs/                    Architecture, ADRs, dev guides
 | [Desktop Onboarding](docs/guides/desktop-onboarding.md) | Install, pair, permissions, automation, voice, avatar, update, and uninstall |
 | [Desktop Troubleshooting](docs/guides/desktop-troubleshooting.md) | Recovery guidance and known limitations |
 | [Download Verification](docs/release/desktop-download-verification.md) | Verify checksums and Windows or macOS publisher trust |
+| [Internal Alpha Qualification](docs/release/internal-alpha-qualification.md) | Select, identify, exercise, and promote development-signed Desktop candidates |
+| [Windows Desktop Release](docs/operations/windows-desktop-release.md) | Protected signing, publication, and Windows 11 client qualification |
+| [macOS Desktop Release](docs/operations/macos-desktop-release.md) | Developer ID, notarization, Universal DMG, and device qualification |
 | [Distribution and GA Responsibility](docs/release/distribution-responsibility.md) | Official GA, Community Build, and self-managed release boundaries |
 | [Support Policy](docs/support/support-policy.md) | Intake, severity targets, escalation, and security handoff |
 | [Security Policy](SECURITY.md) | Private vulnerability reporting and coordinated disclosure |
