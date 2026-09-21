@@ -21,7 +21,7 @@ Regenerate with `python3 scripts/release/generate_third_party_notices.py --outpu
 | aliasable | 0.1.3 | MIT | https://github.com/avitex/rust-aliasable |
 | allocator-api2 | 0.2.21 | MIT OR Apache-2.0 | https://github.com/zakarumych/allocator-api2 |
 | android_system_properties | 0.1.5 | MIT/Apache-2.0 | https://github.com/nical/android_system_properties |
-| anyhow | 1.0.102 | MIT OR Apache-2.0 | https://github.com/dtolnay/anyhow |
+| anyhow | 1.0.103 | MIT OR Apache-2.0 | https://github.com/dtolnay/anyhow |
 | apple-cf | 0.9.3 | MIT OR Apache-2.0 | https://github.com/doom-fish/apple-cf-rs |
 | arbitrary | 1.4.2 | MIT OR Apache-2.0 | https://github.com/rust-fuzz/arbitrary/ |
 | arc-swap | 1.9.1 | MIT OR Apache-2.0 | https://github.com/vorner/arc-swap |
@@ -87,7 +87,6 @@ Regenerate with `python3 scripts/release/generate_third_party_notices.py --outpu
 | cmov | 0.5.4 | Apache-2.0 OR MIT | https://github.com/RustCrypto/utils |
 | color_quant | 1.1.0 | MIT | https://github.com/image-rs/color_quant.git |
 | combine | 4.6.7 | MIT | https://github.com/Marwes/combine |
-| concurrent-queue | 2.5.0 | Apache-2.0 OR MIT | https://github.com/smol-rs/concurrent-queue |
 | connection-string | 0.2.0 | MIT OR Apache-2.0 | https://github.com/prisma/connection-string |
 | const-oid | 0.10.2 | Apache-2.0 OR MIT | https://github.com/RustCrypto/formats |
 | const-oid | 0.9.6 | Apache-2.0 OR MIT | https://github.com/RustCrypto/formats/tree/master/const-oid |
@@ -190,7 +189,7 @@ Regenerate with `python3 scripts/release/generate_third_party_notices.py --outpu
 | errno | 0.3.14 | MIT OR Apache-2.0 | https://github.com/lambda-fairy/rust-errno |
 | etcetera | 0.8.0 | MIT OR Apache-2.0 | https://github.com/lunacookies/etcetera |
 | euclid | 0.20.14 | MIT / Apache-2.0 | https://github.com/servo/euclid |
-| event-listener | 5.4.1 | Apache-2.0 OR MIT | https://github.com/smol-rs/event-listener |
+| event-listener | 5.4.2 | Apache-2.0 OR MIT | https://github.com/smol-rs/event-listener |
 | fastrand | 2.4.1 | Apache-2.0 OR MIT | https://github.com/smol-rs/fastrand |
 | fdeflate | 0.3.7 | MIT OR Apache-2.0 | https://github.com/image-rs/fdeflate |
 | feed-rs | 2.4.0 | MIT | https://github.com/feed-rs/feed-rs.git |
@@ -507,9 +506,9 @@ Regenerate with `python3 scripts/release/generate_third_party_notices.py --outpu
 | rustc-hash | 2.1.3 | Apache-2.0 OR MIT | https://github.com/rust-lang/rustc-hash |
 | rustc_version | 0.4.1 | MIT OR Apache-2.0 | https://github.com/djc/rustc-version-rs |
 | rustix | 1.1.4 | Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT | https://github.com/bytecodealliance/rustix |
-| rustls | 0.23.40 | Apache-2.0 OR ISC OR MIT | https://github.com/rustls/rustls |
+| rustls | 0.23.45 | Apache-2.0 OR ISC OR MIT | https://github.com/rustls/rustls |
 | rustls-pki-types | 1.14.1 | MIT OR Apache-2.0 | https://github.com/rustls/pki-types |
-| rustls-webpki | 0.103.13 | ISC | https://github.com/rustls/webpki |
+| rustls-webpki | 0.103.15 | ISC | https://github.com/rustls/webpki |
 | rustversion | 1.0.22 | MIT OR Apache-2.0 | https://github.com/dtolnay/rustversion |
 | ryu | 1.0.23 | Apache-2.0 OR BSL-1.0 | https://github.com/dtolnay/ryu |
 | salsa20 | 0.11.0 | MIT OR Apache-2.0 | https://github.com/RustCrypto/stream-ciphers |
@@ -826,7 +825,6 @@ Regenerate with `python3 scripts/release/generate_third_party_notices.py --outpu
 
 | Package | Version | Declared license | Source |
 | --- | --- | --- | --- |
-| @ampproject/remapping | 2.3.0 | Apache-2.0 | git+https://github.com/ampproject/remapping.git |
 | @aws-sdk/checksums | 3.1000.29 | Apache-2.0 | https://github.com/aws/aws-sdk-js-v3.git |
 | @aws-sdk/client-s3 | 3.1123.0 | Apache-2.0 | https://github.com/aws/aws-sdk-js-v3.git |
 | @aws-sdk/core | 3.977.9 | Apache-2.0 | https://github.com/aws/aws-sdk-js-v3.git |
@@ -859,7 +857,7 @@ Regenerate with `python3 scripts/release/generate_third_party_notices.py --outpu
 | @babel/helper-validator-option | 7.29.7 | MIT | https://github.com/babel/babel.git |
 | @babel/helpers | 7.29.7 | MIT | https://github.com/babel/babel.git |
 | @babel/parser | 7.29.7 | MIT | https://github.com/babel/babel.git |
-| @babel/parser | 7.29.8 | MIT | https://github.com/babel/babel.git |
+| @babel/parser | 7.29.9 | MIT | https://github.com/babel/babel.git |
 | @babel/plugin-transform-react-jsx-self | 7.29.7 | MIT | https://github.com/babel/babel.git |
 | @babel/plugin-transform-react-jsx-source | 7.29.7 | MIT | https://github.com/babel/babel.git |
 | @babel/template | 7.29.7 | MIT | https://github.com/babel/babel.git |
@@ -892,7 +890,6 @@ Regenerate with `python3 scripts/release/generate_third_party_notices.py --outpu
 | @humanwhocodes/module-importer | 1.0.1 | Apache-2.0 | git+https://github.com/humanwhocodes/module-importer.git |
 | @humanwhocodes/retry | 0.4.3 | Apache-2.0 | git+https://github.com/humanwhocodes/retry.git |
 | @isaacs/cliui | 8.0.2 | ISC | yargs/cliui |
-| @istanbuljs/schema | 0.1.6 | MIT | git+https://github.com/istanbuljs/schema.git |
 | @jridgewell/gen-mapping | 0.3.13 | MIT | git+https://github.com/jridgewell/sourcemaps.git |
 | @jridgewell/remapping | 2.3.5 | MIT | git+https://github.com/jridgewell/sourcemaps.git |
 | @jridgewell/resolve-uri | 3.1.2 | MIT | https://github.com/jridgewell/resolve-uri |
@@ -980,6 +977,7 @@ Regenerate with `python3 scripts/release/generate_third_party_notices.py --outpu
 | @opentelemetry/sdk-trace-node | 2.11.0 | Apache-2.0 | open-telemetry/opentelemetry-js |
 | @opentelemetry/semantic-conventions | 1.43.0 | Apache-2.0 | open-telemetry/opentelemetry-js |
 | @opentelemetry/sql-common | 0.42.0 | Apache-2.0 | https://github.com/open-telemetry/opentelemetry-js-contrib.git |
+| @oxc-project/types | 0.150.0 | MIT | git+https://github.com/oxc-project/oxc.git |
 | @pinojs/redact | 0.4.0 | MIT | git+https://github.com/pinojs/redact.git |
 | @pkgjs/parseargs | 0.11.0 | MIT | git@github.com:pkgjs/parseargs.git |
 | @playwright/test | 1.61.1 | Apache-2.0 | git+https://github.com/microsoft/playwright.git |
@@ -997,17 +995,19 @@ Regenerate with `python3 scripts/release/generate_third_party_notices.py --outpu
 | @redis/json | 5.12.1 | MIT | git://github.com/redis/node-redis.git |
 | @redis/search | 5.12.1 | MIT | git://github.com/redis/node-redis.git |
 | @redis/time-series | 5.12.1 | MIT | git://github.com/redis/node-redis.git |
+| @rolldown/binding-linux-x64-gnu | 1.2.9 | MIT | git+https://github.com/rolldown/rolldown.git |
+| @rolldown/binding-linux-x64-musl | 1.2.9 | MIT | git+https://github.com/rolldown/rolldown.git |
 | @rolldown/pluginutils | 1.0.0-beta.27 | MIT | git+https://github.com/rolldown/rolldown.git |
+| @rolldown/pluginutils | 1.0.1 | MIT | git+https://github.com/rolldown/plugins.git |
 | @rollup/rollup-linux-x64-gnu | 4.60.4 | MIT | git+https://github.com/rollup/rollup.git |
-| @rollup/rollup-linux-x64-gnu | 4.63.1 | MIT | git+https://github.com/rollup/rollup.git |
 | @rollup/rollup-linux-x64-musl | 4.60.4 | MIT | git+https://github.com/rollup/rollup.git |
-| @rollup/rollup-linux-x64-musl | 4.63.1 | MIT | git+https://github.com/rollup/rollup.git |
 | @smithy/core | 3.33.3 | Apache-2.0 | https://github.com/smithy-lang/smithy-typescript.git |
 | @smithy/credential-provider-imds | 4.5.2 | Apache-2.0 | https://github.com/smithy-lang/smithy-typescript.git |
 | @smithy/fetch-http-handler | 5.7.2 | Apache-2.0 | https://github.com/smithy-lang/smithy-typescript.git |
 | @smithy/node-http-handler | 4.12.0 | Apache-2.0 | https://github.com/smithy-lang/smithy-typescript.git |
 | @smithy/signature-v4 | 5.7.3 | Apache-2.0 | https://github.com/smithy-lang/smithy-typescript.git |
 | @smithy/types | 4.17.2 | Apache-2.0 | https://github.com/smithy-lang/smithy-typescript.git |
+| @standard-schema/spec | 1.1.0 | MIT | https://github.com/standard-schema/standard-schema |
 | @types/aws-lambda | 8.10.162 | MIT | https://github.com/DefinitelyTyped/DefinitelyTyped.git |
 | @types/babel__core | 7.20.5 | MIT | https://github.com/DefinitelyTyped/DefinitelyTyped.git |
 | @types/babel__generator | 7.27.0 | MIT | https://github.com/DefinitelyTyped/DefinitelyTyped.git |
@@ -1043,14 +1043,14 @@ Regenerate with `python3 scripts/release/generate_third_party_notices.py --outpu
 | @typescript-eslint/utils | 8.69.0 | MIT | https://github.com/typescript-eslint/typescript-eslint.git |
 | @typescript-eslint/visitor-keys | 8.69.0 | MIT | https://github.com/typescript-eslint/typescript-eslint.git |
 | @vitejs/plugin-react | 4.7.0 | MIT | git+https://github.com/vitejs/vite-plugin-react.git |
-| @vitest/coverage-v8 | 3.2.7 | MIT | git+https://github.com/vitest-dev/vitest.git |
-| @vitest/expect | 3.2.7 | MIT | git+https://github.com/vitest-dev/vitest.git |
-| @vitest/mocker | 3.2.7 | MIT | git+https://github.com/vitest-dev/vitest.git |
-| @vitest/pretty-format | 3.2.7 | MIT | git+https://github.com/vitest-dev/vitest.git |
-| @vitest/runner | 3.2.7 | MIT | git+https://github.com/vitest-dev/vitest.git |
-| @vitest/snapshot | 3.2.7 | MIT | git+https://github.com/vitest-dev/vitest.git |
-| @vitest/spy | 3.2.7 | MIT | git+https://github.com/vitest-dev/vitest.git |
-| @vitest/utils | 3.2.7 | MIT | git+https://github.com/vitest-dev/vitest.git |
+| @vitest/coverage-v8 | 4.1.11 | MIT | git+https://github.com/vitest-dev/vitest.git |
+| @vitest/expect | 4.1.11 | MIT | git+https://github.com/vitest-dev/vitest.git |
+| @vitest/mocker | 4.1.11 | MIT | git+https://github.com/vitest-dev/vitest.git |
+| @vitest/pretty-format | 4.1.11 | MIT | git+https://github.com/vitest-dev/vitest.git |
+| @vitest/runner | 4.1.11 | MIT | git+https://github.com/vitest-dev/vitest.git |
+| @vitest/snapshot | 4.1.11 | MIT | git+https://github.com/vitest-dev/vitest.git |
+| @vitest/spy | 4.1.11 | MIT | git+https://github.com/vitest-dev/vitest.git |
+| @vitest/utils | 4.1.11 | MIT | git+https://github.com/vitest-dev/vitest.git |
 | @xyflow/react | 12.10.2 | MIT | https://github.com/xyflow/xyflow.git |
 | @xyflow/system | 0.0.76 | MIT | https://github.com/xyflow/xyflow.git |
 | abstract-logging | 2.0.1 | MIT | git+https://github.com/jsumners/abstract-logging.git |
@@ -1066,7 +1066,7 @@ Regenerate with `python3 scripts/release/generate_third_party_notices.py --outpu
 | ansi-styles | 6.2.3 | MIT | chalk/ansi-styles |
 | argparse | 2.0.1 | Python-2.0 | nodeca/argparse |
 | assertion-error | 2.0.1 | MIT | git@github.com:chaijs/assertion-error.git |
-| ast-v8-to-istanbul | 0.3.12 | MIT | git+https://github.com/AriPerkkio/ast-v8-to-istanbul.git |
+| ast-v8-to-istanbul | 1.0.7 | MIT | git+https://github.com/AriPerkkio/ast-v8-to-istanbul.git |
 | atomic-sleep | 1.0.0 | MIT | git+https://github.com/davidmarkclements/atomic-sleep.git |
 | avvio | 9.3.0 | MIT | git+https://github.com/fastify/avvio.git |
 | balanced-match | 1.0.2 | MIT | git://github.com/juliangruber/balanced-match.git |
@@ -1079,12 +1079,10 @@ Regenerate with `python3 scripts/release/generate_third_party_notices.py --outpu
 | brace-expansion | 2.1.4 | MIT | git://github.com/juliangruber/brace-expansion.git |
 | brace-expansion | 5.0.9 | MIT | git+https://github.com/juliangruber/brace-expansion.git |
 | browserslist | 4.28.8 | MIT | browserslist/browserslist |
-| cac | 6.7.14 | MIT | egoist/cac |
 | callsites | 3.1.0 | MIT | sindresorhus/callsites |
 | caniuse-lite | 1.0.30001810 | CC-BY-4.0 | browserslist/caniuse-lite |
-| chai | 5.3.3 | MIT | https://github.com/chaijs/chai |
+| chai | 6.2.2 | MIT | https://github.com/chaijs/chai |
 | chalk | 4.1.2 | MIT | chalk/chalk |
-| check-error | 2.1.3 | MIT | git+ssh://git@github.com/chaijs/check-error.git |
 | cjs-module-lexer | 2.2.1 | MIT | git+https://github.com/nodejs/cjs-module-lexer.git |
 | classcat | 5.0.5 | MIT | jorgebucaran/classcat |
 | cliui | 8.0.1 | ISC | yargs/cliui |
@@ -1107,14 +1105,13 @@ Regenerate with `python3 scripts/release/generate_third_party_notices.py --outpu
 | d3-zoom | 3.0.0 | ISC | https://github.com/d3/d3-zoom.git |
 | data-uri-to-buffer | 4.0.1 | MIT | git://github.com/TooTallNate/node-data-uri-to-buffer.git |
 | debug | 4.4.3 | MIT | git://github.com/debug-js/debug.git |
-| deep-eql | 5.0.2 | MIT | git@github.com:chaijs/deep-eql.git |
 | deep-is | 0.1.4 | MIT | http://github.com/thlorenz/deep-is.git |
 | dequal | 2.0.3 | MIT | lukeed/dequal |
+| detect-libc | 2.1.2 | Apache-2.0 | git://github.com/lovell/detect-libc.git |
 | eastasianwidth | 0.2.0 | MIT | git://github.com/komagata/eastasianwidth.git |
 | electron-to-chromium | 1.5.418 | ISC | git+https://github.com/Kilian/electron-to-chromium.git |
 | emoji-regex | 8.0.0 | MIT | https://github.com/mathiasbynens/emoji-regex.git |
 | emoji-regex | 9.2.2 | MIT | https://github.com/mathiasbynens/emoji-regex.git |
-| es-module-lexer | 1.7.0 | MIT | git+https://github.com/guybedford/es-module-lexer.git |
 | es-module-lexer | 2.3.2 | MIT | git+https://github.com/guybedford/es-module-lexer.git |
 | esbuild | 0.25.12 | MIT | git+https://github.com/evanw/esbuild.git |
 | esbuild | 0.28.2 | MIT | git+https://github.com/evanw/esbuild.git |
@@ -1132,7 +1129,6 @@ Regenerate with `python3 scripts/release/generate_third_party_notices.py --outpu
 | estraverse | 5.3.0 | BSD-2-Clause | http://github.com/estools/estraverse.git |
 | estree-walker | 3.0.3 | MIT | https://github.com/Rich-Harris/estree-walker |
 | esutils | 2.0.3 | BSD-2-Clause | http://github.com/estools/esutils.git |
-| expect-type | 1.3.0 | Apache-2.0 | https://github.com/mmkal/expect-type.git |
 | expect-type | 1.4.0 | Apache-2.0 | https://github.com/mmkal/expect-type.git |
 | extend | 3.0.2 | MIT | https://github.com/justmoon/node-extend.git |
 | fast-decode-uri-component | 1.0.1 | MIT | git+https://github.com/delvedor/fast-decode-uri-component.git |
@@ -1181,12 +1177,10 @@ Regenerate with `python3 scripts/release/generate_third_party_notices.py --outpu
 | isexe | 2.0.0 | ISC | git+https://github.com/isaacs/isexe.git |
 | istanbul-lib-coverage | 3.2.2 | BSD-3-Clause | git+ssh://git@github.com/istanbuljs/istanbuljs.git |
 | istanbul-lib-report | 3.0.1 | BSD-3-Clause | git+ssh://git@github.com/istanbuljs/istanbuljs.git |
-| istanbul-lib-source-maps | 5.0.6 | BSD-3-Clause | git+ssh://git@github.com/istanbuljs/istanbuljs.git |
 | istanbul-reports | 3.2.0 | BSD-3-Clause | git+ssh://git@github.com/istanbuljs/istanbuljs.git |
 | jackspeak | 3.4.3 | BlueOak-1.0.0 | git+https://github.com/isaacs/jackspeak.git |
 | js-tokens | 10.0.0 | MIT | lydell/js-tokens |
 | js-tokens | 4.0.0 | MIT | lydell/js-tokens |
-| js-tokens | 9.0.1 | MIT | lydell/js-tokens |
 | js-yaml | 4.3.2 | MIT | nodeca/js-yaml |
 | jsesc | 3.1.0 | MIT | https://github.com/mathiasbynens/jsesc.git |
 | json-bigint | 1.0.0 | MIT | git@github.com:sidorares/json-bigint.git |
@@ -1199,16 +1193,18 @@ Regenerate with `python3 scripts/release/generate_third_party_notices.py --outpu
 | keyv | 4.5.4 | MIT | git+https://github.com/jaredwray/keyv.git |
 | levn | 0.4.1 | MIT | git://github.com/gkz/levn.git |
 | light-my-request | 6.6.0 | BSD-3-Clause | git+https://github.com/fastify/light-my-request.git |
+| lightningcss | 1.33.0 | MPL-2.0 | https://github.com/parcel-bundler/lightningcss.git |
+| lightningcss-linux-x64-gnu | 1.33.0 | MPL-2.0 | https://github.com/parcel-bundler/lightningcss.git |
+| lightningcss-linux-x64-musl | 1.33.0 | MPL-2.0 | https://github.com/parcel-bundler/lightningcss.git |
 | locate-path | 6.0.0 | MIT | sindresorhus/locate-path |
 | lodash.camelcase | 4.3.0 | MIT | lodash/lodash |
 | lodash.merge | 4.6.2 | MIT | lodash/lodash |
 | long | 5.3.2 | Apache-2.0 | https://github.com/dcodeIO/long.js.git |
 | loose-envify | 1.4.0 | MIT | git://github.com/zertosh/loose-envify.git |
-| loupe | 3.2.1 | MIT | https://github.com/chaijs/loupe |
 | lru-cache | 10.4.3 | ISC | git://github.com/isaacs/node-lru-cache.git |
 | lru-cache | 5.1.1 | ISC | git://github.com/isaacs/node-lru-cache.git |
 | magic-string | 0.30.21 | MIT | git+https://github.com/Rich-Harris/magic-string.git |
-| magicast | 0.3.5 | MIT | unjs/magicast |
+| magicast | 0.5.5 | MIT | unjs/magicast |
 | make-dir | 4.0.0 | MIT | sindresorhus/make-dir |
 | minimatch | 10.2.6 | BlueOak-1.0.0 | git@github.com:isaacs/minimatch |
 | minimatch | 3.1.5 | ISC | git://github.com/isaacs/minimatch.git |
@@ -1217,10 +1213,12 @@ Regenerate with `python3 scripts/release/generate_third_party_notices.py --outpu
 | module-details-from-path | 1.0.4 | MIT | git+https://github.com/watson/module-details-from-path.git |
 | ms | 2.1.3 | MIT | vercel/ms |
 | nanoid | 3.3.18 | MIT | ai/nanoid |
+| nanoid | 3.3.19 | MIT | ai/nanoid |
 | natural-compare | 1.4.0 | MIT | git://github.com/litejs/natural-compare-lite.git |
 | node-domexception | 1.0.0 | MIT | git+https://github.com/jimmywarting/node-domexception.git |
 | node-fetch | 3.3.2 | MIT | https://github.com/node-fetch/node-fetch.git |
 | node-releases | 2.0.54 | MIT | https://github.com/chicoxyzzy/node-releases.git |
+| obug | 2.2.1 | MIT | git+https://github.com/sxzz/obug.git |
 | on-exit-leak-free | 2.1.2 | MIT | git+https://github.com/mcollina/on-exit-or-gc.git |
 | optionator | 0.9.4 | MIT | git://github.com/gkz/optionator.git |
 | p-limit | 3.1.0 | MIT | sindresorhus/p-limit |
@@ -1231,7 +1229,6 @@ Regenerate with `python3 scripts/release/generate_third_party_notices.py --outpu
 | path-key | 3.1.1 | MIT | sindresorhus/path-key |
 | path-scurry | 1.11.1 | BlueOak-1.0.0 | git+https://github.com/isaacs/path-scurry |
 | pathe | 2.0.3 | MIT | unjs/pathe |
-| pathval | 2.0.1 | MIT | git+ssh://git@github.com/chaijs/pathval.git |
 | pg-int8 | 1.0.1 | ISC | https://github.com/charmander/pg-int8 |
 | pg-protocol | 1.16.0 | MIT | git://github.com/brianc/node-postgres.git |
 | pg-types | 2.2.0 | MIT | git://github.com/brianc/node-pg-types.git |
@@ -1246,6 +1243,7 @@ Regenerate with `python3 scripts/release/generate_third_party_notices.py --outpu
 | playwright-core | 1.55.1 | Apache-2.0 | git+https://github.com/microsoft/playwright.git |
 | playwright-core | 1.61.1 | Apache-2.0 | git+https://github.com/microsoft/playwright.git |
 | postcss | 8.5.26 | MIT | postcss/postcss |
+| postcss | 8.5.28 | MIT | postcss/postcss |
 | postgres-array | 2.0.0 | MIT | bendrucker/postgres-array |
 | postgres-bytea | 1.0.1 | MIT | bendrucker/postgres-bytea |
 | postgres-date | 1.0.7 | MIT | bendrucker/postgres-date |
@@ -1272,8 +1270,8 @@ Regenerate with `python3 scripts/release/generate_third_party_notices.py --outpu
 | reusify | 1.1.0 | MIT | git+https://github.com/mcollina/reusify.git |
 | rfdc | 1.4.1 | MIT | git+https://github.com/davidmarkclements/rfdc.git |
 | rimraf | 5.0.10 | ISC | git://github.com/isaacs/rimraf.git |
+| rolldown | 1.2.9 | MIT | git+https://github.com/rolldown/rolldown.git |
 | rollup | 4.60.4 | MIT | git+https://github.com/rollup/rollup.git |
-| rollup | 4.63.1 | MIT | git+https://github.com/rollup/rollup.git |
 | safe-regex2 | 5.1.1 | MIT | git://github.com/fastify/safe-regex2.git |
 | safe-stable-stringify | 2.5.0 | MIT | git+https://github.com/BridgeAR/safe-stable-stringify.git |
 | scheduler | 0.23.2 | MIT | https://github.com/facebook/react.git |
@@ -1289,24 +1287,20 @@ Regenerate with `python3 scripts/release/generate_third_party_notices.py --outpu
 | source-map-js | 1.2.1 | BSD-3-Clause | 7rulnik/source-map-js |
 | split2 | 4.2.0 | ISC | https://github.com/mcollina/split2.git |
 | stackback | 0.0.2 | MIT | git://github.com/shtylman/node-stackback.git |
-| std-env | 3.10.0 | MIT | unjs/std-env |
+| std-env | 4.2.0 | MIT | unjs/std-env |
 | string-width | 4.2.3 | MIT | sindresorhus/string-width |
 | string-width | 5.1.2 | MIT | sindresorhus/string-width |
 | strip-ansi | 6.0.1 | MIT | chalk/strip-ansi |
 | strip-ansi | 7.2.0 | MIT | chalk/strip-ansi |
 | strip-json-comments | 3.1.1 | MIT | sindresorhus/strip-json-comments |
-| strip-literal | 3.1.0 | MIT | git+https://github.com/antfu/strip-literal.git |
 | supports-color | 7.2.0 | MIT | chalk/supports-color |
 | systeminformation | 5.33.7 | MIT | git+https://github.com/sebhildebrandt/systeminformation.git |
 | tdigest | 0.1.3 | MIT | https://github.com/welch/tdigest.git |
-| test-exclude | 7.0.2 | ISC | git+https://github.com/istanbuljs/test-exclude.git |
 | thread-stream | 4.2.0 | MIT | git+https://github.com/mcollina/thread-stream.git |
 | tinybench | 2.9.0 | MIT | tinylibs/tinybench |
-| tinyexec | 0.3.2 | MIT | git+https://github.com/tinylibs/tinyexec.git |
+| tinyexec | 1.3.1 | MIT | git+https://github.com/tinylibs/tinyexec.git |
 | tinyglobby | 0.2.17 | MIT | git+https://github.com/SuperchupuDev/tinyglobby.git |
-| tinypool | 1.1.1 | MIT | https://github.com/tinylibs/tinypool.git |
-| tinyrainbow | 2.0.0 | MIT | git+https://github.com/tinylibs/tinyrainbow.git |
-| tinyspy | 4.0.4 | MIT | git+https://github.com/tinylibs/tinyspy.git |
+| tinyrainbow | 3.1.1 | MIT | git+https://github.com/tinylibs/tinyrainbow.git |
 | toad-cache | 3.7.4 | MIT | git+https://github.com/kibertoad/toad-cache.git |
 | ts-api-utils | 2.5.0 | MIT | https://github.com/JoshuaKGoldberg/ts-api-utils |
 | tslib | 2.8.1 | 0BSD | https://github.com/Microsoft/tslib.git |
@@ -1320,8 +1314,8 @@ Regenerate with `python3 scripts/release/generate_third_party_notices.py --outpu
 | uri-js | 4.4.1 | BSD-2-Clause | http://github.com/garycourt/uri-js |
 | use-sync-external-store | 1.6.0 | MIT | https://github.com/facebook/react.git |
 | vite | 6.4.3 | MIT | git+https://github.com/vitejs/vite.git |
-| vite-node | 3.2.4 | MIT | git+https://github.com/vitest-dev/vitest.git |
-| vitest | 3.2.7 | MIT | git+https://github.com/vitest-dev/vitest.git |
+| vite | 8.3.0 | MIT | git+https://github.com/vitejs/vite.git |
+| vitest | 4.1.11 | MIT | git+https://github.com/vitest-dev/vitest.git |
 | web-streams-polyfill | 3.3.3 | MIT | git+https://github.com/MattiasBuelens/web-streams-polyfill.git |
 | which | 2.0.2 | ISC | git://github.com/isaacs/node-which.git |
 | why-is-node-running | 2.3.0 | MIT | https://github.com/mafintosh/why-is-node-running.git |

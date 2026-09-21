@@ -213,6 +213,8 @@ const NODE_PREVIEW: Record<string, (c: Record<string, unknown>) => string> = {
   hunyuan: (c) => c.model ? String(c.model) : 'hunyuan-turbos-latest',
 }
 
+export const NODE_PREVIEW_TYPES = Object.freeze(Object.keys(NODE_PREVIEW))
+
 export function nodePreview(nt: string | undefined, c: Record<string, unknown>): string {
   if (!nt) return ''
   const fn = NODE_PREVIEW[nt]
