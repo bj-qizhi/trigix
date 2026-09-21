@@ -6,6 +6,8 @@ use std::io::{BufRead, BufReader, Write};
 use std::process::{Command, Stdio};
 use std::sync::mpsc;
 use std::sync::Arc;
+#[cfg(unix)]
+use std::sync::Barrier;
 use std::time::Duration;
 #[cfg(unix)]
 use std::time::Instant;
@@ -260,11 +262,15 @@ fn command_processor_persists_supervised_cancellation_and_timeout_outcomes() {
     );
     let now = now_unix_ms();
     let active_command = command("processor-cancel", now + 10_000);
+    let start = Arc::new(Barrier::new(2));
+    let process_start = Arc::clone(&start);
     let process_handle = std::thread::spawn(move || {
+        process_start.wait();
         let result = processor.process(&active_command, now, None).unwrap();
         (processor, active_command, result)
     });
-    let active_deadline = Instant::now() + Duration::from_secs(5);
+    start.wait();
+    let active_deadline = Instant::now() + Duration::from_secs(10);
     while handle.active_commands() != 1 {
         assert!(
             Instant::now() < active_deadline,
