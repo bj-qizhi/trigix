@@ -21,7 +21,7 @@ Regenerate with `python3 scripts/release/generate_third_party_notices.py --outpu
 | aliasable | 0.1.3 | MIT | https://github.com/avitex/rust-aliasable |
 | allocator-api2 | 0.2.21 | MIT OR Apache-2.0 | https://github.com/zakarumych/allocator-api2 |
 | android_system_properties | 0.1.5 | MIT/Apache-2.0 | https://github.com/nical/android_system_properties |
-| anyhow | 1.0.102 | MIT OR Apache-2.0 | https://github.com/dtolnay/anyhow |
+| anyhow | 1.0.103 | MIT OR Apache-2.0 | https://github.com/dtolnay/anyhow |
 | apple-cf | 0.9.3 | MIT OR Apache-2.0 | https://github.com/doom-fish/apple-cf-rs |
 | arbitrary | 1.4.2 | MIT OR Apache-2.0 | https://github.com/rust-fuzz/arbitrary/ |
 | arc-swap | 1.9.1 | MIT OR Apache-2.0 | https://github.com/vorner/arc-swap |
@@ -87,7 +87,6 @@ Regenerate with `python3 scripts/release/generate_third_party_notices.py --outpu
 | cmov | 0.5.4 | Apache-2.0 OR MIT | https://github.com/RustCrypto/utils |
 | color_quant | 1.1.0 | MIT | https://github.com/image-rs/color_quant.git |
 | combine | 4.6.7 | MIT | https://github.com/Marwes/combine |
-| concurrent-queue | 2.5.0 | Apache-2.0 OR MIT | https://github.com/smol-rs/concurrent-queue |
 | connection-string | 0.2.0 | MIT OR Apache-2.0 | https://github.com/prisma/connection-string |
 | const-oid | 0.10.2 | Apache-2.0 OR MIT | https://github.com/RustCrypto/formats |
 | const-oid | 0.9.6 | Apache-2.0 OR MIT | https://github.com/RustCrypto/formats/tree/master/const-oid |
@@ -190,7 +189,7 @@ Regenerate with `python3 scripts/release/generate_third_party_notices.py --outpu
 | errno | 0.3.14 | MIT OR Apache-2.0 | https://github.com/lambda-fairy/rust-errno |
 | etcetera | 0.8.0 | MIT OR Apache-2.0 | https://github.com/lunacookies/etcetera |
 | euclid | 0.20.14 | MIT / Apache-2.0 | https://github.com/servo/euclid |
-| event-listener | 5.4.1 | Apache-2.0 OR MIT | https://github.com/smol-rs/event-listener |
+| event-listener | 5.4.2 | Apache-2.0 OR MIT | https://github.com/smol-rs/event-listener |
 | fastrand | 2.4.1 | Apache-2.0 OR MIT | https://github.com/smol-rs/fastrand |
 | fdeflate | 0.3.7 | MIT OR Apache-2.0 | https://github.com/image-rs/fdeflate |
 | feed-rs | 2.4.0 | MIT | https://github.com/feed-rs/feed-rs.git |
@@ -507,9 +506,9 @@ Regenerate with `python3 scripts/release/generate_third_party_notices.py --outpu
 | rustc-hash | 2.1.3 | Apache-2.0 OR MIT | https://github.com/rust-lang/rustc-hash |
 | rustc_version | 0.4.1 | MIT OR Apache-2.0 | https://github.com/djc/rustc-version-rs |
 | rustix | 1.1.4 | Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT | https://github.com/bytecodealliance/rustix |
-| rustls | 0.23.40 | Apache-2.0 OR ISC OR MIT | https://github.com/rustls/rustls |
+| rustls | 0.23.45 | Apache-2.0 OR ISC OR MIT | https://github.com/rustls/rustls |
 | rustls-pki-types | 1.14.1 | MIT OR Apache-2.0 | https://github.com/rustls/pki-types |
-| rustls-webpki | 0.103.13 | ISC | https://github.com/rustls/webpki |
+| rustls-webpki | 0.103.15 | ISC | https://github.com/rustls/webpki |
 | rustversion | 1.0.22 | MIT OR Apache-2.0 | https://github.com/dtolnay/rustversion |
 | ryu | 1.0.23 | Apache-2.0 OR BSL-1.0 | https://github.com/dtolnay/ryu |
 | salsa20 | 0.11.0 | MIT OR Apache-2.0 | https://github.com/RustCrypto/stream-ciphers |
@@ -997,6 +996,7 @@ Regenerate with `python3 scripts/release/generate_third_party_notices.py --outpu
 | @redis/search | 5.12.1 | MIT | git://github.com/redis/node-redis.git |
 | @redis/time-series | 5.12.1 | MIT | git://github.com/redis/node-redis.git |
 | @rolldown/binding-linux-x64-gnu | 1.2.9 | MIT | git+https://github.com/rolldown/rolldown.git |
+| @rolldown/binding-linux-x64-musl | 1.2.9 | MIT | git+https://github.com/rolldown/rolldown.git |
 | @rolldown/pluginutils | 1.0.0-beta.27 | MIT | git+https://github.com/rolldown/rolldown.git |
 | @rolldown/pluginutils | 1.0.1 | MIT | git+https://github.com/rolldown/plugins.git |
 | @rollup/rollup-linux-x64-gnu | 4.60.4 | MIT | git+https://github.com/rollup/rollup.git |
@@ -1195,6 +1195,7 @@ Regenerate with `python3 scripts/release/generate_third_party_notices.py --outpu
 | light-my-request | 6.6.0 | BSD-3-Clause | git+https://github.com/fastify/light-my-request.git |
 | lightningcss | 1.33.0 | MPL-2.0 | https://github.com/parcel-bundler/lightningcss.git |
 | lightningcss-linux-x64-gnu | 1.33.0 | MPL-2.0 | https://github.com/parcel-bundler/lightningcss.git |
+| lightningcss-linux-x64-musl | 1.33.0 | MPL-2.0 | https://github.com/parcel-bundler/lightningcss.git |
 | locate-path | 6.0.0 | MIT | sindresorhus/locate-path |
 | lodash.camelcase | 4.3.0 | MIT | lodash/lodash |
 | lodash.merge | 4.6.2 | MIT | lodash/lodash |
