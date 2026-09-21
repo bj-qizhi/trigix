@@ -1,0 +1,254 @@
+name: Release Desktop Windows
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Existing desktop-v* tag to publish
+        required: true
+        type: string
+  push:
+    tags:
+      - desktop-v*
+
+permissions:
+  contents: write
+  id-token: write
+  attestations: write
+  artifact-metadata: write
+
+concurrency:
+  group: release-desktop-windows-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  signed-nsis:
+    name: Signed and timestamped NSIS installer
+    runs-on: windows-2022
+    timeout-minutes: 60
+    environment: desktop-production
+    env:
+      RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref }}
+          fetch-depth: 0
+
+      - name: Validate protected release inputs and revision
+        id: release
+        shell: pwsh
+        env:
+          WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
+          WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+          WINDOWS_SIGNING_SUBJECT: ${{ secrets.WINDOWS_SIGNING_SUBJECT }}
+          WINDOWS_TIMESTAMP_URL: ${{ secrets.WINDOWS_TIMESTAMP_URL }}
+        run: |
+          $tagMatch = [regex]::Match($env:RELEASE_TAG, '^desktop-v([0-9]+\.[0-9]+\.[0-9]+)$')
+          if (-not $tagMatch.Success) {
+            throw "Release tag must match desktop-vMAJOR.MINOR.PATCH."
+          }
+          foreach ($name in @(
+            "WINDOWS_CERTIFICATE",
+            "WINDOWS_CERTIFICATE_PASSWORD",
+            "WINDOWS_SIGNING_SUBJECT",
+            "WINDOWS_TIMESTAMP_URL"
+          )) {
+            if ([string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable($name))) {
+              throw "$name is required."
+            }
+          }
+
+          $sourceRevision = (git rev-parse HEAD).Trim()
+          $tagRevision = (git rev-list -n 1 $env:RELEASE_TAG).Trim()
+          if ($tagRevision -ne $sourceRevision) {
+            throw "The checked-out revision does not match the release tag."
+          }
+          git fetch origin "${{ github.event.repository.default_branch }}"
+          $defaultRevision = (git rev-parse FETCH_HEAD).Trim()
+          if ($defaultRevision -ne $sourceRevision) {
+            throw "The Desktop release tag must identify the current default-branch revision."
+          }
+
+          $productVersion = (Get-Content apps/desktop/src-tauri/tauri.conf.json -Raw | ConvertFrom-Json).version
+          $tagVersion = $tagMatch.Groups[1].Value
+          if ($productVersion -ne $tagVersion) {
+            throw "Desktop product version $productVersion does not match tag version $tagVersion."
+          }
+          "PRODUCT_VERSION=$productVersion" >> $env:GITHUB_ENV
+          "SOURCE_REVISION=$sourceRevision" >> $env:GITHUB_ENV
+          "SIGNING_STATE_DIRECTORY=$(Join-Path $env:RUNNER_TEMP 'trigix-production-signing')" >> $env:GITHUB_ENV
+          "INSTALL_DIRECTORY=$(Join-Path $env:RUNNER_TEMP 'trigix-production-install')" >> $env:GITHUB_ENV
+          "product_version=$productVersion" >> $env:GITHUB_OUTPUT
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/desktop/package-lock.json
+
+      - name: Install locked Desktop packaging tools
+        working-directory: apps/desktop
+        run: npm ci --ignore-scripts
+
+      - name: Prepare isolated Host sidecar
+        shell: pwsh
+        run: ./apps/desktop/scripts/prepare-sidecar.ps1 -Configuration release
+
+      - name: Import protected Windows signing identity
+        id: windows-production-signing
+        shell: pwsh
+        env:
+          WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
+          WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+          WINDOWS_SIGNING_SUBJECT: ${{ secrets.WINDOWS_SIGNING_SUBJECT }}
+          WINDOWS_TIMESTAMP_URL: ${{ secrets.WINDOWS_TIMESTAMP_URL }}
+        run: |
+          $config = ./apps/desktop/scripts/release-windows-signing.ps1 `
+            -Action Prepare `
+            -StateDirectory $env:SIGNING_STATE_DIRECTORY
+          "config=$config" >> $env:GITHUB_OUTPUT
+
+      - name: Build signed and timestamped NSIS installer
+        working-directory: apps/desktop
+        run: npx tauri build --bundles nsis --config "${{ steps.windows-production-signing.outputs.config }}"
+
+      - name: Verify installer before execution
+        id: package
+        shell: pwsh
+        run: |
+          $installer = Get-ChildItem target/release/bundle/nsis -Filter '*.exe' | Select-Object -First 1
+          if ($null -eq $installer) { throw "NSIS installer was not produced." }
+          ./apps/desktop/scripts/release-windows-signing.ps1 `
+            -Action Verify `
+            -ArtifactPath $installer.FullName `
+            -StateDirectory $env:SIGNING_STATE_DIRECTORY
+          "path=$($installer.FullName)" >> $env:GITHUB_OUTPUT
+          "name=$($installer.Name)" >> $env:GITHUB_OUTPUT
+
+      - name: Install and verify packaged application and Host
+        shell: pwsh
+        run: |
+          if (Test-Path -LiteralPath $env:INSTALL_DIRECTORY) {
+            throw "Isolated production installation directory already exists."
+          }
+          $install = Start-Process `
+            -FilePath "${{ steps.package.outputs.path }}" `
+            -ArgumentList @("/S", "/D=$env:INSTALL_DIRECTORY") `
+            -PassThru `
+            -Wait
+          if ($install.ExitCode -ne 0) {
+            throw "NSIS production installation failed with exit code $($install.ExitCode)."
+          }
+          $application = Get-ChildItem -LiteralPath $env:INSTALL_DIRECTORY -Recurse -Filter 'trigix-desktop.exe' | Select-Object -First 1
+          $automationHost = Get-ChildItem -LiteralPath $env:INSTALL_DIRECTORY -Recurse -Filter 'desktop-automation-host.exe' | Select-Object -First 1
+          if ($null -eq $application -or $null -eq $automationHost) {
+            throw "Installed production application or Automation Host is missing."
+          }
+          ./apps/desktop/scripts/release-windows-signing.ps1 `
+            -Action Verify `
+            -ArtifactPath @("${{ steps.package.outputs.path }}", $application.FullName, $automationHost.FullName) `
+            -StateDirectory $env:SIGNING_STATE_DIRECTORY
+
+      - name: Remove imported signing identity before evidence processing
+        shell: pwsh
+        run: |
+          ./apps/desktop/scripts/release-windows-signing.ps1 `
+            -Action RemoveIdentity `
+            -StateDirectory $env:SIGNING_STATE_DIRECTORY
+
+      - name: Generate installed-payload SPDX SBOM
+        uses: anchore/sbom-action@v0
+        with:
+          path: ${{ env.INSTALL_DIRECTORY }}
+          format: spdx-json
+          output-file: ${{ runner.temp }}\trigix-desktop-${{ steps.release.outputs.product_version }}-windows.spdx.json
+          artifact-name: windows-desktop-sbom-${{ github.sha }}
+          upload-artifact: false
+          upload-release-assets: false
+
+      - name: Calculate installer checksum
+        shell: pwsh
+        run: |
+          $installer = "${{ steps.package.outputs.path }}"
+          $hash = (Get-FileHash -LiteralPath $installer -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$hash  $([System.IO.Path]::GetFileName($installer))" | Set-Content -LiteralPath "$installer.sha256" -Encoding ascii
+
+      - name: Attest Windows release artifacts
+        id: provenance
+        uses: actions/attest@v4
+        with:
+          subject-path: |
+            ${{ steps.package.outputs.path }}
+            ${{ steps.package.outputs.path }}.sha256
+            ${{ runner.temp }}\trigix-desktop-${{ steps.release.outputs.product_version }}-windows.spdx.json
+
+      - name: Collect offline Windows provenance bundle
+        shell: pwsh
+        run: |
+          Copy-Item `
+            -LiteralPath "${{ steps.provenance.outputs.bundle-path }}" `
+            -Destination "${{ runner.temp }}\trigix-desktop-${{ steps.release.outputs.product_version }}-windows-provenance.sigstore.json"
+
+      - name: Upload immutable Windows release evidence
+        uses: actions/upload-artifact@v7
+        with:
+          name: windows-production-signed-${{ github.sha }}
+          path: |
+            ${{ steps.package.outputs.path }}
+            ${{ steps.package.outputs.path }}.sha256
+            ${{ runner.temp }}\trigix-desktop-${{ steps.release.outputs.product_version }}-windows.spdx.json
+            ${{ runner.temp }}\trigix-desktop-${{ steps.release.outputs.product_version }}-windows-provenance.sigstore.json
+            ${{ env.SIGNING_STATE_DIRECTORY }}\windows-production-signing.json
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Publish immutable direct-download assets
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $false
+          gh release view $env:RELEASE_TAG *> $null
+          if ($LASTEXITCODE -ne 0) {
+            gh release create $env:RELEASE_TAG --verify-tag --generate-notes --title "Trigix Desktop $env:PRODUCT_VERSION"
+            if ($LASTEXITCODE -ne 0) {
+              gh release view $env:RELEASE_TAG *> $null
+              if ($LASTEXITCODE -ne 0) { throw "Unable to create or resolve the Desktop release." }
+            }
+          }
+          gh release upload $env:RELEASE_TAG `
+            "${{ steps.package.outputs.path }}" `
+            "${{ steps.package.outputs.path }}.sha256" `
+            "${{ runner.temp }}\trigix-desktop-${{ steps.release.outputs.product_version }}-windows.spdx.json" `
+            "${{ runner.temp }}\trigix-desktop-${{ steps.release.outputs.product_version }}-windows-provenance.sigstore.json"
+          if ($LASTEXITCODE -ne 0) { throw "Desktop release asset upload failed." }
+
+      - name: Remove isolated production installation
+        if: always()
+        shell: pwsh
+        run: |
+          if (Test-Path -LiteralPath $env:INSTALL_DIRECTORY -PathType Container) {
+            $uninstaller = Get-ChildItem -LiteralPath $env:INSTALL_DIRECTORY -Recurse -Filter 'uninstall.exe' | Select-Object -First 1
+            if ($null -ne $uninstaller) {
+              Start-Process -FilePath $uninstaller.FullName -ArgumentList '/S' -Wait
+            }
+            if (Test-Path -LiteralPath $env:INSTALL_DIRECTORY -PathType Container) {
+              Remove-Item -LiteralPath $env:INSTALL_DIRECTORY -Recurse -Force
+            }
+          }
+
+      - name: Remove temporary Windows signing state
+        if: always()
+        shell: pwsh
+        run: |
+          ./apps/desktop/scripts/release-windows-signing.ps1 `
+            -Action Cleanup `
+            -StateDirectory $env:SIGNING_STATE_DIRECTORY

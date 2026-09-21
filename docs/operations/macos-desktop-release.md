@@ -26,9 +26,10 @@ Do not use repository variables for these values. Rotate any value exposed in lo
 2. Create a signed annotated tag matching `desktop-vMAJOR.MINOR.PATCH` on that exact commit and push it.
 3. Approve the `Release Desktop macOS` deployment in the protected environment.
 4. The workflow builds both Rust targets, combines the sidecar, builds the Universal Tauri target, signs, notarizes, and validates the DMG.
-5. Confirm the release contains exactly the DMG and its `.sha256` file and that the recorded digest matches the downloaded file.
+5. The workflow generates an installed-payload SPDX SBOM and Sigstore provenance bundle, retains immutable evidence for 90 days, and publishes the DMG, checksum, SBOM, and provenance bundle.
+6. Confirm every release asset matches the protected evidence and that the downloaded DMG digest, Developer ID, Team ID, notarization ticket, and architecture slices are correct.
 
-Manual dispatch is only for rebuilding an existing immutable release tag. It must not point at an unreviewed branch or synthesize a tag.
+Manual dispatch is only for rebuilding an existing immutable release tag. It must not point at an unreviewed branch or synthesize a tag. Asset upload intentionally fails when the same name already exists; publish a reviewed new version instead of replacing an Official artifact.
 
 ## Interactive qualification matrix
 
