@@ -125,6 +125,7 @@ docs/                    Architecture, ADRs, dev guides
 | [Demo: Feedback Triage](docs/demo-feedback-triage.md) | Annotated end-to-end run of a custom-node pipeline |
 | [Desktop Onboarding](docs/guides/desktop-onboarding.md) | Install, pair, permissions, automation, voice, avatar, update, and uninstall |
 | [Desktop Troubleshooting](docs/guides/desktop-troubleshooting.md) | Recovery guidance and known limitations |
+| [Desktop Solution Validation](docs/guides/desktop-solution-validation.md) | Reproducible demo baseline, reset procedure, governed journey, and evidence |
 | [Download Verification](docs/release/desktop-download-verification.md) | Verify checksums and Windows or macOS publisher trust |
 | [Internal Alpha Qualification](docs/release/internal-alpha-qualification.md) | Select, identify, exercise, and promote development-signed Desktop candidates |
 | [Windows Desktop Release](docs/operations/windows-desktop-release.md) | Protected signing, publication, and Windows 11 client qualification |
