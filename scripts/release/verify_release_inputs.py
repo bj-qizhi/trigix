@@ -12,8 +12,9 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[2]
-LOCK_FILES = (
+DETERMINISTIC_INPUTS = (
     "Cargo.lock",
+    "rust-toolchain.toml",
     "apps/desktop/package-lock.json",
     "apps/web/package-lock.json",
     "services/browser-runtime/package-lock.json",
@@ -45,6 +46,9 @@ def chart_app_version() -> str:
 
 def verify() -> dict[str, object]:
     cargo = tomllib.loads((ROOT / "Cargo.toml").read_text(encoding="utf-8"))
+    rust_toolchain = tomllib.loads(
+        (ROOT / "rust-toolchain.toml").read_text(encoding="utf-8")
+    )["toolchain"]["channel"]
     workspace_version = cargo["workspace"]["package"]["version"]
     web_package = json.loads((ROOT / "apps/web/package.json").read_text(encoding="utf-8"))
     web_lock = json.loads((ROOT / "apps/web/package-lock.json").read_text(encoding="utf-8"))
@@ -75,6 +79,21 @@ def verify() -> dict[str, object]:
     if len(set(versions.values())) != 1:
         fail(f"product versions differ: {versions}")
 
+    toolchain_workflows = (
+        ".github/workflows/ci.yml",
+        ".github/workflows/release-desktop-macos.yml",
+        ".github/workflows/release-desktop-windows.yml",
+    )
+    for relative in toolchain_workflows:
+        workflow = (ROOT / relative).read_text(encoding="utf-8")
+        installer_count = workflow.count("uses: dtolnay/rust-toolchain@")
+        pinned_count = workflow.count(f"toolchain: {rust_toolchain}")
+        if installer_count == 0 or pinned_count != installer_count:
+            fail(
+                f"{relative} must pin all {installer_count} Rust installs to "
+                f"{rust_toolchain}; found {pinned_count}"
+            )
+
     values = (ROOT / "charts/trigix/values.yaml").read_text(encoding="utf-8")
     if re.search(r'^\s*tag:\s*["\']?latest["\']?\s*$', values, re.MULTILINE):
         fail("Helm application images must not default to latest")
@@ -96,10 +115,10 @@ def verify() -> dict[str, object]:
         fail("Helm release notes contain a hard-coded application version")
 
     lock_digests: dict[str, str] = {}
-    for relative in LOCK_FILES:
+    for relative in DETERMINISTIC_INPUTS:
         path = ROOT / relative
         if not path.is_file():
-            fail(f"missing lock file: {relative}")
+            fail(f"missing deterministic input: {relative}")
         if relative.endswith("requirements.lock"):
             locked = path.read_text(encoding="utf-8")
             if "--hash=sha256:" not in locked:
@@ -109,6 +128,7 @@ def verify() -> dict[str, object]:
     return {
         "schema": "trigix.release-quality-inputs.v1",
         "product_version": workspace_version,
+        "rust_toolchain": rust_toolchain,
         "lock_sha256": lock_digests,
         "helm_application_tag_default": workspace_version,
     }

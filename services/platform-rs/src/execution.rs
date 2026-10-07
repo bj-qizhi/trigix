@@ -324,7 +324,7 @@ where
             .and_then(|mut executions| executions.remove(&key(tenant_id, execution_id)));
         if let Some(handle) = aborted {
             handle.abort();
-            let _ = crate::http::METRIC_EXEC_RUNNING.fetch_update(
+            let _ = crate::http::METRIC_EXEC_RUNNING.try_update(
                 std::sync::atomic::Ordering::Relaxed,
                 std::sync::atomic::Ordering::Relaxed,
                 |value| Some(value.saturating_sub(1)),
