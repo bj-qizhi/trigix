@@ -299,7 +299,6 @@ Regenerate with `python3 scripts/release/generate_third_party_notices.py --outpu
 | infer | 0.19.0 | MIT | https://github.com/bojand/infer |
 | inout | 0.1.4 | MIT OR Apache-2.0 | https://github.com/RustCrypto/utils |
 | inout | 0.2.2 | MIT OR Apache-2.0 | https://github.com/RustCrypto/utils |
-| internal-russh-num-bigint | 0.5.0 | MIT OR Apache-2.0 | https://github.com/rust-num/num-bigint |
 | ipnet | 2.12.0 | MIT OR Apache-2.0 | https://github.com/krisprice/ipnet |
 | itoa | 1.0.18 | MIT OR Apache-2.0 | https://github.com/dtolnay/itoa |
 | javascriptcore-rs | 1.1.2 | MIT | https://github.com/tauri-apps/javascriptcore-rs |
@@ -367,6 +366,7 @@ Regenerate with `python3 scripts/release/generate_third_party_notices.py --outpu
 | ntapi | 0.4.3 | Apache-2.0 OR MIT | https://github.com/MSxDOS/ntapi |
 | nu-ansi-term | 0.50.3 | MIT | https://github.com/nushell/nu-ansi-term |
 | num-bigint | 0.4.6 | MIT OR Apache-2.0 | https://github.com/rust-num/num-bigint |
+| num-bigint | 0.5.1 | MIT OR Apache-2.0 | https://github.com/rust-num/num-bigint |
 | num-bigint-dig | 0.8.6 | MIT/Apache-2.0 | https://github.com/dignifiedquire/num-bigint |
 | num-conv | 0.2.2 | MIT OR Apache-2.0 | https://github.com/jhpratt/num-conv |
 | num-integer | 0.1.46 | MIT OR Apache-2.0 | https://github.com/rust-num/num-integer |
@@ -406,7 +406,7 @@ Regenerate with `python3 scripts/release/generate_third_party_notices.py --outpu
 | p256 | 0.14.0 | Apache-2.0 OR MIT | https://github.com/RustCrypto/elliptic-curves |
 | p384 | 0.14.0 | Apache-2.0 OR MIT | https://github.com/RustCrypto/elliptic-curves |
 | p521 | 0.14.0 | Apache-2.0 OR MIT | https://github.com/RustCrypto/elliptic-curves |
-| pageant | 0.2.2 | Apache-2.0 | https://github.com/warp-tech/russh |
+| pageant | 0.2.4 | Apache-2.0 | https://github.com/warp-tech/russh |
 | pango | 0.18.3 | MIT | https://github.com/gtk-rs/gtk-rs-core |
 | pango-sys | 0.18.0 | MIT | https://github.com/gtk-rs/gtk-rs-core |
 | parking | 2.2.1 | Apache-2.0 OR MIT | https://github.com/smol-rs/parking |
@@ -499,7 +499,7 @@ Regenerate with `python3 scripts/release/generate_third_party_notices.py --outpu
 | ring | 0.17.14 | Apache-2.0 AND ISC | https://github.com/briansmith/ring |
 | rsa | 0.10.0-rc.18 | MIT OR Apache-2.0 | https://github.com/RustCrypto/RSA |
 | rsa | 0.9.10 | MIT OR Apache-2.0 | https://github.com/RustCrypto/RSA |
-| russh | 0.63.1 | Apache-2.0 | https://github.com/warp-tech/russh |
+| russh | 0.63.2 | Apache-2.0 | https://github.com/warp-tech/russh |
 | russh-cryptovec | 0.62.0 | Apache-2.0 | https://github.com/warp-tech/russh |
 | russh-sftp | 2.4.0 | Apache-2.0 | https://github.com/AspectUnk/russh-sftp |
 | russh-util | 0.52.0 | Apache-2.0 | https://github.com/warp-tech/russh |
@@ -882,7 +882,7 @@ Regenerate with `python3 scripts/release/generate_third_party_notices.py --outpu
 | @fastify/forwarded | 3.0.2 | MIT | git+https://github.com/fastify/forwarded.git |
 | @fastify/merge-json-schemas | 0.2.1 | MIT | git+https://github.com/fastify/merge-json-schemas.git |
 | @fastify/proxy-addr | 5.1.0 | MIT | git+https://github.com/fastify/proxy-addr.git |
-| @grpc/grpc-js | 1.14.4 | Apache-2.0 | https://github.com/grpc/grpc-node/tree/master/packages/grpc-js |
+| @grpc/grpc-js | 1.14.5 | Apache-2.0 | https://github.com/grpc/grpc-node/tree/master/packages/grpc-js |
 | @grpc/proto-loader | 0.8.1 | Apache-2.0 | https://github.com/grpc/grpc-node.git |
 | @humanfs/core | 0.19.2 | Apache-2.0 | git+https://github.com/humanwhocodes/humanfs.git |
 | @humanfs/node | 0.16.8 | Apache-2.0 | git+https://github.com/humanwhocodes/humanfs.git |
@@ -1075,9 +1075,9 @@ Regenerate with `python3 scripts/release/generate_third_party_notices.py --outpu
 | bignumber.js | 9.3.1 | MIT | https://github.com/MikeMcl/bignumber.js.git |
 | bintrees | 1.0.2 | MIT | git://github.com/vadimg/js_bintrees.git |
 | bowser | 2.14.1 | MIT | git+https://github.com/bowser-js/bowser.git |
-| brace-expansion | 1.1.18 | MIT | git://github.com/juliangruber/brace-expansion.git |
-| brace-expansion | 2.1.4 | MIT | git://github.com/juliangruber/brace-expansion.git |
-| brace-expansion | 5.0.9 | MIT | git+https://github.com/juliangruber/brace-expansion.git |
+| brace-expansion | 1.1.21 | MIT | git://github.com/juliangruber/brace-expansion.git |
+| brace-expansion | 2.1.7 | MIT | git://github.com/juliangruber/brace-expansion.git |
+| brace-expansion | 5.0.12 | MIT | git+https://github.com/juliangruber/brace-expansion.git |
 | browserslist | 4.28.8 | MIT | browserslist/browserslist |
 | callsites | 3.1.0 | MIT | sindresorhus/callsites |
 | caniuse-lite | 1.0.30001810 | CC-BY-4.0 | browserslist/caniuse-lite |
@@ -1137,9 +1137,9 @@ Regenerate with `python3 scripts/release/generate_third_party_notices.py --outpu
 | fast-json-stringify | 7.0.1 | MIT | git+https://github.com/fastify/fast-json-stringify.git |
 | fast-levenshtein | 2.0.6 | MIT | https://github.com/hiddentao/fast-levenshtein.git |
 | fast-querystring | 1.1.2 | MIT | git+https://github.com/anonrig/fast-querystring.git |
-| fast-uri | 3.1.6 | BSD-3-Clause | git+https://github.com/fastify/fast-uri.git |
-| fast-uri | 4.1.3 | BSD-3-Clause | git+https://github.com/fastify/fast-uri.git |
-| fastify | 5.12.1 | MIT | git+https://github.com/fastify/fastify.git |
+| fast-uri | 3.1.8 | BSD-3-Clause | git+https://github.com/fastify/fast-uri.git |
+| fast-uri | 4.2.1 | BSD-3-Clause | git+https://github.com/fastify/fast-uri.git |
+| fastify | 5.12.5 | MIT | git+https://github.com/fastify/fastify.git |
 | fastq | 1.20.3 | ISC | git+https://github.com/mcollina/fastq.git |
 | fdir | 6.5.0 | MIT | git+https://github.com/thecodrr/fdir.git |
 | fetch-blob | 3.2.0 | MIT | https://github.com/node-fetch/fetch-blob.git |
@@ -1284,7 +1284,7 @@ Regenerate with `python3 scripts/release/generate_third_party_notices.py --outpu
 | siginfo | 2.0.0 | ISC | git+https://github.com/emilbayes/siginfo.git |
 | signal-exit | 4.1.0 | ISC | https://github.com/tapjs/signal-exit.git |
 | sonic-boom | 4.2.1 | MIT | git+https://github.com/pinojs/sonic-boom.git |
-| source-map-js | 1.2.1 | BSD-3-Clause | 7rulnik/source-map-js |
+| source-map-js | 1.2.2 | BSD-3-Clause | 7rulnik/source-map-js |
 | split2 | 4.2.0 | ISC | https://github.com/mcollina/split2.git |
 | stackback | 0.0.2 | MIT | git://github.com/shtylman/node-stackback.git |
 | std-env | 4.2.0 | MIT | unjs/std-env |
