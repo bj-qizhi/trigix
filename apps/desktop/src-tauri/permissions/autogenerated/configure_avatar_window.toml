@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-configure-avatar-window"
+description = "Enables the configure_avatar_window command without any pre-configured scope."
+commands.allow = ["configure_avatar_window"]
+
+[[permission]]
+identifier = "deny-configure-avatar-window"
+description = "Denies the configure_avatar_window command without any pre-configured scope."
+commands.deny = ["configure_avatar_window"]

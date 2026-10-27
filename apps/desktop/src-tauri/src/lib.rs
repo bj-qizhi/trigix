@@ -147,6 +147,43 @@ pub enum AvatarIpcError {
     QualificationFailed,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct AvatarWindowPreferencesInput {
+    pub visible: bool,
+    pub always_on_top: bool,
+    pub x: Option<i32>,
+    pub y: Option<i32>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct AvatarWindowPosition {
+    pub x: i32,
+    pub y: i32,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(tag = "code", rename_all = "snake_case")]
+pub enum AvatarWindowIpcError {
+    InvalidPosition,
+    InvalidCaller,
+    WindowUnavailable,
+    WindowOperationFailed,
+}
+
+#[cfg(any(target_os = "windows", target_os = "macos", test))]
+fn clamp_window_axis(
+    requested: i32,
+    monitor_origin: i32,
+    monitor_extent: u32,
+    window_extent: u32,
+) -> i32 {
+    let available = monitor_extent.saturating_sub(window_extent);
+    let maximum = monitor_origin.saturating_add(i32::try_from(available).unwrap_or(i32::MAX));
+    requested.clamp(monitor_origin, maximum)
+}
+
 struct ShellState {
     revision: u64,
     connection: ConnectionState,
@@ -320,7 +357,8 @@ mod native {
     };
     use super::pairing::ClaimedDeviceCredential;
     use super::{
-        AutomationHostState, AutomationState, ConfirmRealtimeVoiceInput, ConnectionState,
+        AutomationHostState, AutomationState, AvatarWindowIpcError, AvatarWindowPosition,
+        AvatarWindowPreferencesInput, ConfirmRealtimeVoiceInput, ConnectionState,
         FinalVoiceTranscriptInput, PairingController, PairingIpcError, PairingSessionCreated,
         PairingSnapshot, RealtimeVoiceBootstrap, ShellController, ShellIpcError, ShellSnapshot,
         StartPairingInput, StopAccepted, StopRequest, VoiceIpcError, VoiceTelemetryInput,
@@ -334,7 +372,7 @@ mod native {
     use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
     use std::sync::{Arc, Mutex};
     use std::time::{Duration, SystemTime, UNIX_EPOCH};
-    use tauri::{Manager, State};
+    use tauri::{AppHandle, Manager, PhysicalPosition, State, WebviewWindow};
     use trigix_desktop_automation::AutomationPermissionSnapshot;
 
     static HEARTBEAT_SEQUENCE: AtomicU64 = AtomicU64::new(1);
@@ -374,6 +412,117 @@ mod native {
         controller: State<'_, Arc<ShellController>>,
     ) -> Result<ShellSnapshot, ShellIpcError> {
         controller.snapshot()
+    }
+
+    fn avatar_window(app: &AppHandle) -> Result<WebviewWindow, AvatarWindowIpcError> {
+        app.get_webview_window("avatar")
+            .ok_or(AvatarWindowIpcError::WindowUnavailable)
+    }
+
+    fn avatar_window_position(
+        window: &WebviewWindow,
+    ) -> Result<AvatarWindowPosition, AvatarWindowIpcError> {
+        let position = window
+            .outer_position()
+            .map_err(|_| AvatarWindowIpcError::WindowOperationFailed)?;
+        Ok(AvatarWindowPosition {
+            x: position.x,
+            y: position.y,
+        })
+    }
+
+    fn bounded_avatar_position(
+        window: &WebviewWindow,
+        requested_x: i32,
+        requested_y: i32,
+    ) -> Result<PhysicalPosition<i32>, AvatarWindowIpcError> {
+        let monitors = window
+            .available_monitors()
+            .map_err(|_| AvatarWindowIpcError::WindowOperationFailed)?;
+        let current = window
+            .current_monitor()
+            .map_err(|_| AvatarWindowIpcError::WindowOperationFailed)?;
+        let selected = monitors
+            .iter()
+            .find(|monitor| {
+                let position = monitor.position();
+                let size = monitor.size();
+                let right = position
+                    .x
+                    .saturating_add(i32::try_from(size.width).unwrap_or(i32::MAX));
+                let bottom = position
+                    .y
+                    .saturating_add(i32::try_from(size.height).unwrap_or(i32::MAX));
+                requested_x >= position.x
+                    && requested_x < right
+                    && requested_y >= position.y
+                    && requested_y < bottom
+            })
+            .or(current.as_ref())
+            .or(monitors.first())
+            .ok_or(AvatarWindowIpcError::WindowOperationFailed)?;
+        let monitor_position = selected.position();
+        let monitor_size = selected.size();
+        let window_size = window
+            .outer_size()
+            .map_err(|_| AvatarWindowIpcError::WindowOperationFailed)?;
+        Ok(PhysicalPosition::new(
+            super::clamp_window_axis(
+                requested_x,
+                monitor_position.x,
+                monitor_size.width,
+                window_size.width,
+            ),
+            super::clamp_window_axis(
+                requested_y,
+                monitor_position.y,
+                monitor_size.height,
+                window_size.height,
+            ),
+        ))
+    }
+
+    #[tauri::command]
+    fn configure_avatar_window(
+        app: AppHandle,
+        input: AvatarWindowPreferencesInput,
+    ) -> Result<AvatarWindowPosition, AvatarWindowIpcError> {
+        if input.x.is_some() != input.y.is_some() {
+            return Err(AvatarWindowIpcError::InvalidPosition);
+        }
+        let window = avatar_window(&app)?;
+        window
+            .set_always_on_top(input.always_on_top)
+            .map_err(|_| AvatarWindowIpcError::WindowOperationFailed)?;
+        if let (Some(x), Some(y)) = (input.x, input.y) {
+            let position = bounded_avatar_position(&window, x, y)?;
+            window
+                .set_position(position)
+                .map_err(|_| AvatarWindowIpcError::WindowOperationFailed)?;
+        }
+        if input.visible {
+            window
+                .show()
+                .map_err(|_| AvatarWindowIpcError::WindowOperationFailed)?;
+        } else {
+            window
+                .hide()
+                .map_err(|_| AvatarWindowIpcError::WindowOperationFailed)?;
+        }
+        avatar_window_position(&window)
+    }
+
+    #[tauri::command]
+    fn start_avatar_window_drag(
+        window: WebviewWindow,
+    ) -> Result<AvatarWindowPosition, AvatarWindowIpcError> {
+        if window.label() != "avatar" {
+            return Err(AvatarWindowIpcError::InvalidCaller);
+        }
+        window
+            .start_dragging()
+            .map_err(|_| AvatarWindowIpcError::WindowOperationFailed)?;
+        avatar_window_position(&window)
     }
 
     #[tauri::command]
@@ -1207,8 +1356,15 @@ mod native {
                 accept_final_voice_transcript,
                 record_voice_telemetry,
                 confirm_realtime_voice_connected,
-                confirm_avatar_renderer_qualified
+                confirm_avatar_renderer_qualified,
+                configure_avatar_window,
+                start_avatar_window_drag
             ])
+            .on_window_event(|window, event| {
+                if window.label() == "main" && matches!(event, tauri::WindowEvent::Destroyed) {
+                    window.app_handle().exit(0);
+                }
+            })
             .run(tauri::generate_context!())
             .expect("Trigix Desktop runtime failed");
     }
@@ -1241,6 +1397,15 @@ mod tests {
         assert_eq!(snapshot.automation, AutomationState::Running);
         assert_eq!(snapshot.automation_host, AutomationHostState::Ready);
         assert!(snapshot.can_request_stop);
+    }
+
+    #[test]
+    fn avatar_window_position_stays_on_the_selected_monitor() {
+        assert_eq!(clamp_window_axis(-2_000, -1_920, 1_920, 300), -1_920);
+        assert_eq!(clamp_window_axis(-50, -1_920, 1_920, 300), -300);
+        assert_eq!(clamp_window_axis(2_000, 0, 1_920, 300), 1_620);
+        assert_eq!(clamp_window_axis(600, 0, 1_920, 300), 600);
+        assert_eq!(clamp_window_axis(20, 0, 200, 300), 0);
     }
 
     #[test]
@@ -1320,10 +1485,23 @@ mod tests {
                 "allow-accept-final-voice-transcript",
                 "allow-record-voice-telemetry",
                 "allow-confirm-realtime-voice-connected",
-                "allow-confirm-avatar-renderer-qualified"
+                "allow-confirm-avatar-renderer-qualified",
+                "allow-configure-avatar-window"
             ])
         );
         assert!(capability.get("remote").is_none());
+
+        let avatar_capability: serde_json::Value =
+            serde_json::from_str(include_str!("../capabilities/avatar-shell.json")).unwrap();
+        assert_eq!(avatar_capability["windows"], serde_json::json!(["avatar"]));
+        assert_eq!(
+            avatar_capability["permissions"],
+            serde_json::json!([
+                "allow-configure-avatar-window",
+                "allow-start-avatar-window-drag"
+            ])
+        );
+        assert!(avatar_capability.get("remote").is_none());
     }
 
     #[test]
@@ -1333,7 +1511,10 @@ mod tests {
         let security = &config["app"]["security"];
         let csp = security["csp"].as_str().unwrap();
 
-        assert_eq!(security["capabilities"], serde_json::json!(["main-shell"]));
+        assert_eq!(
+            security["capabilities"],
+            serde_json::json!(["main-shell", "avatar-shell"])
+        );
         assert_eq!(security["freezePrototype"], true);
         assert!(csp.contains("default-src 'self'"));
         assert!(csp.contains("object-src 'none'"));
@@ -1440,6 +1621,7 @@ mod tests {
         let html = include_str!("../../ui/index.html");
         assert!(html.contains("id=\"avatar-stage\""));
         assert!(html.contains("id=\"avatar-enabled\""));
+        assert!(html.contains("id=\"avatar-always-on-top\""));
         assert!(html.contains("id=\"avatar-stop\""));
         assert!(html.contains("aria-live=\"polite\""));
 
@@ -1458,6 +1640,21 @@ mod tests {
         assert!(styles.contains(".avatar-stage[data-motion=\"reduced\"]"));
         assert!(styles.contains(".avatar-panel[data-high-contrast=\"true\"]"));
         assert!(styles.contains("prefers-reduced-motion"));
+
+        let avatar_html = include_str!("../../ui/avatar.html");
+        let avatar_script = include_str!("../../ui/avatar.js");
+        let avatar_styles = include_str!("../../ui/avatar.css");
+        assert!(avatar_html.contains("id=\"drag-surface\""));
+        assert!(avatar_html.contains("id=\"hide-avatar\""));
+        assert!(avatar_script.contains("start_avatar_window_drag"));
+        assert!(avatar_script.contains("configure_avatar_window"));
+        assert!(avatar_script.contains("trigix.desktop.avatar.preferences.v1"));
+        assert!(avatar_script.contains("allowedStates"));
+        assert!(!avatar_script.contains("avatarTool"));
+        assert!(!avatar_script.contains("fetch("));
+        assert!(avatar_styles.contains("body[data-motion=\"none\"]"));
+        assert!(avatar_styles.contains("prefers-reduced-motion"));
+        assert!(avatar_styles.contains("data-gesture=\"wave\""));
     }
 
     #[test]
