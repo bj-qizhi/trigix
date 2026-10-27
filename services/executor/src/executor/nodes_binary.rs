@@ -45,7 +45,7 @@ pub(super) async fn execute_zip(node: &Node, context: &ExecutionContext) -> Node
             let mut buf = Cursor::new(Vec::new());
             {
                 let mut writer = zip::ZipWriter::new(&mut buf);
-                let opts: zip::write::FileOptions<'_, ()> = zip::write::FileOptions::default()
+                let opts: zip::write::FileOptions<'_, '_, ()> = zip::write::FileOptions::default()
                     .compression_method(zip::CompressionMethod::Deflated);
                 for (i, f) in files.iter().enumerate() {
                     let name = match f.get("name").and_then(|v| v.as_str()) {
@@ -111,7 +111,12 @@ pub(super) async fn execute_zip(node: &Node, context: &ExecutionContext) -> Node
                 if file.is_dir() {
                     continue;
                 }
-                let name = file.name().to_string();
+                let name = match file.name() {
+                    Ok(name) => name.into_owned(),
+                    Err(e) => {
+                        return NodeExecutionResult::failed(format!("Unzip entry name error: {e}"))
+                    }
+                };
                 let mut content = Vec::new();
                 if let Err(e) = file.read_to_end(&mut content) {
                     return NodeExecutionResult::failed(format!("Unzip read error: {e}"));

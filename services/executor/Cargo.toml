@@ -38,7 +38,7 @@ russh = "0.63"
 russh-sftp = "2.4"
 tiberius = { version = "0.12", default-features = false, features = ["tds73", "native-tls", "chrono"] }
 tokio-util = { version = "0.7", features = ["compat"] }
-zip = { version = "2", default-features = false, features = ["deflate"] }
+zip = { version = "9", default-features = false, features = ["deflate"] }
 image = { version = "0.25", default-features = false, features = ["png", "jpeg", "gif", "bmp", "webp"] }
 pdf-extract = "0.12"
 workflow-core = { path = "../../crates/workflow-core" }
