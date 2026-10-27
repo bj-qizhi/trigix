@@ -1,0 +1,11 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "avatar-shell",
+  "description": "Least-privilege capability for the local desktop avatar companion.",
+  "windows": ["avatar"],
+  "platforms": ["windows", "macOS"],
+  "permissions": [
+    "allow-configure-avatar-window",
+    "allow-start-avatar-window-drag"
+  ]
+}

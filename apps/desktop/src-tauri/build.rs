@@ -20,6 +20,8 @@ fn main() {
             "record_voice_telemetry",
             "confirm_realtime_voice_connected",
             "confirm_avatar_renderer_qualified",
+            "configure_avatar_window",
+            "start_avatar_window_drag",
         ]),
     ))
     .expect("failed to build the Trigix Desktop shell");

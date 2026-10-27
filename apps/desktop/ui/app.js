@@ -68,6 +68,7 @@ const messages = {
     voice_playback: "Voice playback",
     captions: "Captions",
     high_contrast: "High contrast",
+    always_on_top: "Always on top",
     motion: "Motion",
     motion_full: "Full",
     motion_reduced: "Reduced",
@@ -189,6 +190,7 @@ const messages = {
     voice_playback: "语音播放",
     captions: "字幕",
     high_contrast: "高对比度",
+    always_on_top: "保持桌面最上层",
     motion: "动态效果",
     motion_full: "完整",
     motion_reduced: "精简",
@@ -285,6 +287,7 @@ const elements = {
   avatarVoicePlayback: document.querySelector("#avatar-voice-playback"),
   avatarCaptions: document.querySelector("#avatar-captions"),
   avatarHighContrast: document.querySelector("#avatar-high-contrast"),
+  avatarAlwaysOnTop: document.querySelector("#avatar-always-on-top"),
   avatarMotion: document.querySelector("#avatar-motion"),
   avatarStop: document.querySelector("#avatar-stop"),
   localeEn: document.querySelector("#locale-en"),
@@ -332,7 +335,10 @@ let remoteLevelFrame = null;
 let avatarState = "idle";
 let avatarStopped = false;
 const avatarPreferenceKey = "trigix.desktop.avatar.preferences.v1";
+const avatarPresentationKey = "trigix.desktop.avatar.presentation.v1";
 const maximumVoiceReconnectAttempts = 5;
+let lastAvatarPresentationUpdate = 0;
+let lastAvatarPresentationState = "";
 
 function loadAvatarPreferences() {
   const defaults = {
@@ -340,7 +346,10 @@ function loadAvatarPreferences() {
     voicePlayback: true,
     captions: true,
     highContrast: false,
+    alwaysOnTop: true,
     motion: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "reduced" : "full",
+    x: null,
+    y: null,
   };
   try {
     const stored = JSON.parse(window.localStorage.getItem(avatarPreferenceKey) ?? "null");
@@ -350,7 +359,10 @@ function loadAvatarPreferences() {
       voicePlayback: typeof stored.voicePlayback === "boolean" ? stored.voicePlayback : defaults.voicePlayback,
       captions: typeof stored.captions === "boolean" ? stored.captions : defaults.captions,
       highContrast: typeof stored.highContrast === "boolean" ? stored.highContrast : defaults.highContrast,
+      alwaysOnTop: typeof stored.alwaysOnTop === "boolean" ? stored.alwaysOnTop : defaults.alwaysOnTop,
       motion: ["full", "reduced", "none"].includes(stored.motion) ? stored.motion : defaults.motion,
+      x: Number.isInteger(stored.x) ? stored.x : defaults.x,
+      y: Number.isInteger(stored.y) ? stored.y : defaults.y,
     };
   } catch (_error) {
     return defaults;
@@ -361,6 +373,34 @@ let avatarPreferences = loadAvatarPreferences();
 
 function persistAvatarPreferences() {
   window.localStorage.setItem(avatarPreferenceKey, JSON.stringify(avatarPreferences));
+}
+
+function publishAvatarPresentation(state, mouthLevel) {
+  const now = performance.now();
+  const boundedLevel = Math.max(0, Math.min(100, Number(mouthLevel) || 0));
+  const presentationState = `${state}:${Math.round(boundedLevel / 5)}`;
+  if (presentationState === lastAvatarPresentationState && now - lastAvatarPresentationUpdate < 80) return;
+  lastAvatarPresentationState = presentationState;
+  lastAvatarPresentationUpdate = now;
+  window.localStorage.setItem(avatarPresentationKey, JSON.stringify({
+    state,
+    mouthLevel: boundedLevel,
+  }));
+}
+
+async function syncAvatarWindow() {
+  try {
+    await window.__TAURI__.core.invoke("configure_avatar_window", {
+      input: {
+        visible: avatarPreferences.enabled,
+        always_on_top: avatarPreferences.alwaysOnTop,
+        x: avatarPreferences.x,
+        y: avatarPreferences.y,
+      },
+    });
+  } catch (_error) {
+    // The web-only shell preview does not expose native window controls.
+  }
 }
 
 function renderAvatarState(state, mouthLevel = 0) {
@@ -374,6 +414,7 @@ function renderAvatarState(state, mouthLevel = 0) {
   elements.avatarCaption.textContent = translate(`state_avatar_${visibleState}`);
   const boundedLevel = Math.max(0, Math.min(100, Number(mouthLevel) || 0));
   elements.avatarStage.style.setProperty("--avatar-mouth-scale", String(1 + (boundedLevel / 18)));
+  publishAvatarPresentation(visibleState, boundedLevel);
   elements.avatarStop.disabled = visibleState === "stopped";
   if (voiceRemoteAudio) voiceRemoteAudio.muted = !avatarPreferences.voicePlayback;
 }
@@ -383,9 +424,11 @@ function applyAvatarPreferences() {
   elements.avatarVoicePlayback.checked = avatarPreferences.voicePlayback;
   elements.avatarCaptions.checked = avatarPreferences.captions;
   elements.avatarHighContrast.checked = avatarPreferences.highContrast;
+  elements.avatarAlwaysOnTop.checked = avatarPreferences.alwaysOnTop;
   elements.avatarMotion.value = avatarPreferences.motion;
   if (avatarPreferences.enabled && avatarStopped) avatarStopped = false;
   renderAvatarState(avatarState);
+  void syncAvatarWindow();
 }
 
 function stopRemoteLevelAnalysis() {
@@ -1069,6 +1112,7 @@ for (const control of [
   elements.avatarVoicePlayback,
   elements.avatarCaptions,
   elements.avatarHighContrast,
+  elements.avatarAlwaysOnTop,
   elements.avatarMotion,
 ]) {
   control.addEventListener("change", () => {
@@ -1077,7 +1121,10 @@ for (const control of [
       voicePlayback: elements.avatarVoicePlayback.checked,
       captions: elements.avatarCaptions.checked,
       highContrast: elements.avatarHighContrast.checked,
+      alwaysOnTop: elements.avatarAlwaysOnTop.checked,
       motion: elements.avatarMotion.value,
+      x: avatarPreferences.x,
+      y: avatarPreferences.y,
     };
     persistAvatarPreferences();
     applyAvatarPreferences();
@@ -1145,6 +1192,13 @@ elements.retry.addEventListener("click", async () => {
 
 elements.localeEn.addEventListener("click", () => applyLocale("en"));
 elements.localeZh.addEventListener("click", () => applyLocale("zh"));
+
+window.addEventListener("storage", (event) => {
+  if (event.key === avatarPreferenceKey) {
+    avatarPreferences = loadAvatarPreferences();
+    applyAvatarPreferences();
+  }
+});
 
 elements.requestPermission.addEventListener("click", async () => {
   elements.requestPermission.disabled = true;

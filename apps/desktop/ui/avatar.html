@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="dark" />
+    <title>Trigix Desktop Avatar</title>
+    <link rel="stylesheet" href="./avatar.css" />
+    <script src="./avatar.js" defer></script>
+  </head>
+  <body data-state="idle" data-motion="full" data-high-contrast="false">
+    <main id="companion" class="companion" aria-label="Trigix desktop avatar">
+      <div class="companion-controls" aria-label="Avatar window controls">
+        <button id="toggle-top" type="button" aria-pressed="true" title="Keep on top">
+          <span aria-hidden="true">◆</span><span class="visually-hidden">Keep on top</span>
+        </button>
+        <button id="hide-avatar" type="button" title="Hide avatar">
+          <span aria-hidden="true">×</span><span class="visually-hidden">Hide avatar</span>
+        </button>
+      </div>
+
+      <div id="drag-surface" class="character" role="img" aria-label="Animated Trigix assistant. Drag to move.">
+        <div class="aura" aria-hidden="true"></div>
+        <div class="shadow" aria-hidden="true"></div>
+        <div class="body" aria-hidden="true">
+          <div class="torso"><span class="core"></span></div>
+          <div class="arm arm-left"><span class="hand"></span></div>
+          <div class="arm arm-right"><span class="hand"></span></div>
+          <div class="neck"></div>
+          <div class="head">
+            <div class="hair hair-back"></div>
+            <div class="ear ear-left"></div>
+            <div class="ear ear-right"></div>
+            <div class="face">
+              <span class="brow brow-left"></span>
+              <span class="brow brow-right"></span>
+              <span class="eye eye-left"><i></i></span>
+              <span class="eye eye-right"><i></i></span>
+              <span class="mouth"></span>
+            </div>
+            <div class="hair hair-front"></div>
+          </div>
+        </div>
+      </div>
+
+      <p id="avatar-caption" class="caption" role="status" aria-live="polite">Ready</p>
+      <p class="drag-hint">Drag to move</p>
+    </main>
+  </body>
+</html>
