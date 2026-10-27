@@ -79,3 +79,25 @@ release environment after the external controls have completed.
 This boundary supports the release gates tracked by issues #82 and #103 while
 allowing deterministic repository tests to verify the record shape before
 production credentials are available.
+
+## Protected promotion verifier
+
+The `desktop-release` package provides the `verify-readiness` command for a
+protected promotion environment. It consumes a canonical release manifest and
+the corresponding readiness record, and it requires the expected source
+revision, target, and product version as separate operator inputs. Verification
+time comes from the protected runner clock rather than an operator argument,
+preventing a caller from backdating an expired record. The command rejects
+oversized or unknown JSON, a different source
+revision, target or version, an incomplete client matrix, expired evidence,
+failed controls, artifact digest drift, and unresolved critical or high
+findings. Successful output contains only bounded public identifiers and
+digests; it never copies report bodies, private evidence locations, customer
+identities, or credentials.
+
+This verifier does not establish trust in the manifest signature. The
+protected release boundary must first verify the canonical manifest signature
+with its configured release trust root, then invoke `verify-readiness` against
+the same immutable manifest bytes. A successful readiness result authorizes a
+promotion decision only after both checks pass; it does not sign, upload,
+download, install, or publish an artifact.
