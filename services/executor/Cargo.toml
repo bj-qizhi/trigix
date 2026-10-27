@@ -34,7 +34,7 @@ feed-rs = "2.4"
 suppaftp = { version = "11", features = ["native-tls"] }
 imap = "3.0.0-alpha.15"
 native-tls = "0.2"
-russh = "0.63"
+russh = "0.64"
 russh-sftp = "2.4"
 tiberius = { version = "0.12", default-features = false, features = ["tds73", "native-tls", "chrono"] }
 tokio-util = { version = "0.7", features = ["compat"] }
